@@ -167,6 +167,9 @@ export const api = {
   // Ofertas do deck do lead (a principal + as secretas da escada) e o link
   // pronto pro cliente de UMA delas — o que vai no WhatsApp.
   proposalOffers: (id) => req("GET", `/api/leads/${id}/proposal-offers`),
+  // Tela zero do deck de slides no card de Atividades (planos de hoje).
+  proposalConfig: (id) => req("GET", `/api/leads/${id}/proposal-config`),
+  saveProposalConfig: (id, deckC) => req("PUT", `/api/leads/${id}/proposal-config`, { deckC }),
   shareProposal: (id, offer) => req("POST", `/api/leads/${id}/proposal-share`, { offer }),
   // Proposta personalizada (objetiva): capa + combinado+valor. `preview:true`
   // devolve { html } sem salvar; senão faz upsert e devolve { id, url }.

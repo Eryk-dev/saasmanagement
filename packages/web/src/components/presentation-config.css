@@ -1,0 +1,30 @@
+/* Informações da apresentação no card de Atividades (06/10/2026): a tela zero
+   do deck de slides com as peças do cockpit (.inp, SelectPopover, Checkbox,
+   Choice) e os tokens do tema, no lugar do iframe da página pública. */
+.deck-cfg { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.deck-cfg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.deck-cfg-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.deck-cfg-field .inp { width: 100%; min-width: 0; box-sizing: border-box; height: 30px; font-size: 12.5px; }
+.deck-cfg-field .inp:focus { border-color: var(--accent-line); }
+
+.deck-cfg-products { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.deck-cfg-product { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; border: 1px solid var(--line-1); border-radius: var(--r-2); background: var(--bg-1); min-width: 0; }
+.deck-cfg-product[data-on] { border-color: var(--accent-line); }
+.deck-cfg-product > button { width: 100%; }
+.deck-cfg-product-title { display: block; font-size: 12.5px; font-weight: 600; color: var(--fg-1); }
+.deck-cfg-product-hint { display: block; margin-top: 1px; font-size: 11.5px; color: var(--fg-3); overflow-wrap: anywhere; }
+.deck-cfg-product-pick { padding-left: 24px; min-width: 0; }
+
+.deck-cfg-value { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--r-2); background: var(--bg-2); min-width: 0; }
+.deck-cfg-value-body { display: flex; flex-direction: column; gap: 2px; flex: 1 1 150px; min-width: 0; font-size: 11.5px; color: var(--fg-3); overflow-wrap: anywhere; }
+.deck-cfg-value-body strong { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; color: var(--fg-1); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.deck-cfg-value-name { color: var(--fg-2); font-weight: 600; }
+.deck-cfg-present { flex-shrink: 0; display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-1); background: var(--bg-1); color: var(--fg-1); font-size: 12px; font-weight: 600; text-decoration: none; white-space: nowrap; transition: var(--transition-ui); }
+.deck-cfg-present:hover { border-color: var(--accent-line); color: var(--accent); }
+.deck-cfg-present:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.deck-cfg-status { min-height: 14px; font-size: 10.5px; }
+.deck-cfg-status[data-tone="neg"] { color: var(--neg); }
+
+@media (pointer: coarse) {
+  .deck-cfg-field .inp, .deck-cfg-present { min-height: 40px; }
+}

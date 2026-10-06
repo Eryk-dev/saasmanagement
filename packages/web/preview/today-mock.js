@@ -59,8 +59,35 @@ export function setupTodayReview(seed) {
   }
   window.__reviewMutations = [];
 }
+// Tela zero do deck de slides (card de Atividades): catálogo com os nomes da
+// tela Planos, um pacote além de Essencial/Escala e o Lever Price. `deckIframe`
+// simula proposta sem slides (o card cai no iframe da página).
+const deckCatalog = {
+  lines: { ads: { name: 'Lever Ads' }, oem: { name: 'Lever OEM' }, price: { name: 'Lever Price' } },
+  addons: { contaExtra: { per: 100 } },
+  oemPacks: [{ qty: 1000, price: 4000 }, { qty: 2000, price: 7000 }],
+  products: {
+    ads_essencial: { name: 'Ads Essencial', line: 'ads', tier: 'essencial', contas: 3, inclui: {}, anu: { per: 497 }, sem: { per: 597 } },
+    ads_escala: { name: 'Ads Escala', line: 'ads', tier: 'escala', contas: 6, inclui: {}, anu: { per: 997 }, sem: { per: 1097 } },
+    ads_enterprise: { name: 'Ads Enterprise', line: 'ads', tier: 'enterprise', contas: 20, inclui: {}, anu: { per: 2997 }, sem: { per: 3297 } },
+    oem_essencial: { name: 'Ads Essencial + OEM', line: 'oem', tier: 'essencial', contas: 3, inclui: {}, anu: { per: 597 }, sem: { per: 697 } },
+    price_escala: { name: 'Lever Price · Escala', line: 'price', tier: 'escala', contas: 0, inclui: {}, anu: { per: 297 }, sem: { per: 347 } },
+  },
+};
+let deckCfg = { nome: 'Bruno', empresa: 'Auto Peças Já', contas: 3, pedidos: 0, ticket: 0, vistaPct: 0, plataforma: true, linha: 'ads', tier: 'essencial', price: false, priceTier: 'escala', oem: false, oemPack: '1000', periodo: 'anual' };
 export const todayMock = {
   get: async (col,id) => window.SEED[col.toUpperCase()]?.find(row=>row.id===id),
+  proposalConfig: async (id) => {
+    const lead = window.SEED.LEADS.find(l=>l.id===id);
+    if (!lead?.proposta_id) return { proposal: null, layout: '' };
+    if (params.has('deckIframe')) return { proposal: null, layout: 'oem' };
+    return { proposal: lead.proposta_id, layout: 'slides', cfg: { ...deckCfg }, catalog: deckCatalog };
+  },
+  saveProposalConfig: async (id, cfg) => {
+    window.__reviewMutations.push({method:'saveProposalConfig',id,cfg});
+    deckCfg = { ...cfg };
+    return { proposal: 'card-preview', layout: 'slides', cfg: { ...deckCfg }, catalog: deckCatalog };
+  },
   generateProposal: async (id,options) => {
     window.__reviewMutations.push({method:'generateProposal',id,options});
     if (params.has('proposalFail')) return {ok:false};

@@ -614,10 +614,20 @@ alteração funcional nesta preparação.
 - **Card de Minhas atividades (21/09/2026):** segue o desenho “Atalhos.pdf”: atalhos
   em largura inteira, apresentação/respostas lado a lado, histórico e próximo
   passo. O roteiro saiu do card; sua prévia em Ajustes → Scripts permanece.
-  `GET /p/:id?embed=config&k=…` mostra a configuração responsiva do deck de
-  slides dentro do card apenas com a chave de edição válida. Usa o mesmo
-  `deckConfig` e PATCH da apresentação, sem duplicar preços ou persistência.
-  O deck normal mantém sua tela inicial. Validação adicional:
+  Desde 06/10/2026 a configuração do deck de SLIDES é desenhada pelo próprio
+  cockpit (`components/presentation-config.jsx`: `.inp`, `SelectPopover`,
+  `Checkbox`, `Choice`), lida e gravada por `GET`/`PUT
+  /api/leads/:id/proposal-config` (mesmo `state.deckC` e mesma regra do PATCH
+  público, `deckConfigState`/`saveDeckConfig` em `proposals/proposal.js`). A
+  conta e os planos escolhíveis vêm de `api/src/shared/deck-offer.js`
+  (`calcOferta`, `deckChoices`), a mesma fonte injetada na página do deck:
+  todo produto `<linha>_<pacote>` do catálogo vira opção com o nome do plano,
+  sem lista fixa de Essencial/Escala. Deck OEM e proposta de fora seguem no
+  iframe `GET /p/:id?embed=config&k=…`. **Catálogo vivo:** a proposta de
+  trabalho do closer (slides, com `editKey`) recebe a tabela atual do template
+  (`syncProposalCatalog`) ao abrir a tela zero, no PATCH, nas ofertas e no
+  envio; o link do cliente continua com a oferta congelada no envio e sem
+  tabela. Validação: `test/proposal-deck-config.test.js` e
   `cd packages/web && node scripts/review/today-card.mjs` (API fictícia).
 
 - **Atalhos do lead (21/09/2026):** `components/lead-send-actions.jsx` reúne os
@@ -722,7 +732,9 @@ vazio). O id é determinístico (`plan_<saas>_<code>`) e o código é o mesmo de
 `lead.dealProduct`. O `calc.catalog` de `pt_leverads` / `pt_leverads_slides` e o
 `calc.mentoria.products` de `pt_mentoria` são PROJEÇÃO dos planos
 (`syncPlanCatalogProjection`, a cada escrita de plano e a cada boot); o renderer
-das propostas não mudou e proposta já gerada não é tocada. Linhas, régua
+das propostas não mudou e a projeção não regrava proposta gerada. A exceção é a
+proposta de trabalho do deck de slides, que copia a tabela do template quando o
+closer a abre (`syncProposalCatalog`, ver o card de Minhas atividades). Linhas, régua
 contas → pacote e adicionais moram em `app_config/plan_catalog_<saas>`. A
 semente (`ensurePlansCatalog`, marcador `app_config/plans_catalog_v1`) nasce do
 catálogo que está no BANCO. `migrateCatalogPricing` / `pricingV` ficaram

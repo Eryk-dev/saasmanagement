@@ -8,7 +8,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-import { publicProposal, syncProposalLeadSnapshot } from "./proposal.js";
+import { publicProposal, syncProposalLeadSnapshot, syncProposalCatalog, deckConfigState, leadAmountPatch } from "./proposal.js";
 import { pickCases, publicCase } from "./cases.js";
 import { applyCatalog, catalogAmount, catalogUI, activeProduct } from "./proposal-catalog.js";
 import { proposalPageHtml } from "./proposal-page.js";
@@ -226,7 +226,7 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     // O link de apresentação pode ter sido gerado antes de o SDR preencher a
     // empresa. Reabre sempre com os dados atuais e recupera a dor dos snapshots
     // antigos, sem mexer no deck nem em escolhas manuais do closer.
-    if (editable) p = await syncProposalLeadSnapshot(repo, p);
+    if (editable) p = await syncProposalCatalog(repo, await syncProposalLeadSnapshot(repo, p));
     if (!editable) {
       // QUEM abriu: link aberto de DENTRO do cockpit (?from=cockpit ou referer do
       // cockpit) é do TIME (SDR/closer conferindo), não é o cliente. Aberturas do
@@ -274,11 +274,13 @@ export function registerProposalRoutes(app, repo, opts = {}) {
 
   // Painel do closer: só os campos de estado, só com o editKey certo.
   app.patch("/public/proposals/:id", async (req, reply) => {
-    const p = await repo.get("proposals", req.params.id);
+    let p = await repo.get("proposals", req.params.id);
     if (!p) return reply.code(404).send({ error: "Not found" });
     const body = req.body && typeof req.body === "object" ? req.body : {};
     if (!body.k || body.k !== p.editKey) return reply.code(401).send({ error: "Unauthorized" });
-    const state = { ...(p.state || {}) };
+    // A tela zero salva contra os planos de hoje (a mesma tabela que ela mostrou).
+    if (body.deckC && typeof body.deckC === "object") p = await syncProposalCatalog(repo, p);
+    let state = { ...(p.state || {}) };
     if (Number.isFinite(Number(body.seats)) && Number(body.seats) >= 1) state.seats = Number(body.seats);
     if (typeof body.volume === "string") state.volume = body.volume;
     if (["monthly", "quarterly", "semiannual", "annual"].includes(body.cycle)) state.cycle = body.cycle;
@@ -301,16 +303,7 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     // linha/pacote). O produto escolhido vira `state.product` e o período vira
     // `state.cycle` — é o que o resto do cockpit lê (valor do lead, gate de
     // Ganho, link de pagamento), então a opção C não cria um mundo paralelo.
-    if (body.deckC && typeof body.deckC === "object") {
-      const c = deckConfig({ state: { deckC: body.deckC, seats: state.seats }, data: p.data }, { suggested: activeProduct(p) });
-      state.deckC = c;
-      const chave = c.linha + "_" + c.tier;
-      if (c.plataforma && catalogProducts[chave]) state.product = chave;
-      state.cycle = c.periodo === "semestral" ? "semiannual" : "annual";
-      // Contas em branco (form sem resposta, closer ainda não perguntou) não
-      // zera os assentos que a fórmula por assentos usa.
-      if (c.contas > 0) state.seats = c.contas;
-    }
+    if (body.deckC && typeof body.deckC === "object") state = deckConfigState(p, state, body.deckC);
     // Tela zero do deck de CRIAÇÃO DE ANÚNCIOS (OEM): dois números, saneados
     // pelo mesmo deckOemConfig que monta a tela. Não mexe em state.product nem
     // em state.cycle — este deck não vende plano, vende lote de anúncio.
@@ -377,12 +370,7 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     // Valor do card: no deck de criação de anúncios é o lote (quantidade ×
     // valor por anúncio); nos outros, o preço do produto ativo do catálogo.
     const amount = p.layout === "oem" ? calcOem(state.deckOem || {}).total : catalogAmount(updated);
-    if (amount > 0 && p.lead) {
-      try {
-        const lead = await repo.get("leads", p.lead);
-        if (lead && !lead.planClosed && !lead.wonAt && Number(lead.amount) !== amount) leadPatch.amount = amount;
-      } catch { /* fail-open */ }
-    }
+    Object.assign(leadPatch, await leadAmountPatch(repo, p, amount));
     // Writeback best-effort no lead (nunca derruba o save da proposta).
     if (Object.keys(leadPatch).length && p.lead) {
       try { await repo.update("leads", p.lead, leadPatch); } catch { /* fail-open */ }
@@ -464,7 +452,7 @@ export function registerProposalRoutes(app, repo, opts = {}) {
       if (!oferta.configurado) return reply.code(422).send({ error: "Preencha a quantidade de anúncios e o valor de cada um antes de gerar o link." });
       state = { deckOem: cfg, deckOemOferta: oferta };
     } else {
-      const cfg = deckConfig({ state: { deckC: entrada }, data });
+      const cfg = deckConfig({ state: { deckC: entrada }, data }, { catalog: t.calc?.catalog || null });
       const oferta = calcOferta(slimCatalog(t.calc?.catalog || {}), cfg);
       if (!oferta.mensal) return reply.code(422).send({ error: "Monte o plano antes de gerar o link." });
       state = { deckC: cfg, deckOferta: oferta };

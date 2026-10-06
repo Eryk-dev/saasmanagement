@@ -30,7 +30,8 @@
 import { randomBytes } from "node:crypto";
 import { pickCases, publicCase } from "./cases.js";
 import { CYCLE_MONTHS } from "../billing/billing.js";
-import { hasCatalog, applyCatalog, catalogAmount } from "./proposal-catalog.js";
+import { hasCatalog, applyCatalog, catalogAmount, activeProduct } from "./proposal-catalog.js";
+import { sameJson } from "../billing/plan-catalog.js";
 import { mentoriaAmount, mentoriaTemplateOf } from "../customers/mentoria.js";
 import { attributionPain, painCode } from "../marketing/attribution.js";
 import { calcOferta, deckConfig, slimCatalog } from "./proposal-slides-page.js";
@@ -75,6 +76,64 @@ function validProposalPain(calc, raw) {
 // A proposta nasce junto com o envio do form, mas empresa costuma ser preenchida
 // pelo SDR depois. A dor também podia faltar nos snapshots antigos porque antes
 // era guardada só na submissão. O override manual da tela zero sempre vence.
+// Configuração da tela zero do deck de slides, validada contra o catálogo da
+// própria proposta (só planos que ele vende) e com o produto que a régua sugere.
+export const deckConfigOf = (p) => deckConfig(p, { suggested: activeProduct(p), catalog: p?.calc?.catalog || null });
+
+// O deck de slides do CLOSER acompanha os planos de hoje. A proposta nasce com
+// a tabela do template copiada (calc.catalog), e o template é a projeção dos
+// planos de Comercial → Planos: sem isto, plano renomeado, repreçado ou novo
+// depois da geração nunca chegava na tela zero nem no card de Atividades, e o
+// closer montava a oferta com a tabela velha. Só a proposta de trabalho (com
+// editKey) se atualiza: o link do cliente leva a oferta congelada no envio
+// (shareProposalOffer) e não tem tabela nenhuma.
+export async function syncProposalCatalog(repo, proposal) {
+  if (proposal?.layout !== "slides" || !proposal.editKey || proposal.sharedFrom || !proposal.template) return proposal;
+  const t = await repo.get("proposal_templates", proposal.template).catch(() => null);
+  const live = t?.calc?.catalog;
+  if (!hasCatalog(t?.calc) || sameJson(live, proposal.calc?.catalog)) return proposal;
+  return repo.update("proposals", proposal.id, { calc: { ...(proposal.calc || {}), catalog: JSON.parse(JSON.stringify(live)) } });
+}
+
+// Estado da proposta com a tela zero aplicada: a configuração saneada, o plano
+// escolhido como `state.product` e o período como `state.cycle` — é o que o
+// resto do cockpit lê (valor do lead, gate de Ganho, link de pagamento).
+export function deckConfigState(proposal, state, deckC) {
+  const c = deckConfig({ state: { deckC, seats: state.seats }, data: proposal.data },
+    { suggested: activeProduct(proposal), catalog: proposal.calc?.catalog || null });
+  const next = { ...state, deckC: c };
+  const chave = c.linha + "_" + c.tier;
+  if (c.plataforma && proposal.calc?.catalog?.products?.[chave]) next.product = chave;
+  next.cycle = c.periodo === "semestral" ? "semiannual" : "annual";
+  // Contas em branco (form sem resposta, closer ainda não perguntou) não
+  // zera os assentos que a fórmula por assentos usa.
+  if (c.contas > 0) next.seats = c.contas;
+  return next;
+}
+
+// Valor do card que acompanha a apresentação salva. Negócio já fechado
+// (planClosed/wonAt) tem valor de venda e não muda.
+export async function leadAmountPatch(repo, proposal, amount) {
+  if (!(amount > 0) || !proposal?.lead) return {};
+  try {
+    const lead = await repo.get("leads", proposal.lead);
+    if (lead && !lead.planClosed && !lead.wonAt && Number(lead.amount) !== amount) return { amount };
+  } catch { /* fail-open */ }
+  return {};
+}
+
+// Tela zero salva pelo card de Atividades (rota autenticada do lead): a mesma
+// regra do PATCH público do deck, sem a chave de edição no navegador do cockpit.
+export async function saveDeckConfig(repo, proposal, deckC) {
+  const p = await syncProposalCatalog(repo, proposal);
+  const updated = await repo.update("proposals", p.id, { state: deckConfigState(p, { ...(p.state || {}) }, deckC) });
+  const leadPatch = await leadAmountPatch(repo, updated, catalogAmount(updated));
+  if (Object.keys(leadPatch).length) {
+    try { await repo.update("leads", updated.lead, leadPatch); } catch { /* fail-open */ }
+  }
+  return updated;
+}
+
 export async function syncProposalLeadSnapshot(repo, proposal) {
   if (!proposal?.lead || proposal.sharedFrom) return proposal;
   const lead = await repo.get("leads", proposal.lead);
@@ -216,7 +275,7 @@ export function proposalOffersOf(p) {
     }];
   }
   if (p?.layout !== "slides") return proposalOffers(p?.slides);
-  const o = calcOferta(slimCatalog(p?.calc?.catalog || {}), deckConfig(p));
+  const o = calcOferta(slimCatalog(p?.calc?.catalog || {}), deckConfigOf(p));
   if (!o.mensal) return []; // sem produto escolhido não há o que mandar
   return [{
     offer: 1,
@@ -359,7 +418,7 @@ export async function shareProposalOffer(repo, parent, offer, { baseUrl = "" } =
     return { ok: true, proposal: salvo, url: `${baseUrl}/p/${salvo.id}`, offer: 1, label: "Pagamento único" };
   }
   if (parent?.layout === "slides") {
-    const cfg = deckConfig(parent);
+    const cfg = deckConfigOf(parent);
     const oferta = calcOferta(slimCatalog(parent?.calc?.catalog || {}), cfg);
     if (!oferta.mensal) return { ok: false, error: "monte o plano na tela zero antes de mandar a apresentação" };
     const { catalog: _cat, ...calcSemCatalogo } = parent.calc || {};

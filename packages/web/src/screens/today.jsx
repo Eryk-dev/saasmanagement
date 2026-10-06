@@ -27,6 +27,7 @@ import { resolveScript, scriptTokens, scriptChecklist, isNoShowStage, confirmati
 import { CLOSED_PLANS, withLegacyOption, closedPlanLabel, dealProductLabel, closingPlansOf } from "../lib/payments.js";
 import { LeadSendActions, useLeadProposalActions } from "../components/lead-send-actions.jsx";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
+import { PresentationConfig } from "../components/presentation-config.jsx";
 import { followupContacts, followupDueDay, followupNextContact, followupStepOf, followupDayOf, localDayStart, dayStartIso, nextFollowupDay, todayBrt, FOLLOWUP_STEPS, FOLLOWUP_CHANNELS } from "../lib/followup.js";
 import { FollowupContactBlock, DayPicker, defaultFollowupDay } from "../components/followup-contact.jsx";
 import { summaryReason } from "../components/customer-meeting.jsx";
@@ -1603,22 +1604,6 @@ function InlineScriptShell({ children, onClose }) {
   return <section ref={ref} tabIndex={-1} className="today-inline-script" aria-label="Atividade do lead">{children}</section>;
 }
 
-function PresentationConfig({ url }) {
-  const ref = React.useRef(null);
-  const [height, setHeight] = useS(480);
-  useE(() => {
-    const origin = new URL(url, window.location.href).origin;
-    const resize = (event) => {
-      if (event.source !== ref.current?.contentWindow || event.origin !== origin || event.data?.type !== "cockpit:proposal-config-height") return;
-      const next = Number(event.data.height);
-      if (Number.isFinite(next) && next > 0) setHeight(Math.min(2400, Math.ceil(next)));
-    };
-    window.addEventListener("message", resize);
-    return () => window.removeEventListener("message", resize);
-  }, [url]);
-  return <iframe ref={ref} title="Configurar apresentação" style={{ height }} src={`${url}${url.includes("?") ? "&" : "?"}embed=config&from=cockpit`} />;
-}
-
 function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfter, onClose, onTouch, onReschedule = null, onFollowupContact = null, onOpenLead, onWhatsapp, preview = false, previewScript = null, nextItem = null, onSkip = null }) {
   // On narrow screens keep the accessible modal: the queue can be much taller
   // than the viewport, so an inline editor below it would open out of sight.
@@ -1767,7 +1752,7 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
           <div className="today-script-columns">
             <LeadSection title="Informações da apresentação" className="today-presentation">
               {l.proposal_edit_url && !preview ? <>
-                <PresentationConfig key={l.proposal_edit_url} url={l.proposal_edit_url} />
+                <PresentationConfig key={l.proposal_edit_url} lead={l} />
               </> : <p className="today-script-hint">{preview ? "A configuração da apresentação aparece aqui na atividade do lead." : "Prepare a proposta pelo botão Proposta no WhatsApp para preencher pedidos, ticket médio, produtos e plano aqui. A configuração continua disponível na apresentação."}</p>}
             </LeadSection>
             <LeadSection title="Perguntas e respostas do formulário">
