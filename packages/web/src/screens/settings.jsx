@@ -431,9 +431,12 @@ function NextStepsSettings({ s }) {
     if (k === "retry") return true;
     if (k === "noshow") return funnel.some((f) => isNoShowStage(f.stage));
     if (k === "nutricao") return !!nurtureStage(s);
+    if (k === "remarcar") return !!stageByKind(s, "integracao");
     return !!stageByKind(s, k);
   };
   const avail = NEXT_STEP_KINDS.filter(resolvable);
+  // "Remarcar" só existe nos roteiros da Integração (novo horário da reunião).
+  const availFor = (item) => avail.filter((d) => d !== "remarcar" || item.kind === "integracao");
 
   // Uma linha por VARIANTE de roteiro (igual à aba Scripts), menos a confirmação
   // (não tem "Depois da ação") e as que não têm etapa no funil deste produto.
@@ -448,8 +451,9 @@ function NextStepsSettings({ s }) {
   const initFor = (item) => {
     // Mesma resolução do Meu dia (override por roteiro, senão o default do
     // kind, e a lista da cadência nas colunas de dia).
-    const chosen = nextKindsFor(s, item.key, item.kind).filter((d) => avail.includes(d));
-    const rest = avail.filter((d) => !chosen.includes(d));
+    const opts = availFor(item);
+    const chosen = nextKindsFor(s, item.key, item.kind).filter((d) => opts.includes(d));
+    const rest = opts.filter((d) => !chosen.includes(d));
     return [...chosen.map((d) => ({ kind: d, on: true })), ...rest.map((d) => ({ kind: d, on: false }))];
   };
   const [rows, setRows] = useStS(() => Object.fromEntries(items.map((it) => [it.key, initFor(it)])));

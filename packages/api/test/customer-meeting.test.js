@@ -168,3 +168,41 @@ test("gerar resumo pela ficha do cliente resume a última reunião do lead dele"
   assert.equal((await app.inject({ method: "POST", url: "/api/customers/c2/meeting-summary", payload: {} })).statusCode, 422);
   await app.close();
 });
+
+// Remarcar da atividade de Integração (Minhas atividades, 06/10/2026): a mesma
+// régua, pelo lead. A integração que já aconteceu ganha sala nova e o card não
+// sai da etapa.
+test("remarcar a integração pelo lead: sala nova, confirmação zerada e o card fica na etapa", async () => {
+  const { repo, app, google } = await setup({ lead: { ...pastRoom(true), stage: "Integração", integrator: "eryk", integrationConfirmed: true } });
+  const at = brtIn(2);
+  const r = await app.inject({ method: "POST", url: "/api/leads/l1/integration-meeting", payload: { at } });
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(r.json().released, true);
+  assert.equal(r.json().lead.integrationAt, at);
+  const lead = await repo.get("leads", "l1");
+  assert.equal(lead.stage, "Integração");
+  assert.equal(lead.integrationAt, at);
+  assert.equal(lead.integrationConfirmed, false);
+  assert.equal(lead.integrationMeetEventId, "ev_new1");
+  assert.equal(lead.integrationMeetLabel, undefined, "não vira \"Reunião\": segue sendo a integração");
+  assert.equal(google.created.length, 1);
+  const acts = (await repo.list("activities")).filter((a) => a.lead === "l1" && a.meta?.event === "integration_rescheduled");
+  assert.equal(acts.length, 1);
+  await app.close();
+});
+
+test("remarcar a integração pelo lead: mesma confirmação quando a anterior não tem resumo", async () => {
+  const { repo, app } = await setup({ lead: { ...pastRoom(false), stage: "Integração" } });
+  const at = brtIn(2);
+  const blocked = await app.inject({ method: "POST", url: "/api/leads/l1/integration-meeting", payload: { at } });
+  assert.equal(blocked.statusCode, 409);
+  assert.equal(blocked.json().reason, "previous_without_summary");
+  assert.equal((await repo.get("leads", "l1")).integrationMeetEventId, "ev_old");
+  const forced = await app.inject({ method: "POST", url: "/api/leads/l1/integration-meeting", payload: { at, force: true } });
+  assert.equal(forced.statusCode, 200, forced.body);
+  const passado = await app.inject({ method: "POST", url: "/api/leads/l1/integration-meeting", payload: { at: brtIn(-1) } });
+  assert.equal(passado.statusCode, 422);
+  const naoExiste = await app.inject({ method: "POST", url: "/api/leads/zz/integration-meeting", payload: { at } });
+  assert.equal(naoExiste.statusCode, 404);
+  await app.close();
+});

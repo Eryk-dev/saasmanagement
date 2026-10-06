@@ -29,6 +29,7 @@ import { LeadSendActions, useLeadProposalActions } from "../components/lead-send
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
 import { followupContacts, followupDueDay, followupNextContact, followupStepOf, followupDayOf, localDayStart, dayStartIso, nextFollowupDay, todayBrt, FOLLOWUP_STEPS, FOLLOWUP_CHANNELS } from "../lib/followup.js";
 import { FollowupContactBlock, DayPicker, defaultFollowupDay } from "../components/followup-contact.jsx";
+import { summaryReason } from "../components/customer-meeting.jsx";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
 // "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
 // "Amanhã" e "Próximos dias" (o que já está agendado, à vista), e "Sem data".
@@ -637,7 +638,9 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   // local). Ela MANDA no próximo toque: o servidor re-agenda pela cadência ao
   // receber a activity, então o horário do operador só vale se for gravado
   // DEPOIS que a activity entrou — por isso o update espera o logActivity.
-  function logTouch(item, when = "") {
+  // `text` troca o registro padrão ("tentativa de contato"): na Integração o
+  // retomar é a reunião que aconteceu e a entrega que continua.
+  function logTouch(item, when = "", text = "") {
     const l = item.l;
     const cad = cadenceOf(saasCfg, item.stage);
     const now = Date.now();
@@ -651,9 +654,32 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
       ...(chosenIso ? { nextActionAt: chosenIso }
         : cad.retryDays ? { nextActionAt: rollToBusinessDay(new Date(now + cad.retryDays * DAY)).toISOString() } : {}),
     } : x));
-    api.logActivity({ saas: l.saas, lead: l.id, type: "call", text: "tentativa de contato (meu dia)", author: me })
+    api.logActivity({ saas: l.saas, lead: l.id, type: "call", text: text || "tentativa de contato (meu dia)", author: me })
       .then(() => (chosenIso ? api.update("leads", l.id, { nextActionAt: chosenIso }) : null))
       .catch((err) => { console.warn("toque não registrado:", err.message); toast("O toque não foi salvo · tente de novo", "neg"); });
+  }
+
+  // Remarcar a integração pelo Próximo passo: a rota do lead solta a sala da
+  // reunião que já aconteceu (o resumo dela não se perde) e o Meet acompanha o
+  // horário novo. Sem resumo da anterior, pede a mesma confirmação da ficha do
+  // cliente. Devolve se remarcou, pra só então avançar a fila.
+  async function rescheduleIntegration(item, at, force = false) {
+    try {
+      const r = await api.integrationMeeting(item.l.id, { at, force });
+      syncSaved(r.lead);
+      if (r.meetError) toast(`Integração remarcada, sem Meet: ${r.meetError}`, "warn");
+      else toast("Integração remarcada · o convite foi atualizado", "pos");
+      return true;
+    } catch (e) {
+      if (e.status === 409 && e.body?.reason === "previous_without_summary" && !force) {
+        const ok = window.confirm(`A integração anterior ainda não tem resumo (${summaryReason(e.body.previous)}).
+
+Se remarcar agora, ela não será mais resumida automaticamente. Remarcar mesmo assim?`);
+        return ok ? rescheduleIntegration(item, at, true) : false;
+      }
+      toast(e.message || "Não foi possível remarcar a integração", "neg");
+      return false;
+    }
   }
 
   // Follow-up em 4 contatos: registrar o contato N vira um toque com
@@ -935,7 +961,8 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
             onMoveMeet={moveAndMeet}
             onAfter={advanceScript}
             onClose={() => setScriptItem(null)}
-            onTouch={(when) => { const nx = nextAfter(scriptItem); logTouch(scriptItem, when); setScriptItem(nx); }}
+            onTouch={(when, text) => { const nx = nextAfter(scriptItem); logTouch(scriptItem, when, text); setScriptItem(nx); }}
+            onReschedule={async (at) => { const cur = scriptItem; const nx = nextAfter(cur); if (await rescheduleIntegration(cur, at)) setScriptItem(nx); }}
             onFollowupContact={(r) => {
               const nx = nextAfter(scriptItem);
               const saved = registerFollowupContact(scriptItem, r);
@@ -1592,7 +1619,7 @@ function PresentationConfig({ url }) {
   return <iframe ref={ref} title="Configurar apresentação" style={{ height }} src={`${url}${url.includes("?") ? "&" : "?"}embed=config&from=cockpit`} />;
 }
 
-function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfter, onClose, onTouch, onFollowupContact = null, onOpenLead, onWhatsapp, preview = false, previewScript = null, nextItem = null, onSkip = null }) {
+function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfter, onClose, onTouch, onReschedule = null, onFollowupContact = null, onOpenLead, onWhatsapp, preview = false, previewScript = null, nextItem = null, onSkip = null }) {
   // On narrow screens keep the accessible modal: the queue can be much taller
   // than the viewport, so an inline editor below it would open out of sight.
   // Choose once per open editor. Changing its wrapper while typing would
@@ -1777,7 +1804,7 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
           {!item.confirm && !preview && (
             <div style={{ flexBasis: "100%", minWidth: 0 }}>
               <DestinoSection saasCfg={saasCfg} lead={l} leads={leads} callSummary={callSummary}
-                onMove={onMove} onMoveMeet={onMoveMeet} onAfter={onAfter} onTouch={onTouch} />
+                onMove={onMove} onMoveMeet={onMoveMeet} onAfter={onAfter} onTouch={onTouch} onReschedule={onReschedule} />
             </div>
           )}
           {!item.confirm && preview && (
@@ -1902,6 +1929,12 @@ export function destinationsFor(saasCfg, lead) {
       const promote = curKind === "novo" && !hasDayStages(saasCfg);
       const target = promote ? (stageByKind(saasCfg, "qualificacao") || curStage) : curStage;
       out.push({ retry: true, promote, stage: target, kind: promote ? "qualificacao" : curKind });
+      continue;
+    }
+    // Remarcar: novo horário da integração, o card fica na etapa. Fora da
+    // Integração não aparece (call tem o No show e a confirmação).
+    if (k === "remarcar") {
+      if (curKind === "integracao") out.push({ reschedule: true, stage: curStage, kind: curKind });
       continue;
     }
     if (k === "noshow") {
@@ -2186,8 +2219,11 @@ const RETRY_PRESETS = [
   ["+60d", () => retryPreset(60)],
 ];
 
-function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet, onAfter, onTouch }) {
+function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet, onAfter, onTouch, onReschedule }) {
   const dests = withoutWonStep(saasCfg, lead, destinationsFor(saasCfg, lead));
+  // Na Integração o "retomar" é a reunião que já aconteceu: registra e marca
+  // quando voltar, sem a palavra "tentativa" (não é cliente que não atendeu).
+  const inInteg = stageKind(saasCfg, lead.stage || firstStage(saasCfg)) === "integracao";
   const stageMeta = Object.fromEntries((saasCfg?.funnel || []).map((f) => [f.stage, f]));
   const closers = usersByRole("closer");
   const integrators = usersByRole("integrator");
@@ -2251,22 +2287,25 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   if (dests.length === 0) return null;
   // "Retomar" tem setup próprio (a data de voltar) e NÃO herda o do kind da
   // etapa atual — senão um retry em follow-up abriria a grade de agendamento.
-  const setup = !dest ? null : dest.retry ? "retry" : setupType(dest.kind);
+  const setup = !dest ? null : dest.retry ? "retry" : dest.reschedule ? "reschedule" : setupType(dest.kind);
   const days = nextBusinessDays(6);
 
   // Horas ocupadas na agenda do closer (cada call = 1h; ignora o próprio lead).
   // Follow-up não entra: é só DIA e nunca ocupa a agenda.
   const busy = setup === "call" && closer ? callBusyKeys(leads, closer, lead.id)
     : setup === "integrator" && integrator ? integBusyKeys(leads, integrator, lead.id)
+    : setup === "reschedule" && lead.integrator ? integBusyKeys(leads, lead.integrator, lead.id)
     : new Set();
 
   // Escolher um destino inicializa a agenda com o horário que já existe no lead
   // (call/follow-up = callAt; integração = integrationAt), pra permitir reagendar.
   const chooseDest = (d) => {
-    const same = dest && dest.stage === d.stage && !!dest.retry === !!d.retry;
+    const same = dest && dest.stage === d.stage && !!dest.retry === !!d.retry && !!dest.reschedule === !!d.reschedule;
     const next = same ? null : d;
     setDest(next);
     if (!next) return;
+    // Remarcar: a grade começa vazia (o horário antigo é o que está sendo trocado).
+    if (next.reschedule) { setSlot(""); setDay(nextBusinessDays(1)[0]); return; }
     // Retomar: já nasce preenchido com a cadência do estágio (o "amanhã" de
     // antes), então quem só quer registrar a tentativa confirma num clique e
     // quem precisa de outra data muda ali mesmo.
@@ -2311,6 +2350,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const offerDone = !!offer && (offer === "nenhuma" || !askProduct || !!offerProduct);
   const ready = !dest ? false
     : isRetry ? !!retryAt
+    : setup === "reschedule" ? !!slot
     : setup === "call" ? !!(closer && slot)
     : setup === "followup" ? !!closer && !!fupDay && (!fromCall || offerDone) // saindo da call, a proposta na mesa é obrigatória
     : setup === "integrator" ? !!(integrator && (dest.kind !== "integracao" || dealReady))
@@ -2335,7 +2375,8 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     if (!ready) return;
     // Retomar não move o card: registra a tentativa e marca quando voltar (num
     // lead novo é o servidor que promove pra Qualificando, no toque).
-    if (isRetry) { onTouch && onTouch(retryAt); return; }
+    if (isRetry) { onTouch && onTouch(retryAt, inInteg ? "integração feita · segue na Integração" : ""); return; }
+    if (setup === "reschedule") { onReschedule && onReschedule(slot); return; }
     const patch = { stage: dest.stage };
     if (setup === "call") { patch.closer = closer; patch.callAt = slot; if (email.trim()) patch.email = email.trim(); }
     // Follow-up: mantém o closer e marca o DIA do Contato 1 (followupAt, sem
@@ -2478,6 +2519,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
               <button key="retry" onClick={() => chooseDest(d)}
                 title={d.promote
                   ? `Não atendeu ou ainda não fechou · registra a tentativa, vai pra ${d.stage} e você escolhe quando voltar`
+                  : inInteg ? "A reunião aconteceu e a entrega continua · registra na timeline, o card fica em Integração e você escolhe quando voltar"
                   : "Não atendeu · registra a tentativa e você escolhe o dia e a hora de voltar"}
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 7, height: 42, padding: "0 16px", borderRadius: 999,
@@ -2486,7 +2528,22 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                   color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 13, fontWeight: 600,
                 }}>
                 <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
-                {d.promote ? `${d.stage} · retomar` : "Retomar"}
+                {d.promote ? `${d.stage} · retomar` : inInteg ? "Reunião feita · seguir depois" : "Retomar"}
+              </button>
+            );
+          }
+          if (d.reschedule) {
+            const on = !!dest?.reschedule;
+            return (
+              <button key="reschedule" onClick={() => chooseDest(d)}
+                title="Novo horário da integração na agenda do integrador · o card fica em Integração e o convite do Meet acompanha"
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 7, height: 42, padding: "0 16px", borderRadius: 999,
+                  background: on ? "var(--accent-soft)" : "var(--bg-1)",
+                  border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-strong)"),
+                  color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 13, fontWeight: 600,
+                }}>
+                ↻ Remarcar integração
               </button>
             );
           }
@@ -2533,8 +2590,23 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                   style={{ ...fieldStyle, width: "auto", height: 28, fontFamily: "var(--mono)", fontSize: 11.5 }} />
               </div>
               <div className="mono dim" style={{ fontSize: 10.5 }}>
-                registra a tentativa de contato{dest.promote ? ` e manda o card pra ${dest.stage}` : ""} · o lead volta na sua fila nesse horário
+                {inInteg
+                  ? "registra que a integração aconteceu · o card fica em Integração e volta na sua fila nesse horário"
+                  : <>registra a tentativa de contato{dest.promote ? ` e manda o card pra ${dest.stage}` : ""} · o lead volta na sua fila nesse horário</>}
               </div>
+            </div>
+          )}
+
+          {/* Remarcar a integração: novo horário na agenda do integrador. O
+              servidor move o evento do Meet junto (o cliente recebe o convite
+              atualizado) e o card continua em Integração. */}
+          {setup === "reschedule" && (
+            <div>
+              <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginBottom: 6 }}>
+                {lead.integrator ? `Horários livres na agenda de ${displayName(lead.integrator)} · a integração ocupa 1h` : "Novo horário da integração · a integração ocupa 1h"}
+              </div>
+              <SlotGrid days={days} day={day} setDay={setDay} slot={slot} setSlot={setSlot} busy={busy} />
+              {slot && <div className="mono" style={{ fontSize: 11.5, color: "var(--accent)", marginTop: 8 }}>Integração: {slotFmt(slot)}</div>}
             </div>
           )}
 
@@ -2704,7 +2776,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                 height: 32, padding: "0 16px", borderRadius: 999, fontSize: 12.5, fontWeight: 600,
                 background: ready ? "var(--btn-bg, var(--accent))" : "var(--bg-2)", color: ready ? "var(--btn-fg, var(--accent-fg))" : "var(--fg-4)",
                 border: "1px solid " + (ready ? "var(--btn-bg, var(--accent))" : "var(--line-2)"), cursor: ready ? "pointer" : "not-allowed",
-              }}>{isRetry ? "registrar tentativa e retomar →" : setup === "followup" ? "agendar follow-up →" : `mover pra ${dest.stage} →`}</button>
+              }}>{isRetry ? (inInteg ? "registrar a reunião e seguir →" : "registrar tentativa e retomar →") : setup === "reschedule" ? "salvar novo horário →" : setup === "followup" ? "agendar follow-up →" : `mover pra ${dest.stage} →`}</button>
               <button onClick={() => setDest(null)} className="mono dim" style={{ fontSize: 11.5 }}>cancelar</button>
             </div>
           )}

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   ensureIntegrationStage, migrateLeverAdsCrmFunnel, migrateLeverAdsSdrCadence, migrateNutricaoSevenDays, ensureFunnelKinds,
-  migrateGanhoAntesIntegracao, migrateGanhoNaIntegracao, migrateIntegracaoNoFollowup, migrateNutricaoNoFollowup, backfillWonAt, backfillPostSaleCustomers,
+  migrateGanhoAntesIntegracao, migrateGanhoNaIntegracao, migrateIntegracaoNoFollowup, migrateReuniaoNaIntegracao, migrateNutricaoNoFollowup, backfillWonAt, backfillPostSaleCustomers,
   ensureLossReasons, ensureNoShowReason, ensureSdrGoals, ensureCloserGoals, ensureCloseRateUnica, ensureSocialGoals, ensureUserRoles, ensureUserSaasScope, ensureUserScreens, DEFAULT_LOSS_REASONS,
   migrateExpensePctBases,
 } from "../src/platform/migrations.js";
@@ -475,6 +475,26 @@ test("migrateGanhoNaIntegracao: devolve o Ganho aos próximos passos da entrega,
   // One-shot: o dono pode tirar de novo em Ajustes sem a migração recolocar.
   await repo.update("products", "leverads", { nextSteps: { ...p.nextSteps, integracao: ["posvenda"] } });
   assert.equal(await migrateGanhoNaIntegracao(repo), false);
+  assert.deepEqual((await repo.get("products", "leverads")).nextSteps.integracao, ["posvenda"]);
+});
+
+test("migrateReuniaoNaIntegracao: Reunião feita e Remarcar entram na Integração, uma vez só", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", {
+    id: "leverads",
+    nextSteps: { integracao: ["posvenda", "ganho"], integracao2: ["retry", "posvenda"], integracao3: [], followup1: ["ganho"] },
+  });
+  await repo.create("products", { id: "uniquekids" });
+  assert.equal(await migrateReuniaoNaIntegracao(repo), 1);
+  const p = await repo.get("products", "leverads");
+  assert.deepEqual(p.nextSteps.integracao, ["retry", "remarcar", "posvenda", "ganho"]);
+  assert.deepEqual(p.nextSteps.integracao2, ["remarcar", "retry", "posvenda"], "quem já tem não duplica");
+  assert.deepEqual(p.nextSteps.integracao3, [], "lista vazia é escolha do dono");
+  assert.deepEqual(p.nextSteps.followup1, ["ganho"]);
+  assert.equal((await repo.get("products", "uniquekids")).reuniaoNaIntegracaoV1, true, "sem override, só marca");
+  // One-shot: tirar de novo em Ajustes não volta no próximo boot.
+  await repo.update("products", "leverads", { nextSteps: { ...p.nextSteps, integracao: ["posvenda"] } });
+  assert.equal(await migrateReuniaoNaIntegracao(repo), 0);
   assert.deepEqual((await repo.get("products", "leverads")).nextSteps.integracao, ["posvenda"]);
 });
 

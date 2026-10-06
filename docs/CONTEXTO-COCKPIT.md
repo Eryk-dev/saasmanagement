@@ -834,6 +834,17 @@ ARR inicial anualiza cada item pelo próprio ciclo; reeditar um fechamento
 multiproduto só atualiza o cadastro (assinaturas são da ficha). O valor é
 texto (`parseMoneyInput` aceita `3.582,50`). Teste: `multi-product.test.js`.
 
+**Próximo passo da Integração (06/10/2026).** Além de Acompanhamento, a
+atividade de Integração tem "Reunião feita · seguir depois" (o `retry`: toque
+"integração feita" + quando voltar; com o toque e o GPS depois do horário, o
+compromisso conta como cumprido e o item sai de pendente) e "Remarcar
+integração" (pseudo-kind `remarcar`, só na Integração): novo horário na agenda
+do integrador por `POST /api/leads/:id/integration-meeting`, a mesma régua da
+reunião da ficha do cliente (`scheduleIntegrationMeeting` em
+`google/routes.google.js`: sala usada é solta, 409 `previous_without_summary`
+sem `force`). O card fica na etapa. `migrateReuniaoNaIntegracao` (marcador
+`reuniaoNaIntegracaoV1` por produto) pôs os dois nos `nextSteps` salvos.
+
 **Etapa na ficha do lead (06/10/2026).** A ficha aberta fora do Pipeline
 (Atividades, Inbox, Agenda…) não tem mais "avançar etapa →"/"← voltar" pela
 ordem do funil, `<select>` de etapas nem "marcar ganho/perdido". A seção

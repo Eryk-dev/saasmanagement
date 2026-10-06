@@ -389,26 +389,26 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     return { released: true, previous };
   }
 
-  app.post("/api/customers/:id/meeting", async (req, reply) => {
-    const customer = await repo.get("customers", req.params.id);
-    if (!customer) return reply.code(404).send({ error: "Not found" });
-    const lead = customer.leadId ? await repo.get("leads", customer.leadId) : null;
-    if (!lead) return reply.code(422).send({ error: "esse cliente não tem lead vinculado: a reunião e o resumo moram no lead" });
-    const when = toNaiveBrt(String(req.body?.at || ""));
+  // Marca (ou remarca) a reunião do lead nos campos da integração: solta a
+  // sala que já foi usada, grava o horário, refaz o GPS e a agenda pessoal e
+  // deixa o Meet nascer/mover. Serve a ficha do cliente e o Remarcar da
+  // atividade de Integração. Devolve { error, code } quando não dá.
+  async function scheduleIntegrationMeeting(lead, body, extra = {}) {
+    const when = toNaiveBrt(String(body?.at || ""));
     const at = callMoment(when);
-    if (!at) return reply.code(422).send({ error: "informe data e hora da reunião" });
-    if (at.getTime() <= Date.now()) return reply.code(422).send({ error: "a reunião precisa ser no futuro" });
-    const responsible = String(req.body?.responsible || "").trim();
-    if (responsible && !(await repo.get("users", responsible))) return reply.code(422).send({ error: "responsável não encontrado" });
+    if (!at) return { code: 422, error: "informe data e hora da reunião" };
+    if (at.getTime() <= Date.now()) return { code: 422, error: "a reunião precisa ser no futuro" };
+    const responsible = String(body?.responsible || "").trim();
+    if (responsible && !(await repo.get("users", responsible))) return { code: 422, error: "responsável não encontrado" };
 
-    const room = await releaseIntegrationRoom(lead, { force: !!req.body?.force });
+    const room = await releaseIntegrationRoom(lead, { force: !!body?.force });
     if (room.blocked) {
-      return reply.code(409).send({
-        error: "a reunião anterior ainda não tem resumo",
+      return {
+        code: 409, error: "a reunião anterior ainda não tem resumo",
         reason: "previous_without_summary", previous: room.previous,
-      });
+      };
     }
-    const patch = { integrationAt: when, integrationMeetLabel: "Reunião" };
+    const patch = { integrationAt: when, integrationConfirmed: false, ...extra };
     if (responsible) patch.integrator = responsible;
     let fresh = await repo.update("leads", lead.id, patch);
     try {
@@ -423,6 +423,18 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     if (!fresh.integrationCallUrl && !meetError) {
       meetError = client.configured() ? "o Meet não foi criado: o responsável precisa conectar a conta @leverads em Ajustes → Integrações" : "Google não configurado no servidor";
     }
+    return { ok: true, when, at, fresh, meetError, room };
+  }
+  const meetingError = (reply, r) => reply.code(r.code).send(r.reason ? { error: r.error, reason: r.reason, previous: r.previous } : { error: r.error });
+
+  app.post("/api/customers/:id/meeting", async (req, reply) => {
+    const customer = await repo.get("customers", req.params.id);
+    if (!customer) return reply.code(404).send({ error: "Not found" });
+    const lead = customer.leadId ? await repo.get("leads", customer.leadId) : null;
+    if (!lead) return reply.code(422).send({ error: "esse cliente não tem lead vinculado: a reunião e o resumo moram no lead" });
+    const r = await scheduleIntegrationMeeting(lead, req.body, { integrationMeetLabel: "Reunião" });
+    if (!r.ok) return meetingError(reply, r);
+    const { when, at, fresh, meetError, room } = r;
     await logActivity(repo, {
       saas: lead.saas || "", lead: lead.id, type: "system", author: req.authUser?.id || "cockpit",
       text: `Reunião com o cliente marcada para ${at.toLocaleString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`,
@@ -431,6 +443,27 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     return {
       ok: true, at: when, callUrl: fresh.integrationCallUrl || "", meetError,
       released: room.released, previous: room.previous || null,
+    };
+  });
+
+  // Remarcar da atividade de Integração (Minhas atividades): mesma régua da
+  // ficha do cliente, no lead. Integração que já aconteceu solta a sala (o
+  // resumo dela não se perde e a nova ganha o seu); a que ainda vai acontecer
+  // só move o convite. O card continua na etapa.
+  app.post("/api/leads/:id/integration-meeting", async (req, reply) => {
+    const lead = await repo.get("leads", req.params.id);
+    if (!lead) return reply.code(404).send({ error: "Not found" });
+    const r = await scheduleIntegrationMeeting(lead, req.body);
+    if (!r.ok) return meetingError(reply, r);
+    const { when, at, fresh, meetError, room } = r;
+    await logActivity(repo, {
+      saas: lead.saas || "", lead: lead.id, type: "system", author: req.authUser?.id || "cockpit",
+      text: `Integração remarcada para ${at.toLocaleString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`,
+      meta: { event: "integration_rescheduled", at: when, callUrl: fresh.integrationCallUrl || "" },
+    });
+    return {
+      ok: true, at: when, callUrl: fresh.integrationCallUrl || "", meetError,
+      released: room.released, previous: room.previous || null, lead: fresh,
     };
   });
 

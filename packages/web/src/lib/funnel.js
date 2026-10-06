@@ -223,7 +223,10 @@ export const NEXT_KINDS = {
   // Da entrega dá pra voltar pro Ganho (pedido do Leo, 31/08/2026): card que
   // foi de Call direto pra Integração ainda pode parar na coluna Ganho — os
   // dois são SOLD_KINDS no servidor, então a venda não desfaz no movimento.
-  integracao:    ["posvenda", "ganho"],
+  // Integração (06/10/2026): a reunião aconteceu e a entrega continua
+  // ("retry" = Reunião feita · seguir depois, sai de pendente) ou precisa de
+  // outro horário ("remarcar" = novo integrationAt, o card fica na etapa).
+  integracao:    ["retry", "remarcar", "posvenda", "ganho"],
   posvenda:      [],
   outro:         ["retry", "desqualificado"],
 };
@@ -232,9 +235,12 @@ export const NEXT_KINDS = {
 // situação, com rótulo amigável. `nutricao` é pseudo-kind (como `noshow`):
 // resolve pela etapa NOMEADA Nutrição, porque `contato` cai na 1ª etapa de
 // contato do funil (Dia 2 na LeverAds, desde as etapas de cadência).
-export const NEXT_STEP_KINDS = ["retry", "qualificacao", "call", "noshow", "contato", "nutricao", "followup", "integracao", "posvenda", "ganho", "desqualificado"];
+// `remarcar` também é pseudo-kind e só vale na Integração: novo horário da
+// reunião, sem mover o card.
+export const NEXT_STEP_KINDS = ["retry", "remarcar", "qualificacao", "call", "noshow", "contato", "nutricao", "followup", "integracao", "posvenda", "ganho", "desqualificado"];
 export const NEXT_STEP_LABELS = {
   retry:          "Retomar (escolhe o dia e a hora)",
+  remarcar:       "Remarcar a integração (novo horário)",
   qualificacao:   "Qualificando (o lead respondeu)",
   call:           "Agendar call",
   noshow:         "No show (cliente furou)",

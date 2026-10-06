@@ -415,6 +415,33 @@ export async function migrateNutricaoNoFollowup(repo) {
   return changed;
 }
 
+// ── Reunião feita e Remarcar na Integração (06/10/2026) ─────────────────────
+// A atividade de Integração só oferecia "Acompanhamento →": reunião que
+// aconteceu sem ser a última (ou que precisava de outro horário) ficava
+// pendente na fila como compromisso atrasado. O default do código ganhou
+// "retry" (Reunião feita · seguir depois) e "remarcar" (novo horário), mas o
+// override salvo em product.nextSteps vence o default. One-shot por produto:
+// quem tirar de novo em Ajustes → Próximos passos não vê voltar. Lista vazia é
+// escolha do dono (zera os botões) e fica como está.
+export async function migrateReuniaoNaIntegracao(repo) {
+  let changed = 0;
+  for (const product of await repo.list("products")) {
+    if (!product?.id || product.reuniaoNaIntegracaoV1) continue;
+    const nextSteps = { ...(product.nextSteps || {}) };
+    let touched = false;
+    for (const [key, list] of Object.entries(nextSteps)) {
+      if (!/^integracao/.test(key) || !Array.isArray(list) || !list.length) continue;
+      const add = ["retry", "remarcar"].filter((k) => !list.includes(k));
+      if (!add.length) continue;
+      nextSteps[key] = [...add, ...list];
+      touched = true;
+    }
+    await repo.update("products", product.id, { reuniaoNaIntegracaoV1: true, ...(touched ? { nextSteps } : {}) });
+    if (touched) changed++;
+  }
+  return changed;
+}
+
 // ── Flashcards: cotas de OEM nos cards de produto (31/08/2026) ──────────────
 // O combo Parcial + OEM passou a entregar 250 anúncios/mês (antes 125), e uma
 // leva de cards ainda ensinava o catálogo aposentado em 21/08 (200 no FULL,
@@ -2457,6 +2484,12 @@ export async function runStartupMigrations(repo) {
     if (changed) console.log("[migration] próximos passos do Follow-up ganharam o destino Nutrição (leverads)");
   } catch (err) {
     console.error("[migration] migrateNutricaoNoFollowup falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateReuniaoNaIntegracao(repo);
+    if (n) console.log(`[migration] próximos passos da Integração ganharam Reunião feita e Remarcar (${n} produto(s))`);
+  } catch (err) {
+    console.error("[migration] migrateReuniaoNaIntegracao falhou:", err?.message || err);
   }
   // Depois da reordenação: quem está na entrega passa a ser venda, então ganha
   // cliente e assinatura como se tivesse passado pelo Ganho.
