@@ -665,6 +665,14 @@ pelo CRUD de `app_config`) e enviada em `CONFIG.followupContacts` no bootstrap.
 A régua pura é `api/src/shared/followup-contacts.js`, importada pela SPA (copiada nos
 dois Dockerfiles de build web). Os roteiros `followup1/2/3` viraram o roteiro
 único `followup` (postura); `nextSteps.followup1..3` salvos não valem mais.
+Cada contato pode ter uma **imagem** opcional (`imagem`, só o caminho
+`/public/followup/fua_…`; outro valor vira vazio na normalização). O upload é
+`POST /api/followup-contacts/image` (PNG/JPG/GIF/WebP até 3MB, mesma permissão
+de escrita da tela `settings`), guardado em `followup_assets` (privada no CRUD)
+e servido pela rota aberta `/public/followup/:id`. A imagem só vale ao salvar a
+configuração; ao trocar ou remover, o arquivo antigo é apagado. No painel do
+contato aparece a miniatura e "Copiar imagem", que põe um PNG na área de
+transferência (outros formatos passam por canvas).
 `migrateFollowupDays` (marcador `app_config/followup_days_v1`) truncou os
 `followupAt` com hora e estimou o passo de quem já estava na etapa pelo
 contador de toques (máximo 3). No placar, "follow-up em dia" compara o dia.

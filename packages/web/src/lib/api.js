@@ -570,6 +570,12 @@ export const api = {
   // Follow-up em 4 contatos: mensagens e prazos (config global, Configurações).
   followupContacts: () => req("GET", "/api/followup-contacts"),
   saveFollowupContacts: (contacts) => req("PUT", "/api/followup-contacts", { contacts }),
+  // Imagem de um contato do follow-up → { id, url }; vale ao salvar a configuração com ela.
+  followupImage: (file) => {
+    const fd = new FormData();
+    fd.append("file", file, file.name || "imagem.png");
+    return upload("/api/followup-contacts/image", fd);
+  },
   // Widget de feedback (FAB em toda tela): rotas próprias, abertas a qualquer
   // sessão — /api/tasks é guardado pela tela "tasks" e o widget não pode
   // depender dela. O POST cria o card no quadro; o GET traz o recorte do painel

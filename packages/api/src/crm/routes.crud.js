@@ -55,7 +55,7 @@ function canonWhen(body) {
 // de estados (slug travado, lint, agenda) vive em routes.blog.js.
 // task_events/notifications: atividade e caixa de entrada das tarefas — lidas
 // só pelas rotas dedicadas (routes.tasks.js), nunca pelo CRUD genérico.
-const PRIVATE = new Set(["users", "sessions", "user_assets", "activity_assets", "task_assets", "task_events", "notifications", "wa_threads", "wa_messages", "wa_media", "wa_template_media", "blog_posts",
+const PRIVATE = new Set(["users", "sessions", "user_assets", "activity_assets", "task_assets", "followup_assets", "task_events", "notifications", "wa_threads", "wa_messages", "wa_media", "wa_template_media", "blog_posts",
   // comp_months tem R$ por pessoa: só pelas rotas /api/comp/, que exigem
   // etiqueta admin (ADMIN_PREFIXES), nunca pelo CRUD genérico.
   "comp_months",
