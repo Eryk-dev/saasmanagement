@@ -821,7 +821,9 @@ nativo: `SelectPopover` (com grupos), `PopoverWithCustom`,
 
 O Próximo passo não oferece Ganho (`withoutWonStep`): a Integração registra o
 mesmo fechamento; sem Integração na lista ela entra no lugar, e funil sem etapa
-de Integração mantém o Ganho. A aba Integração tem "A venda" e "A entrega"
+de Integração mantém o Ganho. O destino `contato` (Qualificando) é a Nutrição
+pelo nome, nunca o No show ou o Dia 2, que também têm kind `contato`. A aba
+Integração tem "A venda" e "A entrega"
 (responsável, closer, `lead.integrationNote`, que vai pro Resumo do cliente e
 pro briefing, e a agenda). **Venda com mais de um produto:** `lead.dealItems`
 = `[{ product, planClosed, amount }]` só com 2+ itens; o 1º espelha
@@ -831,6 +833,24 @@ Purchase seguem o total). `dealItemsOf` (`crm/won-lead.js`) normaliza; o
 ARR inicial anualiza cada item pelo próprio ciclo; reeditar um fechamento
 multiproduto só atualiza o cadastro (assinaturas são da ficha). O valor é
 texto (`parseMoneyInput` aceita `3.582,50`). Teste: `multi-product.test.js`.
+
+**Etapa na ficha do lead (06/10/2026).** A ficha aberta fora do Pipeline
+(Atividades, Inbox, Agenda…) não tem mais "avançar etapa →"/"← voltar" pela
+ordem do funil, `<select>` de etapas nem "marcar ganho/perdido". A seção
+**Etapa** (`LeadStageSection`/`leadStageMoves` em `screens/deal.jsx`) mostra os
+mesmos destinos do Próximo passo (`destinationsFor` + `withoutWonStep`, sem o
+retomar) e um `SelectPopover` com as outras etapas agrupadas por fase (sem Ganho
+quando há Integração). Tudo passa pelo `moveStage` (gates e confirm de desfazer
+venda). O rodapé da ficha do Pipeline usa o mesmo bloco (`LeadStageMoves`
+compacto, sem "Avançar →" nem "Descartar lead"); a coluna Ganho segue no quadro
+para o arraste. O gate de movimento (`components/stage-move.jsx`) não usa
+`<select>` nativo: `SelectPopover`, `Choice`, `PaymentMethodPicker` e
+`PopoverWithCustom` (o `DealProductField` também), e o valor aceita
+`3.582,50` (`parseMoneyInput`). Um Esc fecha o gate (antes o 1º só tirava o
+foco do select). No `SelectPopover`, o Esc chega ao `useEsc` e fecha a lista.
+Prévia com o funil atual e um lead por etapa: `?shell&etapas#today` ou
+`#pipeline` (`preview/etapas-mock.js`); revisão:
+`node scripts/review/lead-stage.mjs` em `packages/web`.
 
 **LeverId (auth novo).** O desenho segue o spike de assinaturas (branch
 `feat/auth`): o LeverId guardará só o direito de acesso org × produto, com o

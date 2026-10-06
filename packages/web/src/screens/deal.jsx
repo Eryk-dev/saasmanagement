@@ -9,14 +9,15 @@ import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-mov
 import { clientSummary, leadBox, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks } from "../components/lead-blocks.jsx";
 import { waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
 import { waCallLinkText } from "../lib/wa-copy.js";
-import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind, isLossKind } from "../lib/funnel.js";
+import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind, isLossKind, phaseOf } from "../lib/funnel.js";
+import { SelectPopover } from "../components/select-popover.jsx";
 import { displayName, usersByRole, currentUser } from "../lib/users.js";
 import { CallCopilot } from "../components/call-copilot.jsx";
 import { api } from "../lib/api.js";
 import { useAttribution } from "../lib/pains.js";
 import { sourceLabel } from "../lib/sources.js";
 import { resolveScript, scriptTokens, scriptChecklist } from "../lib/scripts.js";
-import { CallSummaryCard, IntegrationBriefCard, callBusyKeys, callSlotKeys, integBusyKeys } from "./today.jsx";
+import { CallSummaryCard, IntegrationBriefCard, callBusyKeys, callSlotKeys, integBusyKeys, destinationsFor, withoutWonStep } from "./today.jsx";
 import { CustomProposalModal } from "../components/custom-proposal.jsx";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
 import { LeadSendActions, useLeadProposalActions } from "../components/lead-send-actions.jsx";
@@ -122,6 +123,77 @@ function consultaWhen(at) {
   const d = new Date(String(at).length === 16 ? `${at}:00` : at);
   if (Number.isNaN(d.getTime())) return String(at);
   return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(", ", " · ");
+}
+
+// Etapa do lead na ficha (06/10/2026). Antes eram "avançar etapa →" / "← voltar"
+// pela ORDEM do funil, um <select> com todas as colunas e "marcar ganho": do
+// Follow-up o avançar caía no Ganho, que as Atividades já tinham tirado (a
+// Integração registra a venda). Agora o próximo passo é o MESMO do bloco das
+// Atividades (destinationsFor + withoutWonStep, respeitando Ajustes → Próximos
+// passos) e o resto do funil fica num seletor por fase, para exceções. Ganho só
+// aparece em funil sem Integração. Tudo passa pelo moveStage (gates de
+// fechamento/perda e o confirm de desfazer a venda). O rodapé da ficha do
+// Pipeline usa o mesmo bloco (a coluna Ganho do quadro continua para o arraste).
+const STAGE_GROUPS = [["sdr", "Pré-venda"], ["closer", "Venda"], ["entrega", "Entrega"], ["fim", "Encerrar"], ["", "Outras"]];
+export function leadStageMoves(saasCfg, lead, isOpen) {
+  const funnel = saasCfg?.funnel || [];
+  const integ = stageByKind(saasCfg, "integracao");
+  const next = isOpen
+    ? withoutWonStep(saasCfg, lead, destinationsFor(saasCfg, lead)).filter((d) => !d.retry && d.stage !== lead.stage)
+    : [];
+  const shown = new Set([lead.stage, ...next.map((d) => d.stage)]);
+  const group = (st) => { const k = stageKind(saasCfg, st); return STAGE_GROUPS.findIndex(([ph]) => ph === phaseOf(k)); };
+  const others = funnel
+    .filter((f) => f?.stage && !shown.has(f.stage) && !(integ && stageKind(saasCfg, f.stage) === "ganho"))
+    .map((f, i) => { const g = group(f.stage); return { f, i, g: g === -1 ? STAGE_GROUPS.length - 1 : g }; })
+    .sort((a, b) => a.g - b.g || a.i - b.i)
+    .map(({ f, g }) => ({ value: f.stage, label: f.stage, tone: f.color || undefined, group: STAGE_GROUPS[g][1] }));
+  return { next, others };
+}
+
+const stageColor = (saasCfg, st) => (saasCfg?.funnel || []).find((f) => f.stage === st)?.color || "var(--fg-4)";
+
+function LeadStageSection({ saasCfg, lead, isOpen, onMove }) {
+  return (
+    <LeadSection title="Etapa" className="lead-stage"
+      action={<span className="lead-stage-current"><i style={{ background: stageColor(saasCfg, lead.stage) }} />{lead.stage || "sem etapa"}</span>}>
+      <LeadStageMoves saasCfg={saasCfg} lead={lead} isOpen={isOpen} onMove={onMove} />
+    </LeadSection>
+  );
+}
+
+// Destinos ("Mover para") + outra etapa. `compact` = rodapé da ficha do Pipeline: a etapa
+// atual já está no topo da ficha, então o bloco não repete o título.
+function LeadStageMoves({ saasCfg, lead, isOpen, onMove, compact = false }) {
+  const color = (st) => stageColor(saasCfg, st);
+  const { next, others } = leadStageMoves(saasCfg, lead, isOpen);
+  const closes = next.some((d) => d.kind === "integracao" || d.kind === "ganho");
+  return (
+    <div className={"lead-stage-moves" + (compact ? " is-compact" : "")}>
+      {next.length > 0 ? (
+        <>
+          <div className="kicker">Mover para</div>
+          <div className="lead-stage-next">
+            {next.map((d) => (
+              <button key={d.stage} type="button" onClick={() => onMove(d.stage)}
+                className={"lead-stage-chip" + (isLossKind(d.kind) ? " is-loss" : "")}>
+                <i style={{ background: color(d.stage) }} />{d.stage} →
+              </button>
+            ))}
+          </div>
+          {closes && <p className="lead-stage-hint">Integração registra a venda e pede os dados do fechamento.</p>}
+        </>
+      ) : (
+        <p className="lead-stage-hint">{isOpen ? "Sem próximo passo configurado para esta etapa." : "Lead fora da régua. Para retomar, escolha a etapa abaixo."}</p>
+      )}
+      {others.length > 0 && (
+        <div className="lead-stage-other">
+          <span className="kicker">{isOpen ? "Outra etapa" : "Reabrir em"}</span>
+          <SelectPopover label="Mover para outra etapa" placeholder="escolher etapa…" value="" options={others} onChange={onMove} size="sm" />
+        </div>
+      )}
+    </div>
+  );
 }
 
 function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }) {
@@ -397,9 +469,6 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
   const checklist = scriptChecklist(saasCfg, lead);
 
   const funnel = saasCfg?.funnel || [];
-  const stageIndex = funnel.findIndex((f) => f.stage === lead.stage);
-  const nextStage = isOpen && stageIndex >= 0 ? funnel[stageIndex + 1] : null;
-  const previousStage = isOpen && stageIndex > 0 ? funnel[stageIndex - 1] : null;
   const history = mergeTimeline(timelineActs, lead.comments);
   const daysSince = (at) => at && Number.isFinite(new Date(at).getTime()) ? `${Math.max(0, Math.floor((Date.now() - new Date(at).getTime()) / 86400000))}d` : "—";
 
@@ -966,8 +1035,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
             <strong>{isOpen?(lead.nextActionNote||primaryStep.label):"Lead finalizado"}</strong>
             <input aria-label="Nota do próximo toque" defaultValue={lead.nextActionNote||""} onBlur={e=>{if(e.target.value!==(lead.nextActionNote||""))patch({nextActionNote:e.target.value});}} placeholder="o que fazer nesse toque?"/>
             <div className="pipeline-lead-postpone"><span>adiar o toque</span>{[1,2].map(n=><button key={n} onClick={()=>patch({nextActionAt:emDias(n)().toISOString()})}>Adiar {n}d</button>)}<button onClick={()=>setScheduleEditor(true)}>Agendamento</button></div>
-            <div><select aria-label="Mover de etapa" value={lead.stage||""} onChange={e=>moveStage(e.target.value)}>{funnel.map(f=><option key={f.stage} value={f.stage}>{f.stage}</option>)}</select>{nextStage&&<button className="pipeline-lead-advance" onClick={()=>moveStage(nextStage.stage)}>Avançar →</button>}</div>
-            {isOpen&&<button className="pipeline-lead-discard" onClick={()=>moveStage(stageByKind(saasCfg,"desqualificado")||stageByKind(saasCfg,"perdido"))}>Descartar lead</button>}
+            <LeadStageMoves saasCfg={saasCfg} lead={lead} isOpen={isOpen} onMove={moveStage} compact />
           </footer>
         </div> : (
         <div className="lead-panel">
@@ -999,18 +1067,11 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
               ? <button className="lead-panel-button primary" onClick={() => onOpenWhatsapp(lead)}>Abrir conversa no WhatsApp</button>
               : <a className="lead-panel-button primary" href={wa} target="_blank" rel="noopener noreferrer">Abrir WhatsApp ↗</a>)
               : <button className="lead-panel-button primary" onClick={() => setShowComposer(true)}>Registrar contato</button>}
-            <div className="lead-panel-actions" style={{ marginTop: 10 }}>
-              {nextStage && <button className="lead-panel-button" style={{ flex: 1 }} onClick={() => moveStage(nextStage.stage)}>avançar etapa →</button>}
-              {previousStage && <button className="lead-panel-button" onClick={() => moveStage(previousStage.stage)}>← voltar</button>}
-              {onOpenWhatsapp && wa && <a className="lead-panel-button" href={wa} target="_blank" rel="noopener noreferrer" title="Abrir no WhatsApp Web">Web ↗</a>}
-            </div>
-            <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12, fontSize: 12, color: "var(--fg-3)" }}>
-              Mover de etapa
-              <select aria-label="Mover de etapa" value={lead.stage || ""} onChange={(e) => moveStage(e.target.value)} className="inp" style={{ flex: 1, minWidth: 0 }}>
-                {funnel.map((f) => <option key={f.stage} value={f.stage}>{f.stage}</option>)}
-                {funnel.every((f) => f.stage !== lead.stage) && lead.stage && <option value={lead.stage}>{lead.stage}</option>}
-              </select>
-            </label>
+            {onOpenWhatsapp && wa && (
+              <div className="lead-panel-actions" style={{ marginTop: 10 }}>
+                <a className="lead-panel-button" href={wa} target="_blank" rel="noopener noreferrer" title="Abrir no WhatsApp Web">Web ↗</a>
+              </div>
+            )}
             <div className="lead-panel-actions" style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line-1)" }}>
               {(onOpenWhatsapp || wa) && (
                 <button onClick={propostaNoWhats} disabled={propBusy}
@@ -1043,6 +1104,8 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
               ]} />
             </div>
           </LeadSection>
+
+          <LeadStageSection saasCfg={saasCfg} lead={lead} isOpen={isOpen} onMove={moveStage} />
 
           <LeadSection title="Histórico" action={<button className="lead-script-copy-button" onClick={() => setShowComposer((v) => !v)} aria-expanded={showComposer}>{showComposer ? "fechar anotação" : "registrar contato"}</button>}>
             {showComposer && <div style={{ marginBottom: 14 }}><ActivityComposer embedded lead={lead} onLogged={refetchTimeline} /></div>}
@@ -1077,35 +1140,6 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
               : "descadastrou do WhatsApp (parar promoções) · fora dos disparos"}
           </div>
         )}
-
-          <div className="lead-panel-actions">
-          {/* Os dois movimentos TERMINAIS a um clique (só existiam dentro do
-              select de etapa). Os dois continuam passando pelo moveGate: ganho
-              pede valor e pagamento, perda pede motivo — e o `confirm` de
-              desfazer fechamento segue no moveStage. */}
-          {isOpen && (() => {
-            const ganho = stageByKind(saasCfg, "ganho");
-            const perdido = stageByKind(saasCfg, "perdido") || stageByKind(saasCfg, "desqualificado");
-            if (!ganho && !perdido) return null;
-            return (
-              <span style={{ display: "flex", gap: 8, flex: 1, flexWrap: "wrap" }}>
-                {ganho && (
-                  <button onClick={() => moveStage(ganho)} title="Marcar como ganho (pede valor, produto e pagamento)"
-                    style={{ flex: 1, height: 38, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--pos)", background: "var(--bg-1)", color: "var(--pos)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                    marcar ganho
-                  </button>
-                )}
-                {perdido && (
-                  <button onClick={() => moveStage(perdido)} title="Marcar como perdido (o motivo da perda é obrigatório)"
-                    style={{ flex: 1, height: 38, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--neg)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                    marcar perdido
-                  </button>
-                )}
-              </span>
-            );
-          })()}
-        </div>
-
           </div>
         </div>
         )}

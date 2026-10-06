@@ -4,9 +4,11 @@ import { Modal } from "./overlay.jsx";
 import { stageKind, phaseOf, isLossKind, isWonKind, lossReasonsOf } from "../lib/funnel.js";
 import { usersByRole, currentUser, displayName } from "../lib/users.js";
 import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, CONSULT_PACKAGES, CLOSED_PLAN_MONTHS, dealProductsOf, paymentUpfront, paymentRecurring, paymentCustom } from "../lib/payments.js";
-import { DealProductField, isOneOffProduct, SelectWithCustom, PaymentMethodSelect, ProductOptions } from "./lead-blocks.jsx";
+import { DealProductField, isOneOffProduct, PopoverWithCustom, PaymentMethodPicker } from "./lead-blocks.jsx";
+import { SelectPopover } from "./select-popover.jsx";
+import { Choice } from "./plan-editor.jsx";
 import { api } from "../lib/api.js";
-import { SlotGrid, nextBusinessDays, callBusyKeys, integBusyKeys } from "../screens/today.jsx";
+import { SlotGrid, nextBusinessDays, callBusyKeys, integBusyKeys, parseMoneyInput } from "../screens/today.jsx";
 import { DayPicker, defaultFollowupDay } from "./followup-contact.jsx";
 import { followupDayOf, ymdOf } from "../lib/followup.js";
 
@@ -54,6 +56,9 @@ const field = {
   borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13,
 };
 const label = { display: "block", marginBottom: 4 };
+// Sem <select> nativo (06/10/2026): as listas abrem pelo SelectPopover, no
+// desenho da plataforma, como o Próximo passo das Atividades.
+const userOptions = (users) => users.map((u) => ({ value: u.id, label: u.name || u.id }));
 
 export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCancel }) {
   const isLost = gate.type === "lost";
@@ -123,6 +128,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   // closer escreveu não é N parcelas iguais — o recebido entra pelo espelho do
   // MP ou pela baixa manual em Clientes.
   const isFaturado = !!payment && paymentUpfront(payment) === false && !paymentRecurring(payment) && !paymentCustom(payment) && !isMonthly;
+  const amountNum = parseMoneyInput(amount);
   const effInstallments = Number(installments) > 0 ? Number(installments)
     : (CLOSED_PLAN_MONTHS[isKidsWon || oneOff ? "unico" : planClosed] || 12);
   // Follow-up: qual proposta ficou na mesa (só saindo da call — askOffer) e o
@@ -151,7 +157,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   // A call é OBRIGATÓRIA pra entrar na etapa (regra do servidor), tanto no gate
   // de call quanto no handoff que já cai numa etapa de call.
   const ready = isLost ? !!reason
-    : isWonGate ? (Number(amount) > 0 && !!payment && (!askProduct || !!dealProduct) && (!askInteg || !!integrator))
+    : isWonGate ? (amountNum > 0 && !!payment && (!askProduct || !!dealProduct) && (!askInteg || !!integrator))
       : isOffer ? (!!followDay && (!askOffer || (!!offer && (offer === "nenhuma" || !offerProducts.length || !!offerProduct))))
         : askCall ? (!!closer && !!callAt)
           : !!closer;
@@ -163,7 +169,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
       patch.lostReason = reason;
       if (note.trim()) patch.lostNote = note.trim();
     } else if (isWonGate) {
-      patch.amount = Number(amount);
+      patch.amount = amountNum;
       patch.paymentMethod = payment;
       // À vista/cartão zera o parcelamento (um faturado antigo não assombra).
       patch.paymentInstallments = isFaturado ? effInstallments : "";
@@ -209,20 +215,16 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
                 {offerProducts.length > 0 && offer !== "nenhuma" && (
                   <>
                     <label className="kicker" style={label}>Qual produto ficou ofertado? *</label>
-                    <SelectWithCustom ids={offerProducts.map((p) => p.id)} value={offerProduct} onChange={setOfferProduct}
-                      fieldStyle={field} placeholder="— o produto da apresentação —" autoFocus
-                      customLabel="Personalizado… (escrever o produto)" customPlaceholder="escreva o produto ofertado…">
-                      <ProductOptions products={offerProducts} />
-                    </SelectWithCustom>
+                    <PopoverWithCustom label="Produto ofertado" placeholder="o produto da apresentação…" inputStyle={field}
+                      value={offerProduct} onChange={setOfferProduct}
+                      options={offerProducts.map((p) => ({ value: p.id, label: p.label, group: p.group }))}
+                      customLabel="Personalizado… (escrever o produto)" customPlaceholder="escreva o produto ofertado…" />
                     <div style={{ height: 10 }} />
                   </>
                 )}
                 <label className="kicker" style={label}>Qual proposta ficou na mesa? *</label>
-                <select value={offer} onChange={(e) => setOffer(e.target.value)} style={field} autoFocus={!offerProducts.length}>
-                  <option value="">— a oferta que o cliente levou pra pensar —</option>
-                  {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-                  <option value="nenhuma">não chegou na proposta</option>
-                </select>
+                <SelectPopover label="Proposta na mesa" placeholder="a oferta que o cliente levou pra pensar…" value={offer} onChange={setOffer}
+                  options={[...CLOSED_PLANS.map((p) => ({ value: p.id, label: p.label })), { value: "nenhuma", label: "não chegou na proposta" }]} />
                 <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
                   fica no card e orienta o follow-up: é essa proposta que você vai cobrar
                 </div>
@@ -249,7 +251,8 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
               </>
             )}
             <label className="kicker" style={label}>{isMonthly ? "Valor mensal (R$) *" : "Valor do negócio (R$) *"}</label>
-            <input type="number" min="0" step="0.01" value={amount} autoFocus={!askProduct} placeholder={isMonthly ? "ex.: 599" : "ex.: 7188"}
+            <input type="text" inputMode="decimal" autoComplete="off" aria-label={isMonthly ? "Valor mensal" : "Valor do negócio"}
+              value={amount} autoFocus={!askProduct} placeholder={isMonthly ? "ex.: 599" : "ex.: 7.188"}
               onChange={(e) => setAmount(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") confirm(); }}
               style={field} />
@@ -266,9 +269,8 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
             {isKidsWon ? (
               <>
                 <label className="kicker" style={label}>Pacote de consultas *</label>
-                <select value={consultPackage} onChange={(e) => setConsultPackage(e.target.value)} style={field}>
-                  {CONSULT_PACKAGES.map((n) => <option key={n} value={n}>{n} consultas</option>)}
-                </select>
+                <Choice label="Pacote de consultas" size="sm" value={consultPackage} onChange={setConsultPackage}
+                  options={CONSULT_PACKAGES.map((n) => ({ value: String(n), label: `${n} consultas` }))} />
                 <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
                   a jornada inteira nasce na tela Consultas (sem data); cada consulta marcada entra na Agenda e no Google
                 </div>
@@ -277,29 +279,26 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
               <>
                 <label className="kicker" style={label}>Plano fechado *</label>
                 {/* Serviço único (pacote de OEM avulso) não tem ciclo: o plano é o
-                    próprio produto, então o select fica travado. */}
-                <select value={oneOff ? "unico" : planClosed} disabled={oneOff}
-                  onChange={(e) => setPlanClosed(e.target.value)} style={{ ...field, opacity: oneOff ? 0.7 : 1 }}>
-                  {/* Só os planos ativos; "Assinatura mensal" (legado) aparece
-                      apenas quando já é o plano deste lead. */}
-                  {withLegacyOption(CLOSED_PLANS_ACTIVE, CLOSED_PLANS, planClosed).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-                </select>
+                    próprio produto. Só os planos ativos; "Assinatura mensal"
+                    (legado) aparece apenas quando já é o plano deste lead. */}
+                {oneOff
+                  ? <div className="mono" style={{ fontSize: 12.5, color: "var(--fg-2)" }}>Serviço único · o plano é o próprio produto</div>
+                  : <Choice label="Plano fechado" size="sm" value={planClosed} onChange={setPlanClosed}
+                      options={withLegacyOption(CLOSED_PLANS_ACTIVE, CLOSED_PLANS, planClosed).map((p) => ({ value: p.id, label: p.label }))} />}
               </>
             )}
             <div style={{ height: 12 }} />
             <label className="kicker" style={label}>Modo de pagamento *</label>
-            <PaymentMethodSelect value={payment} onChange={setPayment} fieldStyle={field} />
+            <PaymentMethodPicker value={payment} onChange={setPayment} inputStyle={field} />
             {isFaturado && (
               <>
                 <div style={{ height: 12 }} />
                 <label className="kicker" style={label}>Faturado em quantas vezes *</label>
-                <select value={String(effInstallments)} onChange={(e) => setInstallments(e.target.value)} style={field}>
-                  {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
-                    <option key={n} value={n}>
-                      {n}x{Number(amount) > 0 ? ` de R$ ${(Number(amount) / n).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ""}
-                    </option>
-                  ))}
-                </select>
+                <SelectPopover label="Faturado em quantas vezes" value={String(effInstallments)} onChange={setInstallments}
+                  options={Array.from({ length: 12 }, (_, i) => i + 1).map((n) => ({
+                    value: String(n),
+                    label: `${n}x${amountNum > 0 ? ` de R$ ${(amountNum / n).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ""}`,
+                  }))} />
                 <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
                   vira o cronograma de parcelas (vencimento mensal a partir de hoje); marque cada uma como paga na tela Clientes
                 </div>
@@ -314,10 +313,8 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
                 <div style={{ height: 16 }} />
                 <div style={{ height: 1, background: "var(--line-1)", marginBottom: 14 }} />
                 <label className="kicker" style={label}>Responsável pela integração *</label>
-                <select value={integrator} onChange={(e) => { setIntegrator(e.target.value); setIntegAt(""); }} style={field}>
-                  <option value="">— quem vai integrar —</option>
-                  {integrators.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
-                </select>
+                <SelectPopover label="Responsável pela integração" placeholder="quem vai integrar…" value={integrator}
+                  options={userOptions(integrators)} onChange={(v) => { setIntegrator(v); setIntegAt(""); }} />
                 {integrator && (
                   <>
                     <div style={{ height: 12 }} />
@@ -335,10 +332,8 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
         ) : isLost ? (
           <>
             <label className="kicker" style={label}>Motivo {gate.toKind === "desqualificado" ? "da desqualificação" : "da perda"} *</label>
-            <select value={reason} onChange={(e) => setReason(e.target.value)} style={field} autoFocus>
-              <option value="">— escolha o motivo —</option>
-              {reasons.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-            </select>
+            <SelectPopover label={gate.toKind === "desqualificado" ? "Motivo da desqualificação" : "Motivo da perda"} placeholder="escolha o motivo…"
+              value={reason} onChange={setReason} options={reasons.map((r) => ({ value: r.id, label: r.label }))} />
             <div style={{ height: 10 }} />
             <label className="kicker" style={label}>Detalhe (opcional)</label>
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="ex.: fechou com o concorrente X" style={{ ...field, height: "auto", padding: "8px 10px", resize: "vertical" }} />
@@ -346,10 +341,8 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
         ) : (
           <>
             <label className="kicker" style={label}>Closer responsável *</label>
-            <select value={closer} onChange={(e) => setCloser(e.target.value)} style={field} autoFocus>
-              {closers.length === 0 && <option value="">— nenhum closer no time (Ajustes → Equipe) —</option>}
-              {closers.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
-            </select>
+            <SelectPopover label="Closer responsável" value={closer} onChange={setCloser} disabled={!closers.length}
+              placeholder={closers.length ? "escolher o closer…" : "nenhum closer no time (Ajustes → Equipe)"} options={userOptions(closers)} />
             {askCall && (
               <>
                 <div style={{ height: 10 }} />
