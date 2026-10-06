@@ -304,10 +304,15 @@ test("GET: plano de remuneração exposto (padrão e doc salvo) + nível por pes
   assert.equal(r1.users.find((u) => u.id === "jon").compLevel, 2);
   assert.equal(r1.users.find((u) => u.id === "leo").compLevel, 1, "sem campo = júnior");
   assert.deepEqual(r1.compPlan.sdr.map((l) => l.metaContracts), [20, 25, 35], "padrão aprovado 04/08");
+  // SDR (06/10/2026): contratos e receita são a META DO MÊS DA EQUIPE — nem
+  // campo de vaga nem nível do plano. O closer segue no plano por nível.
   const sdr = r1.roles.find((x) => x.role === "sdr");
-  assert.equal(sdr.metrics.find((m) => m.metric === "won").compPlan, true, "contratos seguem o plano, não campo de vaga");
-  assert.equal(sdr.metrics.find((m) => m.metric === "revenue").compPlan, true);
-  assert.ok(!sdr.metrics.find((m) => m.metric === "contacts").compPlan, "volume comum segue campo de vaga");
+  assert.equal(sdr.metrics.find((m) => m.metric === "won").teamGoal, true, "contratos do SDR = meta do mês da equipe");
+  assert.equal(sdr.metrics.find((m) => m.metric === "revenue").teamGoal, true);
+  assert.ok(!sdr.metrics.find((m) => m.metric === "won").compPlan, "SDR não segue o plano por nível");
+  assert.ok(!sdr.metrics.find((m) => m.metric === "contacts").teamGoal, "volume comum segue campo de vaga");
+  const closer = r1.roles.find((x) => x.role === "closer");
+  assert.equal(closer.metrics.find((m) => m.metric === "won").compPlan, true, "closer segue o plano, não campo de vaga");
   // doc salvo na tela Remuneração vence o padrão (só da trilha dele)
   await repo.create("comp_plans", { id: "cp_closer", role: "closer", plan: { levels: [{ n: 1, metaContracts: 18, metaRevenue: 80000 }] } });
   const r2 = (await app.inject({ url: "/api/metas/leverads" })).json();
@@ -324,4 +329,28 @@ test("PUT/GET: company.contractsTarget grava no produto, arredonda e limpa", asy
   await app.inject({ method: "PUT", url: "/api/metas/leverads", payload: { goals: [], company: { contractsTarget: "" } } });
   assert.equal((await repo.get("products", "leverads")).monthlyContractsTarget, null);
   assert.equal((await app.inject({ url: "/api/metas/leverads" })).json().company.contractsTarget, null);
+});
+
+test("derived: a meta de contratos usa o ticket do MÊS ANTERIOR e diz qual mês foi", async () => {
+  const { app, repo } = await buildApp();
+  await repo.update("products", "leverads", { monthlyCashTarget: 120000, funnel: [
+    { stage: "Novo lead", kind: "novo", conv: 1 }, { stage: "Ganho", kind: "ganho", conv: 1 }, { stage: "Perdido", kind: "perdido", conv: 0 },
+  ] });
+  // Mês anterior ao corrente: 2 vendas à vista de 4k e 8k → ticket 6k.
+  const d0 = new Date(); d0.setUTCDate(15); d0.setUTCMonth(d0.getUTCMonth() - 1);
+  const prev = d0.toISOString().slice(0, 7);
+  await repo.create("customers", { id: "cA", saas: "leverads", startedAt: `${prev}-10T15:00:00.000Z` });
+  await repo.create("customers", { id: "cB", saas: "leverads", startedAt: `${prev}-12T15:00:00.000Z` });
+  await repo.create("leads", { id: "jA", saas: "leverads", stage: "Ganho", customerId: "cA", wonAt: `${prev}-10T15:00:00.000Z`, amount: 4000, paymentMethod: "pix", createdAt: `${prev}-01T12:00:00.000Z` });
+  await repo.create("leads", { id: "jB", saas: "leverads", stage: "Ganho", customerId: "cB", wonAt: `${prev}-12T15:00:00.000Z`, amount: 8000, paymentMethod: "pix", createdAt: `${prev}-02T12:00:00.000Z` });
+  // Ticket configurado NÃO vence o mês anterior (só é fallback).
+  await repo.create("goals", { id: "g_ticket", saas: "leverads", scope: "role", key: "closer", metric: "ticket", target: 5000, period: "month" });
+
+  const d = (await app.inject({ method: "GET", url: "/api/metas/leverads" })).json().derived;
+  assert.equal(d.ticket, 6000);
+  assert.equal(d.ticketSource, "prev_month");
+  assert.equal(d.ticketMonth, prev);
+  assert.deepEqual(d.previousMonth, { month: prev, sold: 12000, soldN: 2, ticket: 6000 });
+  assert.equal(d.wonFromTicket, 20); // 120k ÷ 6k
+  assert.equal(d.won, 20);
 });

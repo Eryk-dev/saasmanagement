@@ -170,6 +170,17 @@ export async function computeScoreboard(repo, product, query = {}, { now = () =>
     const goalFor = (userId, role, metric) => {
       const u = goals.find((g) => g.scope === "user" && g.key === userId && g.metric === metric);
       if (u) return { target: Number(u.target) || 0, period: u.period || "month", scope: "user" };
+      // SDR: contratos e receita são A META DO MÊS DA EQUIPE (Leo, 06/10/2026)
+      // — a meta de receita do mês da empresa e a meta de contratos que sai
+      // dela (receita ÷ ticket médio do mês anterior), INTEIRAS: o SDR
+      // sustenta o funil de todo mundo, então o alvo dele é o da casa, sem
+      // repartir por headcount nem passar pelo nível do plano de remuneração.
+      // Só o ajuste por PESSOA (acima) fica na frente. Cadeia sem meta de
+      // contratos (sem ticket) cai no resto da régua.
+      if (role === "sdr" && (metric === "won" || metric === "revenue")) {
+        const t = metric === "won" ? derivedChain?.won : derivedChain?.target;
+        if (Number(t) > 0) return { target: round2(Number(t)), period: "month", scope: "team", teamTarget: round2(Number(t)), people: 1 };
+      }
       // O plano de REMUNERAÇÃO manda em contratos (won) e receita de SDR/closer
       // (Leo, 06/08): meta POR PESSOA pelo nível dela (user.compLevel, 1 sem
       // campo), sem repartir por headcount — vence a meta de vaga digitada e a

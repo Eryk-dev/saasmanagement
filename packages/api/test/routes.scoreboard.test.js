@@ -710,11 +710,14 @@ test("targets por PESSOA: metas da vaga com o realizado dela e a parte do rateio
   assert.equal(sdr.contacts.target, 300, "1 SDR só: a meta do time é dele inteira");
   assert.equal(sdr.contacts.value, 1);
   assert.equal(sdr.showRate.target, 75);
-  // As duas pernas do plano no card do SDR: contratos/receita das
-  // oportunidades DELE (owner do lead ganho), com a meta do nível.
-  assert.equal(sdr.won.target, 20);
+  // As duas pernas no card do SDR: contratos/receita das oportunidades DELE
+  // (owner do lead ganho) contra a META DO MÊS DA EQUIPE (06/10/2026): receita
+  // do mês da empresa (padrão 120k) e contratos = receita ÷ ticket (sem venda
+  // no mês anterior, o ticket cai no TCV dos ganhos recentes: 500 → 240).
+  assert.equal(sdr.won.target, 240);
+  assert.equal(sdr.won.teamTarget, 240, "meta da equipe inteira, não rateio");
   assert.equal(sdr.won.value, 1);
-  assert.equal(sdr.revenue.target, 90000);
+  assert.equal(sdr.revenue.target, 120000);
   assert.equal(sdr.revenue.value, 500);
   // métrica sem meta E sem valor medido não vira linha vazia no cartão
   assert.equal(sdr.bookingRate.value, 100);
@@ -753,9 +756,33 @@ test("plano de remuneração: meta por NÍVEL da pessoa, doc salvo sobrescreve o
   assert.equal(c.goals.won.level, 2);
   assert.equal(c.goals.revenue.target, 150000);
   const s1 = sb.sdr.find((x) => x.user === "u_sdr");
-  assert.equal(s1.goals.won.target, 7, "meta digitada POR PESSOA vence o plano");
+  assert.equal(s1.goals.won.target, 7, "meta digitada POR PESSOA vence a meta do mês da equipe");
   assert.equal(s1.goals.won.scope, "user");
-  assert.equal(s1.goals.revenue.target, 90000, "sem ajuste pessoal, vale o plano (nível 1)");
+  // SDR sem ajuste pessoal: a META DO MÊS DA EQUIPE (06/10/2026), não o plano
+  // por nível — a receita do mês da empresa (padrão 120k sem meta própria).
+  assert.equal(s1.goals.revenue.target, 120000, "sem ajuste pessoal, vale a meta de receita do mês da equipe");
+  assert.equal(s1.goals.revenue.scope, "team");
+  await app.close();
+});
+
+test("SDR: contratos e receita são a meta do MÊS DA EQUIPE, inteira, sem nível e sem rateio", async () => {
+  const { app, repo } = await buildApp();
+  await repo.update("products", "leverads", { monthlyCashTarget: 100000 });
+  await repo.create("users", { id: "u_sdr2", name: "Sofia SDR", roles: ["sdr"], compLevel: 3 }); // 2 SDRs, sênior
+  // Sem venda no mês anterior o ticket cai no configurado: 100k ÷ 5k = 20 contratos.
+  await repo.create("goals", { id: "gt", saas: "leverads", scope: "role", key: "closer", metric: "ticket", target: 5000, period: "month" });
+  // Meta de VAGA digitada pro SDR não vale pra essas duas pernas: a equipe manda.
+  await repo.create("goals", { id: "gw", saas: "leverads", scope: "role", key: "sdr", metric: "won", target: 4, period: "month" });
+
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
+  for (const uid of ["u_sdr", "u_sdr2"]) {
+    const s = sb.sdr.find((x) => x.user === uid);
+    assert.equal(s.goals.won.target, 20, `${uid}: contratos = receita do mês ÷ ticket, inteiro (não 10 pra cada)`);
+    assert.equal(s.goals.won.scope, "team");
+    assert.equal(s.goals.revenue.target, 100000, `${uid}: receita = meta do mês da empresa`);
+    assert.equal(s.goals.revenue.scope, "team");
+    assert.ok(!s.goals.won.level, "nível do plano não entra");
+  }
   await app.close();
 });
 
