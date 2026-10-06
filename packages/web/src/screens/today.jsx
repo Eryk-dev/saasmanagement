@@ -1911,11 +1911,16 @@ export function destinationsFor(saasCfg, lead) {
       if (st && !seen.has(st.stage)) { seen.add(st.stage); out.push({ stage: st.stage, kind: "noshow" }); }
       continue;
     }
-    if (k === "nutricao") {
+    if (k === "nutricao" || k === "contato") {
       // Nutrição também é kind contato (e stageByKind cairia em Dia 2, a 1ª
       // etapa de cadência) → resolve pela etapa NOMEADA. Move direto: o
       // servidor aplica a cadência de 7 dias da etapa (GPS em 168h, dia útil).
-      const st = nurtureStage(saasCfg);
+      // O "contato" dos próximos passos (Qualificando) também é a Nutrição: pelo
+      // kind ele virava o No show ou o Dia 2. Sem Nutrição no funil, vale a 1ª
+      // etapa de contato que não seja nenhuma das duas.
+      const st = nurtureStage(saasCfg) || (k === "contato"
+        ? (saasCfg?.funnel || []).find((f) => f?.stage && stageKind(saasCfg, f.stage) === "contato" && !isNoShowStage(f.stage) && !dayStageNumber(f.stage))?.stage
+        : "");
       if (st && !seen.has(st)) { seen.add(st); out.push({ stage: st, kind: stageKind(saasCfg, st) }); }
       continue;
     }

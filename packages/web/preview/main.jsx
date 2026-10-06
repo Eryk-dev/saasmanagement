@@ -22,6 +22,7 @@ import { proposalsReview, setupProposalsReview } from "./proposals-review-mock.j
 import { customersReview, setupCustomersReview } from "./customers-review-mock.js";
 import { pipelineReview, setupPipelineReview } from "./pipeline-mock.js";
 import { todayReview, setupTodayReview } from "./today-mock.js";
+import { etapasPreview, setupEtapasPreview } from "./etapas-mock.js";
 import React from "react";
 import { overviewReview, setupOverviewReview } from "./overview-mock.js";
 import { createRoot } from "react-dom/client";
@@ -97,6 +98,8 @@ if (mindmapsReview) setupMindmapsReview();
 if (tasksReview) setupTasksReview();
 if (desempenhoReview) setupDesempenhoReview(window.SEED);
 if (params.has("revenueGrades")) setupRevenueGrades(window.SEED);
+// Por último: o funil de etapas atual vale sobre o funil da prévia de cada tela.
+if (etapasPreview) setupEtapasPreview(window.SEED);
 if (previewShell) {
   window.SEED.SAAS.push({ id: "elo", name: "Elo", accent: 55, funnel: [], leadQuestions: [] });
   // A moldura usa o App real, com API falsa e sem conexão SSE/banco.

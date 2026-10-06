@@ -21,6 +21,7 @@ import { proposalsReview, proposalsReviewMock } from "./proposals-review-mock.js
 import { customersReview, customersReviewMock } from "./customers-review-mock.js";
 import { pipelineReview, pipelineMock } from "./pipeline-mock.js";
 import { todayReview, todayMock } from "./today-mock.js";
+import { etapasPreview, etapasMock } from "./etapas-mock.js";
 import { overviewReview, overviewMock } from "./overview-mock.js";
 import { beginPageRequest } from "../src/lib/navigation-loading.js";
 import { customersCashMock } from "./customers-cash-mock.js";
@@ -147,6 +148,7 @@ const vazio = () => Promise.resolve(null);
 
 const mockApi = new Proxy({}, {
   get(_, nome) {
+    if (etapasPreview && Object.hasOwn(etapasMock, nome)) return etapasMock[nome];
     if (settingsReview && Object.hasOwn(settingsReviewMock,nome)) return settingsReviewMock[nome];
     if (expensesReview && Object.hasOwn(expensesReviewMock,nome)) return expensesReviewMock[nome];
     if (remuneracaoReview && Object.hasOwn(remuneracaoReviewMock,nome)) return remuneracaoReviewMock[nome];

@@ -5,7 +5,7 @@ import { CAREER_LEVELS } from "../lib/levels.js";
 import { EmptyState, PrimaryButton, Avatar } from "../atoms.jsx";
 import { Popover } from "../components/popover.jsx";
 import { useData } from "../data.jsx";
-import { api } from "../lib/api.js";
+import { api, assetUrl } from "../lib/api.js";
 import { KINDS, KIND_IDS, guessKind, lossReasonsOf, stageKind, stageByKind, phaseOf, NEXT_KINDS, NEXT_STEP_KINDS, NEXT_STEP_LABELS, nurtureStage, nextKindsFor } from "../lib/funnel.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { DEFAULT_SCRIPTS, SCRIPT_CATALOG, catalogStageRow, isNoShowStage } from "../lib/scripts.js";
@@ -66,6 +66,8 @@ function SettingsWorkspace() {
     unlock(){setPending(n=>Math.max(0,n-1));},
     start(){setPending(n=>n+1);if(!bulk.current)setSaveState("busy");},
     finish(ok){setPending(n=>Math.max(0,n-1));if(!bulk.current)setSaveState(ok?"done":"error");},
+    // Edição por clique (sem evento change no fieldset) também volta o botão pra "salvar alterações".
+    dirty(){if(bulk.current)return;setSaveState(s=>s==="busy"?s:"idle");for(const v of registry.current.values())v.reset?.();},
   }),[]);
   React.useEffect(()=>{setSaveState("idle");},[tab]);
   async function saveAll(){
@@ -325,7 +327,8 @@ function LossReasonsSettings({ s }) {
 // Configuração GLOBAL (vale pra todos os produtos, app_config/followup_contacts):
 // a mensagem e o prazo de cada contato. O prazo é em dias úteis — o Contato 1
 // conta da entrada no follow-up; os outros, do contato anterior registrado.
-// A mensagem aceita os mesmos {{tokens}} dos roteiros.
+// A mensagem aceita os mesmos {{tokens}} dos roteiros. A imagem é opcional:
+// sobe na hora, mas só vale (e a antiga só sai do banco) ao salvar.
 const FOLLOWUP_TOKENS = ["nome", "eu", "produto", "empresa", "combinado_call", "objecao_aberta", "dor_call"];
 function FollowupSettings() {
   const { refresh } = useData();
@@ -361,6 +364,7 @@ function FollowupSettings() {
             <textarea aria-label={`Mensagem do contato ${i + 1}`} value={r.mensagem} maxLength={4000} rows={4}
               onChange={(e) => set(i, { mensagem: e.target.value })}
               style={{ ...inputStyle, height: "auto", minHeight: 84, padding: "8px 12px", borderRadius: "var(--r-2)", lineHeight: 1.5, resize: "vertical" }} />
+            <FollowupImageField n={i + 1} value={r.imagem} onChange={(imagem) => set(i, { imagem })} />
           </li>
         ))}
       </ol>
@@ -373,6 +377,42 @@ function FollowupSettings() {
         <SaveBar onSave={save} hint="Mensagens e prazos do follow-up salvos." />
       </div>
     </section>
+  );
+}
+
+// Imagem do contato: miniatura (abre em tamanho real), enviar/trocar e remover.
+function FollowupImageField({ n, value, onChange }) {
+  const saveContext = React.useContext(SettingsSaveContext);
+  const fileRef = React.useRef(null);
+  const [busy, setBusy] = useStS(false);
+  const [err, setErr] = useStS("");
+  async function pick(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true); setErr("");
+    try { onChange((await api.followupImage(file)).url); }
+    catch (x) { setErr(x?.message || "Não foi possível enviar a imagem."); }
+    setBusy(false);
+  }
+  return (
+    <div className="settings-followup-image">
+      {value
+        ? <a href={assetUrl(value)} target="_blank" rel="noopener noreferrer" title="abrir a imagem em tamanho real">
+            <img src={assetUrl(value)} alt={`Imagem do contato ${n}`} />
+          </a>
+        : <span className="settings-followup-image-empty" aria-hidden="true">sem imagem</span>}
+      <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden
+        aria-label={`Arquivo da imagem do contato ${n}`} onChange={pick} />
+      <button type="button" disabled={busy} onClick={() => fileRef.current?.click()} style={chromeBtnStyleSmall}
+        aria-label={`${value ? "Trocar" : "Enviar"} imagem do contato ${n}`}>
+        {busy ? "enviando…" : value ? "trocar imagem" : "enviar imagem"}
+      </button>
+      {value && <button type="button" onClick={() => { onChange(""); saveContext?.dirty(); }} style={chromeBtnStyleSmall}
+        aria-label={`Remover imagem do contato ${n}`}>remover imagem</button>}
+      {err ? <span role="alert" className="settings-followup-image-error">{err}</span>
+        : <span className="settings-followup-image-hint">PNG, JPG, GIF ou WebP até 3MB</span>}
+    </div>
   );
 }
 

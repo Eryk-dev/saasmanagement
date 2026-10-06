@@ -2,6 +2,7 @@ import React from "react";
 import { LeadSection } from "./lead-card.jsx";
 import { scriptSegments } from "../lib/scripts.js";
 import { waLink } from "../lib/ui.js";
+import { assetUrl } from "../lib/api.js";
 import {
   followupContacts, followupStepOf, followupNextContact, followupDueDay, nextFollowupDay, todayBrt,
   firstFollowupDay, dayLabel, ymdOf, FOLLOWUP_STEPS, FOLLOWUP_CHANNELS,
@@ -64,6 +65,20 @@ function MessagePreview({ mensagem, tokens }) {
   });
 }
 
+// A área de transferência só garante image/png: JPG/GIF/WebP passam por um
+// canvas antes de ir pra lá.
+async function imagePngBlob(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`imagem -> ${res.status}`);
+  const blob = await res.blob();
+  if (blob.type === "image/png") return blob;
+  const bmp = await createImageBitmap(blob);
+  const canvas = document.createElement("canvas");
+  canvas.width = bmp.width; canvas.height = bmp.height;
+  canvas.getContext("2d").drawImage(bmp, 0, 0);
+  return new Promise((ok, fail) => canvas.toBlob((b) => (b ? ok(b) : fail(new Error("png"))), "image/png"));
+}
+
 // Marcador 1–4: feitos em cheio, o da vez com contorno.
 function Steps({ step }) {
   return (
@@ -101,9 +116,10 @@ export function FollowupContactBlock({ lead, tokens, onRegister, onChangeDay, on
   const [channel, setChannel] = useS("whatsapp");
   const [note, setNote] = useS("");
   const [copied, setCopied] = useS(false);
+  const [imgCopy, setImgCopy] = useS(""); // "" | "ok" | "erro"
   const [editDay, setEditDay] = useS(false);
   const [day, setDay] = useS(due || "");
-  useE(() => { setChannel("whatsapp"); setNote(""); setCopied(false); setEditDay(false); setDay(due || ""); }, [lead.id, step]); // eslint-disable-line react-hooks/exhaustive-deps
+  useE(() => { setChannel("whatsapp"); setNote(""); setCopied(false); setImgCopy(""); setEditDay(false); setDay(due || ""); }, [lead.id, step]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const text = contact ? followupMessageText(contact.mensagem, tokens) : "";
   const nextDay = n && n < FOLLOWUP_STEPS ? nextFollowupDay(contacts, n, todayBrt()) : "";
@@ -112,6 +128,15 @@ export function FollowupContactBlock({ lead, tokens, onRegister, onChangeDay, on
   async function copy() {
     try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); }
     catch { window.prompt("Copie a mensagem:", text); }
+  }
+  const image = contact?.imagem ? assetUrl(contact.imagem) : "";
+  async function copyImage() {
+    try {
+      // Promise dentro do ClipboardItem: o Safari só aceita a escrita ainda no gesto do clique.
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": imagePngBlob(image) })]);
+      setImgCopy("ok");
+    } catch { setImgCopy("erro"); }
+    setTimeout(() => setImgCopy(""), 2000);
   }
   function openWa() {
     if (onWhatsapp) onWhatsapp(lead, text);
@@ -162,6 +187,15 @@ export function FollowupContactBlock({ lead, tokens, onRegister, onChangeDay, on
             <div className="lead-script-copy" style={{ whiteSpace: "pre-wrap" }}><MessagePreview mensagem={contact.mensagem} tokens={tokens} /></div>
             <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
               <button type="button" onClick={copy} style={btn()}>{copied ? "copiado ✓" : "Copiar mensagem"}</button>
+              {image && <span className="today-followup-image" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <a href={image} target="_blank" rel="noopener noreferrer" title="abrir a imagem em tamanho real" style={{ display: "inline-flex", flex: "none" }}>
+                  <img src={image} alt={`Imagem do contato ${n}`}
+                    style={{ width: 32, height: 32, objectFit: "cover", borderRadius: 8, border: "1px solid var(--line-1)", background: "var(--bg-2)", display: "block" }} />
+                </a>
+                <button type="button" onClick={copyImage} style={btn()}>
+                  {imgCopy === "ok" ? "imagem copiada ✓" : imgCopy === "erro" ? "não deu pra copiar" : "Copiar imagem"}
+                </button>
+              </span>}
               {(onWhatsapp || wa) && !preview && <button type="button" onClick={openWa} style={btn()}>Abrir no WhatsApp</button>}
             </div>
           </div>

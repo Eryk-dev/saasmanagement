@@ -12,7 +12,8 @@
 //   Contato 1 conta da entrada no follow-up).
 // - Depois do Contato 4 o card fica na fila sem dia, esperando o operador
 //   escolher o destino (nada se move sozinho).
-// - Mensagens e prazos são UMA configuração global (app_config/followup_contacts).
+// - Mensagens, prazos e a imagem opcional de cada contato são UMA configuração
+//   global (app_config/followup_contacts).
 
 export const FOLLOWUP_CONTACTS_KEY = "followup_contacts";
 export const FOLLOWUP_STEPS = 4;
@@ -27,23 +28,33 @@ export const DEFAULT_FOLLOWUP_CONTACTS = [
     titulo: "Retomar pelo combinado",
     mensagem: "Oi {{nome}}! Aqui é {{eu}}, da {{produto}}. Na nossa call a gente combinou: {{combinado_call}}. Como ficou aí do teu lado? Me fala com sinceridade o que ainda está pegando, que eu resolvo contigo agora.",
     prazoDias: 1,
+    imagem: "",
   },
   {
     titulo: "Objeção respondida com prova",
     mensagem: "Oi {{nome}}! Não vou te deixar sem retorno. Sobre o que ficou no ar na nossa call: cliente nosso na mesma situação subiu 105% espelhando as contas, e o risco do teu lado é baixo, teus anúncios migram no primeiro dia.",
     prazoDias: 3,
+    imagem: "",
   },
   {
     titulo: "Pedido objetivo",
     mensagem: "Oi {{nome}}, tudo bem? Me responde só com um 'bora' que eu já reservo teu horário pra fechar, ou me diz o que ainda está te segurando.",
     prazoDias: 3,
+    imagem: "",
   },
   {
     titulo: "Saída elegante",
     mensagem: "Oi {{nome}}, vou parar de te chamar pra não virar chateação. Só me diz: resolver {{dor_call}} ainda é prioridade pra tua operação agora? Se for, eu retomo com prioridade. Se não for a hora, deixo a porta aberta pra quando quiser voltar.",
     prazoDias: 4,
+    imagem: "",
   },
 ];
+
+// Imagem do contato: só o caminho do asset que a própria API serviu
+// (crm/followup-config.js); qualquer outra coisa vira "sem imagem".
+export const FOLLOWUP_IMAGE_PREFIX = "/public/followup/";
+const IMAGE_PATH = /^\/public\/followup\/fua_[\w-]{1,64}$/;
+export const followupImageOf = (v) => (IMAGE_PATH.test(String(v ?? "")) ? String(v) : "");
 
 const MAX_PRAZO = 60;
 const clampPrazo = (v, fallback) => {
@@ -63,6 +74,7 @@ export function normalizeFollowupContacts(raw) {
       titulo: titulo || def.titulo,
       mensagem: mensagem || def.mensagem,
       prazoDias: clampPrazo(c.prazoDias, def.prazoDias),
+      imagem: followupImageOf(c.imagem),
     };
   });
 }

@@ -111,6 +111,41 @@ try {
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await page.close();
   }
+  // Imagem do contato: sem imagem não há "Copiar imagem"; com imagem (WebP aqui)
+  // aparece a miniatura e o botão põe um PNG na área de transferência.
+  {
+    const page = await openLead(1440, 'Carla');
+    const block = page.locator('.today-followup-contact');
+    await block.getByRole('button', {name:'Copiar mensagem'}).waitFor();
+    assert.equal(await block.getByRole('button', {name:'Copiar imagem'}).count(), 0, 'sem imagem salva, sem botão');
+    await page.close();
+  }
+  for (const width of [1440, 390]) {
+    const page = await h.open(width, '&followup');
+    const block = page.locator('.today-followup-contact');
+    const webp = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 60; c.height = 40; const g = c.getContext('2d'); g.fillStyle = '#2b8a3e'; g.fillRect(0, 0, 60, 40); return c.toDataURL('image/webp').split(',')[1]; });
+    await page.route('**/public/followup/**', (r) => r.fulfill({contentType:'image/webp', body:Buffer.from(webp, 'base64')}));
+    await page.evaluate(() => {
+      const base = window.SEED.CONFIG.followupContacts || [];
+      window.SEED.CONFIG.followupContacts = [0, 1, 2, 3].map((i) => ({...(base[i] || {}), imagem: i === 1 ? '/public/followup/fua_review' : ''}));
+    });
+    await page.getByRole('textbox', {name:'Buscar na fila'}).fill('Carla');
+    await page.locator('.today-open-script').first().click();
+    const thumb = block.getByRole('img', {name:'Imagem do contato 2'});
+    await thumb.waitFor();
+    await page.waitForFunction(() => { const i = document.querySelector('.today-followup-image img'); return i && i.complete && i.naturalWidth > 0; });
+    const tb = await thumb.boundingBox();
+    assert.ok(tb.width <= 32 && tb.height <= 32, 'miniatura pequena');
+    await block.getByRole('button', {name:'Copiar imagem'}).click();
+    await block.getByRole('button', {name:'imagem copiada ✓'}).waitFor();
+    const types = await page.evaluate(async () => (await navigator.clipboard.read()).flatMap((it) => it.types));
+    assert.ok(types.includes('image/png'), `área de transferência com PNG (veio ${types})`);
+    await block.scrollIntoViewIfNeeded();
+    await block.screenshot({ path: `${h.output}/followup-image-block-${width}.png` });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    assert.deepEqual(await page.evaluate(() => window.__reviewMutations), []);
+    await page.close();
+  }
   assert.deepEqual(h.errors, []);
   console.log('Follow-up: contato da vez com mensagem, sem retomar, mudar dia sem gravar, registro com canal/nota, dia do Contato 1 sem horário e atraso em vermelho com alerta; desktop e mobile aprovados.');
 } finally { await h.close(); }
