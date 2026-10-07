@@ -17,7 +17,7 @@ import { dealProductLabel, closedPlanLabel } from "../lib/payments.js";
 // CRM final: meta/funil e vendas na primeira linha; equipe/atenção e
 // carteira/aquisição na segunda. As réguas e fontes financeiras são mantidas.
 
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect, useMemo, useRef } = React;
 
 const DAY = 86_400_000;
 // Offset do fuso do NEGÓCIO (America/Sao_Paulo, o mesmo do bizDay). O Brasil
@@ -859,7 +859,14 @@ function AquisicaoCard({ marketing, biz, classes }) {
 // UPSELL, que é venda desde 09/09 (fatura kind:"upsell" na ficha do cliente,
 // creditada a quem vendeu). Sem o upsell a lista contava metade do que o time
 // fez no mês.
-const MAX_VENDAS = 8;
+// Quantas vendas a lista mostra. O card é esticado pela altura do card da meta
+// ao lado (mesma linha do grid), então um número fixo deixava um buraco branco
+// entre a última venda e o "ver todas" — e cresceu de vez com o gráfico de
+// vendas por dia. A lista passa a MEDIR o espaço livre e mostrar o que couber,
+// entre um piso e um teto; sem espaço medido (celular em coluna única, SSR)
+// mostra o teto, que é o comportamento de antes com mais folga.
+const MIN_VENDAS = 8;
+const MAX_VENDAS = 14;
 // Espelho do upsellSoldAt do metrics-core (api) — a mesma ordem de fallback,
 // pra data aqui bater com a do placar.
 const upsellSoldAtOf = (i) => i?.soldAt || i?.paidAt || i?.dueDate || i?.createdAt || "";
@@ -890,11 +897,39 @@ function VendasCard({ leads, invoices, product, customers, onNav, onOpenLead }) 
       .slice(0, MAX_VENDAS);
   }, [leads, invoices, customers, product]); // eslint-disable-line react-hooks/exhaustive-deps
   const dia = (at) => { const d = bizDay(at); return d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : ""; };
+  // Preenche o card: conta quantas linhas inteiras cabem na altura disponível.
+  // A lista é `flex: 1` com overflow escondido, então ela NUNCA é quem define a
+  // altura — medir o espaço e re-renderizar não entra em laço.
+  const listaRef = useRef(null);
+  const [cabem, setCabem] = useState(MAX_VENDAS);
+  useEffect(() => {
+    const el = listaRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const medir = () => {
+      const alt = el.querySelector(".vg-sale")?.getBoundingClientRect().height;
+      if (!alt) return;
+      setCabem(Math.max(MIN_VENDAS, Math.min(MAX_VENDAS, Math.floor(el.clientHeight / alt))));
+    };
+    const ro = new ResizeObserver(medir);
+    ro.observe(el);                                   // o espaço livre mudou
+    // E a própria linha: na 1ª pintura ela vem mais alta (fonte do app ainda
+    // carregando) e, sem observar isso, a conta congelava no número errado.
+    const primeira = el.querySelector(".vg-sale");
+    if (primeira) ro.observe(primeira);
+    // O ResizeObserver só entrega durante a pintura; a fonte e o redimensionar
+    // da janela avisam por fora dela, e são justamente os dois momentos em que
+    // a conta muda. Medir pelos três caminhos é barato e tira a medida da sorte.
+    medir();
+    document.fonts?.ready?.then(medir);
+    window.addEventListener("resize", medir);
+    return () => { ro.disconnect(); window.removeEventListener("resize", medir); };
+  }, [vendas]);
+  const naTela = vendas.slice(0, cabem);
   return (
     <OverviewCard title="Últimas vendas" className="vg-sales">
-      <div className="vg-sales-list">
+      <div className="vg-sales-list" ref={listaRef}>
         {!vendas.length && <div style={{ fontSize: 12.5, color: "var(--fg-4)", padding: "6px 0" }}>Nenhuma venda registrada ainda.</div>}
-        {vendas.map((v, i) => (
+        {naTela.map((v, i) => (
             <button key={v.id} onClick={() => v.lead && onOpenLead ? onOpenLead(v.lead) : onNav?.("customers")} className="vg-sale">
               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                 {v.who && <Avatar id={v.who} name={displayName(v.who)} size={26} />}
