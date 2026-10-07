@@ -31,7 +31,7 @@ import { PresentationConfig } from "../components/presentation-config.jsx";
 import { followupContacts, followupDueDay, followupNextContact, followupStepOf, followupDayOf, localDayStart, dayStartIso, nextFollowupDay, todayBrt, FOLLOWUP_STEPS, FOLLOWUP_CHANNELS } from "../lib/followup.js";
 import { FollowupContactBlock, DayPicker, defaultFollowupDay } from "../components/followup-contact.jsx";
 import { summaryReason } from "../components/customer-meeting.jsx";
-import { BookingLinkActions } from "../components/booking-link.jsx";
+import { BookingLinkActions, sentAgo } from "../components/booking-link.jsx";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
 // "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
 // "Amanhã" e "Próximos dias" (o que já está agendado, à vista), e "Sem data".
@@ -185,11 +185,16 @@ const GROUP_META = {
 // O verbo da linha, com as palavras da prancha (14/09) e em minúsculo: é uma
 // ORDEM DE TRABALHO ("positivar a confirmação"), não um rótulo de categoria.
 // A confirmação de 2h manda e a de 10 min positiva, por isso os dois verbos.
-function actionVerb(item) {
+export function actionVerb(item) {
   if (item.confirm) {
-    if (item.confirmKind === "integracao") return "confirmar a integração";
-    if (item.confirmWindow === "ligar") return "ligar pro cliente (sem positiva)";
-    return item.confirmWindow === "10min" ? "positivar a confirmação" : "confirmar a call";
+    // A confirmação vence ANTES do compromisso (2h, 1h, 10 min): a pílula
+    // mostra a hora da tarefa (13:00) e o verbo diz a hora da call (15:00),
+    // senão "13:00 · atrasada" parece o card com o horário errado (07/10/2026).
+    const t = new Date((item.confirmKind === "integracao" ? item.l?.integrationAt : item.l?.callAt) || NaN);
+    const das = Number.isFinite(t.getTime()) ? ` das ${hhmmOf(t)}` : "";
+    if (item.confirmKind === "integracao") return `confirmar a integração${das}`;
+    if (item.confirmWindow === "ligar") return `ligar pro cliente (sem positiva) · call${das}`;
+    return item.confirmWindow === "10min" ? `positivar a confirmação · call${das}` : `confirmar a call${das}`;
   }
   if (item.group === "noshow") return "retomada";
   if (item.group === "nutri") return "reativação";
@@ -752,7 +757,16 @@ Se remarcar agora, ela não será mais resumida automaticamente. Remarcar mesmo 
     setLeads((prev) => prev.map((x) => x.id === cur.l.id ? { ...x, ...movePatch(x, patch) } : x));
     api.update("leads", cur.l.id, patch)
       .then(syncSaved)
-      .catch((err) => { console.warn("movimento não persistido:", err.message); toast("O movimento do card não foi salvo · tente de novo", "neg"); });
+      .catch((err) => {
+        console.warn("movimento não persistido:", err.message);
+        // Desfaz o movimento otimista; horário de integração recusado (ocupado
+        // no cockpit ou no Google de quem integra) reabre a atividade pra
+        // escolher outro.
+        setLeads((prev) => prev.map((x) => (x.id === cur.l.id ? cur.l : x)));
+        const slotTaken = err?.body?.code === "integration_slot_taken";
+        if (slotTaken) setScriptItem(cur);
+        toast(slotTaken && err.message ? err.message : "O movimento do card não foi salvo · tente de novo", "neg");
+      });
     setScriptItem(nx);
   }
 
@@ -2150,6 +2164,77 @@ export function integBusyKeys(leads, integratorId, selfId) {
   return busyView(busy, integratorId);
 }
 
+// Agenda REAL do Google de quem vai atender (07/10/2026): a grade do cockpit só
+// conhece os cards, e o cliente pode ter marcado pelo link de convite (ou haver
+// compromisso pessoal). Lê os horários ocupados do dia visível (60s de cache no
+// servidor) e devolve as células; `connected` false = a pessoa não conectou o
+// Google e a grade fica com o que o cockpit sabe. Os eventos do próprio card
+// (excludeLeadId) não contam.
+export function useGoogleBusy(userId, day, excludeLeadId = "") {
+  const dayKey = userId && day ? ymd(day) : "";
+  const key = `${userId}|${dayKey}|${excludeLeadId}`;
+  const [state, setState] = useS({ key: "", keys: new Set(), connected: null });
+  useE(() => {
+    if (!dayKey) return undefined;
+    let alive = true;
+    api.googleBusy(userId, dayKey, dayKey, excludeLeadId).then((r) => {
+      if (!alive) return;
+      const keys = new Set();
+      for (const b of r?.busy || []) {
+        const s = new Date(b.start), e = new Date(b.end);
+        if (!Number.isFinite(s.getTime()) || !Number.isFinite(e.getTime())) continue;
+        for (const k of occupySlots(s, Math.max(SLOT_MIN, Math.round((e - s) / 60000)))) keys.add(k);
+      }
+      setState({ key, keys, connected: !!r?.connected });
+    }).catch(() => { if (alive) setState({ key, keys: new Set(), connected: null }); });
+    return () => { alive = false; };
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  return state.key === key ? state : { keys: new Set(), connected: null };
+}
+// Soma o ocupado do Google ao do cockpit (mesma interface has/info do busyView).
+export function withGoogleBusy(busy, google) {
+  if (!google?.keys?.size) return busy;
+  return {
+    has: (k) => busy.has(k) || google.keys.has(k),
+    info: (k) => (busy.has(k) ? (busy.info ? busy.info(k) : null) : google.keys.has(k) ? { kind: "block", reason: "ocupado na agenda do Google" } : null),
+  };
+}
+// Link de convite enviado nos últimos 7 dias (pela pessoa da vez) e o cliente
+// ainda sem integração marcada pra frente: o card está "aguardando o cliente
+// marcar". Marcar outro horário na grade por cima pede confirmação.
+export function bookingLinkPending(lead, integrator = "", now = Date.now()) {
+  const t = Date.parse(lead?.integrationLinkSentAt || "");
+  if (!Number.isFinite(t) || now - t > 7 * DAY) return false;
+  if (integrator && lead.integrationLinkUser && lead.integrationLinkUser !== integrator) return false;
+  const at = lead.integrationAt ? new Date(lead.integrationAt).getTime() : NaN;
+  return !(Number.isFinite(at) && at > now);
+}
+
+// A integração dura 1h: começar às 09:30 esbarra no que ocupa as 10:00. Trava
+// o horário cuja meia hora seguinte está ocupada, a mesma régua da conferência
+// da API ao salvar (crm/integration-slot.js), senão a grade ofereceria um
+// horário que o salvar recusa.
+const nextCellKey = (k) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})-(\d{2})-(\d{2})$/.exec(k);
+  if (!m) return "";
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]) + SLOT_MIN);
+  return cellKey(d);
+};
+export function hourLong(busy) {
+  return {
+    has: (k) => busy.has(k) || busy.has(nextCellKey(k)),
+    info: (k) => (busy.has(k) ? (busy.info ? busy.info(k) : null)
+      : busy.has(nextCellKey(k)) ? { kind: "block", reason: "a integração dura 1h e esbarra no horário seguinte" } : null),
+  };
+}
+
+// Linha embaixo da grade: diz de onde vêm os horários travados.
+export function googleBusyNote(google, name) {
+  if (google?.connected === true) return `horários ocupados na agenda do Google de ${name} já vêm travados`;
+  if (google?.connected === false) return `${name} não conectou o Google: a grade mostra só o que está no cockpit`;
+  return "";
+}
+
 // Grade de agenda reutilizável: abas de dia (dias úteis) + slots de MEIA HORA.
 // Marca como ocupado (e desabilita) o que já está no `busy` do dono — e como a
 // call dura 1h, marcar as 14h derruba também as 14h30. Usada pela call e pelo
@@ -2280,7 +2365,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   useE(() => {
     setDest(null); setCloser(lead.closer || ""); setSlot(lead.callAt || ""); setDay(nextBusinessDays(1)[0]); setRetryAt(""); setFupDay("");
     setIntegrator(lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
-    setPayment(lead.paymentMethod || ""); setReason(""); setNote(""); setIntegNote(lead.integrationNote || ""); setSchedMode("horario");
+    setPayment(lead.paymentMethod || ""); setReason(""); setNote(""); setIntegNote(lead.integrationNote || ""); setSchedMode(bookingLinkPending(lead, lead.integrator) ? "link" : "horario");
     setItems(dealItemsFromLead(lead));
     setOffer(lead.proposalOffer || ""); setOfferProduct(lead.proposalProduct || "");
     setEmail(lead.email || ""); setEmailTouched(false); setMeetBusy(false); setMeetRes(null); setMeetErr(null);
@@ -2305,6 +2390,11 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     setFupDay(sug);
   }, [dest, callSummary]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Agenda do Google de quem integra (Integração e Remarcar): chamado antes do
+  // retorno antecipado, como todo hook. Sem integrador escolhido, não lê nada.
+  const gUser = !dest || dest.retry ? "" : dest.reschedule ? (lead.integrator || "") : setupType(dest.kind) === "integrator" ? integrator : "";
+  const gBusy = useGoogleBusy(gUser, day, lead.id);
+
   if (dests.length === 0) return null;
   // "Retomar" tem setup próprio (a data de voltar) e NÃO herda o do kind da
   // etapa atual — senão um retry em follow-up abriria a grade de agendamento.
@@ -2317,6 +2407,8 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     : setup === "integrator" && integrator ? integBusyKeys(leads, integrator, lead.id)
     : setup === "reschedule" && lead.integrator ? integBusyKeys(leads, lead.integrator, lead.id)
     : new Set();
+  // Integração e Remarcar também travam o que está ocupado no Google de quem integra.
+  const integGrid = setup === "integrator" || setup === "reschedule" ? hourLong(withGoogleBusy(busy, gBusy)) : busy;
 
   // Escolher um destino inicializa a agenda com o horário que já existe no lead
   // (call/follow-up = callAt; integração = integrationAt), pra permitir reagendar.
@@ -2343,7 +2435,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
       : st === "call" ? (lead.callAt || "")
       : "";
     setSlot(at);
-    if (st === "integrator") setSchedMode("horario");
+    if (st === "integrator") setSchedMode(bookingLinkPending(lead, integrator) ? "link" : "horario");
     setDay(at ? parseYMD(at.slice(0, 10)) : nextBusinessDays(1)[0]);
   };
 
@@ -2395,6 +2487,10 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
 
   function confirm() {
     if (!ready) return;
+    // Link de convite já enviado e o cliente ainda não marcou: marcar outro
+    // horário por cima pode virar integração em dobro.
+    if (setup === "integrator" && slot && bookingLinkPending(lead, integrator)
+      && !window.confirm(`O link de convite foi enviado ${sentAgo(lead.integrationLinkSentAt)} e o cliente ainda não marcou. Se ele marcar pelo link também, a integração fica em dobro (quem integra é avisado). Marcar ${slotFmt(slot)} mesmo assim?`)) return;
     // Retomar não move o card: registra a tentativa e marca quando voltar (num
     // lead novo é o servidor que promove pra Qualificando, no toque).
     if (isRetry) { onTouch && onTouch(retryAt, inInteg ? "integração feita · segue na Integração" : ""); return; }
@@ -2639,8 +2735,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
               <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginBottom: 6 }}>
                 {lead.integrator ? `Horários livres na agenda de ${displayName(lead.integrator)} · a integração ocupa 1h` : "Novo horário da integração · a integração ocupa 1h"}
               </div>
-              <SlotGrid days={days} day={day} setDay={setDay} slot={slot} setSlot={setSlot} busy={busy} />
+              <SlotGrid days={days} day={day} setDay={setDay} slot={slot} setSlot={setSlot} busy={integGrid} />
               {slot && <div className="mono" style={{ fontSize: 11.5, color: "var(--accent)", marginTop: 8 }}>Integração: {slotFmt(slot)}</div>}
+              {lead.integrator && <div className="mono dim" style={{ fontSize: 10, marginTop: 6 }}>{googleBusyNote(gBusy, displayName(lead.integrator))}</div>}
             </div>
           )}
 
@@ -2760,10 +2857,11 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                           ]} />
                         {schedMode === "horario" && (
                           <div>
-                            <SlotGrid days={days} day={day} setDay={setDay} slot={slot} setSlot={setSlot} busy={busy} />
+                            <SlotGrid days={days} day={day} setDay={setDay} slot={slot} setSlot={setSlot} busy={integGrid} />
                             <div className={"today-sched-picked" + (slot ? " is-set" : "")} role="status">
                               {slot ? `✓ ${slotFmt(slot)} · ${displayName(integrator)}` : "escolha um horário livre na grade"}
                             </div>
+                            {googleBusyNote(gBusy, displayName(integrator)) && <div className="mono dim" style={{ fontSize: 10, marginTop: 4 }}>{googleBusyNote(gBusy, displayName(integrator))}</div>}
                           </div>
                         )}
                         {schedMode === "link" && <BookingLinkActions lead={lead} userId={integrator} />}

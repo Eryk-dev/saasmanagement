@@ -16,7 +16,7 @@ import {
 import { usersByRole, userColor, displayName, currentUser, allUsers, canSeeScreen } from "../lib/users.js";
 import { isNoShowStage } from "../lib/scripts.js";
 import { mentoriaFit, mentoriaOfferLine, VERBA_RANK } from "../lib/mentoria.js";
-import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
+import { moveGate, MoveLeadModal, applyGatedMove, moveErrorText } from "../components/stage-move.jsx";
 import { useActiveSaas, pinActiveSaas } from "../lib/workspace.js";
 import { bizDay } from "../lib/format.js";
 import { KanbanBoard, KanbanColumn } from "../components/kanban/board.jsx";
@@ -190,7 +190,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
     const gate = moveGate(cfg, lead, stage);
     if (gate) { setPendingMove({ lead, toStage: stage, gate, saasCfg: cfg }); return; }
     commitMoveLocal(leadId, { stage });
-    api.update("leads", leadId, { stage }).catch(err => { console.warn("lead move not persisted:", err.message); window.toast && window.toast("O movimento do card não foi salvo · tente de novo", "neg"); });
+    api.update("leads", leadId, { stage }).catch(err => { console.warn("lead move not persisted:", err.message); window.toast && window.toast(moveErrorText(err), "neg"); });
   }
 
   if (!s) return (
@@ -384,7 +384,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
           onCancel={() => setPendingMove(null)}
           onConfirm={(patch, extra) => {
             commitMoveLocal(pendingMove.lead.id, patch);
-            applyGatedMove(patch, extra, pendingMove.lead.id).catch(err => { console.warn("movimento não persistido:", err.message); window.toast && window.toast("O movimento do card não foi salvo · tente de novo", "neg"); });
+            applyGatedMove(patch, extra, pendingMove.lead.id).catch(err => { console.warn("movimento não persistido:", err.message); window.toast && window.toast(moveErrorText(err), "neg"); });
             setPendingMove(null);
           }}
         />

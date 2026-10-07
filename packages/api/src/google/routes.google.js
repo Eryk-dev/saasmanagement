@@ -11,6 +11,8 @@ import { toNaiveBrt } from "../crm/agenda-slots.js";
 import { makeCallSummarizer } from "../calls/call-summaries.js";
 import { makeIntegrationBriefer } from "../calls/integration-brief.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "../platform/http-status.js";
+import { integrationSlotConflict, integrationConflictMessage, integrationEventIds } from "../crm/integration-slot.js";
+import { makeBookingSync } from "./booking-sync.js";
 
 const TZ = "America/Sao_Paulo";
 
@@ -115,6 +117,48 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     const state = randomUUID();
     states.set(state, { exp: Date.now() + 10 * 60_000, userId: uid });
     return { url: gu.authUrl(redirectUri(req), state) };
+  });
+
+  // Horários OCUPADOS na agenda do Google de uma pessoa, pra grade de agendar
+  // a integração travar o que o cockpit não conhece (marcação pelo link,
+  // compromisso pessoal). Só intervalos, sem título. Sem conexão Google:
+  // connected=false e a grade fica com o que o cockpit sabe.
+  // ?user=&from=YYYY-MM-DD&to=YYYY-MM-DD&exclude=<lead> (os eventos do card não contam)
+  app.get("/api/google/busy", async (req, reply) => {
+    const user = String(req.query?.user || "");
+    const from = String(req.query?.from || "");
+    const to = String(req.query?.to || from);
+    const ymd = /^\d{4}-\d{2}-\d{2}$/;
+    if (!user || !ymd.test(from) || !ymd.test(to)) return reply.code(400).send({ error: "user, from e to (YYYY-MM-DD) obrigatórios" });
+    const timeMin = new Date(`${from}T00:00:00-03:00`);
+    const timeMax = new Date(`${to}T23:59:59-03:00`);
+    if (!(timeMax > timeMin) || timeMax - timeMin > 62 * 86_400_000) return reply.code(400).send({ error: "intervalo inválido (até 62 dias)" });
+    if (!gu.configured() || !(await gu.connectedFor(user).catch(() => false))) return { connected: false, busy: [] };
+    const lead = req.query?.exclude ? await repo.get("leads", String(req.query.exclude)).catch(() => null) : null;
+    const skip = integrationEventIds(lead);
+    try {
+      const items = await gu.listBusy(user, timeMin.toISOString(), timeMax.toISOString());
+      return { connected: true, busy: items.filter((b) => !skip.has(b.id)).map(({ start, end }) => ({ start, end })) };
+    } catch (err) {
+      req.log.warn({ err: err.message, user }, "Google: leitura dos horários ocupados falhou");
+      return { connected: true, busy: [], error: "não foi possível ler a agenda do Google agora" };
+    }
+  });
+
+  // Marcação pelo link de convite que a rotina não ligou a nenhum card: quem
+  // recebeu o aviso escolhe o card e liga aqui (booking-sync.js → linkEvent).
+  // Body: { user: dono da agenda, leadId }.
+  const bookings = makeBookingSync({ repo, googleUser: gu, google: client, log: app.log });
+  app.post("/api/google/bookings/:eventId/link", async (req, reply) => {
+    if (!gu.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Google não configurado no servidor" });
+    try {
+      const r = await bookings.linkEvent({ userId: req.body?.user, eventId: req.params.eventId, leadId: req.body?.leadId, by: req.authUser?.id || "" });
+      if (r.code) return reply.code(r.code).send({ error: r.error });
+      return { ok: true, lead: r.lead };
+    } catch (err) {
+      req.log.warn({ err: err.message, event: req.params.eventId }, "Google: ligar marcação ao card falhou");
+      return reply.code(422).send({ error: String(err.message || err).slice(0, 300) });
+    }
   });
 
   // Desconectar minha conta Google pessoal.
@@ -400,6 +444,12 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     if (at.getTime() <= Date.now()) return { code: 422, error: "a reunião precisa ser no futuro" };
     const responsible = String(body?.responsible || "").trim();
     if (responsible && !(await repo.get("users", responsible))) return { code: 422, error: "responsável não encontrado" };
+    const integrator = responsible || lead.integrator || "";
+    const conflict = await integrationSlotConflict(repo, gu, { lead, at: when, integrator });
+    if (conflict) {
+      const name = (await repo.get("users", integrator).catch(() => null))?.name || integrator;
+      return { code: 409, error: integrationConflictMessage(conflict, name), reason: "integration_slot_taken" };
+    }
 
     const room = await releaseIntegrationRoom(lead, { force: !!body?.force });
     if (room.blocked) {

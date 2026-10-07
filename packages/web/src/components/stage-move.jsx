@@ -8,7 +8,7 @@ import { DealProductField, isOneOffProduct, PopoverWithCustom, PaymentMethodPick
 import { SelectPopover } from "./select-popover.jsx";
 import { Choice } from "./plan-editor.jsx";
 import { api } from "../lib/api.js";
-import { SlotGrid, nextBusinessDays, callBusyKeys, integBusyKeys, parseMoneyInput } from "../screens/today.jsx";
+import { SlotGrid, nextBusinessDays, callBusyKeys, integBusyKeys, parseMoneyInput, useGoogleBusy, withGoogleBusy, hourLong } from "../screens/today.jsx";
 import { DayPicker, defaultFollowupDay } from "./followup-contact.jsx";
 import { followupDayOf, ymdOf } from "../lib/followup.js";
 import { BookingLinkActions } from "./booking-link.jsx";
@@ -103,10 +103,14 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   });
   // Hora ocupada do INTEGRADOR (integrationAt dos leads dele + bloqueios) vem
   // desabilitada na grade, igual à call com o closer.
-  const integBusy = React.useMemo(
+  const integBusyCockpit = React.useMemo(
     () => integBusyKeys(window.SEED?.LEADS || [], integrator, lead.id),
     [integrator, lead.id],
   );
+  // Mais o que está ocupado na agenda do Google de quem integra (marcação pelo
+  // link, compromisso pessoal); sem Google conectado, fica só o cockpit.
+  const integGoogle = useGoogleBusy(askInteg ? integrator : "", integDay, lead.id);
+  const integBusy = hourLong(withGoogleBusy(integBusyCockpit, integGoogle));
   // displayName cai no id quando o SEED.USERS ainda não chegou (o picker vem do
   // fallback legado, que tem o nome); usa o nome da lista antes de mostrar id.
   const integName = displayName(integrator)
@@ -327,7 +331,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
                     <SlotGrid days={nextBusinessDays(6)} day={integDay} setDay={setIntegDay}
                       slot={integAt} setSlot={setIntegAt} busy={integBusy} />
                     <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
-                      horário ocupado de {integName} vem travado · entra na Agenda e replica na agenda pessoal dele (se conectou o Google) · sem horário, o card vai pra Integração e alguém marca depois
+                      horário ocupado de {integName} vem travado{integGoogle.connected === true ? " (cockpit e agenda do Google)" : integGoogle.connected === false ? " (só o cockpit: sem Google conectado)" : ""} · entra na Agenda e replica na agenda pessoal dele (se conectou o Google) · sem horário, o card vai pra Integração e alguém marca depois
                     </div>
                   </>
                 )}
@@ -367,6 +371,13 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
         </div>
     </Modal>
   );
+}
+
+// Texto do aviso quando o movimento não salva. Horário de integração recusado
+// pela conferência da API (ocupado no cockpit ou na agenda do Google de quem
+// integra) diz o motivo; o resto é falha genérica de rede/servidor.
+export function moveErrorText(err) {
+  return err?.body?.code === "integration_slot_taken" && err.message ? err.message : "O movimento do card não foi salvo · tente de novo";
 }
 
 // Executa um movimento gateado: PATCH do lead + activity extra (nota de handoff).

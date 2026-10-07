@@ -891,6 +891,50 @@ do Google tem preview fixo em inglês para quem não está logado. `/a/` está e
 `OPEN_PREFIXES` e no `location` público do `deploy/nginx.allinone.conf`
 (`nginx-superficie-publica.test.js` trava os dois juntos). Copiar/mandar link
 de call e integração usam `meetingInviteText` (dia e hora de Brasília, 45 min).
+
+**Marcação pelo link → integração no card (07/10/2026).** `google/booking-sync.js`
+(rotina do domínio Google, `start` em `google/index.js`) lê as mudanças da agenda
+primária de cada usuário com `bookingUrl` e Google conectado (Calendar com
+`syncToken`; estado em `app_config/booking_sync_<user>`; a 1ª leitura só guarda o
+ponto de partida). Passe a cada 2 min; cada agenda a cada 15 min, ou a cada passe
+nas 24h depois de um clique. Evento novo, futuro, organizado pela pessoa, com
+convidado e que não é do cockpit (ids conhecidos nos leads/consultas ou descrição
+"Lead: …") liga ao lead em Integração/Pós-venda por e-mail, telefone escrito no
+evento ou clique no link curto (`/a/:id?l=<lead>` grava `lead.bookingClick`; robô
+de preview não conta). Ligado: `integrationAt`, integrador e a sala da marcação
+(`integrationCallUrl`/`integrationMeetEventId`/`integrationMeetOrganizer` = a
+pessoa, então o `autoIntegrationMeet` não cria outra e o espelho pessoal não
+duplica), `integrationBookedVia: "link"` + `integrationBookedEventId`, atividade e
+aviso no sino. Remarcar/cancelar na página do Google acompanham; card com outra
+integração por vir não é sobrescrito; marcação sem card avisa quem integra (só
+com clique recente ou texto de agendamento no evento).
+
+**Conflito operador × cliente no horário da integração (07/10/2026).** A grade
+de integração (Próximo passo, Remarcar e o gate do `stage-move`) soma ao que o
+cockpit sabe os horários ocupados da agenda do Google de quem integra
+(`GET /api/google/busy`, só intervalos, 60s de cache em `googleUser.listBusy`;
+`useGoogleBusy`/`withGoogleBusy` em `today.jsx`) e trava o horário cuja meia
+hora seguinte está ocupada (`hourLong`: a integração dura 1h). Sem Google
+conectado vale só o cockpit, e a grade diz isso. Ao salvar, o PATCH do lead e o
+`scheduleIntegrationMeeting` conferem de novo (`crm/integration-slot.js`: outro
+card do mesmo integrador sobreposto e, com Google, a agenda lida ao vivo;
+Google fora do ar não trava) e devolvem 409 `integration_slot_taken` com o
+motivo, que as telas mostram (`moveErrorText`). Copiar/mandar o link de convite
+grava `integrationLinkSentAt`/`integrationLinkUser`: o card fica "aguardando o
+cliente marcar" por 7 dias (`bookingLinkPending`), o Próximo passo abre em
+"Enviar link" e marcar na grade por cima pede confirmação. A rotina das
+marcações limpa o pendente e avisa quando a marcação cai em cima de outra
+integração do mesmo integrador.
+
+**Marcação sem card, ligada à mão (07/10/2026).** Quando a rotina não acha o
+card (link do Google mandado direto, e-mail/telefone diferentes), o aviso no
+sino leva `link: { screen, booking: <eventId>, bookingUser }` e abre o
+`BookingLinkModal` (`components/booking-link.jsx`): cards em Integração/Pós-venda
+de quem recebeu, "aguardando marcar" primeiro, com busca. "Ligar" chama
+`POST /api/google/bookings/:eventId/link` (`linkEvent` em `booking-sync.js`, que
+lê o evento ao vivo pelo `googleUser.getEvent`) e liga igual à automática: sala
+da marcação, atividade, aviso marcado como lido. Recusa marcação cancelada (410),
+já ligada a outro card ou card com outra integração por vir (409).
 Prévia com o funil atual e um lead por etapa: `?shell&etapas#today` ou
 `#pipeline` (`preview/etapas-mock.js`); revisão:
 `node scripts/review/lead-stage.mjs` em `packages/web`.

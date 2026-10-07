@@ -10,6 +10,7 @@ import { sanitizeScreens } from "./screens.js";
 import { sanitizeSupportSaas } from "./support-scope.js";
 import { sanitizeBookingUrl, bookingPreview, bookingPageHtml, bookingMissingHtml } from "./booking-page.js";
 import { publicBase } from "../platform/request.js";
+import { recordBookingClick } from "../google/booking-sync.js";
 
 const SESSION_TTL_MS = 7 * 24 * 3600 * 1000;
 
@@ -271,7 +272,10 @@ export function registerAuthRoutes(app, repo) {
     const product = s ? await repo.get("products", s).catch(() => null) : null;
     const page = user && bookingPreview({ user, brand: product?.name || "", what: String(req.query?.t || ""), base: publicBase(req) });
     if (!page) return reply.code(404).type("text/html; charset=utf-8").send(bookingMissingHtml());
-    reply.header("cache-control", "public, max-age=300");
+    // ?l= card do lead: o clique (gente, não robô de preview) liga a marcação
+    // que aparecer na agenda ao card certo (google/booking-sync.js).
+    if (req.query?.l) { try { await recordBookingClick(repo, { userId: user.id, leadId: String(req.query.l), ua: req.headers["user-agent"] }); } catch { /* o redirecionamento vale mais */ } }
+    reply.header("cache-control", "private, no-store");
     return reply.type("text/html; charset=utf-8").send(bookingPageHtml(page));
   });
 

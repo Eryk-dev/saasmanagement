@@ -214,6 +214,10 @@ export const api = {
   googleUserStatus: () => req("GET", "/api/google/user/status"),
   googleUserAuthUrl: () => req("GET", "/api/google/user/auth-url"),
   googleUserDisconnect: () => req("POST", "/api/google/user/disconnect"),
+  // Horários ocupados na agenda do Google de quem vai atender (só intervalos).
+  // Liga à mão a marcação pelo link de convite (sem card) ao card escolhido.
+  linkBooking: (eventId, body) => req("POST", `/api/google/bookings/${encodeURIComponent(eventId)}/link`, body),
+  googleBusy: (user, from, to = from, exclude = "") => req("GET", `/api/google/busy?${new URLSearchParams({ user, from, to, ...(exclude ? { exclude } : {}) })}`),
   // body opcional: { guests: [emails] } ou { email } — convidados extras da call.
   createMeet: (leadId, body) => req("POST", `/api/leads/${leadId}/meet`, body),
   // Encerra a conferência aberta da sala (sala esquecida trava a transcrição).

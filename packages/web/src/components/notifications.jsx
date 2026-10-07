@@ -5,6 +5,7 @@ import { Popover } from "./popover.jsx";
 import { displayName, canSeeScreen } from "../lib/users.js";
 import { setActiveSaas, getActiveSaasId } from "../lib/workspace.js";
 import { taskHash } from "../lib/tasks.js";
+import { BookingLinkModal } from "./booking-link.jsx";
 
 // Sino da topbar: caixa de entrada das tarefas (atribuído, mencionado,
 // comentário, prazo). Badge de não lidas; abas Todas / Menções / Atribuídas;
@@ -36,6 +37,8 @@ export function NotificationsBell() {
   const ref = useRef(null);
   const [error, setError] = useState("");
   const [marking, setMarking] = useState(false);
+  // Marcação pelo link de convite sem card: o aviso abre a escolha do card.
+  const [linking, setLinking] = useState(null); // { eventId, userId, text }
 
   const load = useCallback(async (full = false) => {
     try {
@@ -71,6 +74,7 @@ export function NotificationsBell() {
       });
     }
     setOpen(false);
+    if (n.link?.booking) { setLinking({ eventId: n.link.booking, userId: n.link.bookingUser || "", text: n.text }); return; }
     // Destino que não é tarefa (13/09): o aviso de silêncio no WhatsApp abre a
     // conversa. Tela fechada pra pessoa = aviso, não navegação quebrada.
     if (n.link?.screen) {
@@ -126,7 +130,7 @@ export function NotificationsBell() {
                   <span className="notification-text">{n.text}</span>
                   <span className="notification-meta">
                     {(n.task || n.link?.screen) && <span className="notification-action">
-                      {ACTION[n.type] || "Abrir"} →
+                      {n.link?.booking ? "Ligar a um card" : ACTION[n.type] || "Abrir"} →
                     </span>}
                     <span title={n.by === "api" ? "Cockpit" : displayName(n.by) || n.by}>{when(n.at)}{n.saas ? ` · ${n.saas}` : ""}</span>
                   </span>
@@ -136,6 +140,7 @@ export function NotificationsBell() {
           </div>
         </Popover>
       )}
+      {linking && <BookingLinkModal eventId={linking.eventId} userId={linking.userId} text={linking.text} onClose={() => setLinking(null)} />}
     </div>
   );
 }

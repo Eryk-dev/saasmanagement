@@ -711,6 +711,16 @@ try {
     eq("consulta de 90 min em andamento aos 80", isLateItem(consulta, t + 80 * M), false);
     eq("feita nunca atrasa", isLateItem({ ...toque, done: true }, t + 300 * M), false);
     eq("antes da hora não está em andamento", isRunningItem(call, t - M), false);
+    // A tarefa de confirmação vence antes da call (2h, 1h, 10 min): o verbo
+    // diz a hora da call, senão "13:00 · atrasada" parece horário errado.
+    const { actionVerb } = await server.ssrLoadModule("/src/screens/today.jsx");
+    const callL = { callAt: "2026-10-07T15:00", integrationAt: "2026-10-07T16:30" };
+    const verbo = (extra) => actionVerb({ l: callL, confirm: true, due: { t, type: "confirm" }, ...extra });
+    eq("confirmação 2h cita a call", verbo({ confirmWindow: "2h" }), "confirmar a call das 15:00");
+    eq("positivar cita a call", verbo({ confirmWindow: "10min" }), "positivar a confirmação · call das 15:00");
+    eq("ligar cita a call", verbo({ confirmWindow: "ligar" }), "ligar pro cliente (sem positiva) · call das 15:00");
+    eq("integração cita o horário dela", verbo({ confirmWindow: "2h", confirmKind: "integracao" }), "confirmar a integração das 16:30");
+    eq("sem horário, só o verbo", actionVerb({ l: {}, confirm: true, confirmWindow: "2h" }), "confirmar a call");
     console.log("✓ em-andamento-nao-e-atraso");
   } catch (err) {
     console.error(`✗ em-andamento-nao-e-atraso: ${err.message}`);
@@ -731,7 +741,43 @@ try {
     if (!html.includes(`href="${link}"`)) throw new Error("o botão de abrir não aponta pra agenda do integrador");
     // Na mensagem vai o link curto do cockpit (preview em português), não o do Google.
     const waHref = decodeURIComponent((html.match(/href="(https:\/\/wa\.me\/[^"]+)"/) || [])[1] || "").replace(/&amp;/g, "&");
-    if (!waHref.includes("/a/eryk?t=integracao") || waHref.includes("calendar.app.google")) throw new Error(`mensagem do WhatsApp sem o link curto do cockpit: ${waHref}`);
+    if (!waHref.includes("/a/eryk?t=integracao&l=l1") || waHref.includes("calendar.app.google")) throw new Error(`mensagem do WhatsApp sem o link curto do cockpit (com o card): ${waHref}`);
+    // Conflito operador × cliente: a grade soma o ocupado do Google ao do
+    // cockpit, diz de onde vem o bloqueio e sabe quando o link está pendente.
+    const T = await server.ssrLoadModule("/src/screens/today.jsx");
+    const cockpitBusy = { has: (k) => k === "a", info: () => ({ kind: "call" }) };
+    const juntos = T.withGoogleBusy(cockpitBusy, { keys: new Set(["b"]), connected: true });
+    if (!juntos.has("a") || !juntos.has("b") || juntos.has("c")) throw new Error("grade não somou cockpit + Google");
+    if (juntos.info("b")?.reason !== "ocupado na agenda do Google" || juntos.info("a")?.kind !== "call") throw new Error("tooltip do bloqueio errado");
+    if (T.withGoogleBusy(cockpitBusy, { keys: new Set(), connected: false }) !== cockpitBusy) throw new Error("sem Google, a grade é a do cockpit");
+    if (!T.googleBusyNote({ connected: false }, "Vitor").includes("só o que está no cockpit")) throw new Error("aviso de sem Google");
+    // A integração dura 1h: 09:30 trava quando as 10:00 estão ocupadas (mesma régua do salvar).
+    const hora = T.hourLong({ has: (k) => k === "2026-10-08-10-00" || k === "2026-10-08-23-30" });
+    if (!hora.has("2026-10-08-09-30") || !hora.has("2026-10-08-10-00") || hora.has("2026-10-08-09-00") || hora.has("2026-10-08-10-30")) throw new Error("régua de 1h da integração na grade");
+    if (!hora.has("2026-10-08-23-00") || hora.info("2026-10-08-09-30")?.reason !== "a integração dura 1h e esbarra no horário seguinte") throw new Error("virada de dia / motivo da régua de 1h");
+    if (!T.googleBusyNote({ connected: true }, "Eryk").includes("agenda do Google de Eryk")) throw new Error("aviso com Google");
+    const agora = Date.parse("2026-10-07T15:00:00Z");
+    const enviado = { integrationLinkSentAt: "2026-10-07T13:00:00Z", integrationLinkUser: "eryk" };
+    if (!T.bookingLinkPending(enviado, "eryk", agora)) throw new Error("link enviado há 2h devia estar pendente");
+    if (T.bookingLinkPending(enviado, "vitor", agora)) throw new Error("link de outro integrador não pende pra este");
+    if (T.bookingLinkPending({ ...enviado, integrationAt: "2026-10-09T10:00" }, "eryk", agora)) throw new Error("com integração marcada não está mais pendente");
+    if (T.bookingLinkPending({ ...enviado, integrationLinkSentAt: "2026-09-20T10:00:00Z" }, "eryk", agora)) throw new Error("link de 17 dias atrás não pende");
+    const { sentAgo } = await server.ssrLoadModule("/src/components/booking-link.jsx");
+    if (sentAgo("2026-10-07T13:00:00Z", agora) !== "há 2h" || sentAgo("2026-10-07T14:55:00Z", agora) !== "há 5 min") throw new Error("tempo desde o envio");
+    // Ligar à mão a marcação sem card: só cards em Integração/Pós-venda de quem
+    // recebeu (ou sem integrador), os "aguardando marcar" primeiro, com busca.
+    const { bookingCandidates } = await server.ssrLoadModule("/src/components/booking-link.jsx");
+    const saasList = [{ id: "lv", funnel: [{ stage: "Integração", kind: "integracao" }, { stage: "Call", kind: "call" }] }];
+    const cands = bookingCandidates([
+      { id: "z", saas: "lv", name: "Zeca", stage: "Integração", integrator: "eryk" },
+      { id: "a", saas: "lv", name: "Ana", stage: "Integração", integrator: "eryk", integrationAt: "2026-10-20T10:00" },
+      { id: "m", saas: "lv", name: "Mara", stage: "Integração", integrator: "eryk", integrationLinkSentAt: "2026-10-07T13:00:00Z" },
+      { id: "s", saas: "lv", name: "Sem dono", stage: "Integração" },
+      { id: "v", saas: "lv", name: "Do Vitor", stage: "Integração", integrator: "vitor" },
+      { id: "c", saas: "lv", name: "Na call", stage: "Call", integrator: "eryk" },
+    ], saasList, "eryk", "", agora).map((r) => r.l.id);
+    if (cands.join(",") !== "m,s,z,a") throw new Error(`cards pra ligar a marcação: ${cands.join(",")}`);
+    if (bookingCandidates([{ id: "z", saas: "lv", name: "Zeca", company: "Padaria", stage: "Integração" }], saasList, "eryk", "pada", agora).length !== 1) throw new Error("busca na janela de ligar");
     if (!html.includes("https://wa.me/5511999990000?text=")) throw new Error("sem o envio pelo WhatsApp do lead");
     const convite = bookingInviteText(lead, "Eryk", link);
     if (!convite.startsWith("Olá, Ana!") || !convite.includes("agenda de Eryk") || !convite.includes(`\n📅 ${link}\n`)) throw new Error(`convite da agenda mal formatado:\n${convite}`);

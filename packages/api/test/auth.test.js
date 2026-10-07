@@ -288,6 +288,14 @@ test("meu perfil: nome + foto do próprio usuário, mesmo com telas restritas", 
   assert.ok((await app.inject({ method: "GET", url: "/a/ana" })).body.includes("Agende sua reunião com Ana<"), "sem ?t= vira reunião, sem ?s= sem marca");
   assert.equal((await app.inject({ method: "GET", url: "/a/bob" })).statusCode, 404, "quem não cadastrou link não tem página");
   assert.equal((await app.inject({ method: "GET", url: "/a/ninguem" })).statusCode, 404);
+  // ?l= card do lead: o clique de gente fica no lead (liga a marcação ao card);
+  // o robô de preview do WhatsApp não conta.
+  await repo.create("leads", { id: "le_ana", name: "Cliente" });
+  await app.inject({ method: "GET", url: "/a/ana?l=le_ana", headers: { "user-agent": "WhatsApp/2.23.20.0 A" } });
+  assert.equal((await repo.get("leads", "le_ana")).bookingClick, undefined);
+  const clicked = await app.inject({ method: "GET", url: "/a/ana?l=le_ana", headers: { "user-agent": "Mozilla/5.0 (iPhone)" } });
+  assert.equal(clicked.statusCode, 200);
+  assert.equal((await repo.get("leads", "le_ana")).bookingClick.user, "ana");
 
   // Foto: multipart → URL versionada, servida ABERTA (a <img> não manda header)
   const boundary = "----cockpittest";

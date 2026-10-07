@@ -5,7 +5,7 @@ import { Drawer, Modal } from "../components/overlay.jsx";
 import { LeadGrade, LeadSection, LeadDisclosure } from "../components/lead-card.jsx";
 import { ActivityList, ActivityComposer, mergeTimeline } from "../components/timeline.jsx";
 import { RoutineSuggestion } from "../components/routine-suggestion.jsx";
-import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
+import { moveGate, MoveLeadModal, applyGatedMove, moveErrorText } from "../components/stage-move.jsx";
 import { clientSummary, leadBox, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks } from "../components/lead-blocks.jsx";
 import { waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
 import { meetingInviteText } from "../lib/wa-copy.js";
@@ -368,7 +368,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
     if (gate) { setPendingMove({ toStage: stage, gate }); return; }
     dirty.current = true;
     setLead((prev) => ({ ...prev, stage, stageSince: new Date().toISOString(), stageAttempts: 0 }));
-    api.update("leads", lead.id, { stage }).catch((err) => { console.warn("lead move not persisted:", err.message); window.toast && window.toast("O movimento do card não foi salvo · tente de novo", "neg"); });
+    api.update("leads", lead.id, { stage }).catch((err) => { console.warn("lead move not persisted:", err.message); window.toast && window.toast(moveErrorText(err), "neg"); });
   }
   function close() {
     if (dirty.current) refresh();
@@ -1176,7 +1176,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
             onConfirm={(p, extra) => {
               dirty.current = true;
               setLead((prev) => ({ ...prev, ...p, stageSince: new Date().toISOString(), stageAttempts: 0 }));
-              applyGatedMove(p, extra, lead.id).then(refetchTimeline).catch((err) => { console.warn("movimento não persistido:", err.message); window.toast && window.toast("O movimento do card não foi salvo · tente de novo", "neg"); });
+              applyGatedMove(p, extra, lead.id).then(refetchTimeline).catch((err) => { console.warn("movimento não persistido:", err.message); window.toast && window.toast(moveErrorText(err), "neg"); });
               setPendingMove(null);
             }}
           />
