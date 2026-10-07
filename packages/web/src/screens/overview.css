@@ -183,6 +183,14 @@
 .vg-funnel-row.is-below .vg-funnel-track { background: color-mix(in srgb,var(--neg) 12%,var(--bg-1)); }
 .vg-sales { padding: 22px 14px 23px; display: flex; flex-direction: column; }
 .vg-sales > h2 { margin: 0 8px 10px; }
+/* A lista toma o espaço livre do card e NUNCA é quem define a altura dele:
+   `flex-basis: 0` tira o conteúdo dela da conta da altura natural, então quem
+   manda na linha do grid é o card da meta ao lado. Sem isso, medir o espaço e
+   mostrar mais vendas esticaria a linha e o buraco branco só mudaria de lado.
+   O `min-height` é o piso de quando não há par pra esticar (coluna única no
+   celular): 8 linhas, o mesmo piso do MIN_VENDAS e o mesmo número que a lista
+   mostrava antes de passar a preencher. */
+.vg-sales-list { flex: 1 1 0; min-height: 400px; overflow: hidden; }
 .vg-sale { width: 100%; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; align-items: center; text-align: left; padding: 9px 10px; border-radius: 999px; transition: background 150ms ease; }
 .vg-sale:hover { background: var(--vg-soft); }
 .vg-sale-amount { font: 700 14px var(--display); white-space: nowrap; letter-spacing: -.02em; }
