@@ -10,7 +10,7 @@ import { KINDS, KIND_IDS, guessKind, lossReasonsOf, stageKind, stageByKind, phas
 import { useActiveSaas } from "../lib/workspace.js";
 import { DEFAULT_SCRIPTS, SCRIPT_CATALOG, catalogStageRow, isNoShowStage } from "../lib/scripts.js";
 import { followupContacts, DEFAULT_FOLLOWUP_CONTACTS } from "../lib/followup.js";
-import { usersByRole, roleScreens, isUniversalScreen } from "../lib/users.js";
+import { usersByRole, roleScreens, isUniversalScreen, currentUser, userById } from "../lib/users.js";
 import { ScriptPanel } from "./today.jsx";
 import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { NAV } from "../chrome.jsx";
@@ -935,7 +935,8 @@ function MyGoogleCalendarCard() {
   // precisa RECONECTAR pra virar organizador das próprias calls.
   const precisaReconectar = connected && !st?.meetReady;
   return (
-    <div style={{ padding: "14px 16px", border: connected ? "1px solid var(--line-1)" : "1px dashed var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+    <div style={{ padding: "14px 16px", border: connected ? "1px solid var(--line-1)" : "1px dashed var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", marginBottom: 10 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
       <div>
         <div style={{ fontSize: 13, fontWeight: 500 }}>Minha conta Google</div>
         <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>
@@ -969,6 +970,59 @@ function MyGoogleCalendarCard() {
         )}
       </div>
     </div>
+    <BookingUrlField />
+    </div>
+  );
+}
+
+// Link de convite do Google Agenda (07/10/2026): a página pública da agenda de
+// horários da pessoa (ex.: https://calendar.app.google/…), onde quem recebe vê
+// os horários livres e marca sozinho. É do PRÓPRIO usuário (PATCH /api/auth/me)
+// e sai no registro do time (bookingUrl), pronto pra ir ao lead.
+function BookingUrlField() {
+  const me = currentUser();
+  const saved0 = (me?.id && userById(me.id)?.bookingUrl) || me?.bookingUrl || "";
+  const [saved, setSaved] = useStS(saved0), [value, setValue] = useStS(saved0);
+  const [busy, setBusy] = useStS(false), [msg, setMsg] = useStS(null);
+  if (!me?.id) return null; // acesso por key: não há usuário dono do link
+  const dirty = value.trim() !== saved;
+  async function save(e) {
+    e.preventDefault();
+    if (!dirty || busy) return;
+    setBusy(true); setMsg(null);
+    try {
+      const updated = await api.updateMyBookingUrl(value.trim());
+      const url = updated?.bookingUrl || "";
+      try { localStorage.setItem("cockpit_user", JSON.stringify({ ...me, bookingUrl: url })); } catch { /* ignore */ }
+      const fresh = userById(me.id);
+      if (fresh) fresh.bookingUrl = url;
+      setSaved(url); setValue(url);
+      setMsg({ ok: true, text: url ? "link salvo" : "link removido" });
+    } catch (err) {
+      setMsg({ ok: false, text: err.message || String(err) });
+    } finally { setBusy(false); }
+  }
+  return (
+    <form onSubmit={save} style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line-faint)", display: "flex", flexDirection: "column", gap: 6 }}>
+      <label htmlFor="booking-url" style={{ fontSize: 13, fontWeight: 500 }}>Link de convite da agenda</label>
+      <div className="mono dim" style={{ fontSize: 11 }}>
+        a página de agendamento do Google Agenda: quem abre vê seus horários disponíveis e marca sozinho
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <input id="booking-url" type="url" inputMode="url" value={value} disabled={busy}
+          placeholder="https://calendar.app.google/…" onChange={(e) => { setValue(e.target.value); setMsg(null); }}
+          style={{ ...inputStyle, flex: "1 1 260px", width: "auto", minWidth: 0 }} />
+        <button type="submit" aria-label="salvar link de convite" disabled={!dirty || busy} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}>
+          <span style={{ fontSize: 11 }}>{busy ? "salvando…" : "salvar"}</span>
+        </button>
+        {saved && !dirty && (
+          <a href={saved} target="_blank" rel="noopener noreferrer" aria-label="abrir link de convite" style={{ ...chromeBtnStyleSmall, textDecoration: "none" }}>
+            <span style={{ fontSize: 11 }}>abrir</span>
+          </a>
+        )}
+      </div>
+      {msg && <span role={msg.ok ? "status" : "alert"} className="mono" style={{ fontSize: 11, color: msg.ok ? "var(--pos)" : "var(--neg)" }}>{msg.text}</span>}
+    </form>
   );
 }
 

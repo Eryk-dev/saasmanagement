@@ -690,6 +690,72 @@ try {
     failed++;
   }
 
+  // Em andamento ≠ atrasada (07/10): a atividade das 9h às 9h01 está sendo
+  // cumprida. Call/integração têm a duração (1h), consulta a dela, toque e
+  // confirmação 30 min — a confirmação nunca além do horário da call.
+  try {
+    const { isLateItem, isRunningItem } = await server.ssrLoadModule("/src/screens/today.jsx");
+    const eq = (name, got, want) => { if (got !== want) throw new Error(`${name}: ${got} ≠ ${want}`); };
+    const M = 60000, t = Date.parse("2026-10-07T12:00:00Z");
+    const call = { due: { t, type: "call" } };
+    eq("call 1 min depois não está atrasada", isLateItem(call, t + M), false);
+    eq("call 1 min depois está em andamento", isRunningItem(call, t + M), true);
+    eq("call atrasa ao fim da 1h", isLateItem(call, t + 60 * M), true);
+    const toque = { due: { t, type: "toque" } };
+    eq("toque com 29 min ainda no prazo", isLateItem(toque, t + 29 * M), false);
+    eq("toque atrasa aos 30 min", isLateItem(toque, t + 30 * M), true);
+    const conf10 = { due: { t, type: "confirm" }, confirm: true, l: { callAt: new Date(t + 10 * M).toISOString() } };
+    eq("confirmação de 10 min no prazo antes da call", isLateItem(conf10, t + 9 * M), false);
+    eq("confirmação de 10 min atrasa quando a call começa", isLateItem(conf10, t + 10 * M), true);
+    const consulta = { consulta: { durationMin: 90 }, due: { t, type: "consulta" } };
+    eq("consulta de 90 min em andamento aos 80", isLateItem(consulta, t + 80 * M), false);
+    eq("feita nunca atrasa", isLateItem({ ...toque, done: true }, t + 300 * M), false);
+    eq("antes da hora não está em andamento", isRunningItem(call, t - M), false);
+    console.log("✓ em-andamento-nao-e-atraso");
+  } catch (err) {
+    console.error(`✗ em-andamento-nao-e-atraso: ${err.message}`);
+    failed++;
+  }
+
+  // Link de convite do integrador (07/10): escolhido o integrador, o gate da
+  // Integração mostra a agenda dele pra mandar ao cliente; sem link cadastrado,
+  // diz onde cadastrar em vez de sumir.
+  const savedUsers = window.SEED.USERS;
+  try {
+    const { BookingLinkActions } = await server.ssrLoadModule("/src/components/booking-link.jsx");
+    const { bookingInviteText, meetingInviteText } = await server.ssrLoadModule("/src/lib/wa-copy.js");
+    const link = "https://calendar.app.google/YfS45BGrP3Nb9aA88";
+    window.SEED.USERS = [{ id: "eryk", name: "Eryk", roles: ["integrator"], bookingUrl: link }, { id: "vitor", name: "Vitor", roles: ["integrator"] }];
+    const lead = { id: "l1", name: "Ana Prado", phone: "11999990000" };
+    const html = renderToString(React.createElement(BookingLinkActions, { lead, userId: "eryk" }));
+    if (!html.includes(`href="${link}"`)) throw new Error("o botão de abrir não aponta pra agenda do integrador");
+    // Na mensagem vai o link curto do cockpit (preview em português), não o do Google.
+    const waHref = decodeURIComponent((html.match(/href="(https:\/\/wa\.me\/[^"]+)"/) || [])[1] || "").replace(/&amp;/g, "&");
+    if (!waHref.includes("/a/eryk?t=integracao") || waHref.includes("calendar.app.google")) throw new Error(`mensagem do WhatsApp sem o link curto do cockpit: ${waHref}`);
+    if (!html.includes("https://wa.me/5511999990000?text=")) throw new Error("sem o envio pelo WhatsApp do lead");
+    const convite = bookingInviteText(lead, "Eryk", link);
+    if (!convite.startsWith("Olá, Ana!") || !convite.includes("agenda de Eryk") || !convite.includes(`\n📅 ${link}\n`)) throw new Error(`convite da agenda mal formatado:\n${convite}`);
+    // Convite da call/integração formatado como o do Google: dia e hora de
+    // Brasília (45 min), o link em linha própria; sem horário, só o link.
+    const meet = "https://meet.google.com/xew-pfhv-huu";
+    const integ = meetingInviteText({ ...lead, saas: "leverads", integrationCallUrl: meet, integrationAt: "2026-10-07T12:00" }, "integracao");
+    for (const parte of ["Olá, Ana!", "Sua integração com a ", "📅 Quarta-feira, 7 de outubro", "🕐 12:00 às 12:45 (horário de Brasília)", `🎥 Link da videochamada: ${meet}`]) {
+      if (!integ.includes(parte)) throw new Error(`convite da integração sem "${parte}":\n${integ}`);
+    }
+    const isoUtc = meetingInviteText({ ...lead, callUrl: meet, callAt: "2026-10-07T15:00:00.000Z" }, "call");
+    if (!isoUtc.includes("🕐 12:00 às 12:45")) throw new Error(`horário em ISO UTC precisa sair em Brasília:\n${isoUtc}`);
+    const semHora = meetingInviteText({ ...lead, callUrl: meet }, "call");
+    if (semHora.includes("📅") || !semHora.includes(meet)) throw new Error("call sem horário vai só com o link");
+    if (meetingInviteText({ ...lead }, "call") !== "") throw new Error("sem sala não há convite");
+    const semLink = renderToString(React.createElement(BookingLinkActions, { lead, userId: "vitor" }));
+    if (!semLink.includes("ainda não cadastrou")) throw new Error("integrador sem link precisa dizer onde cadastrar");
+    if (renderToString(React.createElement(BookingLinkActions, { lead, userId: "" })) !== "") throw new Error("sem integrador não mostra nada");
+    console.log("✓ link-de-convite-e-convite-formatado");
+  } catch (err) {
+    console.error(`✗ link-de-convite-e-convite-formatado: ${err.message}`);
+    failed++;
+  } finally { window.SEED.USERS = savedUsers; }
+
   // Cadência de 7 dias por coluna (Dia 2…Dia 7, #881): cada dia tem roteiro
   // próprio, linha em Scripts/Próximos passos, e o Depois da ação oferece
   // "Qualificando" (ele respondeu). Com as colunas, o Retomar do Novo lead não

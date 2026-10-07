@@ -122,6 +122,7 @@ export const api = {
   // Meu perfil: nome e foto do PRÓPRIO usuário (o cargo continua sendo gestão,
   // em Ajustes → Equipe). Todas devolvem o usuário atualizado.
   updateMe: (name) => req("PATCH", "/api/auth/me", { name }),
+  updateMyBookingUrl: (bookingUrl) => req("PATCH", "/api/auth/me", { bookingUrl }),
   uploadMyPhoto: async (blob, name = "foto.jpg") => {
     const fd = new FormData();
     fd.append("file", blob, name);

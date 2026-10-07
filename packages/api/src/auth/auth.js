@@ -8,6 +8,8 @@
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { sanitizeScreens } from "./screens.js";
 import { sanitizeSupportSaas } from "./support-scope.js";
+import { sanitizeBookingUrl, bookingPreview, bookingPageHtml, bookingMissingHtml } from "./booking-page.js";
+import { publicBase } from "../platform/request.js";
 
 const SESSION_TTL_MS = 7 * 24 * 3600 * 1000;
 
@@ -81,6 +83,7 @@ const publicUser = (u) => ({
   // Status da conta Google PESSOAL (só flags — o refresh token NUNCA sai daqui).
   googleConnected: !!u.google?.refreshToken,
   googleAccount: u.google?.account || "",
+  bookingUrl: u.bookingUrl || "",
 });
 
 // Token de sessão → usuário (null se inexistente/expirado).
@@ -194,17 +197,29 @@ export function registerAuthRoutes(app, repo) {
   // Ajustes (SETTINGS_WRITE_PREFIXES cobre /api/auth/users), então quem tem
   // telas restritas (SDR, Ana) também consegue se editar. Cargo NÃO entra aqui
   // — etiquetas de papel continuam sendo gestão, em Ajustes → Equipe.
+  // O link de convite do Google Agenda também é do próprio usuário (Ajustes →
+  // Integrações → Minha conta Google) e pode vir sozinho, sem o nome.
   app.patch("/api/auth/me", async (req, reply) => {
     const me = await sessionUser(repo, headerKey(req));
     if (!me) return reply.code(401).send({ error: "sessão inválida" });
-    const name = String(req.body?.name || "").trim();
-    if (name.length < 2) return reply.code(400).send({ error: "nome precisa de 2+ caracteres" });
-    // O login casa por id OU nome (case-insensitive): deixar dois usuários com o
-    // mesmo nome tornaria a entrada ambígua.
-    const taken = (await repo.list("users")).some((u) => u.id !== me.id
-      && (u.id.toLowerCase() === name.toLowerCase() || String(u.name || "").toLowerCase() === name.toLowerCase()));
-    if (taken) return reply.code(409).send({ error: "já existe alguém no time com esse nome" });
-    const updated = await repo.update("users", me.id, { name });
+    const body = req.body || {};
+    const patch = {};
+    if (body.bookingUrl !== undefined) {
+      const bookingUrl = sanitizeBookingUrl(body.bookingUrl);
+      if (bookingUrl === null) return reply.code(400).send({ error: "o link de convite precisa ser um endereço https (ex.: https://calendar.app.google/…)" });
+      patch.bookingUrl = bookingUrl;
+    }
+    if (body.name !== undefined || !Object.keys(patch).length) {
+      const name = String(body.name || "").trim();
+      if (name.length < 2) return reply.code(400).send({ error: "nome precisa de 2+ caracteres" });
+      // O login casa por id OU nome (case-insensitive): deixar dois usuários com o
+      // mesmo nome tornaria a entrada ambígua.
+      const taken = (await repo.list("users")).some((u) => u.id !== me.id
+        && (u.id.toLowerCase() === name.toLowerCase() || String(u.name || "").toLowerCase() === name.toLowerCase()));
+      if (taken) return reply.code(409).send({ error: "já existe alguém no time com esse nome" });
+      patch.name = name;
+    }
+    const updated = await repo.update("users", me.id, patch);
     return publicUser(updated);
   });
 
@@ -245,6 +260,19 @@ export function registerAuthRoutes(app, repo) {
     if (!doc) return reply.code(404).send({ error: "sem foto" });
     reply.header("cache-control", "public, max-age=86400, immutable");
     return reply.type(doc.mime || "image/png").send(Buffer.from(doc.data || "", "base64"));
+  });
+
+  // Link curto do convite de agenda (ABERTA, em OPEN_PREFIXES): o preview do
+  // WhatsApp sai em português e quem clica cai na agenda do Google da pessoa.
+  // ?s= produto (marca no título) · ?t= integracao|call|reuniao. Ver booking-page.js.
+  app.get("/a/:id", async (req, reply) => {
+    const user = await repo.get("users", String(req.params.id || "").toLowerCase());
+    const s = String(req.query?.s || "").trim().toLowerCase();
+    const product = s ? await repo.get("products", s).catch(() => null) : null;
+    const page = user && bookingPreview({ user, brand: product?.name || "", what: String(req.query?.t || ""), base: publicBase(req) });
+    if (!page) return reply.code(404).type("text/html; charset=utf-8").send(bookingMissingHtml());
+    reply.header("cache-control", "public, max-age=300");
+    return reply.type("text/html; charset=utf-8").send(bookingPageHtml(page));
   });
 
   // Gestão mínima do time (qualquer autenticado — todos admins na v1).

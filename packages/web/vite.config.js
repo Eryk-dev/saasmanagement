@@ -52,6 +52,7 @@ export default defineConfig({
       "/f": { target: API_TARGET, changeOrigin: true },
       "/p": { target: API_TARGET, changeOrigin: true },
       "/s/": { target: API_TARGET, changeOrigin: true }, // portal do Suporte
+      "/a/": { target: API_TARGET, changeOrigin: true }, // convite de agenda (preview em português)
 
       "/public": { target: API_TARGET, changeOrigin: true },
       "/embed.js": { target: API_TARGET, changeOrigin: true },

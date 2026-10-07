@@ -51,6 +51,14 @@ try {
     await page.getByRole('button', {name:'R$ 3.582', exact:true}).click();
     await pick(page, /^Modo de pagamento:/, /^PIX à vista/);
     await pick(page, /^Responsável pela integração:/, /^Eryk/);
+    // Agendamento: as três formas num segmentado, só a escolhida aparece.
+    assert.deepEqual(await radios(page, 'Como agendar'), ['Marcar agora', 'Enviar link', 'Marcar depois']);
+    const entrega = page.locator('section[aria-label="A entrega"]');
+    assert.ok(await entrega.getByText('escolha um horário livre na grade').isVisible(), 'começa na grade');
+    await page.getByRole('radiogroup', {name:'Como agendar'}).getByRole('radio', {name:'Enviar link'}).click();
+    assert.ok(await entrega.getByText(/ainda não cadastrou o link de convite/).isVisible(), 'sem link cadastrado, diz onde cadastrar');
+    assert.equal(await entrega.getByText('escolha um horário livre na grade').count(), 0, 'a grade sai quando o modo é o link');
+    await page.getByRole('radiogroup', {name:'Como agendar'}).getByRole('radio', {name:'Marcar agora'}).click();
     assert.equal(await actions.locator('select').count(), 0, 'nenhum <select> nativo no Próximo passo');
     await actions.scrollIntoViewIfNeeded();
     await h.capture(page, `closing-integracao-${width}`);

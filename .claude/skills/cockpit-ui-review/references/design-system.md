@@ -325,6 +325,18 @@ premium). Feitas ficam planas. Atraso fica só na pílula de horário (sem fundo
 no painel usa `--accent-soft` com contorno `--accent-line`, nome em `--accent`
 e `aria-current`.
 
+Agendamento da entrega no Próximo passo (07/10/2026): "A entrega" segue a
+ordem da decisão: quem (responsável + closer da venda), quando e observação.
+As formas de agendar são alternativas num `Choice` ("Marcar agora · Enviar link ·
+Marcar depois") e só a escolhida aparece: a grade (`SlotGrid`) com o horário
+confirmado embaixo, os botões do link de convite (`BookingLinkActions`) ou uma
+linha dizendo que vai sem horário. Explicação de rodapé virou `title` com ⓘ no
+rótulo. Rótulos curtos para o segmentado caber numa linha a 390px.
+"A venda" em duas linhas: produto | plano e valor | pagamento (preços do
+catálogo embaixo do produto); com 2+ produtos o pagamento desce pro fim, ao lado do
+total. Com formulário de destino aberto, o rodapé navy cresce
+até 68dvh (`:has(.today-dest-form, .today-deal)`) em vez de 45dvh.
+
 ### Histórico e resumos do cliente — 05/10/2026
 
 Vista própria (`components/customer-history.jsx`), não a pilha de componentes

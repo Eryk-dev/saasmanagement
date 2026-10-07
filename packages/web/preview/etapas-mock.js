@@ -75,7 +75,7 @@ export function setupEtapasPreview(seed) {
   const product = seed.SAAS[0];
   product.funnel = ETAPAS_FUNNEL.map((f) => ({ ...f }));
   product.lossReasons = [{ id: "budget", label: "Sem orçamento" }, { id: "fora_icp", label: "Fora do ICP" }];
-  seed.USERS.push({ id: "eryk", name: "Eryk", roles: ["integrator"], saas: "" });
+  seed.USERS.push({ id: "eryk", name: "Eryk", roles: ["integrator"], saas: "", bookingUrl: "https://calendar.app.google/YfS45BGrP3Nb9aA88" });
   seed.LEADS = LEADS.map((l) => ({ ...l }));
   seedActivities();
   window.__etapasMoves = [];

@@ -8,7 +8,7 @@ import { RoutineSuggestion } from "../components/routine-suggestion.jsx";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 import { clientSummary, leadBox, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks } from "../components/lead-blocks.jsx";
 import { waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
-import { waCallLinkText } from "../lib/wa-copy.js";
+import { meetingInviteText } from "../lib/wa-copy.js";
 import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind, isLossKind, phaseOf } from "../lib/funnel.js";
 import { SelectPopover } from "../components/select-popover.jsx";
 import { DateTimeField } from "../components/datetime-field.jsx";
@@ -648,13 +648,13 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
                   title={lead.callUrl}>
                   {lead.callUrl.replace("https://", "")}
                 </a>
-                <button className="mono dim" style={{ fontSize: 11, flexShrink: 0 }} title="Copiar link"
-                  onClick={() => { try { navigator.clipboard.writeText(lead.callUrl); } catch { window.prompt("Link da call:", lead.callUrl); } }}>
+                <button className="mono dim" style={{ fontSize: 11, flexShrink: 0 }} title="Copiar o convite (dia, hora e link)"
+                  onClick={() => { const t = meetingInviteText(lead, "call"); try { navigator.clipboard.writeText(t); } catch { window.prompt("Convite da call:", t); } }}>
                   copiar
                 </button>
                 {wa && (
                   <a className="mono" style={{ fontSize: 11, color: "var(--wa-brand-deep)", textDecoration: "none", flexShrink: 0 }}
-                    href={`${wa}?text=${encodeURIComponent(waCallLinkText(lead, lead.callUrl))}`}
+                    href={`${wa}?text=${encodeURIComponent(meetingInviteText(lead, "call"))}`}
                     target="_blank" rel="noopener noreferrer" title="Enviar o link pro lead no WhatsApp">
                     mandar no Whats ↗
                   </a>
@@ -840,11 +840,11 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
                       style={{ fontSize: 11, color: "var(--accent)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }} title={lead.integrationCallUrl}>
                       {lead.integrationCallUrl.replace("https://", "")}
                     </a>
-                    <button className="mono dim" style={{ fontSize: 11, flexShrink: 0 }} title="Copiar link"
-                      onClick={() => { try { navigator.clipboard.writeText(lead.integrationCallUrl); } catch { window.prompt("Link da integração:", lead.integrationCallUrl); } }}>copiar</button>
+                    <button className="mono dim" style={{ fontSize: 11, flexShrink: 0 }} title="Copiar o convite (dia, hora e link)"
+                      onClick={() => { const t = meetingInviteText(lead, "integracao"); try { navigator.clipboard.writeText(t); } catch { window.prompt("Convite da integração:", t); } }}>copiar</button>
                     {wa && (
                       <a className="mono" style={{ fontSize: 11, color: "var(--wa-brand-deep)", textDecoration: "none", flexShrink: 0 }}
-                        href={`${wa}?text=${encodeURIComponent(`Oi${lead.name ? " " + String(lead.name).trim().split(/\s+/)[0] : ""}! Aqui é da ${saasCfg?.name || "equipe"}. Nossa call de integração vai ser por este link: ${lead.integrationCallUrl}`)}`}
+                        href={`${wa}?text=${encodeURIComponent(meetingInviteText(lead, "integracao"))}`}
                         target="_blank" rel="noopener noreferrer" title="Enviar o link pro cliente no WhatsApp">mandar no Whats ↗</a>
                     )}
                     {lead.integrationCallUrl.includes("meet.google.com") && window.SEED?.CONFIG?.ai?.configured && (

@@ -10,6 +10,7 @@ export const settingsReviewMock={
  createUser:async(body)=>{window.__settingsWrites.push({method:'createUser',body:clone(body)});const u={id:'new-user',roles:[],...clone(body)};users.push(u);return clone(u);},
  removeUser:async(id,force)=>{window.__settingsWrites.push({method:'removeUser',id,force});users=users.filter(u=>u.id!==id);return {ok:true};},
  googleUserStatus:async()=>clone(google),googleUserDisconnect:async()=>{window.__settingsWrites.push({method:'googleUserDisconnect'});google.connected=false;return {ok:true};},
+ updateMyBookingUrl:async(bookingUrl)=>{window.__settingsWrites.push({method:'updateMyBookingUrl',bookingUrl});if(bookingUrl&&!/^https:\/\//.test(bookingUrl))throw new Error('o link de convite precisa ser um endereço https (ex.: https://calendar.app.google/…)');return {...clone(window.SEED.ME),bookingUrl};},
  mpSyncNow:async()=>({seen:2,matched:1,settled:1}),
  improvePitch:async()=>({sugestao:{resumo:'Sugestão de revisão',objetivo:'Próximo passo claro',passos:[{t:'Abertura revisada',fala:'Olá, tudo bem?',dica:'Ouvir o cliente'}]},diagnostico:'Exemplo fictício',base:3}),
  trainingQueue:async()=>({cards:[],decks:[],exams:[]}),

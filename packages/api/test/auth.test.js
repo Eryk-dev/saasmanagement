@@ -234,7 +234,7 @@ test("meu perfil: nome + foto do próprio usuário, mesmo com telas restritas", 
   app.addHook("onRequest", makeAuthHook({
     apiKey: "test-key", repo,
     openPaths: new Set(["/api/auth/login"]),
-    openPrefixes: ["/public/users/"], // mesma lista do index.js
+    openPrefixes: ["/public/users/", "/a/"], // mesma lista do index.js
     providedKey,
   }));
   app.addHook("onRequest", makeScreenGuardHook());
@@ -261,6 +261,33 @@ test("meu perfil: nome + foto do próprio usuário, mesmo com telas restritas", 
   assert.equal((await app.inject({ method: "PATCH", url: "/api/auth/me", headers: H, payload: { name: "A" } })).statusCode, 400);
   // key mestre não é ninguém — não tem perfil pra editar
   assert.equal((await app.inject({ method: "PATCH", url: "/api/auth/me", headers: KEY, payload: { name: "Zé" } })).statusCode, 401);
+
+  // Link de convite do Google Agenda: vem sozinho (sem o nome), só https, "" limpa,
+  // e sai no registro público (SEED.USERS) pra quem quiser mandar ao lead.
+  const link = "https://calendar.app.google/YfS45BGrP3Nb9aA88";
+  const booked = await app.inject({ method: "PATCH", url: "/api/auth/me", headers: H, payload: { bookingUrl: ` ${link} ` } });
+  assert.equal(booked.statusCode, 200, booked.body);
+  assert.equal(booked.json().bookingUrl, link);
+  assert.equal(booked.json().name, "Ana Paula", "salvar o link não mexe no nome");
+  assert.equal((await app.inject({ method: "GET", url: "/api/auth/users", headers: KEY })).json().find((u) => u.id === "ana").bookingUrl, link);
+  assert.equal((await app.inject({ method: "PATCH", url: "/api/auth/me", headers: H, payload: { bookingUrl: "http://calendar.app.google/x" } })).statusCode, 400);
+  assert.equal((await app.inject({ method: "PATCH", url: "/api/auth/me", headers: H, payload: { bookingUrl: "javascript:alert(1)" } })).statusCode, 400);
+  assert.equal((await app.inject({ method: "PATCH", url: "/api/auth/me", headers: H, payload: { bookingUrl: "" } })).json().bookingUrl, "");
+  assert.equal((await app.inject({ method: "PATCH", url: "/api/auth/me", headers: H, payload: {} })).statusCode, 400, "sem nada pra salvar segue pedindo o nome");
+
+  // Link curto /a/:id (aberto, sem sessão): preview em português pro WhatsApp e
+  // redirecionamento pra agenda do Google; sem link cadastrado, 404 amigável.
+  await app.inject({ method: "PATCH", url: "/api/auth/me", headers: H, payload: { bookingUrl: link } });
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [] });
+  const pg = await app.inject({ method: "GET", url: "/a/ana?s=leverads&t=integracao" });
+  assert.equal(pg.statusCode, 200, pg.body);
+  assert.match(pg.headers["content-type"], /text\/html/);
+  assert.ok(pg.body.includes('<meta property="og:title" content="Agende sua integração com Ana · LeverAds">'), pg.body);
+  assert.ok(pg.body.includes('og:locale" content="pt_BR"'));
+  assert.ok(pg.body.includes(`<meta http-equiv="refresh" content="0;url=${link}">`), "redireciona pra agenda do Google");
+  assert.ok((await app.inject({ method: "GET", url: "/a/ana" })).body.includes("Agende sua reunião com Ana<"), "sem ?t= vira reunião, sem ?s= sem marca");
+  assert.equal((await app.inject({ method: "GET", url: "/a/bob" })).statusCode, 404, "quem não cadastrou link não tem página");
+  assert.equal((await app.inject({ method: "GET", url: "/a/ninguem" })).statusCode, 404);
 
   // Foto: multipart → URL versionada, servida ABERTA (a <img> não manda header)
   const boundary = "----cockpittest";

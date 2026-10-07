@@ -11,6 +11,7 @@ import { api } from "../lib/api.js";
 import { SlotGrid, nextBusinessDays, callBusyKeys, integBusyKeys, parseMoneyInput } from "../screens/today.jsx";
 import { DayPicker, defaultFollowupDay } from "./followup-contact.jsx";
 import { followupDayOf, ymdOf } from "../lib/followup.js";
+import { BookingLinkActions } from "./booking-link.jsx";
 
 // Gate de movimento de estágio — os três momentos do processo que exigem input:
 //   handoff  = card saindo da fase SDR pra fase Closer sem closer marcado
@@ -317,6 +318,10 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
                   options={userOptions(integrators)} onChange={(v) => { setIntegrator(v); setIntegAt(""); }} />
                 {integrator && (
                   <>
+                    {/* O link de convite de quem integra: em vez de escolher o
+                        horário aqui, dá pra mandar a agenda pro cliente marcar. */}
+                    <div style={{ height: 10 }} />
+                    <BookingLinkActions lead={lead} userId={integrator} />
                     <div style={{ height: 12 }} />
                     <label className="kicker" style={label}>Integração agendada pra (opcional)</label>
                     <SlotGrid days={nextBusinessDays(6)} day={integDay} setDay={setIntegDay}

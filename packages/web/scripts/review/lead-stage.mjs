@@ -59,6 +59,10 @@ try {
     await gate.getByRole('button', {name:/^Modo de pagamento/}).click();
     await page.getByRole('option').first().click();
     assert.match(await gate.getByRole('button', {name:/^Responsável pela integração/}).textContent(), /Eryk/);
+    // Com o integrador escolhido, o link de convite da agenda dele aparece pra mandar ao cliente.
+    const booking = gate.getByRole('group', {name:'Link de convite de Eryk'});
+    assert.equal(await booking.getByRole('link', {name:'abrir agenda ↗'}).getAttribute('href'), 'https://calendar.app.google/YfS45BGrP3Nb9aA88');
+    await booking.getByRole('button', {name:'copiar mensagem'}).waitFor();
     await h.capture(page, `lead-stage-gate-${width}`);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await gate.getByRole('button', {name:'confirmar movimento'}).click();

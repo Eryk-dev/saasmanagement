@@ -878,6 +878,19 @@ para o arraste. O gate de movimento (`components/stage-move.jsx`) não usa
 `PopoverWithCustom` (o `DealProductField` também), e o valor aceita
 `3.582,50` (`parseMoneyInput`). Um Esc fecha o gate (antes o 1º só tirava o
 foco do select). No `SelectPopover`, o Esc chega ao `useEsc` e fecha a lista.
+
+**Link de convite da agenda (07/10/2026).** Cada usuário cadastra o seu em
+Configurações → Integrações → Minha conta Google (`users.bookingUrl`, só https,
+gravado pelo `PATCH /api/auth/me`, que aceita o campo sem o nome; sai no
+`publicUser`). `components/booking-link.jsx` mostra copiar/WhatsApp/abrir ao
+escolher o integrador no gate de Integração e no Próximo passo das Atividades.
+A mensagem (`bookingInviteText` em `lib/wa-copy.js`) leva o link curto
+`/a/:userId?s=<produto>&t=integracao`: rota ABERTA em `auth/auth.js` que monta
+`auth/booking-page.js` (og em português + redirecionamento pra agenda). O link
+do Google tem preview fixo em inglês para quem não está logado. `/a/` está em
+`OPEN_PREFIXES` e no `location` público do `deploy/nginx.allinone.conf`
+(`nginx-superficie-publica.test.js` trava os dois juntos). Copiar/mandar link
+de call e integração usam `meetingInviteText` (dia e hora de Brasília, 45 min).
 Prévia com o funil atual e um lead por etapa: `?shell&etapas#today` ou
 `#pipeline` (`preview/etapas-mock.js`); revisão:
 `node scripts/review/lead-stage.mjs` em `packages/web`.
