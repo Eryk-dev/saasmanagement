@@ -59,6 +59,22 @@ try {
     assert.ok(await entrega.getByText(/ainda não cadastrou o link de convite/).isVisible(), 'sem link cadastrado, diz onde cadastrar');
     assert.equal(await entrega.getByText('escolha um horário livre na grade').count(), 0, 'a grade sai quando o modo é o link');
     await page.getByRole('radiogroup', {name:'Como agendar'}).getByRole('radio', {name:'Marcar agora'}).click();
+    // Marcar agora (07/10/2026): a semana numa grade só, um dia por coluna, de
+    // hora em hora. Relógio da revisão: sex 18/09 às 15h.
+    const week = entrega.locator('.week-slots');
+    assert.equal(await week.locator('.week-slots-col').count(), 5, 'cinco dias úteis lado a lado');
+    assert.deepEqual((await week.locator('.week-slots-day').allTextContents()).map((t) => t.trim()),
+      ['sex 18/09', 'seg 21/09', 'ter 22/09', 'qua 23/09', 'qui 24/09']);
+    const firstCol = week.locator('.week-slots-col').first();
+    assert.equal(await firstCol.locator('.week-slot').count(), 14, '07:00…20:00, só hora cheia');
+    assert.equal(await week.locator('.week-slot', {hasText:':30'}).count(), 0, 'sem meia hora');
+    assert.ok(await firstCol.getByRole('button', {name:'14:00'}).isDisabled(), 'hora que já passou fica travada');
+    assert.ok(await week.getByRole('button', {name:'semana anterior'}).isDisabled(), 'não volta pra antes de hoje');
+    await week.getByRole('button', {name:'próxima semana'}).click();
+    assert.equal((await week.locator('.week-slots-day').first().textContent()).trim(), 'sex 25/09');
+    await week.getByRole('button', {name:'semana anterior'}).click();
+    await week.locator('.week-slots-col').nth(1).getByRole('button', {name:'10:00'}).click();
+    assert.match(await entrega.locator('.today-sched-picked').textContent(), /^✓ seg\.?, 21\/09.*10:00/);
     assert.equal(await actions.locator('select').count(), 0, 'nenhum <select> nativo no Próximo passo');
     await actions.scrollIntoViewIfNeeded();
     await h.capture(page, `closing-integracao-${width}`);
@@ -71,6 +87,7 @@ try {
     assert.deepEqual(
       {stage: upd.patch.stage, integrator: upd.patch.integrator, dealProduct: upd.patch.dealProduct, planClosed: upd.patch.planClosed, amount: upd.patch.amount, paymentMethod: upd.patch.paymentMethod},
       {stage:'Integração', integrator:'eryk', dealProduct:'ads_essencial', planClosed:'semestral', amount:3582, paymentMethod:'pix'});
+    assert.equal(upd.patch.integrationAt, '2026-09-21T10:00');
     await page.close();
   }
   // Mais de um produto na mesma venda: um bloco por produto, sem repetir plano

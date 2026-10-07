@@ -2169,15 +2169,17 @@ export function integBusyKeys(leads, integratorId, selfId) {
 // compromisso pessoal). Lê os horários ocupados do dia visível (60s de cache no
 // servidor) e devolve as células; `connected` false = a pessoa não conectou o
 // Google e a grade fica com o que o cockpit sabe. Os eventos do próprio card
-// (excludeLeadId) não contam.
-export function useGoogleBusy(userId, day, excludeLeadId = "") {
+// (excludeLeadId) não contam. `until` (opcional) estende a leitura até esse dia,
+// pra grade da semana inteira (WeekSlotGrid) travar todas as colunas.
+export function useGoogleBusy(userId, day, excludeLeadId = "", until = null) {
   const dayKey = userId && day ? ymd(day) : "";
-  const key = `${userId}|${dayKey}|${excludeLeadId}`;
+  const untilKey = dayKey && until && ymd(until) > dayKey ? ymd(until) : dayKey;
+  const key = `${userId}|${dayKey}|${untilKey}|${excludeLeadId}`;
   const [state, setState] = useS({ key: "", keys: new Set(), connected: null });
   useE(() => {
     if (!dayKey) return undefined;
     let alive = true;
-    api.googleBusy(userId, dayKey, dayKey, excludeLeadId).then((r) => {
+    api.googleBusy(userId, dayKey, untilKey, excludeLeadId).then((r) => {
       if (!alive) return;
       const keys = new Set();
       for (const b of r?.busy || []) {
@@ -2301,6 +2303,76 @@ export function SlotGrid({ days, day, setDay, slot, setSlot, busy }) {
   );
 }
 
+// Semana da grade da integração: N dias úteis a partir de `start` (fim de
+// semana pulado; `start` caindo no sábado/domingo começa na segunda).
+export const WEEK_DAYS = 5;
+export function businessDaysFrom(start, n = WEEK_DAYS) {
+  const out = []; const d = new Date(start); d.setHours(0, 0, 0, 0);
+  while (out.length < n) { const w = d.getDay(); if (w !== 0 && w !== 6) out.push(new Date(d)); d.setDate(d.getDate() + 1); }
+  return out;
+}
+
+// Grade da SEMANA, de hora em hora (07/10/2026): a integração dura 1h e começa
+// na hora cheia, então cada dia é uma coluna com os horários dele e a semana
+// inteira cabe numa olhada só, sem clicar no dia antes. ‹ › andam uma semana
+// útil; `start` é o primeiro dia visível. O ocupado vem do mesmo `busy`
+// (has/info) da SlotGrid — com hourLong, a hora trava se a meia hora seguinte
+// estiver ocupada.
+const chevron = (d) => (
+  <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+    <path d={d} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+export function WeekSlotGrid({ start, setStart, slot, setSlot, busy }) {
+  const days = businessDaysFrom(start);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const canBack = days[0] > businessDaysFrom(today, 1)[0];
+  const shift = (dir) => {
+    if (dir > 0) { const d = new Date(days[days.length - 1]); d.setDate(d.getDate() + 1); setStart(businessDaysFrom(d, 1)[0]); return; }
+    const d = new Date(days[0]); let n = 0;
+    while (n < WEEK_DAYS && d > today) { d.setDate(d.getDate() - 1); if (d.getDay() !== 0 && d.getDay() !== 6) n++; }
+    setStart(d < today ? today : d);
+  };
+  const hours = Array.from({ length: CALL_H1 - CALL_H0 }, (_, i) => CALL_H0 + i);
+  const fmt = (d, o) => d.toLocaleDateString("pt-BR", o).replace(/\./g, "");
+  const range = `${fmt(days[0], { day: "2-digit", month: "2-digit" })} – ${fmt(days[days.length - 1], { day: "2-digit", month: "2-digit" })}`;
+  return (
+    <div className="week-slots">
+      <div className="week-slots-nav">
+        <button type="button" onClick={() => shift(-1)} disabled={!canBack} aria-label="semana anterior">{chevron("M10 3 5 8l5 5")}</button>
+        <span className="mono">{range}</span>
+        <button type="button" onClick={() => shift(1)} aria-label="próxima semana">{chevron("m6 3 5 5-5 5")}</button>
+      </div>
+      <div className="week-slots-grid" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}>
+        {days.map((day) => (
+          <div key={ymd(day)} className="week-slots-col" role="group" aria-label={fmt(day, { weekday: "long", day: "2-digit", month: "2-digit" })}>
+            <div className={"week-slots-day mono" + (sameYMD(day, today) ? " is-today" : "")}>
+              <b>{fmt(day, { weekday: "short" })}</b> {fmt(day, { day: "2-digit", month: "2-digit" })}
+            </div>
+            {hours.map((h) => {
+              const cell = new Date(day); cell.setHours(h, 0, 0, 0);
+              const key = cellKey(cell);
+              const occupied = busy.has(key);
+              const bInfo = occupied && busy.info ? busy.info(key) : null;
+              const blocked = bInfo?.kind === "block";
+              const past = cell.getTime() < Date.now();
+              const val = slotVal(day, h, 0);
+              const sel = slot === val;
+              const title = blocked ? ("agenda bloqueada" + (bInfo.reason ? `: ${bInfo.reason}` : "")) : occupied ? "já tem integração nesse horário" : past ? "horário já passou" : "marcar";
+              return (
+                <button key={h} type="button" disabled={occupied || past} onClick={() => setSlot(val)} title={title} aria-pressed={sel}
+                  className={"week-slot mono" + (sel ? " is-sel" : occupied ? (blocked ? " is-blocked" : " is-busy") : past ? " is-past" : "")}>
+                  {blocked ? "🔒" : ""}{pad2(h)}:00
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // "Quando retomar": N dias à frente, 9h, nunca no fim de semana (a mesma régua
 // dos atalhos de próximo toque na ficha do lead). Devolve o formato do
 // <input type="datetime-local"> — hora local, sem fuso.
@@ -2393,7 +2465,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   // Agenda do Google de quem integra (Integração e Remarcar): chamado antes do
   // retorno antecipado, como todo hook. Sem integrador escolhido, não lê nada.
   const gUser = !dest || dest.retry ? "" : dest.reschedule ? (lead.integrator || "") : setupType(dest.kind) === "integrator" ? integrator : "";
-  const gBusy = useGoogleBusy(gUser, day, lead.id);
+  // Na entrega a grade é a da semana (WeekSlotGrid): lê o Google dos 5 dias úteis.
+  const gUntil = setupType(dest?.kind) === "integrator" && !dest?.retry && !dest?.reschedule ? businessDaysFrom(day).at(-1) : null;
+  const gBusy = useGoogleBusy(gUser, day, lead.id, gUntil);
 
   if (dests.length === 0) return null;
   // "Retomar" tem setup próprio (a data de voltar) e NÃO herda o do kind da
@@ -2857,7 +2931,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                           ]} />
                         {schedMode === "horario" && (
                           <div>
-                            <SlotGrid days={days} day={day} setDay={setDay} slot={slot} setSlot={setSlot} busy={integGrid} />
+                            <WeekSlotGrid start={day} setStart={setDay} slot={slot} setSlot={setSlot} busy={integGrid} />
                             <div className={"today-sched-picked" + (slot ? " is-set" : "")} role="status">
                               {slot ? `✓ ${slotFmt(slot)} · ${displayName(integrator)}` : "escolha um horário livre na grade"}
                             </div>

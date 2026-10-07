@@ -85,6 +85,27 @@
 .today-sched > .kicker { margin-bottom: 0 !important; cursor: help; }
 .today-sched-picked { margin-top: 10px; font-size: 12px; color: var(--fg-3); }
 .today-sched-picked.is-set { color: var(--accent); font-weight: 650; }
+/* Grade da semana da integração (WeekSlotGrid): um dia por coluna, de hora
+   em hora, compacta pra semana inteira caber sem rolar de lado. */
+.week-slots { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.week-slots-nav { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+.week-slots-nav > .mono { font-size: 11.5px; font-weight: 600; color: var(--fg-2); }
+.week-slots-nav button { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; padding: 0; border-radius: 999px; border: 1px solid var(--line-2); background: var(--bg-1); color: var(--fg-2); cursor: pointer; }
+.week-slots-nav button:hover:not(:disabled) { border-color: var(--accent-line); color: var(--accent); }
+.week-slots-nav button:disabled { opacity: .35; cursor: not-allowed; }
+.week-slots-nav svg { display: block; }
+@media (max-width: 600px) { .week-slots-nav button { width: 44px; height: 44px; } }
+.week-slots-grid { display: grid; gap: 4px; }
+.week-slots-col { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.week-slots-day { padding: 2px 0 4px; font-size: 10px; text-align: center; color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.week-slots-day b { font-weight: 650; color: var(--fg-2); text-transform: capitalize; }
+.week-slots-day.is-today, .week-slots-day.is-today b { color: var(--accent); }
+.week-slot { height: 24px; min-width: 0; padding: 0 2px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--bg-1); color: var(--fg-2); font-size: 10.5px; white-space: nowrap; overflow: hidden; cursor: pointer; }
+.week-slot:hover:not(:disabled) { border-color: var(--accent-line); color: var(--accent); }
+.week-slot.is-sel { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.week-slot.is-busy, .week-slot.is-blocked { background: var(--neg-soft); border-color: color-mix(in srgb, var(--neg) 30%, var(--line-2)); color: var(--neg); cursor: not-allowed; }
+.week-slot.is-busy { text-decoration: line-through; }
+.week-slot.is-past { color: var(--fg-4); opacity: .45; cursor: not-allowed; }
 .today-deal { display: flex; flex-direction: column; gap: 12px; }
 .today-deal-item.is-boxed { padding: 12px; border: 1px solid var(--line-1); border-radius: 14px; }
 .today-deal-item-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
