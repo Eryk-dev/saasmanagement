@@ -108,6 +108,28 @@ try {
   };
   const fakeWin = { since: "2026-08-01", until: "2026-08-08", businessDays: 6, days: 8, label: "este mês", short: "mês" };
 
+  // Metas: histórico (jul fechado batido, ago fechado não, set corrente) e o
+  // horizonte de planejamento jan/26 → dez/27 com set/26 como mês corrente.
+  const fakeHist = {
+    from: "2026-07", to: "2026-09", today: "2026-09-10",
+    ticket: { value: 5000, source: "prev_month", month: "2026-08" },
+    months: [
+      { month: "2026-07", target: 120000, source: "default", sold: 130000, contracted: 130000, progress: 1.0833, expectedProgress: 1, status: "ahead", soldN: 26, contractsTarget: 24, ended: true, current: false, keyAccount: null },
+      { month: "2026-08", target: 180000, source: "month", sold: 150000, contracted: 162000, progress: 0.8333, expectedProgress: 1, status: "behind", soldN: 30, contractsTarget: 36, ended: true, current: false, keyAccount: { count: 1, revenue: 120000, soldWith: 270000, countWith: 31 } },
+      { month: "2026-09", target: 225000, source: "month", sold: 90000, contracted: 95000, progress: 0.4, expectedProgress: 0.36, status: "ahead", soldN: 18, contractsTarget: 45, ended: false, current: true, keyAccount: null },
+    ],
+    years: [{ year: 2026, target: 525000, sold: 370000, contracted: 387000, soldN: 74, contractsTarget: 105, progress: 0.7048, months: 3, closedMonths: 2 }],
+  };
+  const planMonths = [];
+  for (let y = 2026; y <= 2027; y++) for (let m = 1; m <= 12; m++) {
+    const month = `${y}-${String(m).padStart(2, "0")}`;
+    planMonths.push({ month, target: month === "2026-08" ? 180000 : null, effective: month < "2026-08" ? 120000 : Math.round(180000 * Math.pow(1.25, (y - 2026) * 12 + m - 8)), source: month < "2026-08" ? "default" : month === "2026-08" ? "month" : "growth", current: month === "2026-09", past: month < "2026-09" });
+  }
+  const fakePlan = {
+    months: planMonths, horizon: { from: "2026-01", to: "2027-12", current: "2026-09" }, meses: { "2026-08": "180000" }, setMeses() {},
+    hist: fakeHist, ano: 2026, setAno() {}, growth: "25", setGrowth() {}, aplicar() {}, inp: {},
+  };
+
   const cases = [
     ["inbox", "/src/screens/whatsapp.jsx", "WhatsappInboxScreen", {}, "Inbox"],
     ["inbox-mensagens", "/src/components/wa-thread.jsx", "WaBubbles", { variant: "inbox", messages: [{ id: "wa-test", direction: "out", author: "sdr-bot", text: "Mensagem do robô", at: nowIso, status: "read" }] }, "Mensagem do robô"],
@@ -118,6 +140,11 @@ try {
     // Vendas por dia (07/10): o gráfico só existe com goal.sale.days.
     ["overview-vendas-dia", "/src/screens/overview.jsx", "MetaMesCard", { pace: fakePace, goal: fakeGoal, onNav() {} }, "Vendas por dia"],
     ["overview-funil", "/src/screens/overview.jsx", "FunilPeriodo", { team: fakeTeam, win: fakeWin, pLabel: "este mês" }, "Ganhos"],
+    // Metas (07/10): histórico meta × realizado e o planejamento em quatro trimestres.
+    ["metas-historico", "/src/screens/metas.jsx", "HistoricoCard", { hist: fakeHist, histErr: null, onRetry() {} }, "meta batida"],
+    ["metas-historico-ano", "/src/screens/metas.jsx", "HistoricoCard", { hist: fakeHist, histErr: null, onRetry() {} }, "2026 até agora"],
+    ["metas-planejamento", "/src/screens/metas.jsx", "PlanejamentoCard", fakePlan, "Q1 · jan a mar"],
+    ["metas-planejamento-semestre", "/src/screens/metas.jsx", "PlanejamentoCard", fakePlan, "1º semestre"],
     ["metrics", "/src/screens/metrics.jsx", "MetricsScreen", {}, "Publicidade"],
     ["expenses", "/src/screens/expenses.jsx", "ExpensesScreen", {}, "Pagamentos"],
     ["financeiro-pizza", "/src/screens/finance-hub.jsx", "GastosCard", { month: "2026-09", recebidosMes: 2000, setores: { deducoes: { imposto: 600 }, cogs: { ia: 200, wa: 100 }, sm: { ads: 100 } } }, "30,0%"],

@@ -189,6 +189,44 @@ test("placar e meta contam 6.000 (5.000 à vista + 1 parcela), não os 17.000 co
   await app.close();
 });
 
+test("histórico da tela Metas: cada mês é o MESMO número do /window, do pace e do placar", async () => {
+  const { app } = await buildApp();
+  const h = (await app.inject({ url: "/api/metas/leverads/history" })).json();
+  const pace = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json();
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${MONTH}` })).json();
+  const jul = h.months.find((m) => m.month === "2026-07");
+  assert.ok(jul, "julho (mês corrente da fixture) está no histórico");
+  assert.equal(jul.current, true);
+  assert.equal(jul.sold, 6000);
+  assert.equal(jul.sold, pace.sale.sold);
+  assert.equal(jul.sold, sb.team.revenue);
+  assert.equal(jul.contracted, 17000);
+  assert.equal(jul.soldN, 2);
+  assert.equal(jul.target, 100000);
+  // Mês a mês, o histórico e a janela do mês (01→último dia) são a mesma conta.
+  for (const m of h.months) {
+    const last = new Date(Date.UTC(Number(m.month.slice(0, 4)), Number(m.month.slice(5, 7)), 0)).getUTCDate();
+    const w = (await app.inject({ url: `/api/pipeline-pace/leverads/window?since=${m.month}-01&until=${m.month}-${String(last).padStart(2, "0")}` })).json();
+    assert.deepEqual(
+      { sold: m.sold, contracted: m.contracted, soldN: m.soldN, target: m.target, contractsTarget: m.contractsTarget, status: m.status, progress: m.progress, ended: m.ended },
+      { sold: w.sale.sold, contracted: w.sale.contracted, soldN: w.contracts.sold, target: w.sale.target, contractsTarget: w.contracts.target, status: w.sale.status, progress: w.sale.progress, ended: w.ended },
+      `mês ${m.month} bate com a janela`,
+    );
+  }
+  await app.close();
+});
+
+test("histórico: a parcela paga no mês seguinte não vira venda de agosto", async () => {
+  const { app, repo } = await buildApp();
+  await repo.update("invoices", "p2", { status: "paid", paidAt: "2026-08-08T13:00:00.000Z" });
+  // `now` da fixture é 13/07, então agosto ainda não existe no histórico; a
+  // prova aqui é que julho continua 6.000 (a parcela de agosto não entra em julho).
+  const h = (await app.inject({ url: "/api/metas/leverads/history?fresh=1" })).json();
+  assert.equal(h.months.find((m) => m.month === "2026-07").sold, 6000);
+  assert.ok(!h.months.some((m) => m.month === "2026-08"), "mês futuro nunca entra");
+  await app.close();
+});
+
 test("parcela do mês seguinte NÃO volta a contar: a venda conta uma vez, no mês em que fechou", async () => {
   const { app, repo } = await buildApp();
   // Agosto: a 2ª parcela cai, mas o fechamento foi em julho — a janela de

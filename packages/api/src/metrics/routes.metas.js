@@ -12,10 +12,10 @@
 // de contratos segue a venda ÷ ticket; digitada, ela vence essa divisão e a
 // cadeia (calls, contatos, leads) desce a partir dela.
 
-import { DEFAULT_CASH_TARGET, computePipelinePace, cashTargetFor } from "./pipeline-pace.js";
+import { DEFAULT_CASH_TARGET, computePipelinePace, cashTargetFor, cachedMonthlyHistory, monthIndex, monthOf } from "./pipeline-pace.js";
 import { DEFAULT_COMP_PLAN, compLevelOf, careerRuleOf, promotionEligibility, leveledRoleOf } from "../comp/comp-plan.js";
-import { monthKey } from "./metrics-core.js";
-import { META_CATALOG, deriveGoalsFromPace } from "./metas.js";
+import { dayKey, monthKey } from "./metrics-core.js";
+import { META_CATALOG, deriveGoalsFromPace, metasHorizon } from "./metas.js";
 
 const ALL_METRICS = new Set(META_CATALOG.flatMap((r) => r.metrics.map((m) => m.metric)));
 const ROLES = new Set(META_CATALOG.map((r) => r.role));
@@ -25,11 +25,9 @@ const ROLES = new Set(META_CATALOG.map((r) => r.role));
 // várias metas no mesmo tick, e torna o upsert idempotente por construção.
 const goalId = (saas, scope, key, metric) => `goal_${saas}_${scope}_${key}_${metric}`;
 
-// Quantos meses a tela enxerga: o corrente + 6 à frente (o botão "definir os
-// 6 meses" da Agenda preenche exatamente essa janela).
-const MONTHS_AHEAD = 7;
-
-export function registerMetasRoutes(app, repo) {
+// `now` injetável (testes e consistência com o pace): o mês corrente da agenda
+// e o "hoje" da elegibilidade vêm do mesmo relógio das outras rotas.
+export function registerMetasRoutes(app, repo, { now = () => new Date() } = {}) {
   // Metas atuais do produto + catálogo + time (pros ajustes por pessoa).
   app.get("/api/metas/:saas", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
@@ -68,7 +66,7 @@ export function registerMetasRoutes(app, repo) {
     const careerDocs = await repo.list("comp_plans").catch(() => []);
     const careerRule = careerRuleOf(careerDocs);
     const monthStamps = await repo.listWhere("comp_months", { saas: product.id }).catch(() => []);
-    const hojeKey = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+    const hojeKey = dayKey(now());
     for (const u of users) {
       const raw = u._raw;
       delete u._raw;
@@ -98,22 +96,24 @@ export function registerMetasRoutes(app, repo) {
     const userGoals = goals
       .filter((g) => g.scope === "user" && ALL_METRICS.has(g.metric))
       .map((g) => ({ key: g.key, metric: g.metric, target: Number(g.target) }));
-    // Meta da empresa: o padrão (vale pra qualquer mês sem valor próprio) e a
-    // agenda dos PRÓXIMOS meses. Configurar agosto hoje faz a plataforma inteira
-    // virar de meta sozinha no dia 1º, sem ninguém lembrar de mexer.
-    const mesAtual = monthKey(new Date());
-    const proximosMeses = [];
-    for (let i = 0; i < MONTHS_AHEAD; i++) {
-      const d = new Date(`${mesAtual}-01T12:00:00Z`);
-      d.setUTCMonth(d.getUTCMonth() + i);
-      const m = d.toISOString().slice(0, 7);
+    // Meta da empresa: a AGENDA do horizonte de planejamento (jan do ano
+    // corrente → dez do próximo, metasHorizon), com os meses passados (meta da
+    // época, pra fechar os trimestres e casar com o histórico) e os futuros.
+    // Configurar o mês hoje faz a plataforma inteira virar de meta sozinha no
+    // dia 1º, sem ninguém lembrar de mexer.
+    const mesAtual = monthKey(now());
+    const horizon = metasHorizon(mesAtual);
+    const agenda = [];
+    for (let idx = monthIndex(horizon.from); idx <= monthIndex(horizon.to); idx++) {
+      const m = monthOf(idx);
       const alvo = cashTargetFor(product, m);
-      proximosMeses.push({
+      agenda.push({
         month: m,
         target: Number(product.monthlyCashTargets?.[m]) > 0 ? Number(product.monthlyCashTargets[m]) : null,
         effective: alvo.target,     // o que vale hoje pra esse mês (com fallback)
-        source: alvo.source,        // month | default | system
+        source: alvo.source,        // month | growth | default | system
         current: m === mesAtual,
+        past: m < mesAtual,
       });
     }
     const company = {
@@ -121,7 +121,8 @@ export function registerMetasRoutes(app, repo) {
       cashTargetDefault: DEFAULT_CASH_TARGET,
       contractsTarget: Number(product.monthlyContractsTarget) > 0 ? Number(product.monthlyContractsTarget) : null,
       growthPct: Number(product.monthlyCashGrowthPct) > 0 ? Number(product.monthlyCashGrowthPct) : null,
-      months: proximosMeses,
+      months: agenda,
+      horizon,
     };
     // Quantas pessoas em cada vaga (o placar reparte a meta de time entre elas).
     const people = Object.fromEntries([...ROLES].map((role) => [role, users.filter((u) => u.roles.includes(role)).length]));
@@ -133,6 +134,21 @@ export function registerMetasRoutes(app, repo) {
   // (volta pro benchmark). period sempre "month" (o front escala pro período).
   // `company.cashTarget` (opcional) grava a meta de venda do mês no produto:
   // positivo salva, vazio/zero limpa (a faixa volta pro padrão).
+  // Histórico mensal meta × realizado (tela Metas): do primeiro mês com venda
+  // (piso jun/2026) ao mês corrente, cada mês com a MESMA conta do /window da
+  // Visão geral. `from` (AAAA-MM, até o mês corrente) encurta; `fresh=1` pula
+  // o cache de resultado.
+  app.get("/api/metas/:saas/history", async (req, reply) => {
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "produto não encontrado" });
+    const from = String(req.query?.from || "") || null;
+    const hoje = now();
+    if (from && (!/^\d{4}-(0[1-9]|1[0-2])$/.test(from) || from > monthKey(hoje))) {
+      return reply.code(400).send({ error: "from inválido (AAAA-MM, até o mês corrente)" });
+    }
+    return cachedMonthlyHistory(repo, product, { from, now: hoje, fresh: String(req.query?.fresh || "") === "1" });
+  });
+
   app.put("/api/metas/:saas", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "produto não encontrado" });
