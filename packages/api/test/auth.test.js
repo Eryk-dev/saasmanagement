@@ -165,6 +165,15 @@ test("roles: create sanitiza, list expõe, PATCH edita e reseta senha", async (t
   const bad = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "Jon", password: "abcd" } });
   assert.equal(bad.statusCode, 401);
 
+  // Horário de atendimento: sai limpo no PATCH e volta no publicUser
+  const hours = (await app.inject({
+    method: "PATCH", url: `/api/auth/users/${created.id}`,
+    payload: { workHours: [{ weekday: 1, from: 14, to: 18 }, { weekday: 1, from: 9, to: 12 }, { weekday: 9, from: 9, to: 10 }] },
+  })).json();
+  assert.deepEqual(hours.workHours, [{ weekday: 1, from: 9, to: 12 }, { weekday: 1, from: 14, to: 18 }]);
+  assert.deepEqual((await app.inject({ url: "/api/auth/users" })).json().find((u) => u.id === created.id).workHours, hours.workHours);
+  assert.deepEqual((await app.inject({ method: "PATCH", url: `/api/auth/users/${created.id}`, payload: { workHours: [] } })).json().workHours, []);
+
   // senha curta é rejeitada; usuário inexistente 404
   assert.equal((await app.inject({ method: "PATCH", url: `/api/auth/users/${created.id}`, payload: { password: "ab" } })).statusCode, 400);
   assert.equal((await app.inject({ method: "PATCH", url: "/api/auth/users/nao-existe", payload: { roles: [] } })).statusCode, 404);

@@ -316,14 +316,16 @@ function RowActions({ onEdit, onDelete }) {
 // vai no componente, que é o que conserta as cinco telas de uma vez: o menu
 // passa pelo Popover, que é `position: fixed`, se prende ao botão, se vira
 // quando não cabe embaixo e no celular abre como folha de baixo.
-function MoreMenu({ items, size = 26, align = "right" }) {
+// `label` (opcional) é o nome acessível do ⋯ ("Ações de Fulano"), pra linha
+// de tabela não ter vários botões com o mesmo nome.
+function MoreMenu({ items, size = 26, align = "right", label }) {
   const [open, setOpen] = React.useState(false);
   const btn = React.useRef(null);
   const vis = (items || []).filter(Boolean);
   if (!vis.length) return null;
   return (
     <span style={{ display: "inline-flex" }} onClick={(e) => e.stopPropagation()}>
-      <button ref={btn} onClick={() => setOpen((o) => !o)} title={vis.map((i) => i.label).join(" · ")}
+      <button ref={btn} onClick={() => setOpen((o) => !o)} title={vis.map((i) => i.label).join(" · ")} aria-label={label}
         style={{ width: size, height: size, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 13, lineHeight: 1, cursor: "pointer" }}>⋯</button>
       {open && (
         <Popover anchor={btn} onClose={() => setOpen(false)} width={200} align={align === "right" ? "end" : "start"}>

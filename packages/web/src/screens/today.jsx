@@ -17,6 +17,7 @@ import { scaledGoal } from "../components/team-cards.jsx";
 import { useData } from "../data.jsx";
 import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor, nurtureStage, hasDayStages, dayStageNumber, nextActionAfterMove } from "../lib/funnel.js";
 import { allUsers, currentUser, displayName, userById, usersByRole, isAdminUser } from "../lib/users.js";
+import { offWorkHours } from "../../../api/src/shared/work-hours.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { myOpenTasks, taskHash } from "../lib/tasks.js";
 import { useAttribution } from "../lib/pains.js";
@@ -2104,8 +2105,9 @@ function matchBlock(blocks, key) {
   });
 }
 // "Agenda ocupada" do dono: calls/integrações já marcadas (keys concretas) MAIS os
-// bloqueios manuais da tela Agenda. Devolve o mesmo contrato que a SlotGrid usa
-// (.has), com .info(key) extra pro tooltip (motivo do bloqueio).
+// bloqueios manuais da tela Agenda MAIS o que fica fora do horário de
+// atendimento dele (Ajustes → Equipe, shared/work-hours.js). Devolve o mesmo
+// contrato que a SlotGrid usa (.has), com .info(key) extra pro tooltip.
 export function busyView(concreteKeys, userId) {
   // Item conta pra pessoa quando ela é a dona (user) OU participante (users[],
   // compromisso com mais de uma pessoa ocupa a agenda de todas).
@@ -2121,11 +2123,13 @@ export function busyView(concreteKeys, userId) {
     const d = new Date(c.at);
     if (Number.isFinite(d.getTime())) for (const k of occupySlots(d, c.minutes)) consultKeys.add(k);
   }
+  const workHours = userById(userId)?.workHours || [];
   return {
-    has: (key) => concreteKeys.has(key) || consultKeys.has(key) || !!matchBlock(blocks, key),
+    has: (key) => concreteKeys.has(key) || consultKeys.has(key) || offWorkHours(workHours, key) || !!matchBlock(blocks, key),
     info: (key) => {
       if (concreteKeys.has(key)) return { kind: "call" };
       if (consultKeys.has(key)) return { kind: "block", reason: "consulta da mentoria" };
+      if (offWorkHours(workHours, key)) return { kind: "block", reason: "fora do horário de atendimento" };
       const b = matchBlock(blocks, key);
       // Compromisso (kind "event") ocupa igual; o tooltip mostra o título dele.
       return b ? { kind: "block", reason: b.title || b.reason || "" } : null;
@@ -2317,7 +2321,9 @@ export function businessDaysFrom(start, n = WEEK_DAYS) {
 // inteira cabe numa olhada só, sem clicar no dia antes. ‹ › andam uma semana
 // útil; `start` é o primeiro dia visível. O ocupado vem do mesmo `busy`
 // (has/info) da SlotGrid — com hourLong, a hora trava se a meia hora seguinte
-// estiver ocupada.
+// estiver ocupada. Só aparece o que dá pra marcar: hora ocupada ou que já
+// passou vira um vão (a mesma hora segue na mesma linha em todos os dias) e a
+// hora sem vaga em nenhum dia sai da grade.
 const chevron = (d) => (
   <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
     <path d={d} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -2333,7 +2339,11 @@ export function WeekSlotGrid({ start, setStart, slot, setSlot, busy }) {
     while (n < WEEK_DAYS && d > today) { d.setDate(d.getDate() - 1); if (d.getDay() !== 0 && d.getDay() !== 6) n++; }
     setStart(d < today ? today : d);
   };
-  const hours = Array.from({ length: CALL_H1 - CALL_H0 }, (_, i) => CALL_H0 + i);
+  const now = Date.now();
+  const at = (day, h) => { const c = new Date(day); c.setHours(h, 0, 0, 0); return c; };
+  const free = (day, h) => { const c = at(day, h); return c.getTime() >= now && !busy.has(cellKey(c)); };
+  const hours = Array.from({ length: CALL_H1 - CALL_H0 }, (_, i) => CALL_H0 + i)
+    .filter((h) => days.some((day) => free(day, h) || slot === slotVal(day, h, 0)));
   const fmt = (d, o) => d.toLocaleDateString("pt-BR", o).replace(/\./g, "");
   const range = `${fmt(days[0], { day: "2-digit", month: "2-digit" })} – ${fmt(days[days.length - 1], { day: "2-digit", month: "2-digit" })}`;
   return (
@@ -2343,32 +2353,33 @@ export function WeekSlotGrid({ start, setStart, slot, setSlot, busy }) {
         <span className="mono">{range}</span>
         <button type="button" onClick={() => shift(1)} aria-label="próxima semana">{chevron("m6 3 5 5-5 5")}</button>
       </div>
-      <div className="week-slots-grid" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}>
-        {days.map((day) => (
-          <div key={ymd(day)} className="week-slots-col" role="group" aria-label={fmt(day, { weekday: "long", day: "2-digit", month: "2-digit" })}>
-            <div className={"week-slots-day mono" + (sameYMD(day, today) ? " is-today" : "")}>
-              <b>{fmt(day, { weekday: "short" })}</b> {fmt(day, { day: "2-digit", month: "2-digit" })}
-            </div>
-            {hours.map((h) => {
-              const cell = new Date(day); cell.setHours(h, 0, 0, 0);
-              const key = cellKey(cell);
-              const occupied = busy.has(key);
-              const bInfo = occupied && busy.info ? busy.info(key) : null;
-              const blocked = bInfo?.kind === "block";
-              const past = cell.getTime() < Date.now();
-              const val = slotVal(day, h, 0);
-              const sel = slot === val;
-              const title = blocked ? ("agenda bloqueada" + (bInfo.reason ? `: ${bInfo.reason}` : "")) : occupied ? "já tem integração nesse horário" : past ? "horário já passou" : "marcar";
-              return (
-                <button key={h} type="button" disabled={occupied || past} onClick={() => setSlot(val)} title={title} aria-pressed={sel}
-                  className={"week-slot mono" + (sel ? " is-sel" : occupied ? (blocked ? " is-blocked" : " is-busy") : past ? " is-past" : "")}>
-                  {blocked ? "🔒" : ""}{pad2(h)}:00
-                </button>
-              );
-            })}
-          </div>
-        ))}
-      </div>
+      {hours.length === 0 ? (
+        <div className="week-slots-none mono">nenhum horário livre nesta semana · use › pra ver a próxima</div>
+      ) : (
+        <div className="week-slots-grid" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}>
+          {days.map((day) => {
+            const open = hours.filter((h) => free(day, h));
+            return (
+              <div key={ymd(day)} className="week-slots-col" role="group" aria-label={fmt(day, { weekday: "long", day: "2-digit", month: "2-digit" })}>
+                <div className={"week-slots-day mono" + (sameYMD(day, today) ? " is-today" : "")}>
+                  <b>{fmt(day, { weekday: "short" })}</b> {fmt(day, { day: "2-digit", month: "2-digit" })}
+                </div>
+                {hours.map((h, i) => {
+                  const val = slotVal(day, h, 0);
+                  const sel = slot === val;
+                  if (!sel && !free(day, h)) {
+                    return <span key={h} className="week-slot-gap mono" aria-hidden="true">{i === 0 && !open.length ? "lotado" : ""}</span>;
+                  }
+                  return (
+                    <button key={h} type="button" onClick={() => setSlot(val)} title="marcar" aria-pressed={sel}
+                      className={"week-slot mono" + (sel ? " is-sel" : "")}>{pad2(h)}:00</button>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

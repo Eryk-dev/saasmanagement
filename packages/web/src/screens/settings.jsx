@@ -2,7 +2,9 @@ import React from "react";
 import "./settings.css";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
 import { CAREER_LEVELS } from "../lib/levels.js";
-import { EmptyState, PrimaryButton, Avatar } from "../atoms.jsx";
+import { EmptyState, PrimaryButton, Avatar, MoreMenu } from "../atoms.jsx";
+import { Modal } from "../components/overlay.jsx";
+import { sanitizeWorkHours, workHoursSummary, fmtWorkHour } from "../../../api/src/shared/work-hours.js";
 import { Popover } from "../components/popover.jsx";
 import { useData } from "../data.jsx";
 import { api, assetUrl } from "../lib/api.js";
@@ -566,6 +568,7 @@ function TeamSettings() {
   const [invite, setInvite] = useStS(null); // { name, password }
   const [created, setCreated] = useStS(null); // { name, password, reset? } do último criado/resetado, fica na tela pro Leo copiar
   const [reset, setReset] = useStS(null); // { user, password }: senha nova sendo definida pra alguém do time
+  const [hoursOf, setHoursOf] = useStS(null); // usuário com o Horário de atendimento aberto
 
   const [error,setError]=useStS(null); const action=React.useRef(false),read=React.useRef(0);
   const load = async () => {const seq=++read.current;setError(null);try{const u=await api.listUsers();if(seq===read.current)setUsers(u);}catch(e){if(seq===read.current)setError(e.message);}};
@@ -585,6 +588,21 @@ function TeamSettings() {
   const setUserScreens=(u,screens)=>patchUser(u,{screens});
   const setUserSupportSaas=(u,supportSaas)=>patchUser(u,{supportSaas});
   const renameUser=(u,name)=>{const clean=String(name || "").trim();if(clean && clean!==u.name)return patchUser(u,{name:clean});};
+  // Horário de atendimento: além da lista da tela, atualiza o SEED.USERS — é
+  // de lá que as grades de call/integração leem (busyView em today.jsx), e o
+  // horário novo tem que valer já, sem recarregar.
+  async function saveWorkHours(u, workHours) {
+    if(action.current)return false;
+    action.current=true;setSaving(u.id);setError(null);
+    try {
+      const res=await api.updateUser(u.id,{workHours});
+      const next=res?.workHours || sanitizeWorkHours(workHours);
+      setUsers(us=>us.map(x=>x.id===u.id?{...x,workHours:next}:x));
+      const seed=window.SEED?.USERS;if(Array.isArray(seed)){const i=seed.findIndex(x=>x.id===u.id);if(i>=0)seed[i]={...seed[i],workHours:next};}
+      return true;
+    } catch(e){setError("Não salvou o horário: "+e.message);return false;}
+    finally{action.current=false;setSaving("");}
+  }
 
   async function createUser() {
     if (!invite?.name || !invite?.password || action.current) return;
@@ -639,7 +657,7 @@ function TeamSettings() {
           em vez de estourar a página — mesmo padrão do Funil abaixo. */}
       <div className="tbl-x" style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
        <div style={{ minWidth: 1000 + ROLE_OPTS.length * 92 }}>
-        <div className="kicker" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 130px 82px`, gap: 8, padding: "10px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
+        <div className="kicker" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 130px 44px`, gap: 8, padding: "10px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
           <span>Usuário</span>
           {ROLE_OPTS.map(([k, l, hint]) => <span key={k} title={hint} style={{ textAlign: "center" }}>{l}</span>)}
           <span title="Nível de carreira (júnior · pleno · sênior): define as metas de contratos e receita de SDR e closer, pelo plano de Remuneração">Nível</span>
@@ -650,7 +668,7 @@ function TeamSettings() {
         </div>
         {users === null && !error && <div className="mono dim" style={{ padding: "12px 14px", fontSize: 12 }}>carregando…</div>}
         {Array.isArray(users) && users.map((u) => (
-          <div key={u.id} style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 130px 82px`, gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
+          <div key={u.id} style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 130px 44px`, gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
             <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 500, minWidth: 0 }}>
               <Avatar id={u.id} name={u.name} size={22} />
               <input aria-label={`Nome de ${u.name}`} defaultValue={u.name || u.id} key={u.name}
@@ -662,6 +680,10 @@ function TeamSettings() {
                 onMouseEnter={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.style.borderColor = "var(--line-1)"; }}
                 onMouseLeave={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.style.borderColor = "transparent"; }} />
               <span className="mono dim code" style={{ fontSize: 10 }}>{u.id}</span>
+              {workHoursSummary(u.workHours) && (
+                <button type="button" className="settings-wh-chip" onClick={() => setHoursOf(u)}
+                  title={`Horário de atendimento: ${workHoursSummary(u.workHours)}`} aria-label={`Horário de atendimento de ${u.name || u.id}`}>◷</button>
+              )}
             </span>
             {ROLE_OPTS.map(([k]) => (
               <span key={k} style={{ textAlign: "center" }}>
@@ -679,14 +701,12 @@ function TeamSettings() {
             </select>
             <ScreensPicker screens={u.screens || []} roles={u.roles || []} onChange={(screens) => setUserScreens(u, screens)} />
             <SupportProductsPicker value={u.supportSaas || []} roles={u.roles || []} products={SAAS} onChange={(list) => setUserSupportSaas(u, list)} />
-            <span style={{ display: "flex", gap: 6, justifyContent: "center" }}>
-              <button type="button" onClick={() => { setCreated(null); setInvite(null); setReset({ user: u, password: genPassword() }); }}
-                title={`Resetar a senha de ${u.name || u.id} (gera uma nova, sem pedir a atual)`}
-                style={{ height: 26, padding: "0 7px", borderRadius: 999, border: "1px solid " + (reset?.user?.id === u.id ? "var(--accent)" : "var(--line-1)"), background: "var(--bg-1)", color: reset?.user?.id === u.id ? "var(--accent)" : "var(--fg-4)", fontSize: 11, cursor: "pointer" }}>senha</button>
-              <button aria-label={`Remover ${u.name || u.id} do time`} onClick={() => removeUser(u)} title={`Remover ${u.name || u.id} do time`}
-                style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-4)", fontSize: 13, cursor: "pointer" }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = "var(--neg)"; e.currentTarget.style.borderColor = "var(--neg)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = "var(--fg-4)"; e.currentTarget.style.borderColor = "var(--line-2)"; }}>✕</button>
+            <span style={{ display: "flex", justifyContent: "center" }}>
+              <MoreMenu size={28} label={`Ações de ${u.name || u.id}`} items={[
+                { label: "Horário de atendimento", onClick: () => setHoursOf(u) },
+                { label: "Alterar senha", onClick: () => { setCreated(null); setInvite(null); setReset({ user: u, password: genPassword() }); } },
+                { label: "Remover do time", tone: "neg", onClick: () => removeUser(u) },
+              ]} />
             </span>
           </div>
         ))}
@@ -731,9 +751,109 @@ function TeamSettings() {
             <button type="button" className="mono dim" style={{ fontSize: 11, cursor: "pointer" }} title="Fechar (a senha some da tela)" onClick={() => setCreated(null)}>✕</button>
           </span>
         )}
-        {!reset && <span className="mono dim" style={{ fontSize: 11 }}>papéis salvam ao clicar · cada um troca a própria senha em Meu perfil · "senha" na linha reseta sem pedir a atual</span>}
+        {!reset && <span className="mono dim" style={{ fontSize: 11 }}>papéis salvam ao clicar · cada um troca a própria senha em Meu perfil · o ⋯ da linha tem horário de atendimento, senha e remover</span>}
       </div>
+      {hoursOf && (
+        <WorkHoursModal user={hoursOf} busy={saving === hoursOf.id} onClose={() => setHoursOf(null)}
+          onSave={async (list) => { if (await saveWorkHours(hoursOf, list)) setHoursOf(null); }} />
+      )}
     </fieldset>
+  );
+}
+
+// Horário de atendimento (07/10/2026): o expediente da pessoa, igual ao do
+// link de convite do Google (que a API do Google não expõe). Fora dele as
+// grades de call/follow-up/integração travam o horário e o SDR automático não
+// oferece. Dias em ordem de semana útil; cada dia ligado tem uma ou mais
+// faixas em passos de meia hora. Nenhum dia ligado = agenda aberta (7h-21h).
+const WH_DAYS = [[1, "Segunda"], [2, "Terça"], [3, "Quarta"], [4, "Quinta"], [5, "Sexta"], [6, "Sábado"], [0, "Domingo"]];
+const WH_OPTS = Array.from({ length: (21 - 7) * 2 + 1 }, (_, i) => 7 + i / 2);
+const WH_X = (
+  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+    <path d="M3 3l6 6M9 3l-6 6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+  </svg>
+);
+function WorkHoursModal({ user, busy, onClose, onSave }) {
+  const [days, setDays] = useStS(() => {
+    const map = {};
+    for (const r of sanitizeWorkHours(user.workHours)) (map[r.weekday] = map[r.weekday] || []).push({ from: r.from, to: r.to });
+    return map;
+  });
+  const setDay = (wd, ranges) => setDays((d) => { const n = { ...d }; if (ranges && ranges.length) n[wd] = ranges; else delete n[wd]; return n; });
+  // Ligar um dia copia as faixas do primeiro dia já ligado (o caso comum é o
+  // mesmo expediente a semana toda); sem nenhum, começa em 09:00 às 18:00.
+  const firstOn = () => { for (const [wd] of WH_DAYS) if (days[wd]) return days[wd]; return null; };
+  const toggle = (wd) => setDay(wd, days[wd] ? null : (firstOn() || [{ from: 9, to: 18 }]).map((r) => ({ ...r })));
+  const edit = (wd, i, key, v) => setDay(wd, days[wd].map((r, j) => (j === i ? { ...r, [key]: v } : r)));
+  const addRange = (wd) => {
+    const rs = days[wd]; const end = rs[rs.length - 1].to;
+    setDay(wd, [...rs, { from: Math.min(end + 1, 20), to: Math.min(end + 3, 21) }]);
+  };
+  const copyWeekdays = () => { const base = days[1]; if (base) for (const wd of [2, 3, 4, 5]) setDay(wd, base.map((r) => ({ ...r }))); };
+  const list = Object.entries(days).flatMap(([wd, rs]) => rs.map((r) => ({ weekday: Number(wd), from: r.from, to: r.to })));
+  const invalid = list.some((r) => r.from >= r.to);
+  const summary = invalid ? "" : workHoursSummary(list);
+  const name = user.name || user.id;
+  return (
+    <Modal onClose={onClose} label={`Horário de atendimento de ${name}`} largura={560} fechavel={!busy}>
+      <div className="settings-wh">
+        <header className="settings-wh-head">
+          <div>
+            <div className="kicker">Horário de atendimento</div>
+            <h3>{name}</h3>
+          </div>
+          <button type="button" className="settings-wh-icon" onClick={onClose} aria-label="Fechar">{WH_X}</button>
+        </header>
+        <p className="settings-wh-sub">Use o mesmo expediente do link de convite do Google. Fora dele, as grades de call e de integração travam o horário e o SDR automático não oferece.</p>
+        <div className="settings-wh-days">
+          {WH_DAYS.map(([wd, label]) => {
+            const rs = days[wd];
+            return (
+              <div key={wd} className={"settings-wh-day" + (rs ? " is-on" : "")}>
+                <label className="settings-wh-toggle">
+                  <input type="checkbox" checked={!!rs} onChange={() => toggle(wd)} />
+                  <span>{label}</span>
+                </label>
+                {rs ? (
+                  <div className="settings-wh-ranges">
+                    {rs.map((r, i) => (
+                      <div key={i} className={"settings-wh-range" + (r.from >= r.to ? " is-bad" : "")}>
+                        <select aria-label={`${label}: início da faixa ${i + 1}`} value={r.from} onChange={(e) => edit(wd, i, "from", Number(e.target.value))} style={inputStyle}>
+                          {WH_OPTS.slice(0, -1).map((h) => <option key={h} value={h}>{fmtWorkHour(h)}</option>)}
+                        </select>
+                        <span className="mono dim">às</span>
+                        <select aria-label={`${label}: fim da faixa ${i + 1}`} value={r.to} onChange={(e) => edit(wd, i, "to", Number(e.target.value))} style={inputStyle}>
+                          {WH_OPTS.slice(1).map((h) => <option key={h} value={h}>{fmtWorkHour(h)}</option>)}
+                        </select>
+                        {rs.length > 1 && (
+                          <button type="button" className="settings-wh-icon" onClick={() => setDay(wd, rs.filter((_, j) => j !== i))} aria-label={`Tirar a faixa ${i + 1} de ${label}`} title="tirar esta faixa">{WH_X}</button>
+                        )}
+                      </div>
+                    ))}
+                    {rs.length < 4 && rs[rs.length - 1].to < 21 && (
+                      <button type="button" className="settings-wh-add" onClick={() => addRange(wd)}>+ faixa</button>
+                    )}
+                  </div>
+                ) : (
+                  <span className="settings-wh-off mono dim">não atende</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div className="settings-wh-foot">
+          <div className={"settings-wh-summary mono" + (invalid ? " is-bad" : "")} role="status">
+            {invalid ? "uma faixa termina antes de começar" : summary || "sem horário: a agenda fica aberta das 7h às 21h em dia útil"}
+          </div>
+          <div className="settings-wh-actions">
+            {days[1] && <button type="button" className="mono dim" onClick={copyWeekdays} title="copia as faixas de segunda pra terça a sexta">segunda → dias úteis</button>}
+            {list.length > 0 && <button type="button" className="mono dim" onClick={() => setDays({})}>limpar</button>}
+            <button type="button" className="mono dim" onClick={onClose}>cancelar</button>
+            <PrimaryButton onClick={() => onSave(sanitizeWorkHours(list))} disabled={invalid || busy}>{busy ? "salvando…" : "salvar horário"}</PrimaryButton>
+          </div>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

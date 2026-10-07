@@ -658,6 +658,20 @@ registrados. Abrir o cartão só consulta a REST, sem gerar resumo nem enviar
 mensagem. Validação de navegador: `node scripts/review/followup-summary.mjs`
 em `packages/web`.
 
+### Horário de atendimento — 07/10/2026
+
+`users.workHours` (`[{ weekday 0-6, from, to }]`, horas em passos de meia
+hora; `[]` = agenda aberta 7h–21h) é o expediente de cada pessoa, editado em
+Ajustes → Equipe → ⋯ → Horário de atendimento (`PATCH /api/auth/users/:id`).
+Ele espelha o link de convite do Google, cujas regras a API do Google não
+expõe. A régua mora em `api/src/shared/work-hours.js` (`offWorkHours`): a meia
+hora fora de uma faixa conta como ocupada no `busyView` do SPA (grades de
+call, follow-up, integração e remarcar) e no `busyOf` do servidor (oferta do
+SDR automático). A conferência de conflito ao salvar (`integration-slot.js`)
+não olha o expediente, e a tela Agenda não sombreia o fora do horário. A grade
+semanal da integração (`WeekSlotGrid`, só hora cheia) esconde o horário
+ocupado ou passado e tira a hora sem vaga em nenhum dia.
+
 ### Follow-up em 4 contatos, por dia — 05/10/2026
 
 Follow-up marca só o **dia** e nunca ocupa a agenda: `lead.followupAt` é

@@ -66,9 +66,11 @@ try {
     assert.deepEqual((await week.locator('.week-slots-day').allTextContents()).map((t) => t.trim()),
       ['sex 18/09', 'seg 21/09', 'ter 22/09', 'qua 23/09', 'qui 24/09']);
     const firstCol = week.locator('.week-slots-col').first();
-    assert.equal(await firstCol.locator('.week-slot').count(), 14, '07:00…20:00, só hora cheia');
+    assert.equal(await week.locator('.week-slots-col').nth(1).locator('.week-slot').count(), 14, '07:00…20:00, só hora cheia');
     assert.equal(await week.locator('.week-slot', {hasText:':30'}).count(), 0, 'sem meia hora');
-    assert.ok(await firstCol.getByRole('button', {name:'14:00'}).isDisabled(), 'hora que já passou fica travada');
+    assert.deepEqual(await firstCol.locator('.week-slot').allTextContents(), ['16:00', '17:00', '18:00', '19:00', '20:00'],
+      'hora que já passou sai da grade (vira vão, a linha segue alinhada)');
+    assert.equal(await firstCol.locator('.week-slot-gap').count(), 9);
     assert.ok(await week.getByRole('button', {name:'semana anterior'}).isDisabled(), 'não volta pra antes de hoje');
     await week.getByRole('button', {name:'próxima semana'}).click();
     assert.equal((await week.locator('.week-slots-day').first().textContent()).trim(), 'sex 25/09');
@@ -152,6 +154,24 @@ try {
     const upd = (await page.evaluate(() => window.__reviewMutations)).find((m) => m.method === 'update');
     assert.equal(upd.patch.proposalProduct, 'ads_trimestral');
     assert.equal(upd.patch.proposalOffer, 'anual');
+    await page.close();
+  }
+  // Horário de atendimento (Ajustes → Equipe): Eryk só atende segunda 9h-12h.
+  // A grade da semana mostra só esses horários; os outros dias ficam "lotado".
+  {
+    const page = await h.open(1440, '&closing');
+    await page.evaluate(() => { const u = window.SEED.USERS.find((x) => x.id === 'eryk'); u.workHours = [{weekday:1, from:9, to:12}]; });
+    await page.getByRole('textbox', {name:'Buscar na fila'}).fill('Bruno');
+    await page.locator('.today-open-script').first().click();
+    await page.locator('.today-destinations').getByRole('button', {name:/^Integração/}).click();
+    await pick(page, /^Responsável pela integração:/, /^Eryk/);
+    const week = page.locator('section[aria-label="A entrega"] .week-slots');
+    assert.deepEqual(await week.locator('.week-slots-col').nth(1).locator('.week-slot').allTextContents(), ['09:00', '10:00', '11:00'],
+      'a integração de 1h cabe inteira até 12h; fora do horário some');
+    assert.equal(await week.locator('.week-slot').count(), 3);
+    assert.deepEqual(await week.locator('.week-slot-gap', {hasText:'lotado'}).count(), 4, 'os dias sem atendimento dizem lotado');
+    await week.scrollIntoViewIfNeeded();
+    await h.capture(page, 'closing-workhours-1440');
     await page.close();
   }
   assert.deepEqual(h.errors, []);

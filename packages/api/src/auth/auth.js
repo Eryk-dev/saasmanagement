@@ -11,6 +11,7 @@ import { sanitizeSupportSaas } from "./support-scope.js";
 import { sanitizeBookingUrl, bookingPreview, bookingPageHtml, bookingMissingHtml } from "./booking-page.js";
 import { publicBase } from "../platform/request.js";
 import { recordBookingClick } from "../google/booking-sync.js";
+import { sanitizeWorkHours } from "../shared/work-hours.js";
 
 const SESSION_TTL_MS = 7 * 24 * 3600 * 1000;
 
@@ -85,6 +86,8 @@ const publicUser = (u) => ({
   googleConnected: !!u.google?.refreshToken,
   googleAccount: u.google?.account || "",
   bookingUrl: u.bookingUrl || "",
+  // Horário de atendimento (shared/work-hours.js): [] = agenda aberta 7h-21h.
+  workHours: sanitizeWorkHours(u.workHours),
 });
 
 // Token de sessão → usuário (null se inexistente/expirado).
@@ -304,8 +307,11 @@ export function registerAuthRoutes(app, repo) {
   app.patch("/api/auth/users/:id", async (req, reply) => {
     const user = await repo.get("users", req.params.id);
     if (!user) return reply.code(404).send({ error: "Not found" });
-    const { name, roles, password, saas, screens, compLevel, supportSaas } = req.body || {};
+    const { name, roles, password, saas, screens, compLevel, supportSaas, workHours } = req.body || {};
     const patch = {};
+    // Horário de atendimento: as grades de call/integração e o SDR automático
+    // só oferecem horário dentro dele. [] volta pra agenda aberta.
+    if (workHours !== undefined) patch.workHours = sanitizeWorkHours(workHours);
     // Nível do plano de remuneração (1 jr · 2 pl · 3 sn): régua das metas de
     // contratos/receita do card da pessoa na Visão geral (comp-plan.js).
     if (compLevel !== undefined) {
