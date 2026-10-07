@@ -210,6 +210,134 @@ function Termometro({ s, goal, lad, label, milestone }) {
   );
 }
 
+// ── Vendas por dia ──────────────────────────────────────────────────────────
+// Entre os números da meta e o funil: uma barra por dia da JANELA DO FILTRO,
+// com o valor RECONHECIDO que o servidor manda em goal.sale.days — as barras
+// somam exatamente o número grande logo acima. Somar lead.amount aqui faria a
+// soma subir pelo contrato cheio e brigar com o número ao lado.
+// O tracejado é o ritmo atual por dia útil da mesma janela.
+const DIA_SEMANA = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+const wdOf = (day) => new Date(`${day}T12:00:00`).getDay();
+const ddmm = (day) => `${day.slice(8, 10)}/${day.slice(5, 7)}`;
+// Rótulo no topo da barra: "11k", "5,7k". O compactMoney da tela devolve
+// "11,3 mil", largo demais pra uma coluna de 26px.
+const kMoney = (v) => {
+  const n = Math.round(Number(v) || 0);
+  if (n < 1000) return String(n);
+  const k = n / 1000;
+  return `${k >= 10 ? String(Math.round(k)) : String(Math.round(k * 10) / 10).replace(".", ",")}k`;
+};
+// Ritmo da JANELA: o vendido repartido pelos dias úteis que já passaram dela.
+// No mês corrente bate com pace.sale.actualDailyPace; em qualquer outra janela
+// é o único ritmo que fala do período que está na tela.
+const ritmoDaJanela = (goal) => {
+  const n = Number(goal?.businessDaysElapsed) || 0;
+  return n > 0 ? (Number(goal?.sale?.sold) || 0) / n : 0;
+};
+// Acima disso a grade agrupa por semana: o filtro do topo vai até 90 dias e
+// aceita intervalo livre, e 90 colunas num card viram borrão.
+const AGRUPA_ACIMA_DE = 45;
+
+function VendasPorDia({ goal }) {
+  const [hover, setHover] = useState(null);
+  const serie = useMemo(() => {
+    if (!goal || !Array.isArray(goal.sale?.days)) return null;
+    const mapa = new Map(goal.sale.days.map((d) => [d.day, d]));
+    const dias = [];
+    for (let d = goal.since; d <= goal.until && dias.length < 400; d = plusDays(d, 1)) {
+      const w = wdOf(d);
+      const info = mapa.get(d);
+      dias.push({
+        day: d, wd: w, weekend: w === 0 || w === 6,
+        future: d > goal.today, today: d === goal.today,
+        valor: info?.revenue || 0, contratos: info?.contracts || 0,
+      });
+    }
+    const ritmo = ritmoDaJanela(goal);
+    if (dias.length <= AGRUPA_ACIMA_DE) return { semanal: false, itens: dias, ref: ritmo };
+    const semanas = [];
+    for (let i = 0; i < dias.length; i += 7) {
+      const bloco = dias.slice(i, i + 7);
+      semanas.push({
+        day: bloco[0].day, fim: bloco[bloco.length - 1].day,
+        valor: bloco.reduce((a, b) => a + b.valor, 0),
+        contratos: bloco.reduce((a, b) => a + b.contratos, 0),
+        uteis: bloco.filter((b) => !b.weekend && !b.future).length,
+        future: bloco.every((b) => b.future), today: bloco.some((b) => b.today), weekend: false,
+      });
+    }
+    return { semanal: true, itens: semanas, ref: ritmo * 5 };
+  }, [goal]);
+
+  // API antiga (antes do deploy da série): o bloco não aparece, em vez de
+  // desenhar uma grade vazia que mentiria sobre o período.
+  if (!serie) return null;
+  const { semanal, itens, ref } = serie;
+  const maior = Math.max(0, ...itens.map((b) => b.valor));
+  const teto = Math.max(maior, ref * 1.5, 1);
+  const alt = (v) => `${Math.min(100, (v / teto) * 100).toFixed(1)}%`;
+  const n = itens.length;
+  const vazio = !itens.some((b) => b.contratos > 0);
+  const legenda = semanal ? "ritmo da semana" : "ritmo atual";
+
+  const tip = (b, i) => {
+    const delta = b.valor - ref;
+    const mostraVs = !b.future && (semanal || !b.weekend);
+    const detalhe = semanal
+      ? (b.contratos ? `${int(b.contratos)} contrato${b.contratos > 1 ? "s" : ""} · ${int(b.uteis)} ${b.uteis === 1 ? "dia útil corrido" : "dias úteis corridos"}` : "nenhuma venda na semana")
+      : b.contratos && b.valor ? `${int(b.contratos)} contrato${b.contratos > 1 ? "s" : ""} · ticket ${moneyFull(b.valor / b.contratos)}`
+        : b.contratos ? `${int(b.contratos)} contrato${b.contratos > 1 ? "s" : ""} · nada entrou ainda (faturado ou recorrente)`
+          : b.weekend ? "fim de semana · sem meta" : b.future ? "ainda não aconteceu" : "nenhuma venda";
+    return (
+      <div className={`vg-day-tip${i < 3 ? " is-left" : i > n - 4 ? " is-right" : ""}`}>
+        <span className="vg-day-tip-date">{semanal ? `${ddmm(b.day)} a ${ddmm(b.fim)}` : `${DIA_SEMANA[b.wd]}, ${ddmm(b.day)}${b.today ? " · hoje" : ""}`}</span>
+        <strong>{moneyFull(b.valor)}</strong>
+        <span className="vg-day-tip-sub">{detalhe}</span>
+        {mostraVs && <span className="vg-day-tip-vs" style={{ color: delta >= 0 ? "var(--vg-cyan)" : "#f2a59b" }}>
+          {`${delta >= 0 ? "+" : "−"}${moneyFull(Math.abs(delta))} vs. ${legenda}`}
+        </span>}
+      </div>
+    );
+  };
+
+  return (
+    <div className="vg-days">
+      <div className="vg-days-head">
+        <div>
+          <span className="kicker">{semanal ? "Vendas por semana" : "Vendas por dia"}</span>
+          <span className="vg-days-period">{goalLabelOf(goal).label}</span>
+        </div>
+        {ref > 0 && <div className="vg-days-legend"><span aria-hidden="true" />{legenda} <b>{moneyFull(ref)}</b>{semanal ? "/semana" : "/dia útil"}</div>}
+      </div>
+      <div className="vg-days-grid">
+        {ref > 0 && <span className="vg-days-line" style={{ bottom: alt(ref) }} aria-hidden="true" />}
+        {itens.map((b, i) => (
+          <div key={b.day} className={`vg-day${b.weekend ? " is-weekend" : ""}${hover === b.day ? " is-on" : ""}`}
+            onMouseEnter={() => setHover(b.day)} onMouseLeave={() => setHover(null)}>
+            {b.today && !semanal && <span className="vg-day-today">hoje</span>}
+            {b.valor > 0 && <span className="vg-day-value" style={b.today ? { color: "var(--accent)" } : null}>{kMoney(b.valor)}</span>}
+            <span className="vg-day-bar" style={{
+              height: alt(b.valor),
+              minHeight: b.weekend && !b.valor ? 0 : 4,
+              background: b.weekend && !b.valor ? "transparent"
+                : b.today ? "var(--accent)" : b.future ? "var(--bg-2)" : b.valor > 0 ? "var(--vg-funnel-3)" : "var(--vg-funnel-0)",
+            }} />
+            {hover === b.day && tip(b, i)}
+          </div>
+        ))}
+      </div>
+      <div className="vg-days-axis">
+        {itens.map((b) => (
+          <span key={b.day} className={b.today ? "is-today" : b.weekend ? "is-weekend" : b.future ? "is-future" : undefined}>
+            {semanal ? ddmm(b.day) : b.day.slice(8, 10)}
+          </span>
+        ))}
+      </div>
+      {vazio && <div className="vg-days-empty">Nenhuma venda registrada neste período.</div>}
+    </div>
+  );
+}
+
 function MetaMesCard({ pace, goal, children }) {
   if (!goal) return null;
   const s = goal.sale || {};
@@ -273,6 +401,7 @@ function MetaMesCard({ pace, goal, children }) {
               <div className="vg-meta-caption">{int(c.sold)} contratos assinados{c.sold > 0 && s.sold > 0 ? ` · ticket médio ${moneyFull(s.sold / c.sold)}` : ""}{curMes ? ` · ritmo atual ${moneyFull(pace.sale.actualDailyPace)}/dia útil` : ""}</div>
               {s.target == null && <div className="vg-meta-caption">Sem meta de venda para este período.</div>}
             </div>
+            <VendasPorDia goal={goal} />
             {children}
           </div>
         </div>

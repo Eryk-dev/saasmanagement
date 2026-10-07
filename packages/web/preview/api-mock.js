@@ -110,7 +110,13 @@ const RESPOSTAS = {
   paceWindow: () => ({
     since: "2026-09-01", until: "2026-09-30", today: "2026-09-14",
     businessDays: 21, businessDaysElapsed: 8, ended: false, current: true, saas: "leverads",
-    sale: { target: 128000, sold: 10950, contracted: 10950, progress: 0.0855, expectedProgress: 0.38, status: "behind" },
+    sale: { target: 128000, sold: 10950, contracted: 10950, progress: 0.0855, expectedProgress: 0.38, status: "behind",
+      // Série do gráfico "Vendas por dia" (esparsa; a soma é o sold).
+      days: [
+        { day: "2026-09-03", revenue: 3650, contracts: 1 },
+        { day: "2026-09-09", revenue: 4300, contracts: 1 },
+        { day: "2026-09-11", revenue: 3000, contracts: 1 },
+      ] },
     contracts: { target: 35, sold: 3, progress: 0.0857, expectedProgress: 0.38, status: "behind" },
   }),
   pipelinePace: () => ({
