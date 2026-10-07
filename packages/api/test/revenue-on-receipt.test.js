@@ -178,6 +178,14 @@ test("placar e meta contam 6.000 (5.000 à vista + 1 parcela), não os 17.000 co
   assert.equal(janela.sale.contracted, 17000);
   // Série do gráfico de pace: soma dia a dia = o vendido reconhecido.
   assert.equal(pace.sale.byDay.reduce((a, v) => a + v, 0), 6000);
+  // Série da JANELA (o gráfico "Vendas por dia" da Visão geral): mesma régua,
+  // esparsa e com a contagem de contratos — as barras somam o número grande.
+  assert.equal(janela.sale.days.reduce((a, d) => a + d.revenue, 0), janela.sale.sold);
+  assert.deepEqual(janela.sale.days, [
+    { day: "2026-07-06", revenue: 5000, contracts: 1 },
+    { day: "2026-07-08", revenue: 1000, contracts: 1 },
+  ]);
+  assert.equal(janela.sale.days.reduce((a, d) => a + d.contracts, 0), janela.contracts.sold);
   await app.close();
 });
 

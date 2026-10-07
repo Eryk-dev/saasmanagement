@@ -15,7 +15,7 @@
 .vg-meta-label { text-align: center; margin-bottom: 14px; }
 .vg-meta-label .kicker { font-size: 14.5px; font-weight: 500; letter-spacing: .16em; color: var(--vg-cyan); }
 .vg-meta-target { font-family: var(--display); font-size: 24px; font-weight: 700; letter-spacing: -.025em; line-height: 1.2; margin-top: 4px; }
-.vg-meta-thermometer-bar { position: relative; width: 84px; height: 272px; flex-shrink: 0; border-radius: 999px; overflow: hidden; display: flex; flex-direction: column; background: rgba(255,255,255,.07); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+.vg-meta-thermometer-bar { position: relative; width: 84px; flex: 1 1 auto; min-height: 272px; border-radius: 999px; overflow: hidden; display: flex; flex-direction: column; background: rgba(255,255,255,.07); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
 .vg-meta-liquid { position: relative; flex-shrink: 0; color: #1cbdb5; background: linear-gradient(to top,#0c8f83,#23d8d3); }
 .vg-meta-liquid-followup { background: #23d8d34d; color: #23d8d34d; }
 .vg-meta-wave { position: absolute; width: 200%; height: 8px; left: 0; top: -4px; fill: currentColor; pointer-events: none; }
@@ -42,6 +42,37 @@
 .vg-meta-fact.is-followup > span { color: inherit; }
 .vg-meta-caption { color: var(--fg-3); font-size: 13px; line-height: 1.5; margin-top: 14px; }
 .vg-meta-empty,.vg-load-state { padding: 20px; color: var(--fg-3); font-size: 13px; }
+/* Vendas por dia: uma barra por dia da janela do filtro. O valor vem de
+   goal.sale.days (o RECONHECIDO do servidor), então as barras somam o número
+   grande logo acima. Janela de mais de 45 dias agrupa por semana, no JS. */
+.vg-days { border-top: 1px solid var(--vg-line); padding-top: 16px; display: flex; flex-direction: column; gap: 6px; }
+.vg-days-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.vg-days-head > div { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.vg-days-period { font-size: 11.5px; color: var(--fg-4); }
+.vg-days-legend { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--fg-3); }
+.vg-days-legend > span { width: 18px; border-top: 2px dashed var(--fg-3); }
+.vg-days-legend b { font-family: var(--display); font-weight: 700; color: var(--fg-1); }
+.vg-days-grid { position: relative; height: 132px; display: flex; gap: 4px; }
+.vg-days-line { position: absolute; left: 0; right: 0; border-top: 1.5px dashed color-mix(in srgb,var(--fg-3) 70%,transparent); pointer-events: none; z-index: 2; }
+.vg-day { position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px; border-radius: 8px; }
+.vg-day.is-weekend { background: color-mix(in srgb,var(--vg-line) 60%,transparent); }
+.vg-day.is-on { background: var(--vg-soft); }
+.vg-day-today { font-size: 8.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); white-space: nowrap; margin-bottom: -3px; }
+.vg-day-value { font: 600 9.5px var(--display); letter-spacing: -.02em; white-space: nowrap; color: var(--fg-2); }
+.vg-day-bar { width: 100%; max-width: 26px; border-radius: 6px 6px 3px 3px; }
+.vg-days-axis { display: flex; gap: 4px; }
+.vg-days-axis > span { flex: 1 1 0; min-width: 0; text-align: center; font-size: 10.5px; color: var(--fg-2); overflow: hidden; }
+.vg-days-axis > .is-today { color: var(--accent); font-weight: 700; }
+.vg-days-axis > .is-weekend { color: var(--fg-5); }
+.vg-days-axis > .is-future { color: var(--fg-4); }
+.vg-day-tip { position: absolute; bottom: 100%; margin-bottom: 6px; left: 50%; transform: translateX(-50%); z-index: 5; pointer-events: none; min-width: 168px; padding: 10px 12px; border-radius: 12px; background: var(--vg-navy); color: #fff; box-shadow: 0 8px 24px -6px rgba(16,24,40,.35); display: flex; flex-direction: column; gap: 3px; white-space: nowrap; }
+.vg-day-tip.is-left { left: 0; transform: none; }
+.vg-day-tip.is-right { left: auto; right: 0; transform: none; }
+.vg-day-tip-date { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #9fb3bf; }
+.vg-day-tip strong { font: 700 18px var(--display); letter-spacing: -.02em; }
+.vg-day-tip-sub { font-size: 11.5px; color: rgba(255,255,255,.75); }
+.vg-day-tip-vs { font-size: 11.5px; font-weight: 600; }
+.vg-days-empty { font-size: 12.5px; color: var(--fg-4); margin-top: 4px; }
 .vg-funnel { border-top: 1px solid var(--vg-line); padding-top: 16px; }
 .vg-funnel-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 8px 12px; border-radius: 999px; transition: background 150ms ease; }
 .vg-funnel-row > span:first-child { flex: 0 1 112px; min-width: 72px; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -129,11 +160,23 @@ body[data-theme="dark"] .overview-screen { --vg-soft: var(--bg-inset); --vg-pill
   .vg-meta-columns { flex-direction: column; }
   .vg-meta-thermometer { flex-basis: auto; flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 18px; padding: 20px 14px; }
   .vg-meta-label { margin: 0; }
-  .vg-meta-thermometer-bar { width: 50px; height: 140px; }
+  .vg-meta-thermometer-bar { width: 50px; height: 140px; flex: 0 0 auto; min-height: 0; }
   .vg-meta-percent { margin: 0; }
   .vg-meta-story { flex-basis: auto; padding: 22px 14px; }
   .vg-sold { font-size: 42px; }
   .vg-meta-fact { flex-wrap: wrap; }
+  .vg-days-grid { height: 104px; }
+  .vg-day-value { display: none; }
+  /* 30 números de dia em 300px viram um borrão: no celular sobram o 1º, o de
+     5 em 5 e o de hoje. visibility em vez de display pra o que sobrou
+     continuar embaixo da coluna certa. */
+  .vg-days-axis > span { visibility: hidden; overflow: visible; }
+  .vg-days-axis > span:first-child,
+  .vg-days-axis > span:nth-child(5n),
+  .vg-days-axis > .is-today { visibility: visible; }
+  /* o vizinho de hoje sai: "14" e "15" colados viram um borrão só */
+  .vg-days-axis > .is-today + span,
+  .vg-days-axis > span:has(+ .is-today) { visibility: hidden; }
   .vg-funnel-row { gap: 6px; min-height: 44px; padding-inline: 8px; }
   .vg-funnel-row > span:first-child { flex-basis: 112px; }
   .vg-funnel-row > span:last-child { width: 42px; }
