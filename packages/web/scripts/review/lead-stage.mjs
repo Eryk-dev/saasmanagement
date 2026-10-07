@@ -59,10 +59,23 @@ try {
     await gate.getByRole('button', {name:/^Modo de pagamento/}).click();
     await page.getByRole('option').first().click();
     assert.match(await gate.getByRole('button', {name:/^Responsável pela integração/}).textContent(), /Eryk/);
-    // Com o integrador escolhido, o link de convite da agenda dele aparece pra mandar ao cliente.
+    // Agendamento igual ao Próximo passo das Atividades (07/10/2026): Marcar
+    // agora (semana, de hora em hora), Enviar link ou Marcar depois.
+    const como = gate.getByRole('radiogroup', {name:'Como agendar'});
+    assert.deepEqual(await como.getByRole('radio').allTextContents(), ['Marcar agora', 'Enviar link', 'Marcar depois']);
+    await como.getByRole('radio', {name:'Enviar link'}).click();
+    // No link, o convite da agenda de quem integra pra mandar ao cliente.
     const booking = gate.getByRole('group', {name:'Link de convite de Eryk'});
     assert.equal(await booking.getByRole('link', {name:'abrir agenda ↗'}).getAttribute('href'), 'https://calendar.app.google/YfS45BGrP3Nb9aA88');
     await booking.getByRole('button', {name:'copiar mensagem'}).waitFor();
+    assert.equal(await gate.locator('.week-slots').count(), 0, 'a grade sai no modo link');
+    await como.getByRole('radio', {name:'Marcar agora'}).click();
+    const week = gate.locator('.week-slots');
+    assert.equal(await week.locator('.week-slots-col').count(), 5);
+    assert.equal(await week.locator('.week-slot', {hasText:':30'}).count(), 0, 'só hora cheia');
+    await week.locator('.week-slots-col').nth(1).getByRole('button', {name:'10:00'}).click();
+    assert.match(await gate.locator('.today-sched-picked').textContent(), /^✓ seg\.?, 21\/09.*10:00/);
+    await week.scrollIntoViewIfNeeded();
     await h.capture(page, `lead-stage-gate-${width}`);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await gate.getByRole('button', {name:'confirmar movimento'}).click();
@@ -71,6 +84,7 @@ try {
     assert.equal(patch.stage, 'Integração');
     assert.equal(patch.amount, 3582.5);
     assert.equal(patch.integrator, 'eryk');
+    assert.equal(patch.integrationAt, '2026-09-21T10:00');
     assert.equal(patch.planClosed, 'semestral');
     assert.ok(patch.paymentMethod, 'pagamento escolhido no popover');
     await page.close();

@@ -2356,7 +2356,7 @@ export function WeekSlotGrid({ start, setStart, slot, setSlot, busy }) {
       {hours.length === 0 ? (
         <div className="week-slots-none mono">nenhum horário livre nesta semana · use › pra ver a próxima</div>
       ) : (
-        <div className="week-slots-grid" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}>
+        <div className="week-slots-grid" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))`, gridTemplateRows: `auto repeat(${hours.length}, auto)` }}>
           {days.map((day) => {
             const open = hours.filter((h) => free(day, h));
             return (

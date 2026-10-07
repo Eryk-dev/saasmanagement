@@ -95,17 +95,20 @@
 .week-slots-nav button:disabled { opacity: .35; cursor: not-allowed; }
 .week-slots-nav svg { display: block; }
 @media (max-width: 600px) { .week-slots-nav button { width: 44px; height: 44px; } }
-.week-slots-grid { display: grid; gap: 4px; }
-.week-slots-col { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+/* Cada hora é uma LINHA do grid (as colunas do dia são display: contents):
+   o vão de um horário indisponível cresce junto com o botão mais alto da
+   linha, então a mesma hora fica alinhada em todos os dias, com o botão de
+   24px ou com o de 44px que as telas de toque impõem. */
+.week-slots-grid { display: grid; grid-auto-flow: column; gap: 3px 4px; }
+.week-slots-col { display: contents; }
 .week-slots-day { padding: 2px 0 4px; font-size: 10px; text-align: center; color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .week-slots-day b { font-weight: 650; color: var(--fg-2); text-transform: capitalize; }
 .week-slots-day.is-today, .week-slots-day.is-today b { color: var(--accent); }
 .week-slot { height: 24px; min-width: 0; padding: 0 2px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--bg-1); color: var(--fg-2); font-size: 10.5px; white-space: nowrap; overflow: hidden; cursor: pointer; }
-.week-slot:hover:not(:disabled) { border-color: var(--accent-line); color: var(--accent); }
+.week-slot:hover:not(:disabled):not(.is-sel) { border-color: var(--accent-line); color: var(--accent); }
 .week-slot.is-sel { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
-.week-slot-gap { display: flex; align-items: center; justify-content: center; height: 24px; font-size: 10px; color: var(--fg-4); }
+.week-slot-gap { display: flex; align-items: center; justify-content: center; min-height: 24px; font-size: 10px; color: var(--fg-4); }
 .week-slots-none { padding: 14px 0; font-size: 11px; color: var(--fg-3); }
-@media (max-width: 600px) { .week-slot-gap { height: 44px; } }
 .today-deal { display: flex; flex-direction: column; gap: 12px; }
 .today-deal-item.is-boxed { padding: 12px; border: 1px solid var(--line-1); border-radius: 14px; }
 .today-deal-item-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }

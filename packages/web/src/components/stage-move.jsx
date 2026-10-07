@@ -8,10 +8,10 @@ import { DealProductField, isOneOffProduct, PopoverWithCustom, PaymentMethodPick
 import { SelectPopover } from "./select-popover.jsx";
 import { Choice } from "./plan-editor.jsx";
 import { api } from "../lib/api.js";
-import { SlotGrid, nextBusinessDays, callBusyKeys, integBusyKeys, parseMoneyInput, useGoogleBusy, withGoogleBusy, hourLong } from "../screens/today.jsx";
+import { SlotGrid, WeekSlotGrid, businessDaysFrom, nextBusinessDays, callBusyKeys, integBusyKeys, parseMoneyInput, useGoogleBusy, withGoogleBusy, hourLong, googleBusyNote, bookingLinkPending } from "../screens/today.jsx";
 import { DayPicker, defaultFollowupDay } from "./followup-contact.jsx";
 import { followupDayOf, ymdOf } from "../lib/followup.js";
-import { BookingLinkActions } from "./booking-link.jsx";
+import { BookingLinkActions, sentAgo } from "./booking-link.jsx";
 
 // Gate de movimento de estágio — os três momentos do processo que exigem input:
 //   handoff  = card saindo da fase SDR pra fase Closer sem closer marcado
@@ -97,10 +97,19 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   const [integrator, setIntegrator] = React.useState(
     lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
   const [integAt, setIntegAt] = React.useState(lead.integrationAt || "");
+  // Primeiro dia da grade semanal: a semana do horário que já existe (se ainda
+  // não passou), senão a partir de hoje.
   const [integDay, setIntegDay] = React.useState(() => {
     const d = lead.integrationAt ? new Date(lead.integrationAt) : null;
-    return d && Number.isFinite(d.getTime()) ? d : nextBusinessDays(1)[0];
+    const today = nextBusinessDays(1)[0];
+    if (!d || !Number.isFinite(d.getTime())) return today;
+    d.setHours(0, 0, 0, 0);
+    return d < today ? today : d;
   });
+  // Como agendar (07/10/2026, o mesmo segmentado do Próximo passo das
+  // Atividades): marcar agora na grade, mandar o link de convite pro cliente
+  // ou só mover e marcar depois. Link enviado e ainda sem marcação abre no link.
+  const [schedMode, setSchedMode] = React.useState(() => (bookingLinkPending(lead, lead.integrator || "") ? "link" : "horario"));
   // Hora ocupada do INTEGRADOR (integrationAt dos leads dele + bloqueios) vem
   // desabilitada na grade, igual à call com o closer.
   const integBusyCockpit = React.useMemo(
@@ -109,7 +118,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   );
   // Mais o que está ocupado na agenda do Google de quem integra (marcação pelo
   // link, compromisso pessoal); sem Google conectado, fica só o cockpit.
-  const integGoogle = useGoogleBusy(askInteg ? integrator : "", integDay, lead.id);
+  const integGoogle = useGoogleBusy(askInteg ? integrator : "", integDay, lead.id, businessDaysFrom(integDay).at(-1));
   const integBusy = hourLong(withGoogleBusy(integBusyCockpit, integGoogle));
   // displayName cai no id quando o SEED.USERS ainda não chegou (o picker vem do
   // fallback legado, que tem o nome); usa o nome da lista antes de mostrar id.
@@ -167,8 +176,13 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
         : askCall ? (!!closer && !!callAt)
           : !!closer;
 
+  const slotFmt = (v) => { const d = new Date(v); return Number.isFinite(d.getTime()) ? d.toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""; };
   function confirm() {
     if (!ready) return;
+    // Mesma pergunta do Próximo passo: o cliente já recebeu o link e pode
+    // marcar por lá também, e a integração ficaria em dobro.
+    if (isWonGate && askInteg && schedMode === "horario" && integAt && integAt !== lead.integrationAt && bookingLinkPending(lead, integrator)
+      && !window.confirm(`O link de convite foi enviado ${sentAgo(lead.integrationLinkSentAt)} e o cliente ainda não marcou. Se ele marcar pelo link também, a integração fica em dobro (quem integra é avisado). Marcar ${slotFmt(integAt)} mesmo assim?`)) return;
     const patch = { stage: toStage };
     if (isLost) {
       patch.lostReason = reason;
@@ -183,7 +197,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
       if (isKidsWon) patch.consultPackage = Number(consultPackage) || 8;
       if (askProduct) patch.dealProduct = dealProduct;
       // Entrega: dono da integração e, se um horário foi escolhido, a hora dela.
-      if (askInteg) { patch.integrator = integrator; if (integAt) patch.integrationAt = integAt; }
+      if (askInteg) { patch.integrator = integrator; if (schedMode === "horario" && integAt) patch.integrationAt = integAt; }
     } else if (isOffer) {
       if (askOffer && offer) { patch.proposalOffer = offer; patch.proposalProduct = offer === "nenhuma" ? "" : offerProduct; }
       // Espelho do Meu dia: o DIA do Contato 1; o servidor zera a sequência e
@@ -321,19 +335,32 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
                 <SelectPopover label="Responsável pela integração" placeholder="quem vai integrar…" value={integrator}
                   options={userOptions(integrators)} onChange={(v) => { setIntegrator(v); setIntegAt(""); }} />
                 {integrator && (
-                  <>
-                    {/* O link de convite de quem integra: em vez de escolher o
-                        horário aqui, dá pra mandar a agenda pro cliente marcar. */}
-                    <div style={{ height: 10 }} />
-                    <BookingLinkActions lead={lead} userId={integrator} />
-                    <div style={{ height: 12 }} />
-                    <label className="kicker" style={label}>Integração agendada pra (opcional)</label>
-                    <SlotGrid days={nextBusinessDays(6)} day={integDay} setDay={setIntegDay}
-                      slot={integAt} setSlot={setIntegAt} busy={integBusy} />
-                    <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
-                      horário ocupado de {integName} vem travado{integGoogle.connected === true ? " (cockpit e agenda do Google)" : integGoogle.connected === false ? " (só o cockpit: sem Google conectado)" : ""} · entra na Agenda e replica na agenda pessoal dele (se conectou o Google) · sem horário, o card vai pra Integração e alguém marca depois
+                  <div className="today-sched" style={{ marginTop: 12 }}>
+                    <div className="kicker" style={{ ...label, marginBottom: 0 }}
+                      title="O horário marcado entra na Agenda e replica na agenda pessoal de quem integra (se conectou o Google). Sem horário, o card só vai pra Integração.">
+                      Agendamento · agenda de {integName} <span aria-hidden="true">ⓘ</span>
                     </div>
-                  </>
+                    <Choice label="Como agendar" size="sm" value={schedMode}
+                      onChange={(v) => { setSchedMode(v); if (v !== "horario") setIntegAt(""); }}
+                      options={[
+                        { value: "horario", label: "Marcar agora" },
+                        { value: "link", label: "Enviar link" },
+                        { value: "depois", label: "Marcar depois" },
+                      ]} />
+                    {schedMode === "horario" && (
+                      <div>
+                        <WeekSlotGrid start={integDay} setStart={setIntegDay} slot={integAt} setSlot={setIntegAt} busy={integBusy} />
+                        <div className={"today-sched-picked" + (integAt ? " is-set" : "")} role="status">
+                          {integAt ? `✓ ${slotFmt(integAt)} · ${integName}` : "escolha um horário livre na grade"}
+                        </div>
+                        {googleBusyNote(integGoogle, integName) && <div className="mono dim" style={{ fontSize: 10, marginTop: 4 }}>{googleBusyNote(integGoogle, integName)}</div>}
+                      </div>
+                    )}
+                    {schedMode === "link" && <BookingLinkActions lead={lead} userId={integrator} />}
+                    {schedMode === "depois" && (
+                      <div className="mono dim" style={{ fontSize: 11 }}>o card vai pra Integração sem horário; marque depois pelo Remarcar da atividade</div>
+                    )}
+                  </div>
                 )}
               </>
             )}
