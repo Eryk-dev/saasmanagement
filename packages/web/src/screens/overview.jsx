@@ -163,16 +163,19 @@ function goalLabelOf(goal) {
 // do pace atravessando e o rodapé com a porcentagem na cor do estado. A altura
 // acompanha o alvo atual (100%, 120%, 140%...), preservando a meta original
 // no percentual realizado. O pace fica acima dos efeitos, apenas como marca.
-function LiquidoMeta({ height, followup = false }) {
+const BOLHAS = [0, 1, 2, 3, 4];
+function LiquidoMeta({ height, followup = false, title }) {
   if (!(height > 0)) return null;
   // Dois períodos idênticos: deslocar metade da largura fecha o loop sem salto.
   const onda = "M0 6 Q12 0 24 6 T48 6 T72 6 T96 6 V12 H0Z";
   return (
-    <div className={`vg-meta-liquid ${followup ? "vg-meta-liquid-followup" : "meta-sobe"}`}
-      style={{ height: `${height}%` }} aria-hidden="true">
+    <div className={`vg-meta-liquid meta-sobe ${followup ? "vg-meta-liquid-followup" : ""}`}
+      style={{ height: `${height}%` }} title={title} aria-hidden="true">
       <svg className="vg-meta-wave vg-meta-wave-back" viewBox="0 0 96 12" preserveAspectRatio="none"><path d={onda} /></svg>
       <svg className="vg-meta-wave" viewBox="0 0 96 12" preserveAspectRatio="none"><path d={onda} /></svg>
       <span className="vg-meta-liquid-reflection" />
+      {/* As bolhas sobem só dentro do que já fechou: é o líquido de verdade. */}
+      {!followup && <span className="vg-meta-bubbles">{BOLHAS.map((i) => <span key={i} />)}</span>}
     </div>
   );
 }
@@ -186,6 +189,11 @@ function Termometro({ s, goal, lad, label, milestone }) {
   // A camada clara indica a distância até o pace; follow-up continua na pílula.
   const mesa = goal.ended ? 0 : Math.max(0, Math.min(100 - fechado, (s.expectedProgress || 0) * 100 - fechado));
   const pacePct = !goal.ended && s.expectedProgress != null ? Math.max(0, Math.min(100, s.expectedProgress * 100)) : null;
+  // A faixa hachurada em dinheiro, pro hover dizer o tamanho do buraco em vez
+  // de só mostrar onde a marca está.
+  const faltaPaceTxt = mesa > 0
+    ? `Falta ${moneyFull(Math.max(0, r2(alvo * (s.expectedProgress || 0) - (Number(s.sold) || 0))))} pro pace de hoje`
+    : undefined;
   const pctTxt = `${Math.round(alvo > 0 ? Math.max(0, (Number(s.sold) || 0) / base) * 100 : 0)}%`;
   // Estado da pílula (prancha v2, 07/10): quem está ATRÁS do pace ganha o
   // tratamento vermelho, com o brilho mais rápido, um tranco curto a cada 4s e
@@ -204,7 +212,7 @@ function Termometro({ s, goal, lad, label, milestone }) {
       </div>
       <div className="vg-meta-thermometer-bar" >
         <div className="vg-meta-liquid-track" role="progressbar" aria-label={extended ? `Próximo alvo: ${milestone.percent}% da meta` : label} aria-valuemin={0} aria-valuemax={milestone?.percent || 100} aria-valuenow={Math.min(milestone?.percent || 100, base > 0 ? Math.max(0, s.sold / base * 100) : 0)} aria-valuetext={`${pctTxt} da meta original; ${moneyFull(s.sold)} de ${moneyFull(alvo)} do alvo atual`} style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
-          <LiquidoMeta height={mesa} followup />
+          <LiquidoMeta height={mesa} followup title={faltaPaceTxt} />
           <LiquidoMeta height={fechado} />
           {pacePct != null && <span className="vg-meta-pace-marker" aria-hidden="true"
             style={{ bottom: `clamp(0px, ${pacePct}%, calc(100% - 3px))` }}><span>PACE</span></span>}
