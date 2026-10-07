@@ -187,6 +187,14 @@ function Termometro({ s, goal, lad, label, milestone }) {
   const mesa = goal.ended ? 0 : Math.max(0, Math.min(100 - fechado, (s.expectedProgress || 0) * 100 - fechado));
   const pacePct = !goal.ended && s.expectedProgress != null ? Math.max(0, Math.min(100, s.expectedProgress * 100)) : null;
   const pctTxt = `${Math.round(alvo > 0 ? Math.max(0, (Number(s.sold) || 0) / base) * 100 : 0)}%`;
+  // Estado da pílula (prancha v2, 07/10): quem está ATRÁS do pace ganha o
+  // tratamento vermelho, com o brilho mais rápido, um tranco curto a cada 4s e
+  // o ponto piscando entre dois anéis. É o único estado que precisa puxar o
+  // olho; no pace, meta batida e super meta ficam calmos. A escada de quatro
+  // faixas é a mesma do resto da tela (LVL_LABEL).
+  const pillState = goal.ended
+    ? (s.sold >= alvo ? "met" : "behind")
+    : ({ red: "behind", ok: "on", green: "met", gold: "super" })[lad?.lvl] || "on";
   return (
     <div className="vg-meta-thermometer" >
       <div className="vg-meta-label">
@@ -202,7 +210,7 @@ function Termometro({ s, goal, lad, label, milestone }) {
             style={{ bottom: `clamp(0px, ${pacePct}%, calc(100% - 3px))` }}><span>PACE</span></span>}
         </div>
       </div>
-      <span className="vg-meta-percent">
+      <span className={`vg-meta-percent is-${pillState}`}>
         <span aria-hidden="true" />
         <strong>{pctTxt}</strong><small>{goal.ended ? (s.sold >= alvo ? "meta batida" : "fechou abaixo") : extended ? "da meta original" : LVL_LABEL[lad?.lvl] || "da meta"}</small>
       </span>
