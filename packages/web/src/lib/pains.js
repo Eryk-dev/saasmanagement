@@ -5,13 +5,11 @@
 import React from "react";
 import { api } from "./api.js";
 
-// Código "[X]" em qualquer posição do nome do anúncio — espelho do painCode
-// da API (routes.marketing.js); mantenha os dois em sincronia. Código = 1-3
-// alfanuméricos ("[TESTE]" não vira dor fantasma).
-export function painCodeOf(adName) {
-  const m = String(adName || "").match(/\[([A-Za-z0-9]{1,3})\]/);
-  return m ? m[1].toUpperCase() : null;
-}
+// Espelho do painCode da API, num módulo sem React pra ficar testável; quem
+// importava painCodeOf daqui continua importando daqui (re-export com binding
+// local, porque o leadPain abaixo usa a função).
+import { painCodeOf } from "./pain-code.js";
+export { painCodeOf };
 
 // Catálogo de atribuição (id → nome de campanha/conjunto/anúncio). Cacheia a
 // PROMESSA por SaaS: os ~50 cards do kanban montam no mesmo tick e todos

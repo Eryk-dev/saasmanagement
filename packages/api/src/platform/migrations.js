@@ -1581,6 +1581,20 @@ const LEVERADS_CATALOG = {
         N: "Se você mandasse só a lista de códigos e os anúncios voltassem prontos (foto, descrição, compatibilidade) publicados na sua conta, quantas peças você subiria por mês?",
       },
     },
+    // Dor de anúncio PRICE (07/10/2026): o lead clicou no criativo de
+    // precificação. É a ÚNICA dor que troca a linha do produto — quem veio pelo
+    // Price abre o deck do Price, com o pacote pelo volume de anúncios (ver
+    // lineOf/priceTier em proposals/proposal-catalog.js) —, porque o criativo
+    // vende preço, não clonagem.
+    PRICE: {
+      label: "Preço desatualizado: perde venda pro concorrente ou vende fora da margem",
+      spin: {
+        S: "Quem decide o preço dos seus anúncios hoje? É planilha, ferramenta, ou alguém olhando o concorrente na mão? Em quantos anúncios dá pra mexer num dia?",
+        P: "Quantos dos seus anúncios estão com o mesmo preço há semanas porque não dá tempo de revisar? Quando o custo do fornecedor sobe, quanto tempo leva pra isso chegar no preço?",
+        I: "Quando o concorrente baixa e você demora dois dias pra responder, você perde a posição ou perde a margem? E o anúncio que seguiu vendendo no preço antigo depois do custo subir, quanto isso tirou do seu bolso no último mês?",
+        N: "Se o preço se ajustasse sozinho por regra de margem, com alerta pra todo anúncio que saísse da regra, quantos dos seus anúncios você colocaria nessa régua já no primeiro mês?",
+      },
+    },
     none: {
       label: "Sem código (não veio de anúncio)",
       tip: "Abre com a Situação genérica (me conta como está a operação hoje, quantas contas, quem cuida) e escolhe a trilha A-E conforme a primeira dor que ele verbalizar.",
@@ -1947,8 +1961,9 @@ export async function ensureFormsV2(repo) {
       // Só quem chega pelo formulário de controle entra no sorteio.
       onlyForms: ["fo_diagnostico_leverads"],
       // Campanhas de OEM são as que carregam [OEM] no nome do anúncio
-      // (convenção de attribution.js); as demais são Lever Ads.
-      byPain: { OEM: FORM_IDS.oem },
+      // (convenção de attribution.js); as de Price carregam [PRICE]; as demais
+      // são Lever Ads.
+      byPain: { OEM: FORM_IDS.oem, PRICE: FORM_IDS.price },
       fallback: FORM_IDS.ads,
       nota: "Manda pct% do tráfego pago pros formulários v2. Publicar os formulários antes de ligar.",
     }, FORM_AB_FLAG);

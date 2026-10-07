@@ -29,3 +29,22 @@ test("leadPainFocus: dor OEM fora de autopeças cai pra clonagem; autopeças e n
   assert.equal(leadPainFocus(product, { sourcePain: "OEM" }).mode, "oem");
   assert.equal(leadPainFocus(product, { sourcePain: "A", niche: "autopecas" }).mode, "clone");
 });
+
+// Dor [PRICE] (Leo, 07/10): precificação vale em qualquer nicho, então não
+// passa pela cerca de autopeças do OEM — e não entra no roteiro fixo do OEM,
+// que é gateado em mode === "oem".
+test("leadPainFocus: dor PRICE vira modo price em qualquer nicho", () => {
+  const product = { painMap: { PRICE: "Preço desatualizado" } };
+  for (const niche of ["autopecas", "moda", undefined]) {
+    const f = leadPainFocus(product, { sourcePain: "PRICE", niche });
+    assert.equal(f.mode, "price");
+    assert.equal(f.label, "Preço desatualizado");
+  }
+});
+
+test("firstTouchText: dor PRICE fala só de precificação, sem clonagem nem OEM", () => {
+  const t = firstTouchText({ nome: "Rafa", sdrName: "Manuela", resumo: "autopeças · 5 mil anúncios", pain: { code: "PRICE", mode: "price" }, niche: "autopecas" });
+  assert.match(t, /Lever Price/);
+  assert.match(t, /margem/);
+  assert.ok(!/OEM|clonagem/.test(t), "não dilui a abertura com um segundo produto");
+});
