@@ -742,6 +742,31 @@ export async function computeWindowGoal(repo, product, since, until, now = new D
   const contracted = round2(tcvOf(winLeads) + upsellContractedOf(ups));
   const soldN = winLeads.length + ups.length;
 
+  // Vendido reconhecido DIA A DIA da janela (soma = sale.sold; a soma das
+  // contagens = contracts.sold). O gráfico "Vendas por dia" da Visão geral lê
+  // daqui em vez de somar lead.amount por conta própria — senão as barras
+  // subiriam pelo contrato cheio e não fechariam com o número grande logo
+  // acima delas. Não confundir com `sale.byDay` do /api/pipeline-pace (mês
+  // corrente, array DENSO de números indexado por dia do mês): aqui a chave é
+  // a data cheia, porque a janela do filtro pode cruzar meses, e a lista é
+  // ESPARSA — só dias com venda, pra uma janela de 90 dias não carregar
+  // centenas de zeros. Dia com contrato de boleto que ainda não caiu entra com
+  // revenue 0 e contracts 1 (o contrato existiu; o dinheiro é que não entrou).
+  const porDia = new Map();
+  const acc = (iso, valor, n) => {
+    const d = dayKey(iso);
+    if (!d || d < since || d > until) return;
+    const cur = porDia.get(d) || { revenue: 0, contracts: 0 };
+    cur.revenue += valor;
+    cur.contracts += n;
+    porDia.set(d, cur);
+  };
+  for (const l of winLeads) acc(winAt.get(l.id), valueOf(l), 1);
+  for (const i of ups) acc(upsellSoldAt(i), upsValue(i), 1);
+  const days = [...porDia.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([day, v]) => ({ day, revenue: round2(v.revenue), contracts: v.contracts }));
+
   const ended = until < today;
   const expectedFrac = bizDays > 0 ? round4(bizElapsed / bizDays) : 1;
   const statusOf = (val, target) => {
@@ -761,6 +786,7 @@ export async function computeWindowGoal(repo, product, since, until, now = new D
       // Contrato cheio da janela: `contracted - sold` é o faturado/recorrente
       // que ainda não caiu (a UI explica a diferença em vez de escondê-la).
       contracted,
+      days, // série diária da janela (ver o bloco acima); soma = sold
       progress: targetRevenue > 0 ? round4(sold / targetRevenue) : null,
       expectedProgress: expectedFrac,
       status: statusOf(sold, targetRevenue),

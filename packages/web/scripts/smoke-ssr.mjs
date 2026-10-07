@@ -72,7 +72,15 @@ try {
   const fakeGoal = {
     since: "2026-08-01", until: "2026-08-31", today: "2026-08-08",
     businessDays: 21, businessDaysElapsed: 5, ended: false, current: true,
-    sale: { target: 60000, sold: 34000, progress: 0.5667, expectedProgress: 0.24, status: "ahead" },
+    sale: {
+      target: 60000, sold: 34000, progress: 0.5667, expectedProgress: 0.24, status: "ahead",
+      // Série do gráfico "Vendas por dia": esparsa e somando o `sold`.
+      days: [
+        { day: "2026-08-04", revenue: 12000, contracts: 2 },
+        { day: "2026-08-06", revenue: 14000, contracts: 3 },
+        { day: "2026-08-08", revenue: 8000, contracts: 1 },
+      ],
+    },
     contracts: { target: 10, sold: 6, progress: 0.6, expectedProgress: 0.24, status: "ahead" },
   };
   const fakeTeam = {
@@ -87,8 +95,11 @@ try {
   const cases = [
     ["overview", "/src/screens/overview.jsx", "OverviewScreen", { onNav() {}, onOpenLead() {} }, "Visão geral"],
     ["overview-meta", "/src/screens/overview.jsx", "MetaMesCard", { pace: fakePace, goal: fakeGoal, onNav() {} }, "Contratos"],
-    // O termômetro (14/09): a coluna, a marca do pace e a distância em palavras.
-    ["overview-termometro", "/src/screens/overview.jsx", "MetaMesCard", { pace: fakePace, goal: fakeGoal, onNav() {} }, "contra o pace de hoje"],
+    // O termômetro (14/09, repaginado em 07/10): a coluna navy, a marca do pace
+    // e a distância em dinheiro no chip ao lado do número grande.
+    ["overview-termometro", "/src/screens/overview.jsx", "MetaMesCard", { pace: fakePace, goal: fakeGoal, onNav() {} }, "acima do pace"],
+    // Vendas por dia (07/10): o gráfico só existe com goal.sale.days.
+    ["overview-vendas-dia", "/src/screens/overview.jsx", "MetaMesCard", { pace: fakePace, goal: fakeGoal, onNav() {} }, "Vendas por dia"],
     ["overview-funil", "/src/screens/overview.jsx", "FunilPeriodo", { team: fakeTeam, win: fakeWin, pLabel: "este mês" }, "Ganhos"],
     ["metrics", "/src/screens/metrics.jsx", "MetricsScreen", {}, "Publicidade"],
     ["expenses", "/src/screens/expenses.jsx", "ExpensesScreen", {}, "Pagamentos"],

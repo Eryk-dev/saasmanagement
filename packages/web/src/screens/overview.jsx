@@ -171,89 +171,299 @@ function goalLabelOf(goal) {
 }
 const fmtContracts = (t) => (t == null ? "—" : Number.isInteger(t) ? int(t) : String(t).replace(".", ","));
 
-// Painel de ritmo (12/09): o que antes vivia só no tooltip da régua — quanto
-// falta, quanto precisa por dia útil, o ritmo atual e a projeção do mês. No
-// mês corrente vem do /api/pipeline-pace; em janela histórica sobra o que a
-// própria janela sabe (falta + dias úteis).
-function PaceFacts({ pace, goal, falta }) {
+// ── Ritmo da janela ──────────────────────────────────────────────────────────
+// O vendido repartido pelos dias úteis que já passaram DA JANELA. No mês
+// corrente bate com pace.sale.actualDailyPace; em qualquer outra janela é o
+// único ritmo que fala do período que está na tela.
+const ritmoDaJanela = (goal) => {
+  const n = Number(goal?.businessDaysElapsed) || 0;
+  return n > 0 ? (Number(goal?.sale?.sold) || 0) / n : 0;
+};
+
+// Chips de ritmo (prancha v2, 07/10): o que antes vivia dentro de "Detalhes da
+// meta" — quanto falta, quanto precisa por dia útil, o que está em follow-up e
+// a projeção. São os números que cobram o pace, então saíram do acordeão pra
+// linha de cima. No mês corrente os dois do meio vêm do /api/pipeline-pace; em
+// janela histórica não existe "precisa por dia" nem projeção, e o lugar deles
+// é o tamanho da janela.
+function PaceChips({ pace, goal, falta, naMesa }) {
   const s = goal.sale || {};
   const p = pace?.sale || null;
-  const fact = (k, v, tone) => (
-    <div key={k} style={{ minWidth: 0 }}>
-      <div className="kicker">{k}</div>
-      <div className="tnum" style={{ fontSize: 13.5, fontWeight: 650, marginTop: 2, color: tone || "var(--fg-1)", whiteSpace: "nowrap" }}>{v}</div>
+  const chip = (k, v, { tone, sub, teal, title } = {}) => (
+    <div key={k} className={`vg-chip${teal ? " vg-chip-teal" : ""}`} title={title}>
+      <span className="vg-chip-k">{k}</span>
+      <strong className="tnum" style={tone ? { color: tone } : null}>{v}</strong>
+      {sub && <small>{sub}</small>}
     </div>
   );
-  const facts = [];
+  const chips = [];
+  if (falta != null) chips.push(chip("falta", window.fmt.moneyFull(falta), { title: "Quanto falta pra fechar a meta do período" }));
   if (p) {
-    facts.push(fact("ritmo atual", `${money(p.actualDailyPace)}/dia`));
-    facts.push(fact("dias úteis", `${int(p.remainingBusinessDays)} restam`));
-    if (p.projected != null) {
-      facts.push(fact("projeção do mês", money(p.projected), s.target > 0 ? (p.projected >= s.target ? "var(--pos)" : "var(--neg)") : null));
+    if (p.requiredDailyPace != null) {
+      chips.push(chip("por dia útil", window.fmt.moneyFull(p.requiredDailyPace), {
+        sub: `${int(p.remainingBusinessDays)} resta${p.remainingBusinessDays === 1 ? "" : "m"}`,
+        title: "Quanto precisa entrar por dia útil restante pra fechar a meta do mês",
+      }));
     }
-    if (falta != null) facts.push(fact("falta", money(falta)));
   } else {
-    if (falta != null) facts.push(fact("falta", money(falta)));
-    facts.push(fact("dias úteis da janela", int(goal.businessDays)));
+    chips.push(chip("dias úteis da janela", int(goal.businessDays), { title: "A meta se reparte só pelos dias úteis" }));
   }
-  const precisa = p?.requiredDailyPace;
+  chips.push(chip(`follow-up · ${int(naMesa.n)}`, window.fmt.moneyFull(naMesa.valor), {
+    teal: true, title: "O que ainda está aberto no funil e pode virar venda",
+  }));
+  if (p?.projected != null) {
+    chips.push(chip("projeção", window.fmt.moneyFull(p.projected), {
+      tone: s.target > 0 ? (p.projected >= s.target ? "var(--pos)" : "var(--neg)") : null,
+      title: "Onde o mês fecha se o ritmo atual se mantiver",
+    }));
+  }
+  return <div className="vg-chips">{chips}</div>;
+}
+
+// ── Pílula do pace ───────────────────────────────────────────────────────────
+// Vai no pé do termômetro. A prancha desenhou DOIS estados (teal "no pace",
+// vermelho "atrás do pace"); a escada do cockpit tem QUATRO (LVL_LABEL), e as
+// quatro continuam aqui — apagar "meta batida" e "super meta" tiraria da tela
+// justamente o degrau que a remuneração paga. Só o vermelho ganha tranco e
+// piscada: é o estado que precisa puxar o olho.
+const PILL_THEME = {
+  red: {
+    dot: "#ff6b5a", label: "#ff9a8c", sweep: "rgba(255,196,187,.28)", sweepDur: "2.2s",
+    bg: "linear-gradient(180deg, #4a1512, #2a0b0a)",
+    border: "linear-gradient(100deg, #8f1d14, #e2695a 38%, #ffc4bb 50%, #e2695a 62%, #8f1d14)",
+    shadow: "0 0 14px rgba(226,105,90,.35)",
+    anim: "icp-sheen 1.6s linear infinite, vg-glow-red 1.1s ease-in-out infinite, vg-nudge 4.2s ease-in-out 1.2s infinite",
+    ping: "vg-ping 1s cubic-bezier(0,0,.2,1) infinite",
+  },
+  ok: {
+    dot: "#23d8d3", label: "#23d8d3", sweep: "rgba(169,245,242,.22)", sweepDur: "3.6s",
+    bg: "linear-gradient(180deg, #0e3a48, #062533)",
+    border: "linear-gradient(100deg, #0c8f83, #23d8d3 38%, #a9f5f2 50%, #23d8d3 62%, #0c8f83)",
+    shadow: "0 0 14px rgba(35,216,211,.28)",
+    anim: "icp-sheen 3.2s linear infinite, vg-glow 2.8s ease-in-out infinite",
+    ping: "vg-ping 1.8s cubic-bezier(0,0,.2,1) infinite",
+  },
+  green: {
+    dot: "#7ae3a8", label: "#7ae3a8", sweep: "rgba(190,245,215,.22)", sweepDur: "3.6s",
+    bg: "linear-gradient(180deg, #0d3a2a, #06251a)",
+    border: "linear-gradient(100deg, #117a4c, #3fc97f 38%, #bef5d7 50%, #3fc97f 62%, #117a4c)",
+    shadow: "0 0 14px rgba(63,201,127,.26)",
+    anim: "icp-sheen 3.2s linear infinite",
+    ping: "vg-ping 2.4s cubic-bezier(0,0,.2,1) infinite",
+  },
+  gold: {
+    dot: "#a9f5f2", label: "#a9f5f2", sweep: "rgba(169,245,242,.3)", sweepDur: "3s",
+    bg: "linear-gradient(180deg, #0c8f83, #086b62)",
+    border: "linear-gradient(100deg, #0c8f83, #23d8d3 40%, #a9f5f2 50%, #23d8d3 60%, #0c8f83)",
+    shadow: "0 0 16px rgba(35,216,211,.5)",
+    anim: "icp-sheen 2.4s linear infinite, vg-glow 2.2s ease-in-out infinite",
+    ping: "vg-ping 1.8s cubic-bezier(0,0,.2,1) infinite",
+  },
+};
+function PacePill({ lvl, pctTxt, label, title }) {
+  const t = PILL_THEME[lvl] || PILL_THEME.ok;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12, background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: 16, alignSelf: "start" }}>
-      <div title={precisa != null ? "Quanto precisa entrar por dia útil restante pra fechar a meta do mês" : "Quanto falta pra meta da janela"}>
-        <div className="kicker">{precisa != null ? "Precisa por dia útil" : "Falta pra meta"}</div>
-        <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", marginTop: 2 }}>
-          {precisa != null ? money(precisa) : falta != null ? money(falta) : "—"}
-        </div>
-      </div>
-      {facts.length > 0 && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>{facts}</div>}
-    </div>
+    <span className="vg-pace-pill" title={title}
+      style={{ background: `${t.bg} padding-box, ${t.border} border-box`, boxShadow: t.shadow, animation: t.anim }}>
+      <span className="vg-pill-sweep" aria-hidden="true"
+        style={{ background: `linear-gradient(90deg, transparent, ${t.sweep}, transparent)`, animationDuration: t.sweepDur }} />
+      <span className="vg-pill-dot">
+        <span style={{ background: t.dot, animation: t.ping }} />
+        {lvl === "red" && <span style={{ background: t.dot, animation: t.ping, animationDelay: "0.5s" }} />}
+        <span style={{ background: t.dot, animation: lvl === "red" ? "vg-blink 1s ease-in-out infinite" : "none" }} />
+      </span>
+      <strong className="tnum">{pctTxt}</strong>
+      <small style={{ color: t.label }}>{lvl === "gold" ? `✦ ${label}` : label}</small>
+    </span>
   );
 }
 
 // ── Termômetro da meta ──────────────────────────────────────────────────────
-// Coluna de 96×300: trilha hachurada (o que falta), fechado no teal subindo do
-// chão, em follow-up empilhado por cima num tom mais claro, a marca tracejada
-// do pace atravessando e o rodapé com a porcentagem na cor do estado. A altura
-// é sobre a meta, então passar de 100% satura em 100% e o chip de super meta é
-// quem conta o resto.
-function Termometro({ s, goal, lad, naMesa, title, label }) {
+// Coluna navy que sangra até a borda do card (prancha v2, 07/10). O líquido
+// sobe do chão com o que já fechou; acima dele, a faixa hachurada vermelha é o
+// que falta pro PACE DE HOJE, e o tracejado atravessando a coluna é a marca do
+// pace. A altura é sobre a meta, então passar de 100% satura e quem conta o
+// resto é a pílula (que re-ancora na próxima super meta).
+// A camada "em follow-up" que ficava empilhada aqui saiu: o espaço virou a
+// faixa do pace, e o número do follow-up seguiu à vista como chip.
+const ONDA_D = "M0 6 Q12 0 24 6 T48 6 T72 6 T96 6 V12 H0Z";
+function Onda({ fill, dur, top, op }) {
+  return (
+    <svg viewBox="0 0 96 12" preserveAspectRatio="none" aria-hidden="true" className="vg-onda"
+      style={{ top, fill, opacity: op, animationDuration: `${dur}s` }}><path d={ONDA_D} /></svg>
+  );
+}
+const BOLHAS = [[18, 3, 0], [52, 4, 1.4], [34, 2.5, 2.6], [66, 3, 3.5], [26, 2, 4.4]];
+function Termometro({ s, goal, lad, title, label, pillLabel }) {
   const alvo = Number(s.target) || 0;
   const pctDe = (v) => (alvo > 0 ? Math.max(0, Math.min(100, (v / alvo) * 100)) : 0);
   const fechado = pctDe(Number(s.sold) || 0);
-  // A fatia da mesa é o que CABE entre o fechado e o topo: mostrar mais que
-  // isso faria a coluna prometer acima da meta.
-  const mesa = Math.max(0, Math.min(100 - fechado, pctDe(naMesa?.valor || 0)));
   const pacePct = !goal.ended && s.expectedProgress != null ? Math.max(0, Math.min(100, s.expectedProgress * 100)) : null;
-  const cor = lvlColor(lad?.lvl, "var(--accent)");
+  // Faixa hachurada = a distância até a marca do pace. Só existe quando o
+  // fechado está ABAIXO dela; passando da marca, a coluna fala sozinha.
+  const faltaPace = pacePct != null ? Math.max(0, pacePct - fechado) : 0;
+  const faltaRs = r2((alvo * (pacePct || 0)) / 100 - (Number(s.sold) || 0));
   const pctTxt = `${Math.round((lad ? lad.pct : s.progress || 0) * 100)}%`;
+  // Degrau perseguido depois da meta batida: fica numa linha própria embaixo
+  // da pílula. Dentro dela, "super meta · rumo a 140%" estourava a largura da
+  // coluna e sumia cortado pelo overflow.
+  const rumo = !goal.ended && lad && lad.tier > 1 ? `rumo a ${Math.round(lad.tier * 100)}% da meta` : null;
   return (
-    <div style={{ width: 140, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center" }}>
-      <div style={{ textAlign: "center", marginBottom: 12 }}>
-        <div className="kicker">{label}</div>
-        <div className="tnum" style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.2, marginTop: 3 }}>{window.fmt.moneyFull(alvo)}</div>
+    <div className="vg-termo">
+      <div className="vg-termo-cap">
+        <div className="vg-termo-kicker">{label}</div>
+        <div className="tnum vg-termo-alvo">{window.fmt.moneyFull(alvo)}</div>
       </div>
-      <div title={title} style={{ width: 96, height: 300, borderRadius: "var(--r-3)", border: "1px solid var(--line-1)", overflow: "hidden", display: "flex", flexDirection: "column", cursor: "help" }}>
-        <div className="meta-track" style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
-          {pacePct != null && (
-            <>
-              <span style={{ position: "absolute", left: 0, right: 0, bottom: `${pacePct}%`, height: 0, borderTop: `1px dashed ${cor}` }} />
-              <span className="tnum" style={{ position: "absolute", right: 5, bottom: `calc(${pacePct}% + 3px)`, fontSize: 11, fontWeight: 700, color: cor }}>{`pace ${Math.round(pacePct)}%`}</span>
-            </>
-          )}
-          {mesa > 0 && (
-            <div style={{ position: "relative", background: "var(--chart-1)", opacity: 0.55, height: `${mesa}%` }}>
-              <span className="meta-fluxo" />
+      <div className="vg-termo-tubo" title={title}>
+        <div className="vg-termo-liq">
+          {faltaPace > 0 && (
+            <div className="vg-termo-falta meta-sobe" style={{ height: `${faltaPace.toFixed(1)}%` }}
+              title={`Falta pro pace de hoje: ${money(faltaRs)}`}>
+              <Onda fill="rgba(226,105,90,.55)" dur={4.2} top={-5} op={1} />
             </div>
           )}
-          <div className="meta-sobe" style={{ position: "relative", background: "var(--accent)", height: `${fechado}%` }}>
-            <span className="meta-fluxo" />
+          <div className="vg-termo-cheio meta-sobe" style={{ height: `${fechado.toFixed(1)}%` }}>
+            <Onda fill="#23d8d3" dur={5.5} top={-6} op={0.5} />
+            <Onda fill="#23d8d3" dur={3} top={-4} op={1} />
+            <span className="vg-termo-bolhas" aria-hidden="true">
+              {BOLHAS.map(([x, r, atraso], i) => (
+                <span key={i} style={{ left: `${x}%`, width: r * 2, height: r * 2, animationDelay: `${atraso}s`, animationDuration: `${3.2 + i * 0.35}s` }} />
+              ))}
+            </span>
+            <span className="vg-termo-brilho" aria-hidden="true" />
           </div>
+          {pacePct != null && (
+            <span className="vg-termo-marca" style={{ bottom: `${pacePct}%` }}>
+              <span>PACE</span>
+            </span>
+          )}
         </div>
-        <span className="tnum" style={{ height: 40, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, color: "oklch(1 0 0)", fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", background: cor }}>
-          <span className="meta-viva" style={{ width: 8, height: 8, borderRadius: 999, background: "oklch(1 0 0)", display: "inline-block" }} />
-          {pctTxt}
-        </span>
       </div>
+      <PacePill lvl={lad?.lvl} pctTxt={pctTxt} label={pillLabel} title={title} />
+      {rumo && <span className="vg-termo-rumo">{rumo}</span>}
+    </div>
+  );
+}
+
+// ── Vendas por dia ──────────────────────────────────────────────────────────
+// Bloco novo (prancha v2, 07/10) entre os números e o funil: uma barra por dia
+// da JANELA DO FILTRO, com o valor RECONHECIDO que o servidor manda em
+// goal.sale.days — as barras somam exatamente o número grande logo acima.
+// Somar lead.amount aqui faria a soma subir pelo contrato cheio e brigar com o
+// número ao lado. O tracejado é o ritmo atual por dia útil da mesma janela.
+// Janela de mais de 45 dias (90 dias, intervalo livre) agrupa por semana: 90
+// colunas num card viram borrão.
+const DIA_SEMANA = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+const wdOf = (day) => new Date(`${day}T12:00:00`).getDay();
+const ddmm = (day) => `${day.slice(8, 10)}/${day.slice(5, 7)}`;
+// Rótulo no topo da barra: "11k", "5,7k". O compactMoney da tela devolve
+// "11,3 mil", largo demais pra uma coluna de 26px.
+const kMoney = (v) => {
+  const n = Math.round(Number(v) || 0);
+  if (n < 1000) return String(n);
+  const k = n / 1000;
+  return `${k >= 10 ? String(Math.round(k)) : String(Math.round(k * 10) / 10).replace(".", ",")}k`;
+};
+const AGRUPA_ACIMA_DE = 45;
+
+function VendasPorDia({ goal }) {
+  const [hover, setHover] = useState(null);
+  const serie = useMemo(() => {
+    if (!goal || !Array.isArray(goal.sale?.days)) return null;
+    const mapa = new Map(goal.sale.days.map((d) => [d.day, d]));
+    const dias = [];
+    for (let d = goal.since; d <= goal.until && dias.length < 400; d = plusDays(d, 1)) {
+      const w = wdOf(d);
+      const info = mapa.get(d);
+      dias.push({
+        day: d, wd: w, weekend: w === 0 || w === 6,
+        future: d > goal.today, today: d === goal.today,
+        valor: info?.revenue || 0, contratos: info?.contracts || 0,
+      });
+    }
+    const ritmo = ritmoDaJanela(goal);
+    if (dias.length <= AGRUPA_ACIMA_DE) return { modo: "dia", itens: dias, ritmo, ref: ritmo };
+    const semanas = [];
+    for (let i = 0; i < dias.length; i += 7) {
+      const bloco = dias.slice(i, i + 7);
+      semanas.push({
+        day: bloco[0].day, fim: bloco[bloco.length - 1].day,
+        valor: bloco.reduce((a, b) => a + b.valor, 0),
+        contratos: bloco.reduce((a, b) => a + b.contratos, 0),
+        uteis: bloco.filter((b) => !b.weekend && !b.future).length,
+        future: bloco.every((b) => b.future), today: bloco.some((b) => b.today), weekend: false,
+      });
+    }
+    return { modo: "semana", itens: semanas, ritmo, ref: ritmo * 5 };
+  }, [goal]);
+
+  // API antiga (antes do deploy da série): o bloco simplesmente não existe, em
+  // vez de desenhar uma grade vazia que mentiria sobre o mês.
+  if (!serie) return null;
+  const { modo, itens, ritmo, ref } = serie;
+  const semanal = modo === "semana";
+  const maior = Math.max(0, ...itens.map((b) => b.valor));
+  const teto = Math.max(maior, ref * 1.5, 1);
+  const alt = (v) => `${Math.min(100, (v / teto) * 100).toFixed(1)}%`;
+  const n = itens.length;
+  const vazio = !itens.some((b) => b.contratos > 0);
+  const legenda = semanal ? "ritmo da semana" : "ritmo atual";
+  const refTxt = `${window.fmt.moneyFull(ref)}${semanal ? "/semana" : "/dia útil"}`;
+
+  const tip = (b, i) => {
+    const delta = b.valor - ref;
+    const mostraVs = !b.future && (semanal || !b.weekend);
+    const detalhe = semanal
+      ? (b.contratos ? `${int(b.contratos)} contrato${b.contratos > 1 ? "s" : ""} · ${int(b.uteis)} dia${b.uteis === 1 ? "" : "s"} útil${b.uteis === 1 ? "" : "eis"} corridos` : "nenhuma venda na semana")
+      : b.contratos && b.valor ? `${int(b.contratos)} contrato${b.contratos > 1 ? "s" : ""} · ticket ${window.fmt.moneyFull(b.valor / b.contratos)}`
+        : b.contratos ? `${int(b.contratos)} contrato${b.contratos > 1 ? "s" : ""} · nada entrou ainda (faturado ou recorrente)`
+          : b.weekend ? "fim de semana · sem meta" : b.future ? "ainda não aconteceu" : "nenhuma venda";
+    return (
+      <div className={`vg-dia-tip${i < 3 ? " vg-dia-tip-l" : i > n - 4 ? " vg-dia-tip-r" : ""}`}>
+        <span className="vg-dia-tip-data">{semanal ? `${ddmm(b.day)} a ${ddmm(b.fim)}` : `${DIA_SEMANA[b.wd]}, ${ddmm(b.day)}${b.today ? " · hoje" : ""}`}</span>
+        <span className="tnum vg-dia-tip-val">{window.fmt.moneyFull(b.valor)}</span>
+        <span className="vg-dia-tip-sub">{detalhe}</span>
+        {mostraVs && <span className="vg-dia-tip-vs" style={{ color: delta >= 0 ? "#23d8d3" : "#f2a59b" }}>
+          {`${delta >= 0 ? "+" : "−"}${window.fmt.moneyFull(Math.abs(delta))} vs. ${legenda}`}
+        </span>}
+      </div>
+    );
+  };
+
+  return (
+    <div className="vg-dia">
+      <div className="vg-dia-head">
+        <div>
+          <span className="kicker">{semanal ? "Vendas por semana" : "Vendas por dia"}</span>
+          <span className="vg-dia-periodo">{goalLabelOf(goal).label}</span>
+        </div>
+        {ref > 0 && <div className="vg-dia-legenda"><span className="vg-dia-tracejado" />{legenda} <b className="tnum">{refTxt}</b></div>}
+      </div>
+      <div className="vg-dia-grade">
+        {ref > 0 && <span className="vg-dia-linha" style={{ bottom: alt(ref) }} />}
+        {itens.map((b, i) => (
+          <div key={b.day} className={`vg-dia-col${b.weekend ? " vg-dia-fds" : ""}${hover === b.day ? " vg-dia-on" : ""}`}
+            onMouseEnter={() => setHover(b.day)} onMouseLeave={() => setHover(null)}>
+            {b.today && !semanal && <span className="vg-dia-hoje">hoje</span>}
+            {b.valor > 0 && <span className="tnum vg-dia-rotulo" style={{ color: b.today ? "var(--accent)" : "var(--fg-2)" }}>{kMoney(b.valor)}</span>}
+            <span className="vg-dia-barra" style={{
+              height: alt(b.valor),
+              minHeight: b.weekend && !b.valor ? 0 : 4,
+              background: b.weekend && !b.valor ? "transparent"
+                : b.today ? "var(--accent)" : b.future ? "var(--bg-2)" : b.valor > 0 ? "#2f9a91" : "#cfe6e3",
+            }} />
+            {hover === b.day && tip(b, i)}
+          </div>
+        ))}
+      </div>
+      <div className="vg-dia-eixo">
+        {itens.map((b) => (
+          <span key={b.day} className={b.today ? "vg-dia-eixo-hoje" : b.weekend ? "vg-dia-eixo-fds" : b.future ? "vg-dia-eixo-fut" : undefined}>
+            {semanal ? ddmm(b.day) : b.day.slice(8, 10)}
+          </span>
+        ))}
+      </div>
+      {vazio && <div className="vg-dia-vazio">Nenhuma venda registrada nesta janela.</div>}
     </div>
   );
 }
@@ -280,6 +490,7 @@ function MetaMesCard({ pace, goal, onNav, links = true, children }) {
   // pelo que ENTROU na janela. `contracted` é o contrato cheio, pra diferença
   // aparecer no rodapé em vez de a venda encolher sem explicação.
   const naoRecebido = Math.max(0, r2((s.contracted || 0) - (s.sold || 0)));
+  const ritmo = ritmoDaJanela(goal);
   const saleTitle = (curMes
     ? `Receita reconhecida no mês. Hoje: ${money(pace.sale.soldToday)} · ritmo ${money(pace.sale.actualDailyPace)}/dia útil`
       + (pace.sale.requiredDailyPace != null ? ` · precisa ${money(pace.sale.requiredDailyPace)}/dia` : "")
@@ -291,6 +502,7 @@ function MetaMesCard({ pace, goal, onNav, links = true, children }) {
   // A distância pro pace EM DINHEIRO (o risquinho só dizia onde a marca está).
   const esperadoAteAqui = s.target != null && s.expectedProgress != null ? r2((s.target || 0) * s.expectedProgress) : 0;
   const paceDelta = r2((s.sold || 0) - esperadoAteAqui);
+  const mostraDelta = !goal.ended && s.target != null && s.expectedProgress != null;
   // "Em follow-up": o que está aberto no funil. MESMA régua do "em jogo" do
   // Pipeline (leads em etapa aberta do produto), pra as duas telas nunca
   // discordarem sobre o tamanho da mesa.
@@ -314,27 +526,30 @@ function MetaMesCard({ pace, goal, onNav, links = true, children }) {
         </div>
       ) : (
         <div className="vg-meta-columns">
-          {s.target != null && <Termometro s={s} goal={goal} lad={sLad} naMesa={naMesa} title={saleTitle} label={title} />}
+          {s.target != null && <Termometro s={s} goal={goal} lad={sLad} title={saleTitle} label={title}
+            pillLabel={(goal.ended ? endedLabel(sLad?.lvl) : LVL_LABEL[sLad?.lvl]) || ""} />}
           <div className="vg-meta-story">
             <div>
               <div className="kicker">Vendido em {label}</div>
               <div className="vg-meta-numbers">
-                <span className="vg-sold tnum" title={saleTitle} style={{ color: lvlColor(sLad?.lvl) }}>{window.fmt.moneyFull(s.sold)}</span>
-                <LvlChip lvl={sLad?.lvl} label={goal.ended ? endedLabel(sLad?.lvl) : sLad?.chip} />
-                {!goal.ended && s.expectedProgress != null && <div className="vg-meta-fact">
-                  <div>contra o pace de hoje</div>
-                  <strong className="tnum" style={{ color: paceDelta >= 0 ? "var(--pos)" : "var(--neg)" }}>{`${paceDelta >= 0 ? "+" : "−"}${window.fmt.moneyFull(Math.abs(paceDelta))}`}</strong>
-                  <span>o pace pedia {window.fmt.moneyFull(esperadoAteAqui)} até aqui</span>
-                </div>}
-                <div className="vg-meta-fact">
-                  <div><span className="vg-followup-dot" />em follow-up · {int(naMesa.n)}</div>
-                  <strong className="tnum">{window.fmt.moneyFull(naMesa.valor)}</strong>
-                  <span>o que ainda pode virar venda</span>
-                </div>
+                <span className="vg-sold tnum" title={saleTitle}>{window.fmt.moneyFull(s.sold)}</span>
+                {mostraDelta
+                  ? <span className="vg-delta-chip" title={`O pace pedia ${window.fmt.moneyFull(esperadoAteAqui)} até aqui`}
+                    style={{ color: paceDelta >= 0 ? "var(--pos)" : "var(--neg)", background: `color-mix(in srgb, ${paceDelta >= 0 ? "var(--pos)" : "var(--neg)"} 9%, transparent)` }}>
+                    <span className="vg-delta-dot" />
+                    {`${paceDelta >= 0 ? "+" : "−"}${window.fmt.moneyFull(Math.abs(paceDelta))} ${paceDelta >= 0 ? "acima" : "abaixo"} do pace`}
+                  </span>
+                  : <LvlChip lvl={sLad?.lvl} label={goal.ended ? endedLabel(sLad?.lvl) : sLad?.chip} />}
               </div>
-              <div className="vg-meta-caption">{int(c.sold)} contratos assinados{c.sold > 0 && s.sold > 0 ? ` · ticket médio ${window.fmt.moneyFull(s.sold / c.sold)}` : ""}</div>
+              <PaceChips pace={curMes ? pace : null} goal={goal} falta={falta} naMesa={naMesa} />
+              <div className="vg-meta-caption">
+                {int(c.sold)} contratos assinados
+                {c.sold > 0 && s.sold > 0 ? ` · ticket médio ${window.fmt.moneyFull(s.sold / c.sold)}` : ""}
+                {ritmo > 0 ? ` · ritmo atual ${window.fmt.moneyFull(ritmo)}/dia útil` : ""}
+              </div>
               {s.target == null && <div className="vg-meta-caption">Sem meta de venda para este período.</div>}
             </div>
+            <VendasPorDia goal={goal} />
             {children}
           </div>
         </div>
@@ -348,7 +563,6 @@ function MetaMesCard({ pace, goal, onNav, links = true, children }) {
             pct={cLad ? cLad.pct : c.progress} expectedPct={goal.ended ? null : c.expectedProgress}
             lvl={cLad?.lvl} chipLabel={goal.ended ? endedLabel(cLad?.lvl) : cLad?.chip} />
             : <div className="vg-meta-caption">Sem meta de contratos ainda.{links && <button className="vg-text-link" onClick={() => onNav?.("metas")}> Definir em Metas →</button>}</div>}
-          {goal.businessDays > 0 && <PaceFacts pace={curMes ? pace : null} goal={goal} falta={falta} />}
           {naoRecebido > 0 && <div className="vg-meta-caption" title={saleTitle}>Contratado no período: <b>{money(s.contracted)}</b> · faturado/recorrente que ainda não caiu: <b>{money(naoRecebido)}</b>.</div>}
           {ka && <div className="vg-meta-caption">Fora do resultado: {int(ka.count)} conta grande{ka.count === 1 ? "" : "s"}{ka.names?.length ? ` (${ka.names.join(", ")})` : ""} · {money(ka.revenue)}.
             {ka.soldWith != null && <> Com elas: <b>{money(ka.soldWith)}</b> em {int(ka.countWith)} contratos.</>}

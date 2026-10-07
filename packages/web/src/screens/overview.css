@@ -3,32 +3,39 @@
 .vg-main, .vg-aside { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .vg-page-head { display: flex; align-items: start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .vg-page-head .page-sub { margin-top: 4px; }
-.vg-meta-card { padding: 24px 26px 16px; background: var(--bg-1); border: 1px solid var(--line-1); border-radius: var(--r-4); box-shadow: var(--shadow-card); min-width: 0; }
-.vg-meta-columns { display: flex; align-items: stretch; gap: 26px; flex-wrap: wrap; }
-.vg-meta-story { flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 16px; }
+/* Card da meta (prancha v2, 07/10): moldura sem padding próprio, pra a coluna
+   navy do termômetro sangrar até a borda arredondada. O respiro mora nas duas
+   colunas e no rodapé de detalhes. */
+.vg-meta-card { background: var(--bg-1); border: 1px solid var(--line-1); border-radius: var(--r-4); box-shadow: var(--shadow-card); min-width: 0; overflow: hidden; }
+.vg-meta-columns { display: flex; align-items: stretch; }
+.vg-meta-story { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 18px; padding: 24px 26px 22px; }
 .vg-meta-numbers { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 4px; }
 .vg-sold { font-size: 52px; font-weight: 700; letter-spacing: -.04em; line-height: 1; overflow-wrap: anywhere; }
-.vg-meta-fact { flex: 1; min-width: 170px; }
-.vg-meta-fact > div { font-size: 12px; color: var(--fg-3); }
-.vg-meta-fact strong { display: block; font-size: 24px; font-weight: 700; letter-spacing: -.025em; line-height: 1.2; margin-top: 2px; }
-.vg-meta-fact > span { display: block; margin-top: 4px; color: var(--fg-3); font-size: 12.5px; }
-.vg-followup-dot { display: inline-block; width: 12px; height: 12px; border-radius: 3px; background: var(--chart-1); margin-right: 8px; }
+.vg-delta-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.vg-delta-dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; flex-shrink: 0; }
+.vg-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.vg-chip { display: flex; align-items: baseline; gap: 8px; padding: 9px 16px; border-radius: 999px; background: var(--bg-inset); }
+.vg-chip-k { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--fg-3); white-space: nowrap; }
+.vg-chip strong { font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
+.vg-chip small { font-size: 10.5px; color: var(--fg-3); white-space: nowrap; }
+.vg-chip-teal { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
+.vg-chip-teal .vg-chip-k { color: inherit; }
 .vg-meta-caption { color: var(--fg-3); font-size: 13px; line-height: 1.5; margin-top: 8px; }
 .vg-meta-empty { padding: 16px 20px; font-size: 13px; color: var(--fg-3); }
-.vg-meta-details { margin-top: 18px; font-size: 12px; color: var(--fg-3); }
+.vg-meta-details { border-top: 1px solid var(--bg-2); padding: 12px 26px 14px; font-size: 12px; color: var(--fg-3); }
 .vg-meta-details summary, .overview-screen .vg-tsub summary { cursor: pointer; width: fit-content; }
 .vg-meta-detail-body { display: grid; gap: 18px; padding-top: 12px; }
 .vg-text-link { color: var(--accent); font-size: 12.5px; text-align: left; }
 .vg-funnel { border-top: 1px solid var(--bg-2); padding-top: 14px; }
 .vg-funnel-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
-.vg-funnel-row { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 7px 0; }
+.vg-funnel-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 8px 12px; border-radius: 999px; }
 .vg-funnel-row > span:first-child { flex: 0 1 108px; min-width: 70px; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vg-funnel-row > strong { min-width: 26px; font-size: 13.5px; text-align: right; }
 .vg-funnel-row > span:last-child { width: 44px; font-size: 12px; text-align: right; }
 .vg-funnel-row:disabled { opacity: 1; cursor: default; }
 .vg-funnel-row:not(:disabled):hover { background: var(--hover); }
-.vg-funnel-track { flex: 1 1 40px; min-width: 24px; height: 14px; border-radius: 3px; background: var(--bg-2); overflow: hidden; }
-.vg-funnel-track > span { display: block; height: 100%; border-radius: 3px; }
+.vg-funnel-track { flex: 1 1 40px; min-width: 24px; height: 12px; border-radius: 999px; background: var(--bg-2); overflow: hidden; }
+.vg-funnel-track > span { display: block; height: 100%; border-radius: 999px; }
 .overview-screen .kicker { font-size: 11px; font-weight: 600; letter-spacing: .06em; }
 .overview-screen .vg-trow { grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr) minmax(120px, .8fr); gap: 14px; padding: 14px 0 10px; border-top: 1px solid var(--bg-2); align-items: end; }
 .overview-screen .vg-team-person:disabled { opacity: 1; cursor: default; }
@@ -42,6 +49,96 @@
 .vg-attention-copy strong { display: block; font-size: 14px; font-weight: 650; }
 .vg-attention-copy > span { display: block; font-size: 12.5px; color: var(--fg-3); margin-top: 2px; }
 .vg-attention-action { min-height: 32px; padding: 0 14px; background: var(--btn-bg); color: var(--btn-fg); border-radius: var(--r-2); font-size: 12.5px; font-weight: 600; flex-shrink: 0; }
+
+/* ── Termômetro da meta: a coluna navy (prancha v2, 07/10) ──────────────────
+   Paleta de MARCA, a mesma do selo ICP em tokens.css: navy #051C2C no fundo e
+   teal #23D8D3 do logo no líquido. O tubo é flex, não altura fixa: ele cresce
+   junto com o card quando o gráfico de vendas por dia entra. */
+.vg-termo { position: relative; isolation: isolate; flex: 0 0 236px; display: flex; flex-direction: column; align-items: center; padding: 24px 20px 22px; color: #f3fbff; background: linear-gradient(168deg, #0a2434, #051c2c 70%); overflow: hidden; }
+.vg-termo::before { content: ""; position: absolute; right: -56px; bottom: -40px; width: 210px; height: 210px; z-index: -1; background: #23d8d3; opacity: .07; clip-path: polygon(75% 0, 75% 100%, 54% 40%, 0 57%); }
+.vg-termo-cap { text-align: center; margin-bottom: 14px; flex-shrink: 0; }
+.vg-termo-kicker { font-size: 11px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; color: #23d8d3; }
+.vg-termo-alvo { font-size: 24px; font-weight: 700; letter-spacing: -.025em; line-height: 1.2; margin-top: 4px; }
+.vg-termo-tubo { position: relative; width: 84px; flex: 1 1 auto; min-height: 272px; border-radius: 999px; overflow: hidden; display: flex; flex-direction: column; background: rgba(255,255,255,.07); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); cursor: help; }
+.vg-termo-liq { position: relative; flex: 1; display: flex; flex-direction: column; justify-content: flex-end; }
+/* O que falta pro PACE DE HOJE, hachurado — só aparece quando o fechado está
+   abaixo da marca. */
+.vg-termo-falta { position: relative; flex-shrink: 0; background: repeating-linear-gradient(135deg, rgba(226,105,90,.55) 0 5px, rgba(226,105,90,.32) 5px 10px); }
+.vg-termo-cheio { position: relative; flex-shrink: 0; background: linear-gradient(to top, #0c8f83, #23d8d3); }
+.vg-onda { position: absolute; width: 200%; height: 9px; left: 0; pointer-events: none; animation-name: vg-wave; animation-timing-function: linear; animation-iteration-count: infinite; }
+.vg-termo-bolhas { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.vg-termo-bolhas > span { position: absolute; bottom: -6px; opacity: 0; border-radius: 999px; background: rgba(255,255,255,.55); box-shadow: 0 0 4px rgba(255,255,255,.4); animation-name: vg-bubble; animation-timing-function: ease-in; animation-iteration-count: infinite; }
+.vg-termo-brilho { position: absolute; top: 6px; bottom: 6px; left: 12px; width: 6px; border-radius: 999px; background: linear-gradient(to bottom, rgba(255,255,255,.35), rgba(255,255,255,0)); pointer-events: none; }
+.vg-termo-marca { position: absolute; left: 8px; right: 8px; z-index: 2; border-top: 2px dashed rgba(255,255,255,.7); pointer-events: none; }
+.vg-termo-marca > span { position: absolute; bottom: 6px; width: 100%; text-align: center; font-size: 11px; letter-spacing: .1em; color: rgba(255,255,255,.92); text-shadow: 0 1px 3px rgba(5,28,44,.55); animation: vg-pace 2.4s ease-in-out infinite; }
+
+/* Pílula do pace: as QUATRO faixas da escada (atrás / no pace / meta batida /
+   super meta) moram aqui; o tema de cada uma vem do JS. */
+.vg-pace-pill { position: relative; overflow: hidden; max-width: 100%; margin-top: 18px; display: inline-flex; align-items: center; gap: 8px; height: 38px; flex-shrink: 0; padding: 0 18px; border: 1.5px solid transparent; border-radius: 999px; white-space: nowrap; color: #f3fbff; background-size: 100% 100%, 220% 100%; }
+.vg-pace-pill strong { position: relative; font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+.vg-pace-pill small { position: relative; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+.vg-pill-sweep { position: absolute; top: 0; bottom: 0; left: 0; width: 28%; pointer-events: none; transform: translateX(-140%) skewX(-20deg); animation-name: vg-sweep; animation-timing-function: ease-in-out; animation-delay: 1s; animation-iteration-count: infinite; }
+.vg-pill-dot { position: relative; width: 7px; height: 7px; flex-shrink: 0; }
+.vg-pill-dot > span { position: absolute; inset: 0; border-radius: 999px; }
+.vg-termo-rumo { margin-top: 8px; font-size: 11px; letter-spacing: .04em; color: #afc1ca; text-align: center; }
+
+/* ── Vendas por dia ────────────────────────────────────────────────────────
+   Uma barra por dia da janela do filtro; o valor vem de goal.sale.days (o
+   RECONHECIDO do servidor), então as barras somam o número grande logo acima.
+   Janela de mais de 45 dias cai no agrupamento semanal, feito no JS. */
+.vg-dia { border-top: 1px solid var(--bg-2); padding-top: 16px; display: flex; flex-direction: column; gap: 6px; }
+.vg-dia-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.vg-dia-head > div { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.vg-dia-periodo { font-size: 11.5px; color: var(--fg-4); }
+.vg-dia-legenda { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--fg-3); }
+.vg-dia-tracejado { width: 18px; border-top: 2px dashed var(--fg-3); }
+.vg-dia-grade { position: relative; height: 132px; display: flex; gap: 4px; }
+.vg-dia-linha { position: absolute; left: 0; right: 0; border-top: 1.5px dashed color-mix(in srgb, var(--fg-3) 70%, transparent); pointer-events: none; z-index: 2; }
+.vg-dia-col { position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px; border-radius: 8px; }
+.vg-dia-fds { background: color-mix(in srgb, var(--bg-2) 35%, transparent); }
+.vg-dia-on { background: var(--hover); }
+.vg-dia-hoje { font-size: 8.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); white-space: nowrap; margin-bottom: -3px; }
+.vg-dia-rotulo { font-size: 9.5px; font-weight: 600; white-space: nowrap; letter-spacing: -.02em; }
+.vg-dia-barra { width: 100%; max-width: 26px; border-radius: 6px 6px 3px 3px; }
+.vg-dia-eixo { display: flex; gap: 4px; }
+.vg-dia-eixo > span { flex: 1 1 0; min-width: 0; text-align: center; font-size: 10.5px; color: var(--fg-2); overflow: hidden; }
+.vg-dia-eixo-hoje { color: var(--accent) !important; font-weight: 700; }
+.vg-dia-eixo-fds { color: var(--fg-5) !important; }
+.vg-dia-eixo-fut { color: var(--fg-4) !important; }
+.vg-dia-tip { position: absolute; bottom: 100%; margin-bottom: 6px; left: 50%; transform: translateX(-50%); z-index: 5; pointer-events: none; min-width: 168px; padding: 10px 12px; border-radius: 12px; background: var(--btn-bg); color: var(--btn-fg); box-shadow: var(--shadow-2); display: flex; flex-direction: column; gap: 3px; white-space: nowrap; }
+.vg-dia-tip-l { left: 0; transform: none; }
+.vg-dia-tip-r { left: auto; right: 0; transform: none; }
+.vg-dia-tip-data { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; opacity: .65; }
+.vg-dia-tip-val { font-size: 18px; font-weight: 700; letter-spacing: -.02em; }
+.vg-dia-tip-sub { font-size: 11.5px; opacity: .75; white-space: normal; }
+.vg-dia-tip-vs { font-size: 11.5px; font-weight: 600; }
+.vg-dia-vazio { font-size: 12.5px; color: var(--fg-4); margin-top: 4px; }
+
+/* Movimento do card da meta. O DS diz "nunca glow"; o selo ICP é a 1ª exceção
+   e o termômetro é a 2ª, de propósito (prancha v2): a meta fica à mostra o dia
+   inteiro e o estado "atrás do pace" tem que puxar o olho. Tudo morre em
+   prefers-reduced-motion, logo abaixo. */
+@keyframes vg-wave { to { transform: translateX(-50%); } }
+@keyframes vg-bubble { 0% { bottom: -6px; opacity: 0; } 20% { opacity: .85; } 100% { bottom: 100%; opacity: 0; } }
+@keyframes vg-ping { 0% { transform: scale(1); opacity: .75; } 80%, 100% { transform: scale(2.8); opacity: 0; } }
+@keyframes vg-glow { 0%, 100% { box-shadow: 0 0 12px rgba(35,216,211,.22); } 50% { box-shadow: 0 0 24px rgba(35,216,211,.55); } }
+@keyframes vg-glow-red { 0%, 100% { box-shadow: 0 0 10px rgba(226,105,90,.25); } 50% { box-shadow: 0 0 26px rgba(226,105,90,.7); } }
+@keyframes vg-sweep { 0% { transform: translateX(-140%) skewX(-20deg); } 55%, 100% { transform: translateX(420%) skewX(-20deg); } }
+@keyframes vg-pace { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+@keyframes vg-nudge { 0%, 84%, 100% { transform: translateX(0); } 86% { transform: translateX(-3px); } 88% { transform: translateX(3px); } 90% { transform: translateX(-2px); } 92% { transform: translateX(2px); } 94% { transform: translateX(0); } }
+@keyframes vg-blink { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) {
+  .vg-onda, .vg-termo-bolhas > span, .vg-termo-marca > span,
+  .vg-pace-pill, .vg-pill-sweep, .vg-pill-dot > span { animation: none !important; }
+}
+
+/* A coluna navy deita em cima do corpo quando o card fica estreito. */
+@media (max-width: 820px) {
+  .vg-meta-columns { flex-wrap: wrap; }
+  .vg-termo { flex: 1 1 100%; padding: 20px; }
+  .vg-termo-tubo { min-height: 200px; }
+}
+
 @media (max-width: 1200px) {
   .vg-layout { grid-template-columns: minmax(0, 1fr); }
   .vg-aside { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); align-items: start; }
@@ -49,9 +146,21 @@
 @media (max-width: 600px) {
   .overview-screen { --inset-x: 16px; }
   .vg-layout { padding-top: 20px; }
-  .vg-meta-card { padding: 20px 16px 16px; }
-  .vg-meta-columns { justify-content: center; gap: 20px; }
+  .vg-meta-story { padding: 20px 16px 18px; }
+  .vg-meta-details { padding: 12px 16px 14px; }
   .vg-sold { font-size: 42px; }
+  .vg-dia-grade { height: 104px; }
+  .vg-dia-rotulo { display: none; }
+  /* 30 números de dia em 300px viram um borrão: no celular sobram o 1º, o de
+     5 em 5 e o de hoje. `visibility` em vez de `display` pra o que sobrou
+     continuar embaixo da coluna certa. */
+  .vg-dia-eixo > span { visibility: hidden; overflow: visible; }
+  .vg-dia-eixo > span:first-child,
+  .vg-dia-eixo > span:nth-child(5n),
+  .vg-dia-eixo > .vg-dia-eixo-hoje { visibility: visible; }
+  /* o vizinho de hoje sai: "14" e "15" colados viram um borrão só */
+  .vg-dia-eixo > .vg-dia-eixo-hoje + span,
+  .vg-dia-eixo > span:has(+ .vg-dia-eixo-hoje) { visibility: hidden; }
   .overview-screen .vg-trow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .vg-team-person { grid-column: 1 / -1; min-height: 44px; }
   .vg-attention-row { flex-wrap: wrap; gap: 10px; padding: 14px 16px; }
