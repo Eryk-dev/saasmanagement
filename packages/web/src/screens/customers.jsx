@@ -1552,7 +1552,7 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
         setInvOverride((o) => ({ ...o, [i.id]: "paid" }));
       }
     } catch (e) {
-      window.toast && window.toast(e?.message || "não deu pra atualizar a parcela", "neg");
+      window.toast && window.toast(e?.message || "não deu pra atualizar a fatura", "neg");
     } finally { setInvBusy(""); }
   }
   const parcelas = invoices.filter((i) => i.kind === "installment")
@@ -2077,19 +2077,25 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
               </button>
             </div>
           )}
-          {invoices.filter((i) => i.kind !== "installment").slice(0, 6).map((i) => (
+          {/* Cada fatura tem "marcar paga" / "desmarcar" (Leo, 07/10): o dinheiro
+              entra por PIX/cartão fora do rastreio do MP seja qual for o meio de
+              pagamento, e a fatura de renovação de quem fechou à vista ficava
+              "aberta" sem jeito de dar baixa. MESMA função das parcelas
+              (toggleParcela → POST /invoices/:id/pay|unpay); baixa real do MP
+              não desmarca. */}
+          {invoices.filter((i) => i.kind !== "installment").slice(0, 6).map((i) => { const st = invStatus(i); return (
             <div key={i.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 13 }}>
               <span style={{ color: "var(--fg-2)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {i.dueDate ? new Date(i.dueDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "") : ""} · {i.title || i.kind || "fatura"}
                 {/* como o dinheiro entrou de verdade (carimbado pela baixa do MP) */}
-                {i.status === "paid" && mpMethodLabel(i) ? <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)" }}> · {mpMethodLabel(i)}</span> : null}
+                {st === "paid" && mpMethodLabel(i) ? <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)" }}> · {mpMethodLabel(i)}</span> : null}
                 {/* upsell: o acréscimo recorrente e quem vendeu (atribuição do placar do CS) */}
                 {i.kind === "upsell" && (i.recurringDelta > 0 || i.soldBy)
                   ? <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)" }}>{i.recurringDelta > 0 ? ` · +${money(i.recurringDelta)}/mês` : ""}{i.soldBy ? ` · por ${displayName(i.soldBy)}` : ""}</span>
                   : null}
               </span>
               <span style={{ display: "inline-flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
-                {mpOn && i.status !== "paid" && (
+                {mpOn && st !== "paid" && (
                   <button onClick={() => invoiceLink(i)}
                     title={i.mpInitPoint ? "copiar o link de pagamento desta fatura" : "gerar o link de pagamento desta fatura no Mercado Pago"}
                     style={{ height: 20, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--accent)", fontSize: 10.5 }}>
@@ -2097,12 +2103,20 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
                   </button>
                 )}
                 <span className="tnum mono" style={{ fontWeight: 500 }}>{money(i.amount || 0)}</span>
-                <Pill tone={i.status === "paid" ? "pos" : i.status === "overdue" ? "neg" : "warn"}>
-                  {i.status === "paid" ? "paga" : i.status === "overdue" ? "vencida" : "aberta"}
+                <Pill tone={st === "paid" ? "pos" : st === "overdue" ? "neg" : "warn"}>
+                  {st === "paid" ? "paga" : st === "overdue" ? "vencida" : "aberta"}
                 </Pill>
+                {/* baixa REAL do MP não desmarca (o dinheiro existiu) */}
+                {!(st === "paid" && i.mpPaymentId) && (
+                  <button onClick={() => toggleParcela(i)} disabled={invBusy === i.id}
+                    title={st === "paid" ? "desfazer a baixa manual desta fatura" : "registrar que esta fatura foi paga, seja qual for o meio de pagamento"}
+                    style={{ height: 20, padding: "0 8px", borderRadius: 999, border: "1px solid " + (st === "paid" ? "var(--line-2)" : "var(--pos, var(--accent))"), background: "var(--bg-1)", color: st === "paid" ? "var(--fg-3)" : "var(--pos, var(--accent))", fontSize: 10.5, fontWeight: 600, opacity: invBusy === i.id ? 0.5 : 1 }}>
+                    {invBusy === i.id ? "…" : st === "paid" ? "desmarcar" : "marcar paga"}
+                  </button>
+                )}
               </span>
             </div>
-          ))}
+          ); })}
           {invoices.filter((i) => i.kind !== "installment").length === 0 && (
             <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>{parcelas.length ? "Nenhuma fatura além das parcelas." : "Nenhuma fatura ainda."}</div>
           )}
