@@ -10,7 +10,7 @@ import { Segmented, Card } from "../components/viz.jsx";
 import { CorrenteDoDinheiro } from "../components/story.jsx";
 import { Modal } from "../components/overlay.jsx";
 import { usePeriod } from "../components/period-picker.jsx";
-import { painCodeOf } from "../lib/pains.js";
+import { painCodeOf } from "../lib/pain-code.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { EmptyState, PrimaryButton } from "../atoms.jsx";
 import { stageKind } from "../lib/funnel.js";

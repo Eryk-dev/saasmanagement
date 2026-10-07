@@ -151,7 +151,7 @@ test("snapshot guarda as DUAS bases de pricing (showIf de nicho não filtra com 
   assert.equal(p.state.volume, "100-500", "faixa vem de answers.listings");
 });
 
-test("régua: o nicho decide a linha, o nº de contas decide o pacote; Price nunca é sugerido", async () => {
+test("régua: o nicho decide a linha, o nº de contas decide o pacote; Price só pela origem", async () => {
   const repo = await seedRepo();
   const sug = async (answers) => {
     const p = await makeProposal(repo, answers);
@@ -168,10 +168,46 @@ test("régua: o nicho decide a linha, o nº de contas decide o pacote; Price nun
   assert.equal(catalogUI(big).enterpriseHint, true, "tela zero avisa que Enterprise é sob consulta");
   assert.match(catalogUI(big).why, /Enterprise é sob consulta/);
   assert.equal(catalogUI(await makeProposal(repo, { niche: "outros", accounts: "6-10", listings: "100-500" })).enterpriseHint, false);
-  // A régua nunca sugere Price (cross-sell, escolha do closer).
+  // Sem origem Price a régua nunca sugere Price: segue cross-sell na mão do
+  // closer, por mais anúncios que o lead tenha.
   for (const a of [{ accounts: "1" }, { accounts: "6-10", listings: "10000+" }, { niche: "autopecas", accounts: "10+" }]) {
     assert.ok(!(await sug(a)).startsWith("price_"));
   }
+});
+
+// Leo, 07/10/2026: começou a anunciar [PRICE]. Quem clica no criativo de
+// precificação abre o deck do Price — a única dor que troca a linha —, e o
+// pacote sai do VOLUME de anúncios (até 1k / até 10k / ilimitado), não do nº
+// de contas.
+test("origem [PRICE]: abre o deck do Price, com o pacote pelo volume de anúncios", async () => {
+  const repo = await seedRepo();
+  const sug = async (answers, state = {}) => {
+    const p = await makeProposal(repo, answers);
+    return suggestProduct(p.calc, { ...p.state, ...state }, p.data.answers);
+  };
+  const dor = { pain: "PRICE" };
+  assert.equal(await sug({ niche: "outros", accounts: "1", listings: "0-500" }, dor), "price_essencial");
+  assert.equal(await sug({ niche: "outros", accounts: "1", listings: "500-1000" }, dor), "price_essencial", "até 1k é Essencial");
+  assert.equal(await sug({ niche: "outros", accounts: "1", listings: "1000-5000" }, dor), "price_escala");
+  assert.equal(await sug({ niche: "outros", accounts: "1", listings: "5000-10000" }, dor), "price_escala", "até 10k é Escala");
+  assert.equal(await sug({ niche: "outros", accounts: "1", listings: "10000+" }, dor), "price_enterprise", "acima de 10k é Enterprise, que tem preço");
+  // Nº de contas não manda no Price, e autopeças não puxa a linha pro OEM.
+  assert.equal(await sug({ niche: "autopecas", accounts: "10+", listings: "0-500" }, dor), "price_essencial");
+
+  // O formulário do Price preenchido conta como origem do mesmo jeito.
+  assert.equal(await sug({ niche: "outros", accounts: "6-10", listings: "1000-5000", formProduct: "price" }), "price_escala");
+
+  // Price Enterprise tem preço: a tela zero não avisa "sob consulta".
+  const big = await makeProposal(repo, { niche: "outros", accounts: "10+", listings: "10000+" });
+  const ui = catalogUI({ ...big, state: { ...big.state, pain: "PRICE" } });
+  assert.equal(ui.suggested, "price_enterprise");
+  assert.equal(ui.enterpriseHint, false);
+  assert.match(ui.why, /veio pelo Price · 10k\+ anúncios/, "a explicação fala de volume, não de contas");
+
+  // Apresentar continua vencendo tudo, inclusive a origem.
+  const p = await makeProposal(repo, { niche: "autopecas", accounts: "1", listings: "1000-5000" });
+  p.state = { ...p.state, pain: "PRICE", product: "oem_essencial" };
+  assert.equal(activeProduct(p), "oem_essencial");
 });
 
 test("Ads Essencial: anual abre, semestral no Shift+1, sem recorrente, sem tela OEM", async () => {
@@ -271,7 +307,7 @@ test("tela zero: dor OEM entra no select depois das letras e não remonta o deck
   const repo = await seedRepo();
   const p = await makeProposal(repo, { niche: "autopecas", accounts: "1", listings: "100-500" });
   const base = catalogUI(p);
-  assert.deepEqual(base.painOrder, ["A", "B", "C", "D", "E", "OEM", "none"], "letras, códigos maiores, sem código");
+  assert.deepEqual(base.painOrder, ["A", "B", "C", "D", "E", "OEM", "PRICE", "none"], "letras, códigos maiores, sem código");
   assert.ok(base.pains.OEM.spin.N.length > 10, "trilha SPIN da dor OEM embarcada");
 
   p.state = { ...p.state, pain: "OEM" };

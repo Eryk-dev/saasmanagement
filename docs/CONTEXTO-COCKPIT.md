@@ -892,3 +892,34 @@ integração com o LeverPrice.
 
 Validação: `node --test packages/api/test/plan-*.test.js packages/api/test/entitlements.test.js`
 e, no navegador com mocks, `npm run test:review:plans -w packages/web`.
+
+**Dor `[PRICE]` (07/10/2026).** O Leo começou a subir criativo de precificação
+com `[PRICE]` no nome, rastreado como o `[OEM]`. O que o código já fazia desde
+16/09: `painCode` aceita a etiqueta, o `/f/:id` resolve o anúncio ainda sem
+insights na Meta e o `form_ab` manda `[PRICE]` pro `fo_price_v2`. O que entrou
+agora: `painCodeOf` do web (`lib/pain-code.js`, módulo sem React pra ficar
+testável) passou a espelhar a API — antes a dor existia no lead e o cockpit
+mostrava o card sem rótulo, o "Por dor" da Publicidade jogava o gasto em "Sem
+código" e o fluxo de criar anúncio não achava a campanha; a dor `PRICE` entrou
+no catálogo (rótulo + trilha SPIN) e no `painMap` do produto; e a origem Price
+passou a TROCAR a linha da apresentação (`lineOf`), única dor que faz isso — o
+pacote sai do VOLUME de anúncios (`priceTier`, lido dos `limite` do catálogo:
+até 1k Essencial, até 10k Escala, acima Enterprise, que no Price tem preço),
+não do nº de contas. Origem Price = dor `[PRICE]` ou `formProduct: "price"`; o
+select "Apresentar" continua vencendo tudo. No SDR, `leadPainFocus` devolve
+`mode: "price"` (sem a cerca de nicho do OEM e FORA do roteiro fixo do OEM) e o
+primeiro toque e o cérebro falam só de precificação, sem somar clonagem nem OEM.
+De quebra, `volCol` passou a ler as faixas de anúncios dos formulários v2
+(`0-500`, `500-1000`, …), que não existem em `calc.volumeMid`: toda proposta
+vinda dos forms novos lia a coluna 0 e a nota S-E do cliente caía no piso.
+
+Dados de produção aplicados por SQL em 07/10 (a migração do catálogo é one-shot
+e não roda de novo): `products.leverads.painMap.PRICE`,
+`proposal_templates.pt_leverads.calc.catalog.pains.PRICE` e as 3.304 propostas
+com catálogo. Backups: `cockpit._bak_{products,proposal_templates,proposals}_20261007_price`.
+Escrita direta no banco não acorda o SSE: cockpit aberto só vê a dor nova depois
+de recarregar.
+
+Validação: `node --test packages/api/test/proposal-catalog.test.js
+packages/api/test/sdr-flow.pain.test.js packages/api/test/routes.form-routing.test.js`
+e `node --test packages/web/test/pains.test.js`.

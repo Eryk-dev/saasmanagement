@@ -131,7 +131,24 @@ export const moneyOf = (v) => {
   return digits ? Number(digits) : 0;
 };
 
+// Faixas de anúncios dos formulários v2 ("0-500", "500-1000"…) não existem no
+// `calc.volumeMid`, escrito com os rótulos antigos: o lookup dava undefined, o
+// mid virava 0 e TODA proposta vinda dos forms novos lia a coluna 0 — a nota do
+// cliente e o pacote caíam no piso em silêncio. Mesma solução do PARA_LEVERCOPY
+// (crm/classificacao.js): preserva o ÍNDICE da faixa, que é o que a grade S-E
+// espera, em vez de inventar um ponto médio novo.
+const VOL_INDEX = { "0-500": 0, "500-1000": 1, "1000-5000": 2, "5000-10000": 3, "10000+": 4 };
+// Topo de cada faixa, em anúncios. Só o Price usa: ele é vendido por VOLUME
+// (até 1k / até 10k / ilimitado), não por nº de contas.
+const VOL_TOP = {
+  "0-500": 500, "500-1000": 1000, "1000-5000": 5000, "5000-10000": 10000,
+  "0-100": 100, "100-500": 500, "500-2000": 2000, "2000-10000": 10000, // legado
+  "10000+": Infinity,
+};
+
 function volCol(calc, band) {
+  const idx = VOL_INDEX[String(band ?? "")];
+  if (idx != null) return idx;
   const mid = Number((calc?.volumeMid || {})[band]) || 0;
   return mid <= 100 ? 0 : mid <= 500 ? 1 : mid <= 2000 ? 2 : mid <= 10000 ? 3 : 4;
 }
@@ -159,23 +176,52 @@ const tierOfKey = (products, key) => String(products?.[key]?.tier || String(key)
 const linesOf = (cat) => ({ ...DEFAULT_LINES, ...(cat?.lines || {}) });
 const lineName = (cat, line) => linesOf(cat)[line]?.name || line;
 
-export const lineOf = (answers) => (isAuto(answers) ? "oem" : "ads");
-export function pkgOf(cat, state) {
+// Dor do anúncio como a tela zero a conhece: o override manual do closer
+// (state.pain) vence o que o formulário congelou (answers.sourcePain).
+const painOf = (state, answers) => String(state?.pain || answers?.sourcePain || "").toUpperCase().trim();
+// Origem Price = dor [PRICE] no anúncio OU formulário do Price preenchido
+// (`formProduct`, gravado no lead pelo roteamento do /f/:id). As duas andam
+// juntas na prática (o roteamento usa a mesma dor), mas o link do form de Price
+// mandado na mão também conta como origem.
+const isPrice = (state, answers) =>
+  painOf(state, answers) === "PRICE" || String(answers?.formProduct || "") === "price";
+
+export const lineOf = (answers, state) => (isPrice(state, answers) ? "price" : isAuto(answers) ? "oem" : "ads");
+
+// Pacote do Price: lido dos próprios `limite` do catálogo (o banco manda, sem
+// deploy) contra o TOPO da faixa de anúncios respondida no form. Faixa
+// desconhecida cai no menor pacote; `limite: 0` é o ilimitado e fecha a escada.
+export function priceTier(cat, state) {
+  const products = cat?.products || {};
+  const escada = TIER_KEYS.filter((t) => products["price_" + t])
+    .map((tier) => ({ tier, limite: Number(products["price_" + tier]?.limite) || 0 }));
+  const top = VOL_TOP[String(state?.volume ?? "")] ?? 0;
+  const cabe = escada.find((t) => t.limite > 0 && top <= t.limite) || escada.find((t) => !t.limite);
+  return (cabe || escada[0] || { tier: "essencial" }).tier;
+}
+
+export function pkgOf(cat, state, line) {
+  if (line === "price") return priceTier(cat, state);
   const map = { ...DEFAULT_TIER_BY_ACCOUNTS, ...(cat?.tierByAccounts || {}) };
   return map[String(state?.accounts ?? "")] || "essencial";
 }
 // 10+ contas cai no Enterprise, que em OEM/Ads é sob consulta: a apresentação
-// abre no Escala e a tela zero avisa (fecha como Personalizado no gate).
-export const enterpriseHint = (cat, state, answers) =>
-  pkgOf(cat, state) === "enterprise" && !cat?.products?.[lineOf(answers) + "_enterprise"];
+// abre no Escala e a tela zero avisa (fecha como Personalizado no gate). No
+// Price o Enterprise TEM preço, então nunca vira aviso.
+export const enterpriseHint = (cat, state, answers) => {
+  const line = lineOf(answers, state);
+  return pkgOf(cat, state, line) === "enterprise" && !cat?.products?.[line + "_enterprise"];
+};
 
-// A dor do anúncio ([A-E]/[OEM]) só troca a trilha SPIN — nunca o produto
-// (pedido do Leo, 15/08/2026). Price fica fora da sugestão: é cross-sell.
+// A dor do anúncio [A-E]/[OEM] só troca a trilha SPIN — nunca o produto (pedido
+// do Leo, 15/08/2026). A dor [PRICE] é a exceção (Leo, 07/10/2026): ela TROCA a
+// linha, porque o criativo de precificação vende Price, e mandar esse lead pro
+// deck de clonagem seria apresentar outro produto.
 export function suggestProduct(calc, state, answers) {
   const cat = calc?.catalog || {};
   const products = cat.products || {};
-  const line = lineOf(answers);
-  let tier = pkgOf(cat, state);
+  const line = lineOf(answers, state);
+  let tier = pkgOf(cat, state, line);
   if (tier === "enterprise" && !products[line + "_enterprise"]) tier = "escala";
   if (!products[line + "_" + tier]) tier = "escala";
   if (!products[line + "_" + tier]) tier = "essencial";
@@ -472,14 +518,20 @@ export function catalogUI(p) {
     enterprise: products[id + "_enterprise"] ? "" : String(lineDefs[id]?.enterprise || ""),
   })).filter((l) => l.products.length || l.enterprise);
   const active = products[String(state.product || "")] ? String(state.product) : suggested;
-  const line = lineOf(answers);
-  const pkg = pkgOf(cat, state);
+  const line = lineOf(answers, state);
+  const pkg = pkgOf(cat, state, line);
   const hint = enterpriseHint(cat, state, answers);
   const nicheTxt = isAuto(answers) ? "autopeças" : "fora de autopeças";
-  const why = String(state.accounts ?? "") + " conta(s) · " + nicheTxt + " → " +
-    (hint
-      ? lineName(cat, line) + " Enterprise é sob consulta: apresenta o Escala e fecha como Personalizado."
-      : (products[line + "_" + pkg]?.name || lineName(cat, line) + " · " + (TIER_LABEL[pkg] || pkg)) + ".");
+  const nome = (products[line + "_" + pkg]?.name || lineName(cat, line) + " · " + (TIER_LABEL[pkg] || pkg)) + ".";
+  // No Price quem explica a sugestão é o VOLUME de anúncios, não o nº de
+  // contas: dizer "3-5 conta(s)" numa linha vendida por anúncio desmenteria a
+  // própria régua que acabou de rodar.
+  const why = line === "price"
+    ? "veio pelo Price · " + (cat.volLabels || DEFAULT_VOL_LABELS)[volCol(calc, state.volume)] + " anúncios → " + nome
+    : String(state.accounts ?? "") + " conta(s) · " + nicheTxt + " → " +
+      (hint
+        ? lineName(cat, line) + " Enterprise é sob consulta: apresenta o Escala e fecha como Personalizado."
+        : nome);
   // Ordem do select de dor: códigos de 1 letra (A-E) antes dos maiores (OEM),
   // "sem código" sempre por último. Sai pronto daqui porque a tela zero não
   // conhece o catálogo — dor nova no template aparece sem tocar no renderer.
