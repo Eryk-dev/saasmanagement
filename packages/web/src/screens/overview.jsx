@@ -17,7 +17,7 @@ import { dealProductLabel, closedPlanLabel } from "../lib/payments.js";
 // CRM final: meta/funil e vendas na primeira linha; equipe/atenção e
 // carteira/aquisição na segunda. As réguas e fontes financeiras são mantidas.
 
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect, useMemo, useRef } = React;
 
 const DAY = 86_400_000;
 // Offset do fuso do NEGÓCIO (America/Sao_Paulo, o mesmo do bizDay). O Brasil
@@ -163,16 +163,19 @@ function goalLabelOf(goal) {
 // do pace atravessando e o rodapé com a porcentagem na cor do estado. A altura
 // acompanha o alvo atual (100%, 120%, 140%...), preservando a meta original
 // no percentual realizado. O pace fica acima dos efeitos, apenas como marca.
-function LiquidoMeta({ height, followup = false }) {
+const BOLHAS = [0, 1, 2, 3, 4];
+function LiquidoMeta({ height, followup = false, title }) {
   if (!(height > 0)) return null;
   // Dois períodos idênticos: deslocar metade da largura fecha o loop sem salto.
   const onda = "M0 6 Q12 0 24 6 T48 6 T72 6 T96 6 V12 H0Z";
   return (
-    <div className={`vg-meta-liquid ${followup ? "vg-meta-liquid-followup" : "meta-sobe"}`}
-      style={{ height: `${height}%` }} aria-hidden="true">
+    <div className={`vg-meta-liquid meta-sobe ${followup ? "vg-meta-liquid-followup" : ""}`}
+      style={{ height: `${height}%` }} title={title} aria-hidden="true">
       <svg className="vg-meta-wave vg-meta-wave-back" viewBox="0 0 96 12" preserveAspectRatio="none"><path d={onda} /></svg>
       <svg className="vg-meta-wave" viewBox="0 0 96 12" preserveAspectRatio="none"><path d={onda} /></svg>
       <span className="vg-meta-liquid-reflection" />
+      {/* As bolhas sobem só dentro do que já fechou: é o líquido de verdade. */}
+      {!followup && <span className="vg-meta-bubbles">{BOLHAS.map((i) => <span key={i} />)}</span>}
     </div>
   );
 }
@@ -186,7 +189,20 @@ function Termometro({ s, goal, lad, label, milestone }) {
   // A camada clara indica a distância até o pace; follow-up continua na pílula.
   const mesa = goal.ended ? 0 : Math.max(0, Math.min(100 - fechado, (s.expectedProgress || 0) * 100 - fechado));
   const pacePct = !goal.ended && s.expectedProgress != null ? Math.max(0, Math.min(100, s.expectedProgress * 100)) : null;
+  // A faixa hachurada em dinheiro, pro hover dizer o tamanho do buraco em vez
+  // de só mostrar onde a marca está.
+  const faltaPaceTxt = mesa > 0
+    ? `Falta ${moneyFull(Math.max(0, r2(alvo * (s.expectedProgress || 0) - (Number(s.sold) || 0))))} pro pace de hoje`
+    : undefined;
   const pctTxt = `${Math.round(alvo > 0 ? Math.max(0, (Number(s.sold) || 0) / base) * 100 : 0)}%`;
+  // Estado da pílula (prancha v2, 07/10): quem está ATRÁS do pace ganha o
+  // tratamento vermelho, com o brilho mais rápido, um tranco curto a cada 4s e
+  // o ponto piscando entre dois anéis. É o único estado que precisa puxar o
+  // olho; no pace, meta batida e super meta ficam calmos. A escada de quatro
+  // faixas é a mesma do resto da tela (LVL_LABEL).
+  const pillState = goal.ended
+    ? (s.sold >= alvo ? "met" : "behind")
+    : ({ red: "behind", ok: "on", green: "met", gold: "super" })[lad?.lvl] || "on";
   return (
     <div className="vg-meta-thermometer" >
       <div className="vg-meta-label">
@@ -196,16 +212,144 @@ function Termometro({ s, goal, lad, label, milestone }) {
       </div>
       <div className="vg-meta-thermometer-bar" >
         <div className="vg-meta-liquid-track" role="progressbar" aria-label={extended ? `Próximo alvo: ${milestone.percent}% da meta` : label} aria-valuemin={0} aria-valuemax={milestone?.percent || 100} aria-valuenow={Math.min(milestone?.percent || 100, base > 0 ? Math.max(0, s.sold / base * 100) : 0)} aria-valuetext={`${pctTxt} da meta original; ${moneyFull(s.sold)} de ${moneyFull(alvo)} do alvo atual`} style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
-          <LiquidoMeta height={mesa} followup />
+          <LiquidoMeta height={mesa} followup title={faltaPaceTxt} />
           <LiquidoMeta height={fechado} />
           {pacePct != null && <span className="vg-meta-pace-marker" aria-hidden="true"
             style={{ bottom: `clamp(0px, ${pacePct}%, calc(100% - 3px))` }}><span>PACE</span></span>}
         </div>
       </div>
-      <span className="vg-meta-percent">
+      <span className={`vg-meta-percent is-${pillState}`}>
         <span aria-hidden="true" />
         <strong>{pctTxt}</strong><small>{goal.ended ? (s.sold >= alvo ? "meta batida" : "fechou abaixo") : extended ? "da meta original" : LVL_LABEL[lad?.lvl] || "da meta"}</small>
       </span>
+    </div>
+  );
+}
+
+// ── Vendas por dia ──────────────────────────────────────────────────────────
+// Entre os números da meta e o funil: uma barra por dia da JANELA DO FILTRO,
+// com o valor RECONHECIDO que o servidor manda em goal.sale.days — as barras
+// somam exatamente o número grande logo acima. Somar lead.amount aqui faria a
+// soma subir pelo contrato cheio e brigar com o número ao lado.
+// O tracejado é o ritmo atual por dia útil da mesma janela.
+const DIA_SEMANA = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+const wdOf = (day) => new Date(`${day}T12:00:00`).getDay();
+const ddmm = (day) => `${day.slice(8, 10)}/${day.slice(5, 7)}`;
+// Rótulo no topo da barra: "11k", "5,7k". O compactMoney da tela devolve
+// "11,3 mil", largo demais pra uma coluna de 26px.
+const kMoney = (v) => {
+  const n = Math.round(Number(v) || 0);
+  if (n < 1000) return String(n);
+  const k = n / 1000;
+  return `${k >= 10 ? String(Math.round(k)) : String(Math.round(k * 10) / 10).replace(".", ",")}k`;
+};
+// Ritmo da JANELA: o vendido repartido pelos dias úteis que já passaram dela.
+// No mês corrente bate com pace.sale.actualDailyPace; em qualquer outra janela
+// é o único ritmo que fala do período que está na tela.
+const ritmoDaJanela = (goal) => {
+  const n = Number(goal?.businessDaysElapsed) || 0;
+  return n > 0 ? (Number(goal?.sale?.sold) || 0) / n : 0;
+};
+// Acima disso a grade agrupa por semana: o filtro do topo vai até 90 dias e
+// aceita intervalo livre, e 90 colunas num card viram borrão.
+const AGRUPA_ACIMA_DE = 45;
+
+function VendasPorDia({ goal }) {
+  const [hover, setHover] = useState(null);
+  const serie = useMemo(() => {
+    if (!goal || !Array.isArray(goal.sale?.days)) return null;
+    const mapa = new Map(goal.sale.days.map((d) => [d.day, d]));
+    const dias = [];
+    for (let d = goal.since; d <= goal.until && dias.length < 400; d = plusDays(d, 1)) {
+      const w = wdOf(d);
+      const info = mapa.get(d);
+      dias.push({
+        day: d, wd: w, weekend: w === 0 || w === 6,
+        future: d > goal.today, today: d === goal.today,
+        valor: info?.revenue || 0, contratos: info?.contracts || 0,
+      });
+    }
+    const ritmo = ritmoDaJanela(goal);
+    if (dias.length <= AGRUPA_ACIMA_DE) return { semanal: false, itens: dias, ref: ritmo };
+    const semanas = [];
+    for (let i = 0; i < dias.length; i += 7) {
+      const bloco = dias.slice(i, i + 7);
+      semanas.push({
+        day: bloco[0].day, fim: bloco[bloco.length - 1].day,
+        valor: bloco.reduce((a, b) => a + b.valor, 0),
+        contratos: bloco.reduce((a, b) => a + b.contratos, 0),
+        uteis: bloco.filter((b) => !b.weekend && !b.future).length,
+        future: bloco.every((b) => b.future), today: bloco.some((b) => b.today), weekend: false,
+      });
+    }
+    return { semanal: true, itens: semanas, ref: ritmo * 5 };
+  }, [goal]);
+
+  // API antiga (antes do deploy da série): o bloco não aparece, em vez de
+  // desenhar uma grade vazia que mentiria sobre o período.
+  if (!serie) return null;
+  const { semanal, itens, ref } = serie;
+  const maior = Math.max(0, ...itens.map((b) => b.valor));
+  const teto = Math.max(maior, ref * 1.5, 1);
+  const alt = (v) => `${Math.min(100, (v / teto) * 100).toFixed(1)}%`;
+  const n = itens.length;
+  const vazio = !itens.some((b) => b.contratos > 0);
+  const legenda = semanal ? "ritmo da semana" : "ritmo atual";
+
+  const tip = (b, i) => {
+    const delta = b.valor - ref;
+    const mostraVs = !b.future && (semanal || !b.weekend);
+    const detalhe = semanal
+      ? (b.contratos ? `${int(b.contratos)} contrato${b.contratos > 1 ? "s" : ""} · ${int(b.uteis)} ${b.uteis === 1 ? "dia útil corrido" : "dias úteis corridos"}` : "nenhuma venda na semana")
+      : b.contratos && b.valor ? `${int(b.contratos)} contrato${b.contratos > 1 ? "s" : ""} · ticket ${moneyFull(b.valor / b.contratos)}`
+        : b.contratos ? `${int(b.contratos)} contrato${b.contratos > 1 ? "s" : ""} · nada entrou ainda (faturado ou recorrente)`
+          : b.weekend ? "fim de semana · sem meta" : b.future ? "ainda não aconteceu" : "nenhuma venda";
+    return (
+      <div className={`vg-day-tip${i < 3 ? " is-left" : i > n - 4 ? " is-right" : ""}`}>
+        <span className="vg-day-tip-date">{semanal ? `${ddmm(b.day)} a ${ddmm(b.fim)}` : `${DIA_SEMANA[b.wd]}, ${ddmm(b.day)}${b.today ? " · hoje" : ""}`}</span>
+        <strong>{moneyFull(b.valor)}</strong>
+        <span className="vg-day-tip-sub">{detalhe}</span>
+        {mostraVs && <span className="vg-day-tip-vs" style={{ color: delta >= 0 ? "var(--vg-cyan)" : "#f2a59b" }}>
+          {`${delta >= 0 ? "+" : "−"}${moneyFull(Math.abs(delta))} vs. ${legenda}`}
+        </span>}
+      </div>
+    );
+  };
+
+  return (
+    <div className="vg-days">
+      <div className="vg-days-head">
+        <div>
+          <span className="kicker">{semanal ? "Vendas por semana" : "Vendas por dia"}</span>
+          <span className="vg-days-period">{goalLabelOf(goal).label}</span>
+        </div>
+        {ref > 0 && <div className="vg-days-legend"><span aria-hidden="true" />{legenda} <b>{moneyFull(ref)}</b>{semanal ? "/semana" : "/dia útil"}</div>}
+      </div>
+      <div className="vg-days-grid">
+        {ref > 0 && <span className="vg-days-line" style={{ bottom: alt(ref) }} aria-hidden="true" />}
+        {itens.map((b, i) => (
+          <div key={b.day} className={`vg-day${b.weekend ? " is-weekend" : ""}${hover === b.day ? " is-on" : ""}`}
+            onMouseEnter={() => setHover(b.day)} onMouseLeave={() => setHover(null)}>
+            {b.today && !semanal && <span className="vg-day-today">hoje</span>}
+            {b.valor > 0 && <span className="vg-day-value" style={b.today ? { color: "var(--accent)" } : null}>{kMoney(b.valor)}</span>}
+            <span className="vg-day-bar" style={{
+              height: alt(b.valor),
+              minHeight: b.weekend && !b.valor ? 0 : 4,
+              background: b.weekend && !b.valor ? "transparent"
+                : b.today ? "var(--accent)" : b.future ? "var(--bg-2)" : b.valor > 0 ? "var(--vg-funnel-3)" : "var(--vg-funnel-0)",
+            }} />
+            {hover === b.day && tip(b, i)}
+          </div>
+        ))}
+      </div>
+      <div className="vg-days-axis">
+        {itens.map((b) => (
+          <span key={b.day} className={b.today ? "is-today" : b.weekend ? "is-weekend" : b.future ? "is-future" : undefined}>
+            {semanal ? ddmm(b.day) : b.day.slice(8, 10)}
+          </span>
+        ))}
+      </div>
+      {vazio && <div className="vg-days-empty">Nenhuma venda registrada neste período.</div>}
     </div>
   );
 }
@@ -273,6 +417,7 @@ function MetaMesCard({ pace, goal, children }) {
               <div className="vg-meta-caption">{int(c.sold)} contratos assinados{c.sold > 0 && s.sold > 0 ? ` · ticket médio ${moneyFull(s.sold / c.sold)}` : ""}{curMes ? ` · ritmo atual ${moneyFull(pace.sale.actualDailyPace)}/dia útil` : ""}</div>
               {s.target == null && <div className="vg-meta-caption">Sem meta de venda para este período.</div>}
             </div>
+            <VendasPorDia goal={goal} />
             {children}
           </div>
         </div>
@@ -714,7 +859,14 @@ function AquisicaoCard({ marketing, biz, classes }) {
 // UPSELL, que é venda desde 09/09 (fatura kind:"upsell" na ficha do cliente,
 // creditada a quem vendeu). Sem o upsell a lista contava metade do que o time
 // fez no mês.
-const MAX_VENDAS = 8;
+// Quantas vendas a lista mostra. O card é esticado pela altura do card da meta
+// ao lado (mesma linha do grid), então um número fixo deixava um buraco branco
+// entre a última venda e o "ver todas" — e cresceu de vez com o gráfico de
+// vendas por dia. A lista passa a MEDIR o espaço livre e mostrar o que couber,
+// entre um piso e um teto; sem espaço medido (celular em coluna única, SSR)
+// mostra o teto, que é o comportamento de antes com mais folga.
+const MIN_VENDAS = 8;
+const MAX_VENDAS = 14;
 // Espelho do upsellSoldAt do metrics-core (api) — a mesma ordem de fallback,
 // pra data aqui bater com a do placar.
 const upsellSoldAtOf = (i) => i?.soldAt || i?.paidAt || i?.dueDate || i?.createdAt || "";
@@ -745,11 +897,39 @@ function VendasCard({ leads, invoices, product, customers, onNav, onOpenLead }) 
       .slice(0, MAX_VENDAS);
   }, [leads, invoices, customers, product]); // eslint-disable-line react-hooks/exhaustive-deps
   const dia = (at) => { const d = bizDay(at); return d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : ""; };
+  // Preenche o card: conta quantas linhas inteiras cabem na altura disponível.
+  // A lista é `flex: 1` com overflow escondido, então ela NUNCA é quem define a
+  // altura — medir o espaço e re-renderizar não entra em laço.
+  const listaRef = useRef(null);
+  const [cabem, setCabem] = useState(MAX_VENDAS);
+  useEffect(() => {
+    const el = listaRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const medir = () => {
+      const alt = el.querySelector(".vg-sale")?.getBoundingClientRect().height;
+      if (!alt) return;
+      setCabem(Math.max(MIN_VENDAS, Math.min(MAX_VENDAS, Math.floor(el.clientHeight / alt))));
+    };
+    const ro = new ResizeObserver(medir);
+    ro.observe(el);                                   // o espaço livre mudou
+    // E a própria linha: na 1ª pintura ela vem mais alta (fonte do app ainda
+    // carregando) e, sem observar isso, a conta congelava no número errado.
+    const primeira = el.querySelector(".vg-sale");
+    if (primeira) ro.observe(primeira);
+    // O ResizeObserver só entrega durante a pintura; a fonte e o redimensionar
+    // da janela avisam por fora dela, e são justamente os dois momentos em que
+    // a conta muda. Medir pelos três caminhos é barato e tira a medida da sorte.
+    medir();
+    document.fonts?.ready?.then(medir);
+    window.addEventListener("resize", medir);
+    return () => { ro.disconnect(); window.removeEventListener("resize", medir); };
+  }, [vendas]);
+  const naTela = vendas.slice(0, cabem);
   return (
     <OverviewCard title="Últimas vendas" className="vg-sales">
-      <div className="vg-sales-list">
+      <div className="vg-sales-list" ref={listaRef}>
         {!vendas.length && <div style={{ fontSize: 12.5, color: "var(--fg-4)", padding: "6px 0" }}>Nenhuma venda registrada ainda.</div>}
-        {vendas.map((v, i) => (
+        {naTela.map((v, i) => (
             <button key={v.id} onClick={() => v.lead && onOpenLead ? onOpenLead(v.lead) : onNav?.("customers")} className="vg-sale">
               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                 {v.who && <Avatar id={v.who} name={displayName(v.who)} size={26} />}

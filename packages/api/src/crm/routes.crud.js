@@ -30,6 +30,7 @@ import { mirrorSubscriptionToMp } from "../payments/mp-charges.js";
 import { mergeLeadQuestions } from "../forms/forms.js";
 import { toNaiveBrt } from "./agenda-slots.js";
 import { COLLECTION_NAMES } from "../platform/db.js";
+import { integrationSlotConflict, integrationConflictMessage } from "./integration-slot.js";
 
 // COMPROMISSO SEMPRE NA FORMA CANÔNICA (17/09): callAt/followupAt/integrationAt
 // são "YYYY-MM-DDTHH:MM" no relógio de Brasília. Cliente que manda ISO em UTC
@@ -55,7 +56,7 @@ function canonWhen(body) {
 // de estados (slug travado, lint, agenda) vive em routes.blog.js.
 // task_events/notifications: atividade e caixa de entrada das tarefas — lidas
 // só pelas rotas dedicadas (routes.tasks.js), nunca pelo CRUD genérico.
-const PRIVATE = new Set(["users", "sessions", "user_assets", "activity_assets", "task_assets", "task_events", "notifications", "wa_threads", "wa_messages", "wa_media", "wa_template_media", "blog_posts",
+const PRIVATE = new Set(["users", "sessions", "user_assets", "activity_assets", "task_assets", "followup_assets", "task_events", "notifications", "wa_threads", "wa_messages", "wa_media", "wa_template_media", "blog_posts",
   // comp_months tem R$ por pessoa: só pelas rotas /api/comp/, que exigem
   // etiqueta admin (ADMIN_PREFIXES), nunca pelo CRUD genérico.
   "comp_months",
@@ -426,6 +427,19 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
     if (!WRITABLE.has(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
     if (!req.body || typeof req.body !== "object") return reply.code(400).send({ error: "JSON body required" });
     if (collection === "leads") canonWhen(req.body);
+    // Horário de integração novo: confere de novo no cockpit e na agenda do
+    // Google de quem integra (o cliente pode ter marcado pelo link no meio).
+    if (collection === "leads" && typeof req.body.integrationAt === "string" && req.body.integrationAt) {
+      const cur = await repo.get("leads", id);
+      const integrator = req.body.integrator ?? cur?.integrator;
+      if (cur && integrator && req.body.integrationAt !== cur.integrationAt) {
+        const conflict = await integrationSlotConflict(repo, googleUser, { lead: cur, at: req.body.integrationAt, integrator });
+        if (conflict) {
+          const name = (await repo.get("users", integrator).catch(() => null))?.name || integrator;
+          return reply.code(409).send({ error: integrationConflictMessage(conflict, name), code: "integration_slot_taken" });
+        }
+      }
+    }
     const before = collection === "subscriptions" ? await repo.get(collection, id) : null;
     // Movimento de estágio de LEAD passa pelo applyStageMove (lead-flow.js):
     // recarimba stageSince (respeitando o explícito do optimistic move), zera o

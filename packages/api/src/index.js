@@ -28,7 +28,10 @@ const OPEN_PATHS = new Set(["/api/health", "/embed.js", "/favicon.ico", "/api/au
 // Superfície pública do form builder (página + envio anônimo) e do proposal
 // builder (página /p/:id, aceite, painel do closer via editKey). Endurecimento
 // (rate-limit, honeypot, token) vive em routes.forms.js / routes.proposals.js.
-const OPEN_PREFIXES = ["/f/", "/public/forms/", "/fi/", "/public/integration-forms/", "/p/", "/public/proposals/", "/public/mp/", "/public/social/", "/public/training/", "/public/users/", "/public/activities/", "/public/tasks/", "/public/lp/", "/u/", "/m/", "/api/webhooks/",
+const OPEN_PREFIXES = ["/f/", "/public/forms/", "/fi/", "/public/integration-forms/", "/p/", "/public/proposals/", "/public/mp/", "/public/social/", "/public/training/", "/public/users/", "/public/activities/", "/public/tasks/", "/public/followup/", "/public/lp/", "/u/", "/m/", "/api/webhooks/",
+  // Link curto do convite de agenda (auth/booking-page.js): preview em português
+  // no WhatsApp e redirecionamento pra agenda do Google de quem atende.
+  "/a/",
   // Blog público (routes.blog-public.js): o copylever faz proxy de leverads.com.br/blog
   // pra cá. Sem o header x-blog-proxy tudo sai noindex + canonical em leverads.com.br,
   // então expor no host do cockpit não duplica conteúdo. Raiz `public` já está no nginx.

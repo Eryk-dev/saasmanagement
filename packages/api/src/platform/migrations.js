@@ -415,6 +415,33 @@ export async function migrateNutricaoNoFollowup(repo) {
   return changed;
 }
 
+// ── Reunião feita e Remarcar na Integração (06/10/2026) ─────────────────────
+// A atividade de Integração só oferecia "Acompanhamento →": reunião que
+// aconteceu sem ser a última (ou que precisava de outro horário) ficava
+// pendente na fila como compromisso atrasado. O default do código ganhou
+// "retry" (Reunião feita · seguir depois) e "remarcar" (novo horário), mas o
+// override salvo em product.nextSteps vence o default. One-shot por produto:
+// quem tirar de novo em Ajustes → Próximos passos não vê voltar. Lista vazia é
+// escolha do dono (zera os botões) e fica como está.
+export async function migrateReuniaoNaIntegracao(repo) {
+  let changed = 0;
+  for (const product of await repo.list("products")) {
+    if (!product?.id || product.reuniaoNaIntegracaoV1) continue;
+    const nextSteps = { ...(product.nextSteps || {}) };
+    let touched = false;
+    for (const [key, list] of Object.entries(nextSteps)) {
+      if (!/^integracao/.test(key) || !Array.isArray(list) || !list.length) continue;
+      const add = ["retry", "remarcar"].filter((k) => !list.includes(k));
+      if (!add.length) continue;
+      nextSteps[key] = [...add, ...list];
+      touched = true;
+    }
+    await repo.update("products", product.id, { reuniaoNaIntegracaoV1: true, ...(touched ? { nextSteps } : {}) });
+    if (touched) changed++;
+  }
+  return changed;
+}
+
 // ── Flashcards: cotas de OEM nos cards de produto (31/08/2026) ──────────────
 // O combo Parcial + OEM passou a entregar 250 anúncios/mês (antes 125), e uma
 // leva de cards ainda ensinava o catálogo aposentado em 21/08 (200 no FULL,
@@ -1554,6 +1581,20 @@ const LEVERADS_CATALOG = {
         N: "Se você mandasse só a lista de códigos e os anúncios voltassem prontos (foto, descrição, compatibilidade) publicados na sua conta, quantas peças você subiria por mês?",
       },
     },
+    // Dor de anúncio PRICE (07/10/2026): o lead clicou no criativo de
+    // precificação. É a ÚNICA dor que troca a linha do produto — quem veio pelo
+    // Price abre o deck do Price, com o pacote pelo volume de anúncios (ver
+    // lineOf/priceTier em proposals/proposal-catalog.js) —, porque o criativo
+    // vende preço, não clonagem.
+    PRICE: {
+      label: "Preço desatualizado: perde venda pro concorrente ou vende fora da margem",
+      spin: {
+        S: "Quem decide o preço dos seus anúncios hoje? É planilha, ferramenta, ou alguém olhando o concorrente na mão? Em quantos anúncios dá pra mexer num dia?",
+        P: "Quantos dos seus anúncios estão com o mesmo preço há semanas porque não dá tempo de revisar? Quando o custo do fornecedor sobe, quanto tempo leva pra isso chegar no preço?",
+        I: "Quando o concorrente baixa e você demora dois dias pra responder, você perde a posição ou perde a margem? E o anúncio que seguiu vendendo no preço antigo depois do custo subir, quanto isso tirou do seu bolso no último mês?",
+        N: "Se o preço se ajustasse sozinho por regra de margem, com alerta pra todo anúncio que saísse da regra, quantos dos seus anúncios você colocaria nessa régua já no primeiro mês?",
+      },
+    },
     none: {
       label: "Sem código (não veio de anúncio)",
       tip: "Abre com a Situação genérica (me conta como está a operação hoje, quantas contas, quem cuida) e escolhe a trilha A-E conforme a primeira dor que ele verbalizar.",
@@ -1920,8 +1961,9 @@ export async function ensureFormsV2(repo) {
       // Só quem chega pelo formulário de controle entra no sorteio.
       onlyForms: ["fo_diagnostico_leverads"],
       // Campanhas de OEM são as que carregam [OEM] no nome do anúncio
-      // (convenção de attribution.js); as demais são Lever Ads.
-      byPain: { OEM: FORM_IDS.oem },
+      // (convenção de attribution.js); as de Price carregam [PRICE]; as demais
+      // são Lever Ads.
+      byPain: { OEM: FORM_IDS.oem, PRICE: FORM_IDS.price },
       fallback: FORM_IDS.ads,
       nota: "Manda pct% do tráfego pago pros formulários v2. Publicar os formulários antes de ligar.",
     }, FORM_AB_FLAG);
@@ -2457,6 +2499,12 @@ export async function runStartupMigrations(repo) {
     if (changed) console.log("[migration] próximos passos do Follow-up ganharam o destino Nutrição (leverads)");
   } catch (err) {
     console.error("[migration] migrateNutricaoNoFollowup falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateReuniaoNaIntegracao(repo);
+    if (n) console.log(`[migration] próximos passos da Integração ganharam Reunião feita e Remarcar (${n} produto(s))`);
+  } catch (err) {
+    console.error("[migration] migrateReuniaoNaIntegracao falhou:", err?.message || err);
   }
   // Depois da reordenação: quem está na entrega passa a ser venda, então ganha
   // cliente e assinatura como se tivesse passado pelo Ganho.

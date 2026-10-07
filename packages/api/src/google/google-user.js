@@ -132,7 +132,44 @@ export function makeGoogleUser({ fetch: f = globalThis.fetch, clientId = "", cli
     } catch { /* best-effort */ }
   }
 
-  return { configured, connectedFor, accountFor, meetReadyFor, authUrl, exchangeCodeForUser, accessToken, disconnect, upsertEvent, deleteEvent };
+  // Horários OCUPADOS na agenda primária da pessoa entre timeMin e timeMax (ISO):
+  // só os intervalos e o id do evento, nunca título ou convidados. Livre
+  // ("Disponível"), cancelado e convite recusado não ocupam; dia inteiro ocupado
+  // vira o dia todo. Cache de 60s pra grade não bater no Google a cada render;
+  // `fresh` (a conferência ao salvar) lê sempre ao vivo.
+  const busyCache = new Map(); // `${userId}|${min}|${max}` -> { at, items }
+  async function listBusy(userId, timeMin, timeMax, { fresh = false } = {}) {
+    const key = `${userId}|${timeMin}|${timeMax}`;
+    const hit = busyCache.get(key);
+    if (!fresh && hit && Date.now() - hit.at < 60_000) return hit.items;
+    const token = await accessToken(userId);
+    const q = new URLSearchParams({ timeMin, timeMax, singleEvents: "true", orderBy: "startTime", maxResults: "250" });
+    const res = await f(`${CAL_URL}/calendars/primary/events?${q}`, { headers: { authorization: `Bearer ${token}` } });
+    const b = await res.json().catch(() => ({}));
+    if (res.status >= 400 || b.error) throw new Error(`Calendar -> ${res.status}: ${b.error?.message || "falha ao ler a agenda"}`);
+    const at = (x) => x?.dateTime || (x?.date ? `${x.date}T00:00:00-03:00` : "");
+    const items = (b.items || [])
+      .filter((ev) => ev.status !== "cancelled" && ev.transparency !== "transparent"
+        && !(ev.attendees || []).some((a) => a.self && a.responseStatus === "declined"))
+      .map((ev) => ({ id: ev.id, start: at(ev.start), end: at(ev.end) }))
+      .filter((x) => x.start && x.end);
+    busyCache.set(key, { at: Date.now(), items });
+    if (busyCache.size > 500) busyCache.delete(busyCache.keys().next().value);
+    return items;
+  }
+
+  // Um evento da agenda primária (ligar à mão a marcação pelo link a um card).
+  // null = não existe mais.
+  async function getEvent(userId, eventId) {
+    const token = await accessToken(userId);
+    const res = await f(`${CAL_URL}/calendars/primary/events/${encodeURIComponent(eventId)}`, { headers: { authorization: `Bearer ${token}` } });
+    if (res.status === 404 || res.status === 410) return null;
+    const b = await res.json().catch(() => ({}));
+    if (res.status >= 400 || b.error) throw new Error(`Calendar -> ${res.status}: ${b.error?.message || "falha ao ler o evento"}`);
+    return b;
+  }
+
+  return { configured, connectedFor, accountFor, meetReadyFor, authUrl, exchangeCodeForUser, accessToken, disconnect, upsertEvent, deleteEvent, listBusy, getEvent };
 }
 
 // callAt/integrationAt são hora de Brasília sem fuso ("YYYY-MM-DDTHH:MM"): o

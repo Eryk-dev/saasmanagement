@@ -4,6 +4,8 @@ import { LeadGrade } from "../components/lead-card.jsx";
 import { Avatar, EmptyState, PrimaryButton } from "../atoms.jsx";
 import { Card, FilterTab, Segmented, StatTile } from "../components/viz.jsx";
 import { Popover } from "../components/popover.jsx";
+import { SelectPopover } from "../components/select-popover.jsx";
+import { segmentOptions, segmentMatch } from "../lib/segments.js";
 import { leadTier } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
@@ -14,7 +16,7 @@ import {
 import { usersByRole, userColor, displayName, currentUser, allUsers, canSeeScreen } from "../lib/users.js";
 import { isNoShowStage } from "../lib/scripts.js";
 import { mentoriaFit, mentoriaOfferLine, VERBA_RANK } from "../lib/mentoria.js";
-import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
+import { moveGate, MoveLeadModal, applyGatedMove, moveErrorText } from "../components/stage-move.jsx";
 import { useActiveSaas, pinActiveSaas } from "../lib/workspace.js";
 import { bizDay } from "../lib/format.js";
 import { KanbanBoard, KanbanColumn } from "../components/kanban/board.jsx";
@@ -83,6 +85,15 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
     setPersonState(p);
     try { localStorage.setItem("cockpit_pipeline_person", p); } catch { /* ignore */ }
   };
+  // Segmento do lead (lead.niche; OEM conta como autopeças, ver lib/segments.js).
+  // Fatia o funil como a pessoa: colunas e totais contam só o segmento.
+  const [segment, setSegmentState] = useStP(() => {
+    try { return localStorage.getItem("cockpit_pipeline_segment") || ""; } catch { return ""; }
+  });
+  const setSegment = (v) => {
+    setSegmentState(v);
+    try { localStorage.setItem("cockpit_pipeline_segment", v); } catch { /* ignore */ }
+  };
   // Ordem dentro de cada coluna: "toque" (cronológica, o que já existia),
   // "ultimo" (a mesma fila invertida — o fim do próximo toque no topo) ou
   // "qualidade" (melhor cliente no topo). Vale pra TODAS as colunas de uma vez —
@@ -126,8 +137,12 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
     return who ? l.owner === who || l.closer === who || l.integrator === who : true;
   };
 
-  const saasLeads = leads.filter(l => l.saas === activeSaas).filter(personMatch);
   const saasAll = leads.filter(l => l.saas === activeSaas);
+  // Opções com contagem do produto inteiro; segmento salvo que não existe
+  // neste produto (trocou de workspace) vale como "todos".
+  const segOpts = useMP(() => segmentOptions(s, saasAll), [leads, activeSaas]);
+  const segOn = segment && segOpts.some((o) => o.value === segment) ? segment : "";
+  const saasLeads = saasAll.filter(personMatch).filter((l) => segmentMatch(l, s, segOn));
 
   // Group active-product leads by stage
   const stages = s ? s.funnel.map(f => f.stage) : [];
@@ -148,7 +163,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   // Quantos no cemitério do produto ativo (pro contador do botão).
   const discardedCount = useMP(
     () => saasLeads.filter((l) => stageKind(s, l.stage) === "desqualificado").length,
-    [leads, activeSaas, person],
+    [leads, activeSaas, person, segOn],
   );
   const byStage = useMP(() => {
     const m = {}; stages.forEach(st => m[st] = []);
@@ -157,7 +172,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
       m[st].push(l);
     });
     return m;
-  }, [leads, activeSaas, person, stages.join("|")]);
+  }, [leads, activeSaas, person, segOn, stages.join("|")]);
 
   // Movimento otimista: o servidor recarimba stageSince, zera o contador de
   // tentativas, preenche motivo/GPS (applyStageMove) — o local espelha o básico.
@@ -175,7 +190,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
     const gate = moveGate(cfg, lead, stage);
     if (gate) { setPendingMove({ lead, toStage: stage, gate, saasCfg: cfg }); return; }
     commitMoveLocal(leadId, { stage });
-    api.update("leads", leadId, { stage }).catch(err => { console.warn("lead move not persisted:", err.message); window.toast && window.toast("O movimento do card não foi salvo · tente de novo", "neg"); });
+    api.update("leads", leadId, { stage }).catch(err => { console.warn("lead move not persisted:", err.message); window.toast && window.toast(moveErrorText(err), "neg"); });
   }
 
   if (!s) return (
@@ -305,10 +320,19 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
             {[["all","Todas"],["sdr","SDR"],["closer","Closer"]].map(([id,label]) => <button key={id} aria-pressed={phase===id} onClick={()=>setPhase(id)}>{label} <span>{phaseCounts[id]}</span></button>)}
           </div>
           <PersonFilter person={person} leads={saasAll} onChange={setPerson} me={me} />
-          <select className="pipeline-order" aria-label="Ordenar leads" value={sortMode} onChange={e=>setSortMode(e.target.value)}>
-            <option value="toque">Próximo toque</option><option value="ultimo">Último toque</option><option value="qualidade">Qualidade</option>
-          </select>
-          {(buscaBoard || phase!=="all" || person || onlyLate || sortMode!=="toque") && <button className="pipeline-clear" onClick={()=>{setBuscaBoard("");setPhase("all");setPerson("");setOnlyLate(false);setSortMode("toque");}}>Limpar filtros</button>}
+          {segOpts.length > 0 && (
+            <div className="pipeline-segment-pick">
+              <SelectPopover label="Segmento" value={segOn} onChange={setSegment} width={220} placeholder="Todos os segmentos"
+                style={{ height: 34, border: 0, padding: "0 15px", borderRadius: 999, background: segOn ? "var(--accent-soft)" : "var(--bg-2)", fontWeight: 600, color: segOn ? "var(--accent)" : "var(--fg-2)" }}
+                options={[{ value: "", label: "Todos os segmentos", hint: String(saasAll.length) }, ...segOpts]} />
+            </div>
+          )}
+          <div className="pipeline-order">
+            <SelectPopover label="Ordenar leads" value={sortMode} onChange={setSortMode} width={180}
+              style={{ height: 34, border: 0, padding: "0 15px", borderRadius: 999, background: "var(--bg-2)", fontWeight: 600, color: "var(--fg-2)" }}
+              options={[{ value: "toque", label: "Próximo toque" }, { value: "ultimo", label: "Último toque" }, { value: "qualidade", label: "Qualidade" }]} />
+          </div>
+          {(buscaBoard || phase!=="all" || person || segOn || onlyLate || sortMode!=="toque") && <button className="pipeline-clear" onClick={()=>{setBuscaBoard("");setPhase("all");setPerson("");setSegment("");setOnlyLate(false);setSortMode("toque");}}>Limpar filtros</button>}
           <span className="pipeline-count">{visibleStages.reduce((n,st)=>n+(boardRows[st]?.length||0),0)} leads</span>
         </section>
       {/* ── Ações em massa (14/09) ─────────────────────────────────────────
@@ -360,7 +384,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
           onCancel={() => setPendingMove(null)}
           onConfirm={(patch, extra) => {
             commitMoveLocal(pendingMove.lead.id, patch);
-            applyGatedMove(patch, extra, pendingMove.lead.id).catch(err => { console.warn("movimento não persistido:", err.message); window.toast && window.toast("O movimento do card não foi salvo · tente de novo", "neg"); });
+            applyGatedMove(patch, extra, pendingMove.lead.id).catch(err => { console.warn("movimento não persistido:", err.message); window.toast && window.toast(moveErrorText(err), "neg"); });
             setPendingMove(null);
           }}
         />

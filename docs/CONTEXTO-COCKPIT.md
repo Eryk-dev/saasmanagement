@@ -95,6 +95,13 @@ para imagem/cloze/oclusão e salvamento explícito da base.
 Pipeline compartilha filtros entre Kanban/Lista/Análise; a esteira usa os
 helpers e o endpoint existentes de pace. A ficha compacta é uma variante de
 LeadDetail usada nesta rota; os handlers e a ficha das demais rotas permanecem.
+Filtro de **Segmento** (06/10/2026, `web/src/lib/segments.js`): lê `lead.niche`
+(resposta dos forms, também texto livre do robô/outbound), casa com as opções
+da pergunta `niche` do produto e manda texto livre de autopeças e lead OEM
+(`formProduct: "oem"`, cujo form não pergunta o nicho) para a opção de
+autopeças. Só no navegador, sem campo novo nem migração; some em produto sem
+segmento. Fatia colunas e totais como o filtro de pessoa
+(`cockpit_pipeline_segment`). Tags em lead ainda não existem.
 O modal de pagamento usa o `Modal` compartilhado para controlar foco/teclado.
 Clientes usa a ficha lateral de 420px com contrato, marcos e dinheiro. Edição,
 upsell, churn e gestão de cobranças abrem os formulários existentes em modal;
@@ -647,10 +654,20 @@ alteração funcional nesta preparação.
 - **Card de Minhas atividades (21/09/2026):** segue o desenho “Atalhos.pdf”: atalhos
   em largura inteira, apresentação/respostas lado a lado, histórico e próximo
   passo. O roteiro saiu do card; sua prévia em Ajustes → Scripts permanece.
-  `GET /p/:id?embed=config&k=…` mostra a configuração responsiva do deck de
-  slides dentro do card apenas com a chave de edição válida. Usa o mesmo
-  `deckConfig` e PATCH da apresentação, sem duplicar preços ou persistência.
-  O deck normal mantém sua tela inicial. Validação adicional:
+  Desde 06/10/2026 a configuração do deck de SLIDES é desenhada pelo próprio
+  cockpit (`components/presentation-config.jsx`: `.inp`, `SelectPopover`,
+  `Checkbox`, `Choice`), lida e gravada por `GET`/`PUT
+  /api/leads/:id/proposal-config` (mesmo `state.deckC` e mesma regra do PATCH
+  público, `deckConfigState`/`saveDeckConfig` em `proposals/proposal.js`). A
+  conta e os planos escolhíveis vêm de `api/src/shared/deck-offer.js`
+  (`calcOferta`, `deckChoices`), a mesma fonte injetada na página do deck:
+  todo produto `<linha>_<pacote>` do catálogo vira opção com o nome do plano,
+  sem lista fixa de Essencial/Escala. Deck OEM e proposta de fora seguem no
+  iframe `GET /p/:id?embed=config&k=…`. **Catálogo vivo:** a proposta de
+  trabalho do closer (slides, com `editKey`) recebe a tabela atual do template
+  (`syncProposalCatalog`) ao abrir a tela zero, no PATCH, nas ofertas e no
+  envio; o link do cliente continua com a oferta congelada no envio e sem
+  tabela. Validação: `test/proposal-deck-config.test.js` e
   `cd packages/web && node scripts/review/today-card.mjs` (API fictícia).
 
 - **Atalhos do lead (21/09/2026):** `components/lead-send-actions.jsx` reúne os
@@ -673,6 +690,20 @@ por campo, apenas informações explícitas da transcrição. Resumos antigos us
 registrados. Abrir o cartão só consulta a REST, sem gerar resumo nem enviar
 mensagem. Validação de navegador: `node scripts/review/followup-summary.mjs`
 em `packages/web`.
+
+### Horário de atendimento — 07/10/2026
+
+`users.workHours` (`[{ weekday 0-6, from, to }]`, horas em passos de meia
+hora; `[]` = agenda aberta 7h–21h) é o expediente de cada pessoa, editado em
+Ajustes → Equipe → ⋯ → Horário de atendimento (`PATCH /api/auth/users/:id`).
+Ele espelha o link de convite do Google, cujas regras a API do Google não
+expõe. A régua mora em `api/src/shared/work-hours.js` (`offWorkHours`): a meia
+hora fora de uma faixa conta como ocupada no `busyView` do SPA (grades de
+call, follow-up, integração e remarcar) e no `busyOf` do servidor (oferta do
+SDR automático). A conferência de conflito ao salvar (`integration-slot.js`)
+não olha o expediente, e a tela Agenda não sombreia o fora do horário. A grade
+semanal da integração (`WeekSlotGrid`, só hora cheia) esconde o horário
+ocupado ou passado e tira a hora sem vaga em nenhum dia.
 
 ### Follow-up em 4 contatos, por dia — 05/10/2026
 
@@ -698,6 +729,14 @@ pelo CRUD de `app_config`) e enviada em `CONFIG.followupContacts` no bootstrap.
 A régua pura é `api/src/shared/followup-contacts.js`, importada pela SPA (copiada nos
 dois Dockerfiles de build web). Os roteiros `followup1/2/3` viraram o roteiro
 único `followup` (postura); `nextSteps.followup1..3` salvos não valem mais.
+Cada contato pode ter uma **imagem** opcional (`imagem`, só o caminho
+`/public/followup/fua_…`; outro valor vira vazio na normalização). O upload é
+`POST /api/followup-contacts/image` (PNG/JPG/GIF/WebP até 3MB, mesma permissão
+de escrita da tela `settings`), guardado em `followup_assets` (privada no CRUD)
+e servido pela rota aberta `/public/followup/:id`. A imagem só vale ao salvar a
+configuração; ao trocar ou remover, o arquivo antigo é apagado. No painel do
+contato aparece a miniatura e "Copiar imagem", que põe um PNG na área de
+transferência (outros formatos passam por canvas).
 `migrateFollowupDays` (marcador `app_config/followup_days_v1`) truncou os
 `followupAt` com hora e estimou o passo de quem já estava na etapa pelo
 contador de toques (máximo 3). No placar, "follow-up em dia" compara o dia.
@@ -747,7 +786,9 @@ vazio). O id é determinístico (`plan_<saas>_<code>`) e o código é o mesmo de
 `lead.dealProduct`. O `calc.catalog` de `pt_leverads` / `pt_leverads_slides` e o
 `calc.mentoria.products` de `pt_mentoria` são PROJEÇÃO dos planos
 (`syncPlanCatalogProjection`, a cada escrita de plano e a cada boot); o renderer
-das propostas não mudou e proposta já gerada não é tocada. Linhas, régua
+das propostas não mudou e a projeção não regrava proposta gerada. A exceção é a
+proposta de trabalho do deck de slides, que copia a tabela do template quando o
+closer a abre (`syncProposalCatalog`, ver o card de Minhas atividades). Linhas, régua
 contas → pacote e adicionais moram em `app_config/plan_catalog_<saas>`. A
 semente (`ensurePlansCatalog`, marcador `app_config/plans_catalog_v1`) nasce do
 catálogo que está no BANCO. `migrateCatalogPricing` / `pricingV` ficaram
@@ -846,7 +887,9 @@ nativo: `SelectPopover` (com grupos), `PopoverWithCustom`,
 
 O Próximo passo não oferece Ganho (`withoutWonStep`): a Integração registra o
 mesmo fechamento; sem Integração na lista ela entra no lugar, e funil sem etapa
-de Integração mantém o Ganho. A aba Integração tem "A venda" e "A entrega"
+de Integração mantém o Ganho. O destino `contato` (Qualificando) é a Nutrição
+pelo nome, nunca o No show ou o Dia 2, que também têm kind `contato`. A aba
+Integração tem "A venda" e "A entrega"
 (responsável, closer, `lead.integrationNote`, que vai pro Resumo do cliente e
 pro briefing, e a agenda). **Venda com mais de um produto:** `lead.dealItems`
 = `[{ product, planClosed, amount }]` só com 2+ itens; o 1º espelha
@@ -856,6 +899,92 @@ Purchase seguem o total). `dealItemsOf` (`crm/won-lead.js`) normaliza; o
 ARR inicial anualiza cada item pelo próprio ciclo; reeditar um fechamento
 multiproduto só atualiza o cadastro (assinaturas são da ficha). O valor é
 texto (`parseMoneyInput` aceita `3.582,50`). Teste: `multi-product.test.js`.
+
+**Próximo passo da Integração (06/10/2026).** Além de Acompanhamento, a
+atividade de Integração tem "Reunião feita · seguir depois" (o `retry`: toque
+"integração feita" + quando voltar; com o toque e o GPS depois do horário, o
+compromisso conta como cumprido e o item sai de pendente) e "Remarcar
+integração" (pseudo-kind `remarcar`, só na Integração): novo horário na agenda
+do integrador por `POST /api/leads/:id/integration-meeting`, a mesma régua da
+reunião da ficha do cliente (`scheduleIntegrationMeeting` em
+`google/routes.google.js`: sala usada é solta, 409 `previous_without_summary`
+sem `force`). O card fica na etapa. `migrateReuniaoNaIntegracao` (marcador
+`reuniaoNaIntegracaoV1` por produto) pôs os dois nos `nextSteps` salvos.
+
+**Etapa na ficha do lead (06/10/2026).** A ficha aberta fora do Pipeline
+(Atividades, Inbox, Agenda…) não tem mais "avançar etapa →"/"← voltar" pela
+ordem do funil, `<select>` de etapas nem "marcar ganho/perdido". A seção
+**Etapa** (`LeadStageSection`/`leadStageMoves` em `screens/deal.jsx`) mostra os
+mesmos destinos do Próximo passo (`destinationsFor` + `withoutWonStep`, sem o
+retomar) e um `SelectPopover` com as outras etapas agrupadas por fase (sem Ganho
+quando há Integração). Tudo passa pelo `moveStage` (gates e confirm de desfazer
+venda). O rodapé da ficha do Pipeline usa o mesmo bloco (`LeadStageMoves`
+compacto, sem "Avançar →" nem "Descartar lead"); a coluna Ganho segue no quadro
+para o arraste. O gate de movimento (`components/stage-move.jsx`) não usa
+`<select>` nativo: `SelectPopover`, `Choice`, `PaymentMethodPicker` e
+`PopoverWithCustom` (o `DealProductField` também), e o valor aceita
+`3.582,50` (`parseMoneyInput`). Um Esc fecha o gate (antes o 1º só tirava o
+foco do select). No `SelectPopover`, o Esc chega ao `useEsc` e fecha a lista.
+
+**Link de convite da agenda (07/10/2026).** Cada usuário cadastra o seu em
+Configurações → Integrações → Minha conta Google (`users.bookingUrl`, só https,
+gravado pelo `PATCH /api/auth/me`, que aceita o campo sem o nome; sai no
+`publicUser`). `components/booking-link.jsx` mostra copiar/WhatsApp/abrir ao
+escolher o integrador no gate de Integração e no Próximo passo das Atividades.
+A mensagem (`bookingInviteText` em `lib/wa-copy.js`) leva o link curto
+`/a/:userId?s=<produto>&t=integracao`: rota ABERTA em `auth/auth.js` que monta
+`auth/booking-page.js` (og em português + redirecionamento pra agenda). O link
+do Google tem preview fixo em inglês para quem não está logado. `/a/` está em
+`OPEN_PREFIXES` e no `location` público do `deploy/nginx.allinone.conf`
+(`nginx-superficie-publica.test.js` trava os dois juntos). Copiar/mandar link
+de call e integração usam `meetingInviteText` (dia e hora de Brasília, 45 min).
+
+**Marcação pelo link → integração no card (07/10/2026).** `google/booking-sync.js`
+(rotina do domínio Google, `start` em `google/index.js`) lê as mudanças da agenda
+primária de cada usuário com `bookingUrl` e Google conectado (Calendar com
+`syncToken`; estado em `app_config/booking_sync_<user>`; a 1ª leitura só guarda o
+ponto de partida). Passe a cada 2 min; cada agenda a cada 15 min, ou a cada passe
+nas 24h depois de um clique. Evento novo, futuro, organizado pela pessoa, com
+convidado e que não é do cockpit (ids conhecidos nos leads/consultas ou descrição
+"Lead: …") liga ao lead em Integração/Pós-venda por e-mail, telefone escrito no
+evento ou clique no link curto (`/a/:id?l=<lead>` grava `lead.bookingClick`; robô
+de preview não conta). Ligado: `integrationAt`, integrador e a sala da marcação
+(`integrationCallUrl`/`integrationMeetEventId`/`integrationMeetOrganizer` = a
+pessoa, então o `autoIntegrationMeet` não cria outra e o espelho pessoal não
+duplica), `integrationBookedVia: "link"` + `integrationBookedEventId`, atividade e
+aviso no sino. Remarcar/cancelar na página do Google acompanham; card com outra
+integração por vir não é sobrescrito; marcação sem card avisa quem integra (só
+com clique recente ou texto de agendamento no evento).
+
+**Conflito operador × cliente no horário da integração (07/10/2026).** A grade
+de integração (Próximo passo, Remarcar e o gate do `stage-move`) soma ao que o
+cockpit sabe os horários ocupados da agenda do Google de quem integra
+(`GET /api/google/busy`, só intervalos, 60s de cache em `googleUser.listBusy`;
+`useGoogleBusy`/`withGoogleBusy` em `today.jsx`) e trava o horário cuja meia
+hora seguinte está ocupada (`hourLong`: a integração dura 1h). Sem Google
+conectado vale só o cockpit, e a grade diz isso. Ao salvar, o PATCH do lead e o
+`scheduleIntegrationMeeting` conferem de novo (`crm/integration-slot.js`: outro
+card do mesmo integrador sobreposto e, com Google, a agenda lida ao vivo;
+Google fora do ar não trava) e devolvem 409 `integration_slot_taken` com o
+motivo, que as telas mostram (`moveErrorText`). Copiar/mandar o link de convite
+grava `integrationLinkSentAt`/`integrationLinkUser`: o card fica "aguardando o
+cliente marcar" por 7 dias (`bookingLinkPending`), o Próximo passo abre em
+"Enviar link" e marcar na grade por cima pede confirmação. A rotina das
+marcações limpa o pendente e avisa quando a marcação cai em cima de outra
+integração do mesmo integrador.
+
+**Marcação sem card, ligada à mão (07/10/2026).** Quando a rotina não acha o
+card (link do Google mandado direto, e-mail/telefone diferentes), o aviso no
+sino leva `link: { screen, booking: <eventId>, bookingUser }` e abre o
+`BookingLinkModal` (`components/booking-link.jsx`): cards em Integração/Pós-venda
+de quem recebeu, "aguardando marcar" primeiro, com busca. "Ligar" chama
+`POST /api/google/bookings/:eventId/link` (`linkEvent` em `booking-sync.js`, que
+lê o evento ao vivo pelo `googleUser.getEvent`) e liga igual à automática: sala
+da marcação, atividade, aviso marcado como lido. Recusa marcação cancelada (410),
+já ligada a outro card ou card com outra integração por vir (409).
+Prévia com o funil atual e um lead por etapa: `?shell&etapas#today` ou
+`#pipeline` (`preview/etapas-mock.js`); revisão:
+`node scripts/review/lead-stage.mjs` em `packages/web`.
 
 **LeverId (auth novo).** O desenho segue o spike de assinaturas (branch
 `feat/auth`): o LeverId guardará só o direito de acesso org × produto, com o
@@ -867,3 +996,34 @@ integração com o LeverPrice.
 
 Validação: `node --test packages/api/test/plan-*.test.js packages/api/test/entitlements.test.js`
 e, no navegador com mocks, `npm run test:review:plans -w packages/web`.
+
+**Dor `[PRICE]` (07/10/2026).** O Leo começou a subir criativo de precificação
+com `[PRICE]` no nome, rastreado como o `[OEM]`. O que o código já fazia desde
+16/09: `painCode` aceita a etiqueta, o `/f/:id` resolve o anúncio ainda sem
+insights na Meta e o `form_ab` manda `[PRICE]` pro `fo_price_v2`. O que entrou
+agora: `painCodeOf` do web (`lib/pain-code.js`, módulo sem React pra ficar
+testável) passou a espelhar a API — antes a dor existia no lead e o cockpit
+mostrava o card sem rótulo, o "Por dor" da Publicidade jogava o gasto em "Sem
+código" e o fluxo de criar anúncio não achava a campanha; a dor `PRICE` entrou
+no catálogo (rótulo + trilha SPIN) e no `painMap` do produto; e a origem Price
+passou a TROCAR a linha da apresentação (`lineOf`), única dor que faz isso — o
+pacote sai do VOLUME de anúncios (`priceTier`, lido dos `limite` do catálogo:
+até 1k Essencial, até 10k Escala, acima Enterprise, que no Price tem preço),
+não do nº de contas. Origem Price = dor `[PRICE]` ou `formProduct: "price"`; o
+select "Apresentar" continua vencendo tudo. No SDR, `leadPainFocus` devolve
+`mode: "price"` (sem a cerca de nicho do OEM e FORA do roteiro fixo do OEM) e o
+primeiro toque e o cérebro falam só de precificação, sem somar clonagem nem OEM.
+De quebra, `volCol` passou a ler as faixas de anúncios dos formulários v2
+(`0-500`, `500-1000`, …), que não existem em `calc.volumeMid`: toda proposta
+vinda dos forms novos lia a coluna 0 e a nota S-E do cliente caía no piso.
+
+Dados de produção aplicados por SQL em 07/10 (a migração do catálogo é one-shot
+e não roda de novo): `products.leverads.painMap.PRICE`,
+`proposal_templates.pt_leverads.calc.catalog.pains.PRICE` e as 3.304 propostas
+com catálogo. Backups: `cockpit._bak_{products,proposal_templates,proposals}_20261007_price`.
+Escrita direta no banco não acorda o SSE: cockpit aberto só vê a dor nova depois
+de recarregar.
+
+Validação: `node --test packages/api/test/proposal-catalog.test.js
+packages/api/test/sdr-flow.pain.test.js packages/api/test/routes.form-routing.test.js`
+e `node --test packages/web/test/pains.test.js`.

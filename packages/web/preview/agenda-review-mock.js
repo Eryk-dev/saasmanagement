@@ -34,6 +34,8 @@ export function setupAgendaReview(seed) {
       {id:'fup-ontem',saas:'leverads',name:'Jorge Lins',company:'Lins Pneus',stage:'Follow-up',owner:'leo',closer:'ba',followupAt:ymd(-1),followupStep:2,amount:5100,createdAt:at(-9,9)},
       {id:'fup-call',saas:'leverads',name:'Ana Prado',company:'Prado Pet',stage:'Follow-up',owner:'leo',closer:'rm',followupAt:ymd(0),followupStep:0,callAt:at(-1,10),amount:4300,createdAt:at(-9,9)},
     );
+    // &fupOutro: follow-up de hoje de OUTRO closer, pra conferir a faixa por operador.
+    if (params.has('fupOutro')) seed.LEADS.push({id:'fup-outro',saas:'leverads',name:'Rita Moura',company:'Moura Café',stage:'Follow-up',owner:'leo',closer:'ba',followupAt:ymd(0),followupStep:1,amount:3900,createdAt:at(-9,9)});
   }
   blocks = params.has('empty') ? [] : [{id:'lunch',saas:'leverads',kind:'block',user:'vn',users:['vn'],date:at(0,12).slice(0,10),recur:'once',fromHour:12,toHour:13,reason:'almoço'},
     {id:'meli',saas:'leverads',kind:'event',user:'rm',users:['rm'],weekday:5,recur:'weekly',fromHour:13,toHour:14,title:'MELI · reunião semanal'}];

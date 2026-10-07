@@ -33,13 +33,14 @@ export const META_CATALOG = [
       { metric: "showRate", kind: "rate", label: "Comparecimento na call", unit: "%", hint: "das agendadas, quantas acontecem", default: pct(RATE_BENCHMARKS.showRate) },
       { metric: "contacts", kind: "flow", label: "Contatos no mês", unit: "n", default: null, team: true },
       { metric: "callsBooked", kind: "flow", label: "Calls agendadas", unit: "n", default: null, team: true },
-      // As duas pernas do plano de REMUNERAÇÃO do SDR (04/08): fechamentos e
-      // R$ das oportunidades DELE. `compPlan: true` = a meta vem do plano pelo
-      // nível da pessoa (comp-plan.js VENCE vaga e derivado no goalFor do
-      // placar), então a tela não oferece campo de vaga — mostra a régua do
-      // plano; só o ajuste por PESSOA ainda vence.
-      { metric: "won", kind: "flow", label: "Contratos no mês", unit: "n", hint: "fechamentos das SUAS oportunidades", default: null, compPlan: true },
-      { metric: "revenue", kind: "flow", label: "Receita fechada", unit: "R$", hint: "R$ das SUAS oportunidades — faturado e recorrente contam só o recebido", default: null, compPlan: true },
+      // As duas pernas do SDR: contratos e receita. Desde 06/10/2026 (Leo) a
+      // meta do SDR É A META DO MÊS DA EQUIPE: a meta de receita do mês da
+      // empresa e a meta de contratos que sai dela (receita ÷ ticket médio do
+      // mês anterior). `teamGoal: true` = não é campo de vaga nem régua do
+      // plano de remuneração por nível: o goalFor do placar lê a meta do mês
+      // (inteira, sem repartir por headcount); só o ajuste por PESSOA vence.
+      { metric: "won", kind: "flow", label: "Contratos no mês", unit: "n", hint: "a meta de contratos do mês da equipe", default: null, teamGoal: true },
+      { metric: "revenue", kind: "flow", label: "Receita fechada", unit: "R$", hint: "a meta de receita do mês da equipe — faturado e recorrente contam só o recebido", default: null, teamGoal: true },
       // Mentoria: a segunda fila do SDR (Leo, 16/08). Metas SEPARADAS das duas
       // pernas acima de propósito — o funil é outro (não tem call agendada nem
       // fechamento por call) e o plano de remuneração ainda não cobre a
@@ -133,9 +134,13 @@ export function deriveGoalsFromPace(pace, opts = {}) {
   const superMode = target > base;
   const chasePct = pace.sale.chasePct || null;
   const ticket = Number(pace.context.averageEntry) > 0 ? Number(pace.context.averageEntry) : null;
+  // Ticket médio do MÊS ANTERIOR (Leo, 06/10/2026): a meta de contratos do mês
+  // = receita do mês ÷ esse ticket. `ticketMonth` diz qual mês serviu de base
+  // (vazio = mês anterior sem venda, caiu no fallback do pace).
+  const ticketMonth = pace.context.averageEntrySource === "prev_month" ? (pace.context.previousMonth?.month || "") : "";
   const c = pace.conversions;
   // Nº de contratos do mês: a meta digitada da EMPRESA (monthlyContractsTarget)
-  // vence a divisão venda ÷ ticket — e, como todo digitado, NÃO escala em super
+  // vence a divisão receita do mês ÷ ticket médio do mês anterior — e, como todo digitado, NÃO escala em super
   // meta. wonFromTicket fica exposto pra tela comparar as duas verdades.
   const contractsTarget = Number(opts.contractsTarget) > 0 ? Math.round(Number(opts.contractsTarget)) : null;
   const wonFromTicket = ticket ? Math.ceil(target / ticket) : null;
@@ -154,7 +159,8 @@ export function deriveGoalsFromPace(pace, opts = {}) {
     : null;
   return {
     target, base, superMode, chasePct,
-    ticket, ticketSource: pace.context.averageEntrySource || "",
+    ticket, ticketSource: pace.context.averageEntrySource || "", ticketMonth,
+    previousMonth: pace.context.previousMonth || null,
     contractsTarget, wonFromTicket, wonSource: contractsTarget != null ? "company" : "ticket",
     won, callsShown, callsBooked, contacts,
     leads, // entrada do funil: é o marketing que entrega, então não vira meta de vaga
@@ -190,4 +196,15 @@ export function deriveGoalsFromPace(pace, opts = {}) {
       { role: "integrator", metric: "newAccounts", target: won },
     ].filter((g) => Number(g.target) > 0),
   };
+}
+
+// ── Horizonte da agenda de metas ─────────────────────────────────────────────
+// A tela Metas planeja por TRIMESTRE (Q1..Q4), semestre e ano: o GET devolve
+// de janeiro do ano corrente a dezembro do ano seguinte, com os meses passados
+// (pra fechar os trimestres do ano e casar com o histórico). Ano fiscal =
+// calendário. Era "corrente + 6" (botão "definir os 6 meses"); 7 meses não
+// fecham quatro trimestres.
+export function metasHorizon(currentMonth) {
+  const year = Number(String(currentMonth).slice(0, 4));
+  return { from: `${year}-01`, to: `${year + 1}-12`, current: currentMonth };
 }

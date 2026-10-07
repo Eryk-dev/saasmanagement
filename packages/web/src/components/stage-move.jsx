@@ -4,11 +4,14 @@ import { Modal } from "./overlay.jsx";
 import { stageKind, phaseOf, isLossKind, isWonKind, lossReasonsOf } from "../lib/funnel.js";
 import { usersByRole, currentUser, displayName } from "../lib/users.js";
 import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, CONSULT_PACKAGES, CLOSED_PLAN_MONTHS, dealProductsOf, paymentUpfront, paymentRecurring, paymentCustom } from "../lib/payments.js";
-import { DealProductField, isOneOffProduct, SelectWithCustom, PaymentMethodSelect, ProductOptions } from "./lead-blocks.jsx";
+import { DealProductField, isOneOffProduct, PopoverWithCustom, PaymentMethodPicker } from "./lead-blocks.jsx";
+import { SelectPopover } from "./select-popover.jsx";
+import { Choice } from "./plan-editor.jsx";
 import { api } from "../lib/api.js";
-import { SlotGrid, nextBusinessDays, callBusyKeys, integBusyKeys } from "../screens/today.jsx";
+import { SlotGrid, WeekSlotGrid, businessDaysFrom, nextBusinessDays, callBusyKeys, integBusyKeys, parseMoneyInput, useGoogleBusy, withGoogleBusy, hourLong, googleBusyNote, bookingLinkPending } from "../screens/today.jsx";
 import { DayPicker, defaultFollowupDay } from "./followup-contact.jsx";
 import { followupDayOf, ymdOf } from "../lib/followup.js";
+import { BookingLinkActions, sentAgo } from "./booking-link.jsx";
 
 // Gate de movimento de estágio — os três momentos do processo que exigem input:
 //   handoff  = card saindo da fase SDR pra fase Closer sem closer marcado
@@ -54,6 +57,9 @@ const field = {
   borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13,
 };
 const label = { display: "block", marginBottom: 4 };
+// Sem <select> nativo (06/10/2026): as listas abrem pelo SelectPopover, no
+// desenho da plataforma, como o Próximo passo das Atividades.
+const userOptions = (users) => users.map((u) => ({ value: u.id, label: u.name || u.id }));
 
 export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCancel }) {
   const isLost = gate.type === "lost";
@@ -91,16 +97,29 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   const [integrator, setIntegrator] = React.useState(
     lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
   const [integAt, setIntegAt] = React.useState(lead.integrationAt || "");
+  // Primeiro dia da grade semanal: a semana do horário que já existe (se ainda
+  // não passou), senão a partir de hoje.
   const [integDay, setIntegDay] = React.useState(() => {
     const d = lead.integrationAt ? new Date(lead.integrationAt) : null;
-    return d && Number.isFinite(d.getTime()) ? d : nextBusinessDays(1)[0];
+    const today = nextBusinessDays(1)[0];
+    if (!d || !Number.isFinite(d.getTime())) return today;
+    d.setHours(0, 0, 0, 0);
+    return d < today ? today : d;
   });
+  // Como agendar (07/10/2026, o mesmo segmentado do Próximo passo das
+  // Atividades): marcar agora na grade, mandar o link de convite pro cliente
+  // ou só mover e marcar depois. Link enviado e ainda sem marcação abre no link.
+  const [schedMode, setSchedMode] = React.useState(() => (bookingLinkPending(lead, lead.integrator || "") ? "link" : "horario"));
   // Hora ocupada do INTEGRADOR (integrationAt dos leads dele + bloqueios) vem
   // desabilitada na grade, igual à call com o closer.
-  const integBusy = React.useMemo(
+  const integBusyCockpit = React.useMemo(
     () => integBusyKeys(window.SEED?.LEADS || [], integrator, lead.id),
     [integrator, lead.id],
   );
+  // Mais o que está ocupado na agenda do Google de quem integra (marcação pelo
+  // link, compromisso pessoal); sem Google conectado, fica só o cockpit.
+  const integGoogle = useGoogleBusy(askInteg ? integrator : "", integDay, lead.id, businessDaysFrom(integDay).at(-1));
+  const integBusy = hourLong(withGoogleBusy(integBusyCockpit, integGoogle));
   // displayName cai no id quando o SEED.USERS ainda não chegou (o picker vem do
   // fallback legado, que tem o nome); usa o nome da lista antes de mostrar id.
   const integName = displayName(integrator)
@@ -123,6 +142,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   // closer escreveu não é N parcelas iguais — o recebido entra pelo espelho do
   // MP ou pela baixa manual em Clientes.
   const isFaturado = !!payment && paymentUpfront(payment) === false && !paymentRecurring(payment) && !paymentCustom(payment) && !isMonthly;
+  const amountNum = parseMoneyInput(amount);
   const effInstallments = Number(installments) > 0 ? Number(installments)
     : (CLOSED_PLAN_MONTHS[isKidsWon || oneOff ? "unico" : planClosed] || 12);
   // Follow-up: qual proposta ficou na mesa (só saindo da call — askOffer) e o
@@ -151,19 +171,24 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   // A call é OBRIGATÓRIA pra entrar na etapa (regra do servidor), tanto no gate
   // de call quanto no handoff que já cai numa etapa de call.
   const ready = isLost ? !!reason
-    : isWonGate ? (Number(amount) > 0 && !!payment && (!askProduct || !!dealProduct) && (!askInteg || !!integrator))
+    : isWonGate ? (amountNum > 0 && !!payment && (!askProduct || !!dealProduct) && (!askInteg || !!integrator))
       : isOffer ? (!!followDay && (!askOffer || (!!offer && (offer === "nenhuma" || !offerProducts.length || !!offerProduct))))
         : askCall ? (!!closer && !!callAt)
           : !!closer;
 
+  const slotFmt = (v) => { const d = new Date(v); return Number.isFinite(d.getTime()) ? d.toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""; };
   function confirm() {
     if (!ready) return;
+    // Mesma pergunta do Próximo passo: o cliente já recebeu o link e pode
+    // marcar por lá também, e a integração ficaria em dobro.
+    if (isWonGate && askInteg && schedMode === "horario" && integAt && integAt !== lead.integrationAt && bookingLinkPending(lead, integrator)
+      && !window.confirm(`O link de convite foi enviado ${sentAgo(lead.integrationLinkSentAt)} e o cliente ainda não marcou. Se ele marcar pelo link também, a integração fica em dobro (quem integra é avisado). Marcar ${slotFmt(integAt)} mesmo assim?`)) return;
     const patch = { stage: toStage };
     if (isLost) {
       patch.lostReason = reason;
       if (note.trim()) patch.lostNote = note.trim();
     } else if (isWonGate) {
-      patch.amount = Number(amount);
+      patch.amount = amountNum;
       patch.paymentMethod = payment;
       // À vista/cartão zera o parcelamento (um faturado antigo não assombra).
       patch.paymentInstallments = isFaturado ? effInstallments : "";
@@ -172,7 +197,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
       if (isKidsWon) patch.consultPackage = Number(consultPackage) || 8;
       if (askProduct) patch.dealProduct = dealProduct;
       // Entrega: dono da integração e, se um horário foi escolhido, a hora dela.
-      if (askInteg) { patch.integrator = integrator; if (integAt) patch.integrationAt = integAt; }
+      if (askInteg) { patch.integrator = integrator; if (schedMode === "horario" && integAt) patch.integrationAt = integAt; }
     } else if (isOffer) {
       if (askOffer && offer) { patch.proposalOffer = offer; patch.proposalProduct = offer === "nenhuma" ? "" : offerProduct; }
       // Espelho do Meu dia: o DIA do Contato 1; o servidor zera a sequência e
@@ -209,20 +234,16 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
                 {offerProducts.length > 0 && offer !== "nenhuma" && (
                   <>
                     <label className="kicker" style={label}>Qual produto ficou ofertado? *</label>
-                    <SelectWithCustom ids={offerProducts.map((p) => p.id)} value={offerProduct} onChange={setOfferProduct}
-                      fieldStyle={field} placeholder="— o produto da apresentação —" autoFocus
-                      customLabel="Personalizado… (escrever o produto)" customPlaceholder="escreva o produto ofertado…">
-                      <ProductOptions products={offerProducts} />
-                    </SelectWithCustom>
+                    <PopoverWithCustom label="Produto ofertado" placeholder="o produto da apresentação…" inputStyle={field}
+                      value={offerProduct} onChange={setOfferProduct}
+                      options={offerProducts.map((p) => ({ value: p.id, label: p.label, group: p.group }))}
+                      customLabel="Personalizado… (escrever o produto)" customPlaceholder="escreva o produto ofertado…" />
                     <div style={{ height: 10 }} />
                   </>
                 )}
                 <label className="kicker" style={label}>Qual proposta ficou na mesa? *</label>
-                <select value={offer} onChange={(e) => setOffer(e.target.value)} style={field} autoFocus={!offerProducts.length}>
-                  <option value="">— a oferta que o cliente levou pra pensar —</option>
-                  {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-                  <option value="nenhuma">não chegou na proposta</option>
-                </select>
+                <SelectPopover label="Proposta na mesa" placeholder="a oferta que o cliente levou pra pensar…" value={offer} onChange={setOffer}
+                  options={[...CLOSED_PLANS.map((p) => ({ value: p.id, label: p.label })), { value: "nenhuma", label: "não chegou na proposta" }]} />
                 <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
                   fica no card e orienta o follow-up: é essa proposta que você vai cobrar
                 </div>
@@ -249,7 +270,8 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
               </>
             )}
             <label className="kicker" style={label}>{isMonthly ? "Valor mensal (R$) *" : "Valor do negócio (R$) *"}</label>
-            <input type="number" min="0" step="0.01" value={amount} autoFocus={!askProduct} placeholder={isMonthly ? "ex.: 599" : "ex.: 7188"}
+            <input type="text" inputMode="decimal" autoComplete="off" aria-label={isMonthly ? "Valor mensal" : "Valor do negócio"}
+              value={amount} autoFocus={!askProduct} placeholder={isMonthly ? "ex.: 599" : "ex.: 7.188"}
               onChange={(e) => setAmount(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") confirm(); }}
               style={field} />
@@ -266,9 +288,8 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
             {isKidsWon ? (
               <>
                 <label className="kicker" style={label}>Pacote de consultas *</label>
-                <select value={consultPackage} onChange={(e) => setConsultPackage(e.target.value)} style={field}>
-                  {CONSULT_PACKAGES.map((n) => <option key={n} value={n}>{n} consultas</option>)}
-                </select>
+                <Choice label="Pacote de consultas" size="sm" value={consultPackage} onChange={setConsultPackage}
+                  options={CONSULT_PACKAGES.map((n) => ({ value: String(n), label: `${n} consultas` }))} />
                 <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
                   a jornada inteira nasce na tela Consultas (sem data); cada consulta marcada entra na Agenda e no Google
                 </div>
@@ -277,29 +298,26 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
               <>
                 <label className="kicker" style={label}>Plano fechado *</label>
                 {/* Serviço único (pacote de OEM avulso) não tem ciclo: o plano é o
-                    próprio produto, então o select fica travado. */}
-                <select value={oneOff ? "unico" : planClosed} disabled={oneOff}
-                  onChange={(e) => setPlanClosed(e.target.value)} style={{ ...field, opacity: oneOff ? 0.7 : 1 }}>
-                  {/* Só os planos ativos; "Assinatura mensal" (legado) aparece
-                      apenas quando já é o plano deste lead. */}
-                  {withLegacyOption(CLOSED_PLANS_ACTIVE, CLOSED_PLANS, planClosed).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-                </select>
+                    próprio produto. Só os planos ativos; "Assinatura mensal"
+                    (legado) aparece apenas quando já é o plano deste lead. */}
+                {oneOff
+                  ? <div className="mono" style={{ fontSize: 12.5, color: "var(--fg-2)" }}>Serviço único · o plano é o próprio produto</div>
+                  : <Choice label="Plano fechado" size="sm" value={planClosed} onChange={setPlanClosed}
+                      options={withLegacyOption(CLOSED_PLANS_ACTIVE, CLOSED_PLANS, planClosed).map((p) => ({ value: p.id, label: p.label }))} />}
               </>
             )}
             <div style={{ height: 12 }} />
             <label className="kicker" style={label}>Modo de pagamento *</label>
-            <PaymentMethodSelect value={payment} onChange={setPayment} fieldStyle={field} />
+            <PaymentMethodPicker value={payment} onChange={setPayment} inputStyle={field} />
             {isFaturado && (
               <>
                 <div style={{ height: 12 }} />
                 <label className="kicker" style={label}>Faturado em quantas vezes *</label>
-                <select value={String(effInstallments)} onChange={(e) => setInstallments(e.target.value)} style={field}>
-                  {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
-                    <option key={n} value={n}>
-                      {n}x{Number(amount) > 0 ? ` de R$ ${(Number(amount) / n).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ""}
-                    </option>
-                  ))}
-                </select>
+                <SelectPopover label="Faturado em quantas vezes" value={String(effInstallments)} onChange={setInstallments}
+                  options={Array.from({ length: 12 }, (_, i) => i + 1).map((n) => ({
+                    value: String(n),
+                    label: `${n}x${amountNum > 0 ? ` de R$ ${(amountNum / n).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ""}`,
+                  }))} />
                 <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
                   vira o cronograma de parcelas (vencimento mensal a partir de hoje); marque cada uma como paga na tela Clientes
                 </div>
@@ -314,20 +332,35 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
                 <div style={{ height: 16 }} />
                 <div style={{ height: 1, background: "var(--line-1)", marginBottom: 14 }} />
                 <label className="kicker" style={label}>Responsável pela integração *</label>
-                <select value={integrator} onChange={(e) => { setIntegrator(e.target.value); setIntegAt(""); }} style={field}>
-                  <option value="">— quem vai integrar —</option>
-                  {integrators.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
-                </select>
+                <SelectPopover label="Responsável pela integração" placeholder="quem vai integrar…" value={integrator}
+                  options={userOptions(integrators)} onChange={(v) => { setIntegrator(v); setIntegAt(""); }} />
                 {integrator && (
-                  <>
-                    <div style={{ height: 12 }} />
-                    <label className="kicker" style={label}>Integração agendada pra (opcional)</label>
-                    <SlotGrid days={nextBusinessDays(6)} day={integDay} setDay={setIntegDay}
-                      slot={integAt} setSlot={setIntegAt} busy={integBusy} />
-                    <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
-                      horário ocupado de {integName} vem travado · entra na Agenda e replica na agenda pessoal dele (se conectou o Google) · sem horário, o card vai pra Integração e alguém marca depois
+                  <div className="today-sched" style={{ marginTop: 12 }}>
+                    <div className="kicker" style={{ ...label, marginBottom: 0 }}
+                      title="O horário marcado entra na Agenda e replica na agenda pessoal de quem integra (se conectou o Google). Sem horário, o card só vai pra Integração.">
+                      Agendamento · agenda de {integName} <span aria-hidden="true">ⓘ</span>
                     </div>
-                  </>
+                    <Choice label="Como agendar" size="sm" value={schedMode}
+                      onChange={(v) => { setSchedMode(v); if (v !== "horario") setIntegAt(""); }}
+                      options={[
+                        { value: "horario", label: "Marcar agora" },
+                        { value: "link", label: "Enviar link" },
+                        { value: "depois", label: "Marcar depois" },
+                      ]} />
+                    {schedMode === "horario" && (
+                      <div>
+                        <WeekSlotGrid start={integDay} setStart={setIntegDay} slot={integAt} setSlot={setIntegAt} busy={integBusy} />
+                        <div className={"today-sched-picked" + (integAt ? " is-set" : "")} role="status">
+                          {integAt ? `✓ ${slotFmt(integAt)} · ${integName}` : "escolha um horário livre na grade"}
+                        </div>
+                        {googleBusyNote(integGoogle, integName) && <div className="mono dim" style={{ fontSize: 10, marginTop: 4 }}>{googleBusyNote(integGoogle, integName)}</div>}
+                      </div>
+                    )}
+                    {schedMode === "link" && <BookingLinkActions lead={lead} userId={integrator} />}
+                    {schedMode === "depois" && (
+                      <div className="mono dim" style={{ fontSize: 11 }}>o card vai pra Integração sem horário; marque depois pelo Remarcar da atividade</div>
+                    )}
+                  </div>
                 )}
               </>
             )}
@@ -335,10 +368,8 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
         ) : isLost ? (
           <>
             <label className="kicker" style={label}>Motivo {gate.toKind === "desqualificado" ? "da desqualificação" : "da perda"} *</label>
-            <select value={reason} onChange={(e) => setReason(e.target.value)} style={field} autoFocus>
-              <option value="">— escolha o motivo —</option>
-              {reasons.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-            </select>
+            <SelectPopover label={gate.toKind === "desqualificado" ? "Motivo da desqualificação" : "Motivo da perda"} placeholder="escolha o motivo…"
+              value={reason} onChange={setReason} options={reasons.map((r) => ({ value: r.id, label: r.label }))} />
             <div style={{ height: 10 }} />
             <label className="kicker" style={label}>Detalhe (opcional)</label>
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="ex.: fechou com o concorrente X" style={{ ...field, height: "auto", padding: "8px 10px", resize: "vertical" }} />
@@ -346,10 +377,8 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
         ) : (
           <>
             <label className="kicker" style={label}>Closer responsável *</label>
-            <select value={closer} onChange={(e) => setCloser(e.target.value)} style={field} autoFocus>
-              {closers.length === 0 && <option value="">— nenhum closer no time (Ajustes → Equipe) —</option>}
-              {closers.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
-            </select>
+            <SelectPopover label="Closer responsável" value={closer} onChange={setCloser} disabled={!closers.length}
+              placeholder={closers.length ? "escolher o closer…" : "nenhum closer no time (Ajustes → Equipe)"} options={userOptions(closers)} />
             {askCall && (
               <>
                 <div style={{ height: 10 }} />
@@ -369,6 +398,13 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
         </div>
     </Modal>
   );
+}
+
+// Texto do aviso quando o movimento não salva. Horário de integração recusado
+// pela conferência da API (ocupado no cockpit ou na agenda do Google de quem
+// integra) diz o motivo; o resto é falha genérica de rede/servidor.
+export function moveErrorText(err) {
+  return err?.body?.code === "integration_slot_taken" && err.message ? err.message : "O movimento do card não foi salvo · tente de novo";
 }
 
 // Executa um movimento gateado: PATCH do lead + activity extra (nota de handoff).

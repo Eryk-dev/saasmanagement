@@ -26,6 +26,7 @@
 // closers — agendamento nunca trava.
 import { kindOf } from "./stages.js";
 import { leadGrade, ICP_GRADES } from "../metrics/metrics-core.js";
+import { sanitizeWorkHours, offWorkHours } from "../shared/work-hours.js";
 
 const BRT_MS = 3 * 3_600_000;
 export const SLOT_MIN = 30;
@@ -96,8 +97,10 @@ export function blockHits(b, key) {
 }
 
 // Ocupação de UMA pessoa: células concretas (calls do closer + integrações do
-// integrador + consultas) num Set, bloqueios avaliados por célula.
-function busyOf(userId, { leads, blocks, consultations, productById, excludeLeadId }) {
+// integrador + consultas) num Set, bloqueios avaliados por célula. Fora do
+// horário de atendimento dela (users.workHours) também conta como ocupado —
+// o mesmo que a grade do SPA trava (busyView).
+function busyOf(userId, { leads, blocks, consultations, productById, excludeLeadId, users = [] }) {
   const cells = new Set();
   for (const l of leads) {
     if (l.id === excludeLeadId) continue;
@@ -116,7 +119,8 @@ function busyOf(userId, { leads, blocks, consultations, productById, excludeLead
     for (const k of occupyCells(c.at, Number(c.durationMin) > 0 ? Number(c.durationMin) : 60)) cells.add(k);
   }
   const mine = blocks.filter((b) => b.user === userId || (Array.isArray(b.users) && b.users.includes(userId)));
-  return (key) => cells.has(key) || mine.some((b) => blockHits(b, key));
+  const workHours = sanitizeWorkHours(users.find((u) => u.id === userId)?.workHours);
+  return (key) => cells.has(key) || offWorkHours(workHours, key) || mine.some((b) => blockHits(b, key));
 }
 
 // ── Pools de closer por nível ───────────────────────────────────────────────
@@ -224,7 +228,7 @@ export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wal
   const pools = sdr && sid === "leverads" ? sdrCloserPools(users, sid) : closerPools(users, sid);
   const grade = gradeIn || leadGrade(lead || {}) || null;
 
-  const ctx = { leads, blocks, consultations, productById, excludeLeadId: lead?.id || "" };
+  const ctx = { leads, blocks, consultations, productById, excludeLeadId: lead?.id || "", users };
   const busyFns = new Map();
   const ensureBusy = (list) => { for (const u of list) if (!busyFns.has(u.id)) busyFns.set(u.id, busyOf(u.id, ctx)); };
   // Calls do dia por closer (balanceamento de carga no empate de slot).

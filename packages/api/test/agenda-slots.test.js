@@ -84,6 +84,18 @@ test("ocupação vale: call marcada, bloqueio semanal e consulta tiram o horári
   assert.equal(slots[0].closer, "pl");
 });
 
+test("horário de atendimento: fora dele o closer não recebe oferta (o mesmo que a grade do SPA trava)", async () => {
+  // PL só atende quarta 14h-16h; SR não tem horário (agenda aberta 7h-21h).
+  const { repo, fill } = seedRepo({ users: [{ ...PL, workHours: [{ weekday: 3, from: 14, to: 16 }] }] });
+  await fill();
+  const lead = { id: "x", saas: "leverads", accounts: "10+" };
+  const { slots } = await slotsForLead(repo, { lead, saas: "leverads", now: NOW, limit: 4 });
+  // Call de 1h precisa caber inteira: 14h, 14h30 e 15h; 15h30 já passaria das
+  // 16h. Quinta e sexta ele não atende, e a próxima quarta já sai da janela
+  // de 5 dias úteis.
+  assert.deepEqual(slots.map((s) => s.at), ["2026-08-19T14:00", "2026-08-19T14:30", "2026-08-19T15:00"]);
+});
+
 test("C/D fica no júnior enquanto ele tem horário HOJE; dia lotado joga pro pleno", async () => {
   const base = {
     users: [JR, PL],

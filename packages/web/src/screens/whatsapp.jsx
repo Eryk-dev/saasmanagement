@@ -22,7 +22,7 @@ import { clientSummary, ClientSummaryCard, AttributionCard } from "../components
 import { LeadGrade, LeadSection } from "../components/lead-card.jsx";
 import { currentUser, usersByRole } from "../lib/users.js";
 import { scriptChecklist } from "../lib/scripts.js";
-import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
+import { moveGate, MoveLeadModal, applyGatedMove, moveErrorText } from "../components/stage-move.jsx";
 import { WaAutomationsPanel } from "../components/wa-automations.jsx";
 
 // Inbox de WhatsApp: um WhatsApp Web dentro do cockpit. Lista de conversas à
@@ -1043,7 +1043,7 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
           onCancel={() => setPendingMove(null)}
           onConfirm={(mp, extra) => {
             setEdits((prev) => ({ ...prev, ...mp }));
-            applyGatedMove(mp, extra, base.id).then(() => { refresh(); onResolved?.(base.id); }).catch((err) => { console.warn("movimento não persistido:", err.message); window.toast && window.toast("O movimento do card não foi salvo · tente de novo", "neg"); });
+            applyGatedMove(mp, extra, base.id).then(() => { refresh(); onResolved?.(base.id); }).catch((err) => { console.warn("movimento não persistido:", err.message); window.toast && window.toast(moveErrorText(err), "neg"); });
             setPendingMove(null);
           }}
         />

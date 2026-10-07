@@ -26,6 +26,9 @@
 .today-script { overflow: hidden; }
 .today-script-body { flex: 1; }
 .today-script-footer { flex-shrink: 0; max-height: 45dvh; overflow-y: auto; }
+/* Formulário de destino aberto (Integração, Ganho…): o rodapé cresce em vez
+   de virar uma caixinha de 45% com rolagem interna (07/10/2026). */
+.today-script-footer:has(.today-dest-form, .today-deal) { max-height: 68dvh; }
 .today-script-whatsapp { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 0 14px; border: 1px solid var(--line-1); border-radius: var(--r-2); background: var(--bg-1); color: var(--fg-1); font-size: 13px; font-weight: 600; text-decoration: none; }
 @media (max-width: 1200px) {
   .today-layout { grid-template-columns: minmax(0, 1fr); }
@@ -75,12 +78,42 @@
 .today-dest-static { display: flex; align-items: center; gap: 8px; min-height: 30px; font-size: 12.5px; color: var(--fg-1); }
 .today-dest-static .mono { font-size: 10.5px; }
 .today-dest-note { width: 100%; min-height: 58px; padding: 8px 12px; border-radius: 14px; font-size: 12.5px; line-height: 1.45; resize: vertical; box-sizing: border-box; }
+/* Agendamento da entrega (07/10/2026): o segmentado escolhe a forma (grade,
+   link de convite ou depois) e só ela aparece; o horário escolhido fica
+   confirmado logo abaixo da grade. */
+.today-sched { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.today-sched > .kicker { margin-bottom: 0 !important; cursor: help; }
+.today-sched-picked { margin-top: 10px; font-size: 12px; color: var(--fg-3); }
+.today-sched-picked.is-set { color: var(--accent); font-weight: 650; }
+/* Grade da semana da integração (WeekSlotGrid): um dia por coluna, de hora
+   em hora, compacta pra semana inteira caber sem rolar de lado. */
+.week-slots { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.week-slots-nav { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+.week-slots-nav > .mono { font-size: 11.5px; font-weight: 600; color: var(--fg-2); }
+.week-slots-nav button { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; padding: 0; border-radius: 999px; border: 1px solid var(--line-2); background: var(--bg-1); color: var(--fg-2); cursor: pointer; }
+.week-slots-nav button:hover:not(:disabled) { border-color: var(--accent-line); color: var(--accent); }
+.week-slots-nav button:disabled { opacity: .35; cursor: not-allowed; }
+.week-slots-nav svg { display: block; }
+@media (max-width: 600px) { .week-slots-nav button { width: 44px; height: 44px; } }
+/* Cada hora é uma LINHA do grid (as colunas do dia são display: contents):
+   o vão de um horário indisponível cresce junto com o botão mais alto da
+   linha, então a mesma hora fica alinhada em todos os dias, com o botão de
+   24px ou com o de 44px que as telas de toque impõem. */
+.week-slots-grid { display: grid; grid-auto-flow: column; gap: 3px 4px; }
+.week-slots-col { display: contents; }
+.week-slots-day { padding: 2px 0 4px; font-size: 10px; text-align: center; color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.week-slots-day b { font-weight: 650; color: var(--fg-2); text-transform: capitalize; }
+.week-slots-day.is-today, .week-slots-day.is-today b { color: var(--accent); }
+.week-slot { height: 24px; min-width: 0; padding: 0 2px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--bg-1); color: var(--fg-2); font-size: 10.5px; white-space: nowrap; overflow: hidden; cursor: pointer; }
+.week-slot:hover:not(:disabled):not(.is-sel) { border-color: var(--accent-line); color: var(--accent); }
+.week-slot.is-sel { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.week-slot-gap { display: flex; align-items: center; justify-content: center; min-height: 24px; font-size: 10px; color: var(--fg-4); }
+.week-slots-none { padding: 14px 0; font-size: 11px; color: var(--fg-3); }
 .today-deal { display: flex; flex-direction: column; gap: 12px; }
 .today-deal-item.is-boxed { padding: 12px; border: 1px solid var(--line-1); border-radius: 14px; }
 .today-deal-item-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .today-deal-item-head button { font-size: 11px; }
 .today-deal-item-head button:hover { color: var(--neg); }
-.today-deal-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .today-deal-add { align-self: flex-start; height: 30px; padding: 0 14px; border-radius: 999px; border: 1px dashed var(--line-2); background: transparent; color: var(--fg-2); font-size: 12px; font-weight: 600; }
 .today-deal-add:hover { border-color: var(--accent-line); color: var(--accent); }
 @media (max-width: 760px) {
@@ -278,9 +311,9 @@
 .today-now.is-late .today-now-person > span { color: rgba(255,255,255,.85); }
 .today-now.is-late .today-now-person > small.is-late { background: #fff; color: var(--late-bg); font-weight: 700; }
 .today-now.is-late > button { background: #fff; color: var(--late-bg); }
-.today-late-alert { display: flex; align-items: flex-start; gap: 10px; margin: 10px 10px 0; padding: 10px 14px; border-radius: 16px; background: var(--neg-soft); border: 1px solid color-mix(in srgb, var(--neg) 45%, transparent); color: var(--neg); font-size: 12.5px; line-height: 1.45; }
+.today-late-alert { display: flex; align-items: flex-start; gap: 10px; margin: 10px 10px 12px; padding: 10px 14px; border-radius: 16px; background: var(--neg-soft); border: 1px solid color-mix(in srgb, var(--neg) 45%, transparent); color: var(--neg); font-size: 12.5px; line-height: 1.45; }
 .today-late-alert::before { content: "!"; flex: none; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 999px; background: var(--neg); color: #fff; font-size: 11.5px; font-weight: 700; }
-.today-late-alert strong { font-weight: 700; margin-right: 6px; }
+.today-late-alert strong { font-weight: 700; margin-right: 2px; }
 /* Follow-up atrasado nos detalhes: borda vermelha no bloco e faixa cheia no topo. */
 /* No celular os detalhes abrem em modal fora de .today-screen: --neg de reserva. */
 .today-followup-contact.is-late { box-shadow: inset 0 0 0 2px var(--late-bg, var(--neg)), var(--shadow-card); }

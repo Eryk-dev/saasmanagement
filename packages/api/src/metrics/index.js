@@ -11,7 +11,7 @@ import { registerDesempenhoRoutes } from "./routes.desempenho.js";
 export function register(app, repo, ctx) {
   const { opts } = ctx;
   // Metas de desempenho por vaga/pessoa (ferramenta; escreve na collection goals).
-  registerMetasRoutes(app, repo);
+  registerMetasRoutes(app, repo, { now: opts.pipelinePace?.now });
   // getWhatsapp é getter: o client nasce no domínio whatsapp, registrado depois,
   // e o custo de WhatsApp do resumo de despesas resolve na hora do request.
   registerMetricsRoutes(app, repo, { getWhatsapp: () => ctx.whatsapp });

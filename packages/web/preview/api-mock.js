@@ -21,6 +21,7 @@ import { proposalsReview, proposalsReviewMock } from "./proposals-review-mock.js
 import { customersReview, customersReviewMock } from "./customers-review-mock.js";
 import { pipelineReview, pipelineMock } from "./pipeline-mock.js";
 import { todayReview, todayMock } from "./today-mock.js";
+import { etapasPreview, etapasMock } from "./etapas-mock.js";
 import { overviewReview, overviewMock } from "./overview-mock.js";
 import { beginPageRequest } from "../src/lib/navigation-loading.js";
 import { customersCashMock } from "./customers-cash-mock.js";
@@ -109,7 +110,13 @@ const RESPOSTAS = {
   paceWindow: () => ({
     since: "2026-09-01", until: "2026-09-30", today: "2026-09-14",
     businessDays: 21, businessDaysElapsed: 8, ended: false, current: true, saas: "leverads",
-    sale: { target: 128000, sold: 10950, contracted: 10950, progress: 0.0855, expectedProgress: 0.38, status: "behind" },
+    sale: { target: 128000, sold: 10950, contracted: 10950, progress: 0.0855, expectedProgress: 0.38, status: "behind",
+      // Série do gráfico "Vendas por dia" (esparsa; a soma é o sold).
+      days: [
+        { day: "2026-09-03", revenue: 3650, contracts: 1 },
+        { day: "2026-09-09", revenue: 4300, contracts: 1 },
+        { day: "2026-09-11", revenue: 3000, contracts: 1 },
+      ] },
     contracts: { target: 35, sold: 3, progress: 0.0857, expectedProgress: 0.38, status: "behind" },
   }),
   pipelinePace: () => ({
@@ -147,6 +154,7 @@ const vazio = () => Promise.resolve(null);
 
 const mockApi = new Proxy({}, {
   get(_, nome) {
+    if (etapasPreview && Object.hasOwn(etapasMock, nome)) return etapasMock[nome];
     if (settingsReview && Object.hasOwn(settingsReviewMock,nome)) return settingsReviewMock[nome];
     if (expensesReview && Object.hasOwn(expensesReviewMock,nome)) return expensesReviewMock[nome];
     if (remuneracaoReview && Object.hasOwn(remuneracaoReviewMock,nome)) return remuneracaoReviewMock[nome];

@@ -9,7 +9,7 @@ import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { Pill } from "../components/viz.jsx";
 import { ActivityComposer } from "../components/timeline.jsx";
 import { waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
-import { waCallLinkText } from "../lib/wa-copy.js";
+import { meetingInviteText } from "../lib/wa-copy.js";
 import { api } from "../lib/api.js";
 import { bizDay } from "../lib/format.js";
 import { businessDaysBetween } from "../components/period-picker.jsx";
@@ -17,6 +17,7 @@ import { scaledGoal } from "../components/team-cards.jsx";
 import { useData } from "../data.jsx";
 import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor, nurtureStage, hasDayStages, dayStageNumber, nextActionAfterMove } from "../lib/funnel.js";
 import { allUsers, currentUser, displayName, userById, usersByRole, isAdminUser } from "../lib/users.js";
+import { offWorkHours } from "../../../api/src/shared/work-hours.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { myOpenTasks, taskHash } from "../lib/tasks.js";
 import { useAttribution } from "../lib/pains.js";
@@ -27,8 +28,11 @@ import { resolveScript, scriptTokens, scriptChecklist, isNoShowStage, confirmati
 import { CLOSED_PLANS, withLegacyOption, closedPlanLabel, dealProductLabel, closingPlansOf } from "../lib/payments.js";
 import { LeadSendActions, useLeadProposalActions } from "../components/lead-send-actions.jsx";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
+import { PresentationConfig } from "../components/presentation-config.jsx";
 import { followupContacts, followupDueDay, followupNextContact, followupStepOf, followupDayOf, localDayStart, dayStartIso, nextFollowupDay, todayBrt, FOLLOWUP_STEPS, FOLLOWUP_CHANNELS } from "../lib/followup.js";
 import { FollowupContactBlock, DayPicker, defaultFollowupDay } from "../components/followup-contact.jsx";
+import { summaryReason } from "../components/customer-meeting.jsx";
+import { BookingLinkActions, sentAgo } from "../components/booking-link.jsx";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
 // "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
 // "Amanhã" e "Próximos dias" (o que já está agendado, à vista), e "Sem data".
@@ -107,8 +111,8 @@ function NowClock({ now }) {
 // Item sem hora marcada usa a pílula neutra pra fila não perder o alinhamento.
 // A pílula de horário na medida da prancha (14/09): 22px de altura, raio 6,
 // 11,5px tabular. O TOM pinta a pílula inteira, e é ele que faz a coluna ser
-// lida de longe: cinza = já feito ou sem data, âmbar = perto de vencer, navy =
-// hora marcada com o lead, vermelho = passou da hora.
+// lida de longe: cinza = já feito ou sem data, âmbar = perto de vencer ou em
+// andamento, navy = hora marcada com o lead, vermelho = a janela já fechou.
 const TIME_TONE = {
   neg:  { bg: "var(--neg)", fg: "oklch(1 0 0)" },
   warn: { bg: "var(--warn-soft)", fg: "var(--warn)" },
@@ -182,11 +186,16 @@ const GROUP_META = {
 // O verbo da linha, com as palavras da prancha (14/09) e em minúsculo: é uma
 // ORDEM DE TRABALHO ("positivar a confirmação"), não um rótulo de categoria.
 // A confirmação de 2h manda e a de 10 min positiva, por isso os dois verbos.
-function actionVerb(item) {
+export function actionVerb(item) {
   if (item.confirm) {
-    if (item.confirmKind === "integracao") return "confirmar a integração";
-    if (item.confirmWindow === "ligar") return "ligar pro cliente (sem positiva)";
-    return item.confirmWindow === "10min" ? "positivar a confirmação" : "confirmar a call";
+    // A confirmação vence ANTES do compromisso (2h, 1h, 10 min): a pílula
+    // mostra a hora da tarefa (13:00) e o verbo diz a hora da call (15:00),
+    // senão "13:00 · atrasada" parece o card com o horário errado (07/10/2026).
+    const t = new Date((item.confirmKind === "integracao" ? item.l?.integrationAt : item.l?.callAt) || NaN);
+    const das = Number.isFinite(t.getTime()) ? ` das ${hhmmOf(t)}` : "";
+    if (item.confirmKind === "integracao") return `confirmar a integração${das}`;
+    if (item.confirmWindow === "ligar") return `ligar pro cliente (sem positiva) · call${das}`;
+    return item.confirmWindow === "10min" ? `positivar a confirmação · call${das}` : `confirmar a call${das}`;
   }
   if (item.group === "noshow") return "retomada";
   if (item.group === "nutri") return "reativação";
@@ -637,7 +646,9 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   // local). Ela MANDA no próximo toque: o servidor re-agenda pela cadência ao
   // receber a activity, então o horário do operador só vale se for gravado
   // DEPOIS que a activity entrou — por isso o update espera o logActivity.
-  function logTouch(item, when = "") {
+  // `text` troca o registro padrão ("tentativa de contato"): na Integração o
+  // retomar é a reunião que aconteceu e a entrega que continua.
+  function logTouch(item, when = "", text = "") {
     const l = item.l;
     const cad = cadenceOf(saasCfg, item.stage);
     const now = Date.now();
@@ -651,9 +662,32 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
       ...(chosenIso ? { nextActionAt: chosenIso }
         : cad.retryDays ? { nextActionAt: rollToBusinessDay(new Date(now + cad.retryDays * DAY)).toISOString() } : {}),
     } : x));
-    api.logActivity({ saas: l.saas, lead: l.id, type: "call", text: "tentativa de contato (meu dia)", author: me })
+    api.logActivity({ saas: l.saas, lead: l.id, type: "call", text: text || "tentativa de contato (meu dia)", author: me })
       .then(() => (chosenIso ? api.update("leads", l.id, { nextActionAt: chosenIso }) : null))
       .catch((err) => { console.warn("toque não registrado:", err.message); toast("O toque não foi salvo · tente de novo", "neg"); });
+  }
+
+  // Remarcar a integração pelo Próximo passo: a rota do lead solta a sala da
+  // reunião que já aconteceu (o resumo dela não se perde) e o Meet acompanha o
+  // horário novo. Sem resumo da anterior, pede a mesma confirmação da ficha do
+  // cliente. Devolve se remarcou, pra só então avançar a fila.
+  async function rescheduleIntegration(item, at, force = false) {
+    try {
+      const r = await api.integrationMeeting(item.l.id, { at, force });
+      syncSaved(r.lead);
+      if (r.meetError) toast(`Integração remarcada, sem Meet: ${r.meetError}`, "warn");
+      else toast("Integração remarcada · o convite foi atualizado", "pos");
+      return true;
+    } catch (e) {
+      if (e.status === 409 && e.body?.reason === "previous_without_summary" && !force) {
+        const ok = window.confirm(`A integração anterior ainda não tem resumo (${summaryReason(e.body.previous)}).
+
+Se remarcar agora, ela não será mais resumida automaticamente. Remarcar mesmo assim?`);
+        return ok ? rescheduleIntegration(item, at, true) : false;
+      }
+      toast(e.message || "Não foi possível remarcar a integração", "neg");
+      return false;
+    }
   }
 
   // Follow-up em 4 contatos: registrar o contato N vira um toque com
@@ -724,7 +758,16 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
     setLeads((prev) => prev.map((x) => x.id === cur.l.id ? { ...x, ...movePatch(x, patch) } : x));
     api.update("leads", cur.l.id, patch)
       .then(syncSaved)
-      .catch((err) => { console.warn("movimento não persistido:", err.message); toast("O movimento do card não foi salvo · tente de novo", "neg"); });
+      .catch((err) => {
+        console.warn("movimento não persistido:", err.message);
+        // Desfaz o movimento otimista; horário de integração recusado (ocupado
+        // no cockpit ou no Google de quem integra) reabre a atividade pra
+        // escolher outro.
+        setLeads((prev) => prev.map((x) => (x.id === cur.l.id ? cur.l : x)));
+        const slotTaken = err?.body?.code === "integration_slot_taken";
+        if (slotTaken) setScriptItem(cur);
+        toast(slotTaken && err.message ? err.message : "O movimento do card não foi salvo · tente de novo", "neg");
+      });
     setScriptItem(nx);
   }
 
@@ -885,7 +928,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                 {lateCount > 0 && (
                   <div className="today-late-alert" role="alert">
                     <span>
-                      <strong>{lateCount === 1 ? "1 atividade atrasada" : `${lateCount} atividades atrasadas`}</strong>
+                      <strong>{lateCount === 1 ? "1 atividade atrasada" : `${lateCount} atividades atrasadas`}</strong>{" "}
                       {[lateFollowups > 0 && (lateFollowups === 1 ? "1 follow-up com o contato vencido" : `${lateFollowups} follow-ups com o contato vencido`),
                         "resolva antes do resto da fila"].filter(Boolean).join(" · ")}
                     </span>
@@ -935,7 +978,8 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
             onMoveMeet={moveAndMeet}
             onAfter={advanceScript}
             onClose={() => setScriptItem(null)}
-            onTouch={(when) => { const nx = nextAfter(scriptItem); logTouch(scriptItem, when); setScriptItem(nx); }}
+            onTouch={(when, text) => { const nx = nextAfter(scriptItem); logTouch(scriptItem, when, text); setScriptItem(nx); }}
+            onReschedule={async (at) => { const cur = scriptItem; const nx = nextAfter(cur); if (await rescheduleIntegration(cur, at)) setScriptItem(nx); }}
             onFollowupContact={(r) => {
               const nx = nextAfter(scriptItem);
               const saved = registerFollowupContact(scriptItem, r);
@@ -971,7 +1015,8 @@ function ConsultaRow({ item, block, featured, ordem, onOpen }) {
   if (t == null) when = { pill: "sem hora", soft: true, tone: "mut" };
   else if (block === "amanha") when = { pill: hhmmOf(t), note: "amanhã", tone: "mut" };
   else if (block === "proximos") when = { pill: ddmmOf(t), note: hhmmOf(t), tone: "mut" };
-  else if (t <= now) when = { pill: hhmmOf(t), note: "agora", tone: "neg" };
+  else if (isLateItem(item, now)) when = { pill: hhmmOf(t), note: "atrasada", tone: "neg" };
+  else if (t <= now) when = { pill: hhmmOf(t), note: "em andamento", tone: "warn" };
   else when = { pill: hhmmOf(t), note: untilNote(t, now), tone: "pos" };
   return (
     <div onClick={onOpen} role="button" tabIndex={0}
@@ -1002,13 +1047,40 @@ function ConsultaRow({ item, block, featured, ordem, onOpen }) {
   );
 }
 
-// ATRASO (05/10/2026): item pendente cujo horário já passou — ou, no
-// follow-up (que é por DIA), cujo dia do contato já passou. É a régua única do
-// card vermelho da fila, do bloco "Próxima ação" e do alerta do topo.
+// EM ANDAMENTO (07/10/2026): passar da hora não é atrasar — a call das 9h às
+// 9h01 está acontecendo, não vencida. Cada item tem uma janela depois do
+// horário em que ainda está sendo cumprido no prazo: o compromisso dura o que
+// dura (call/integração 1h, consulta a duração dela); toque e confirmação têm
+// 30 min, e a confirmação nunca passa do horário da call que ela confirma (a
+// de 10 min antes vence quando a call começa).
+const RUN_MIN = 30;
+function runEndOf(item) {
+  const { t, type } = item.due;
+  const M = 60 * 1000;
+  if (type === "call" || type === "integração") return t + CALL_MIN * M;
+  if (type === "consulta") return t + (Number(item.consulta?.durationMin) > 0 ? Number(item.consulta.durationMin) : 60) * M;
+  const end = t + RUN_MIN * M;
+  if (type === "confirm") {
+    const appt = new Date((item.confirmKind === "integracao" ? item.l?.integrationAt : item.l?.callAt) || NaN).getTime();
+    if (Number.isFinite(appt) && appt > t) return Math.min(end, appt);
+  }
+  return end;
+}
+const isApptType = (type) => type === "call" || type === "integração" || type === "consulta";
+
+// ATRASO (05/10/2026): item pendente cuja janela de execução já fechou — ou,
+// no follow-up (que é por DIA), cujo dia do contato já passou. É a régua única
+// do card vermelho da fila, do bloco "Próxima ação" e do alerta do topo.
 export function isLateItem(item, now = Date.now()) {
   if (!item?.due || item.done) return false;
   if (item.due.type === "followup") return item.due.t < new Date(now).setHours(0, 0, 0, 0);
-  return item.due.t <= now;
+  return now >= runEndOf(item);
+}
+
+// Passou da hora e a janela ainda está aberta: âmbar, sem cobrar atraso.
+export function isRunningItem(item, now = Date.now()) {
+  if (!item?.due || item.done || item.due.type === "followup") return false;
+  return item.due.t <= now && now < runEndOf(item);
 }
 
 // Chave estável da linha: a confirmação de call tem uma por janela do mesmo lead.
@@ -1027,12 +1099,13 @@ function QueueRow({ item, block, featured, ordem, selected = false, onScript, on
   // próximos dias = a data na pílula. Item sem hora (novo, sem data) usa a
   // pílula neutra com a idade embaixo.
   const startToday = new Date().setHours(0, 0, 0, 0);
+  const late = isLateItem(item, now);
   let when;
   if (item.confirm && due) {
     // Confirmação: mostra a hora JÁ descontada (1h/10min antes da call). Passou
-    // da hora = "agora" em vermelho pra virar prioridade.
-    when = due.t <= now
-      ? { pill: hhmmOf(due.t), note: "agora", tone: "neg" }
+    // da hora = "agora" em âmbar; fechou a janela = atrasada em vermelho.
+    when = late ? { pill: hhmmOf(due.t), note: "atrasada", tone: "neg" }
+      : due.t <= now ? { pill: hhmmOf(due.t), note: "agora", tone: "warn" }
       : { pill: hhmmOf(due.t), note: untilNote(due.t, now), tone: "pos" };
   } else if (due?.type === "followup") {
     // Follow-up não tem hora: a pílula diz o DIA e o selo do contato.
@@ -1048,8 +1121,11 @@ function QueueRow({ item, block, featured, ordem, selected = false, onScript, on
   } else if (due && due.t < startToday) {
     const daysLate = Math.max(1, Math.ceil((startToday - due.t) / DAY));
     when = { pill: ddmmOf(due.t), note: `atrasado ${daysLate}d`, tone: "neg" };
+  } else if (due && late) {
+    when = { pill: hhmmOf(due.t), note: "atrasada", tone: "neg" };
   } else if (due && due.t <= now) {
-    when = { pill: hhmmOf(due.t), note: due.type === "call" ? "call agora" : "agora", tone: "neg" };
+    // Dentro da janela: o compromisso está acontecendo, o toque é pra agora.
+    when = { pill: hhmmOf(due.t), note: isApptType(due.type) ? "em andamento" : "agora", tone: "warn" };
   } else if (due) {
     when = { pill: hhmmOf(due.t), note: untilNote(due.t, now), tone: due.type === "call" ? "pos" : "mut" };
   } else if (kind === "novo") {
@@ -1067,7 +1143,6 @@ function QueueRow({ item, block, featured, ordem, selected = false, onScript, on
   const apagado = !!item.done;
   // Atrasada = o card INTEIRO em vermelho (não só a pílula): ninguém passa o
   // olho na fila sem ver.
-  const late = isLateItem(item, now);
   return (
     <div className={`today-queue-row${apagado ? " is-done" : ""}${late ? " is-late" : ""}${selected ? " is-selected" : ""}`}
       title={late ? (due?.type === "followup" ? "Follow-up atrasado: o dia do contato já passou" : "Atividade atrasada") : undefined}>
@@ -1094,7 +1169,7 @@ function AgoraBlock({ item, saasCfg, onScript }) {
   const atrasado = isLateItem(item, now);
   const tier = leadTier(l);
   const quando = isFup ? `${atrasado ? `atrasado desde ${ddmmOf(due.t)}` : "hoje"} · ${followupNextContact(l) ? `contato ${followupNextContact(l)}/${FOLLOWUP_STEPS}` : "escolher o destino"}`
-    : due ? `${hhmmOf(due.t)} · ${atrasado ? "agora" : untilNote(due.t, now)}` : "sem hora marcada";
+    : due ? `${hhmmOf(due.t)} · ${atrasado ? "atrasada" : isRunningItem(item, now) ? (isApptType(due.type) ? "em andamento" : "agora") : untilNote(due.t, now)}` : "sem hora marcada";
   return <section className={`today-now capsule-navy${atrasado ? " is-late" : ""}`}>
     <div className="today-section-label">{atrasado ? (isFup ? "Próxima ação · follow-up atrasado" : "Próxima ação · atrasada") : "Próxima ação"}</div>
     <div className="today-now-person"><LeadGrade tier={tier} size={22} placeholder /><strong>{l.name}</strong><span>{l.company}</span><small className={atrasado ? "is-late" : ""}>{quando}</small></div>
@@ -1534,9 +1609,9 @@ function CallShortcuts({ l, wa, onPatch, kind = "call" }) {
   const isInteg = kind === "integracao";
   const url = isInteg ? l.integrationCallUrl : l.callUrl;
   const nome = isInteg ? "integração" : "call";
-  const waForward = wa && url
-    ? `${wa}?text=${encodeURIComponent(waCallLinkText(l, url, isInteg ? "integração" : ""))}`
-    : null;
+  // Copiar e mandar no Whats levam o convite formatado (dia, hora e link).
+  const invite = url ? meetingInviteText(l, isInteg ? "integracao" : "call") : "";
+  const waForward = wa && url ? `${wa}?text=${encodeURIComponent(invite)}` : null;
   const googleOn = !!window.SEED?.CONFIG?.google?.connected;
 
   async function makeLink() {
@@ -1554,7 +1629,7 @@ function CallShortcuts({ l, wa, onPatch, kind = "call" }) {
   return <div className="today-call-shortcuts">
     {url ? <>
       <a href={url} target="_blank" rel="noopener noreferrer">Entrar na {nome} ↗</a>
-      <button onClick={async () => { try { await navigator.clipboard.writeText(url); toast("Link copiado", "pos"); } catch { toast("Não foi possível copiar o link", "neg"); } }}>Copiar link da {nome}</button>
+      <button onClick={async () => { try { await navigator.clipboard.writeText(invite); toast("Convite copiado", "pos"); } catch { toast("Não foi possível copiar o convite", "neg"); } }}>Copiar convite da {nome}</button>
       {waForward && <a href={waForward} target="_blank" rel="noopener noreferrer">Enviar link da {nome} ↗</a>}
     </> : <button onClick={makeLink} disabled={busy === "meet"}>{busy === "meet" ? "Criando Meet…" : "Criar link do Meet"}</button>}
     {err && <span role="alert" className="today-shortcut-error">{err}</span>}
@@ -1576,23 +1651,7 @@ function InlineScriptShell({ children, onClose }) {
   return <section ref={ref} tabIndex={-1} className="today-inline-script" aria-label="Atividade do lead">{children}</section>;
 }
 
-function PresentationConfig({ url }) {
-  const ref = React.useRef(null);
-  const [height, setHeight] = useS(480);
-  useE(() => {
-    const origin = new URL(url, window.location.href).origin;
-    const resize = (event) => {
-      if (event.source !== ref.current?.contentWindow || event.origin !== origin || event.data?.type !== "cockpit:proposal-config-height") return;
-      const next = Number(event.data.height);
-      if (Number.isFinite(next) && next > 0) setHeight(Math.min(2400, Math.ceil(next)));
-    };
-    window.addEventListener("message", resize);
-    return () => window.removeEventListener("message", resize);
-  }, [url]);
-  return <iframe ref={ref} title="Configurar apresentação" style={{ height }} src={`${url}${url.includes("?") ? "&" : "?"}embed=config&from=cockpit`} />;
-}
-
-function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfter, onClose, onTouch, onFollowupContact = null, onOpenLead, onWhatsapp, preview = false, previewScript = null, nextItem = null, onSkip = null }) {
+function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfter, onClose, onTouch, onReschedule = null, onFollowupContact = null, onOpenLead, onWhatsapp, preview = false, previewScript = null, nextItem = null, onSkip = null }) {
   // On narrow screens keep the accessible modal: the queue can be much taller
   // than the viewport, so an inline editor below it would open out of sight.
   // Choose once per open editor. Changing its wrapper while typing would
@@ -1740,7 +1799,7 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
           <div className="today-script-columns">
             <LeadSection title="Informações da apresentação" className="today-presentation">
               {l.proposal_edit_url && !preview ? <>
-                <PresentationConfig key={l.proposal_edit_url} url={l.proposal_edit_url} />
+                <PresentationConfig key={l.proposal_edit_url} lead={l} />
               </> : <p className="today-script-hint">{preview ? "A configuração da apresentação aparece aqui na atividade do lead." : "Prepare a proposta pelo botão Proposta no WhatsApp para preencher pedidos, ticket médio, produtos e plano aqui. A configuração continua disponível na apresentação."}</p>}
             </LeadSection>
             <LeadSection title="Perguntas e respostas do formulário">
@@ -1777,7 +1836,7 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
           {!item.confirm && !preview && (
             <div style={{ flexBasis: "100%", minWidth: 0 }}>
               <DestinoSection saasCfg={saasCfg} lead={l} leads={leads} callSummary={callSummary}
-                onMove={onMove} onMoveMeet={onMoveMeet} onAfter={onAfter} onTouch={onTouch} />
+                onMove={onMove} onMoveMeet={onMoveMeet} onAfter={onAfter} onTouch={onTouch} onReschedule={onReschedule} />
             </div>
           )}
           {!item.confirm && preview && (
@@ -1904,6 +1963,12 @@ export function destinationsFor(saasCfg, lead) {
       out.push({ retry: true, promote, stage: target, kind: promote ? "qualificacao" : curKind });
       continue;
     }
+    // Remarcar: novo horário da integração, o card fica na etapa. Fora da
+    // Integração não aparece (call tem o No show e a confirmação).
+    if (k === "remarcar") {
+      if (curKind === "integracao") out.push({ reschedule: true, stage: curStage, kind: curKind });
+      continue;
+    }
     if (k === "noshow") {
       // No-show é kind contato (colide com Nutrição no stageByKind) → resolve
       // pela etapa nomeada "No show" do funil, se existir.
@@ -1911,11 +1976,16 @@ export function destinationsFor(saasCfg, lead) {
       if (st && !seen.has(st.stage)) { seen.add(st.stage); out.push({ stage: st.stage, kind: "noshow" }); }
       continue;
     }
-    if (k === "nutricao") {
+    if (k === "nutricao" || k === "contato") {
       // Nutrição também é kind contato (e stageByKind cairia em Dia 2, a 1ª
       // etapa de cadência) → resolve pela etapa NOMEADA. Move direto: o
       // servidor aplica a cadência de 7 dias da etapa (GPS em 168h, dia útil).
-      const st = nurtureStage(saasCfg);
+      // O "contato" dos próximos passos (Qualificando) também é a Nutrição: pelo
+      // kind ele virava o No show ou o Dia 2. Sem Nutrição no funil, vale a 1ª
+      // etapa de contato que não seja nenhuma das duas.
+      const st = nurtureStage(saasCfg) || (k === "contato"
+        ? (saasCfg?.funnel || []).find((f) => f?.stage && stageKind(saasCfg, f.stage) === "contato" && !isNoShowStage(f.stage) && !dayStageNumber(f.stage))?.stage
+        : "");
       if (st && !seen.has(st)) { seen.add(st); out.push({ stage: st, kind: stageKind(saasCfg, st) }); }
       continue;
     }
@@ -2035,8 +2105,9 @@ function matchBlock(blocks, key) {
   });
 }
 // "Agenda ocupada" do dono: calls/integrações já marcadas (keys concretas) MAIS os
-// bloqueios manuais da tela Agenda. Devolve o mesmo contrato que a SlotGrid usa
-// (.has), com .info(key) extra pro tooltip (motivo do bloqueio).
+// bloqueios manuais da tela Agenda MAIS o que fica fora do horário de
+// atendimento dele (Ajustes → Equipe, shared/work-hours.js). Devolve o mesmo
+// contrato que a SlotGrid usa (.has), com .info(key) extra pro tooltip.
 export function busyView(concreteKeys, userId) {
   // Item conta pra pessoa quando ela é a dona (user) OU participante (users[],
   // compromisso com mais de uma pessoa ocupa a agenda de todas).
@@ -2052,11 +2123,13 @@ export function busyView(concreteKeys, userId) {
     const d = new Date(c.at);
     if (Number.isFinite(d.getTime())) for (const k of occupySlots(d, c.minutes)) consultKeys.add(k);
   }
+  const workHours = userById(userId)?.workHours || [];
   return {
-    has: (key) => concreteKeys.has(key) || consultKeys.has(key) || !!matchBlock(blocks, key),
+    has: (key) => concreteKeys.has(key) || consultKeys.has(key) || offWorkHours(workHours, key) || !!matchBlock(blocks, key),
     info: (key) => {
       if (concreteKeys.has(key)) return { kind: "call" };
       if (consultKeys.has(key)) return { kind: "block", reason: "consulta da mentoria" };
+      if (offWorkHours(workHours, key)) return { kind: "block", reason: "fora do horário de atendimento" };
       const b = matchBlock(blocks, key);
       // Compromisso (kind "event") ocupa igual; o tooltip mostra o título dele.
       return b ? { kind: "block", reason: b.title || b.reason || "" } : null;
@@ -2093,6 +2166,79 @@ export function integBusyKeys(leads, integratorId, selfId) {
     if (Number.isFinite(d.getTime())) for (const k of occupySlots(d)) busy.add(k);
   }
   return busyView(busy, integratorId);
+}
+
+// Agenda REAL do Google de quem vai atender (07/10/2026): a grade do cockpit só
+// conhece os cards, e o cliente pode ter marcado pelo link de convite (ou haver
+// compromisso pessoal). Lê os horários ocupados do dia visível (60s de cache no
+// servidor) e devolve as células; `connected` false = a pessoa não conectou o
+// Google e a grade fica com o que o cockpit sabe. Os eventos do próprio card
+// (excludeLeadId) não contam. `until` (opcional) estende a leitura até esse dia,
+// pra grade da semana inteira (WeekSlotGrid) travar todas as colunas.
+export function useGoogleBusy(userId, day, excludeLeadId = "", until = null) {
+  const dayKey = userId && day ? ymd(day) : "";
+  const untilKey = dayKey && until && ymd(until) > dayKey ? ymd(until) : dayKey;
+  const key = `${userId}|${dayKey}|${untilKey}|${excludeLeadId}`;
+  const [state, setState] = useS({ key: "", keys: new Set(), connected: null });
+  useE(() => {
+    if (!dayKey) return undefined;
+    let alive = true;
+    api.googleBusy(userId, dayKey, untilKey, excludeLeadId).then((r) => {
+      if (!alive) return;
+      const keys = new Set();
+      for (const b of r?.busy || []) {
+        const s = new Date(b.start), e = new Date(b.end);
+        if (!Number.isFinite(s.getTime()) || !Number.isFinite(e.getTime())) continue;
+        for (const k of occupySlots(s, Math.max(SLOT_MIN, Math.round((e - s) / 60000)))) keys.add(k);
+      }
+      setState({ key, keys, connected: !!r?.connected });
+    }).catch(() => { if (alive) setState({ key, keys: new Set(), connected: null }); });
+    return () => { alive = false; };
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  return state.key === key ? state : { keys: new Set(), connected: null };
+}
+// Soma o ocupado do Google ao do cockpit (mesma interface has/info do busyView).
+export function withGoogleBusy(busy, google) {
+  if (!google?.keys?.size) return busy;
+  return {
+    has: (k) => busy.has(k) || google.keys.has(k),
+    info: (k) => (busy.has(k) ? (busy.info ? busy.info(k) : null) : google.keys.has(k) ? { kind: "block", reason: "ocupado na agenda do Google" } : null),
+  };
+}
+// Link de convite enviado nos últimos 7 dias (pela pessoa da vez) e o cliente
+// ainda sem integração marcada pra frente: o card está "aguardando o cliente
+// marcar". Marcar outro horário na grade por cima pede confirmação.
+export function bookingLinkPending(lead, integrator = "", now = Date.now()) {
+  const t = Date.parse(lead?.integrationLinkSentAt || "");
+  if (!Number.isFinite(t) || now - t > 7 * DAY) return false;
+  if (integrator && lead.integrationLinkUser && lead.integrationLinkUser !== integrator) return false;
+  const at = lead.integrationAt ? new Date(lead.integrationAt).getTime() : NaN;
+  return !(Number.isFinite(at) && at > now);
+}
+
+// A integração dura 1h: começar às 09:30 esbarra no que ocupa as 10:00. Trava
+// o horário cuja meia hora seguinte está ocupada, a mesma régua da conferência
+// da API ao salvar (crm/integration-slot.js), senão a grade ofereceria um
+// horário que o salvar recusa.
+const nextCellKey = (k) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})-(\d{2})-(\d{2})$/.exec(k);
+  if (!m) return "";
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]) + SLOT_MIN);
+  return cellKey(d);
+};
+export function hourLong(busy) {
+  return {
+    has: (k) => busy.has(k) || busy.has(nextCellKey(k)),
+    info: (k) => (busy.has(k) ? (busy.info ? busy.info(k) : null)
+      : busy.has(nextCellKey(k)) ? { kind: "block", reason: "a integração dura 1h e esbarra no horário seguinte" } : null),
+  };
+}
+
+// Linha embaixo da grade: diz de onde vêm os horários travados.
+export function googleBusyNote(google, name) {
+  if (google?.connected === true) return `horários ocupados na agenda do Google de ${name} já vêm travados`;
+  if (google?.connected === false) return `${name} não conectou o Google: a grade mostra só o que está no cockpit`;
+  return "";
 }
 
 // Grade de agenda reutilizável: abas de dia (dias úteis) + slots de MEIA HORA.
@@ -2161,6 +2307,83 @@ export function SlotGrid({ days, day, setDay, slot, setSlot, busy }) {
   );
 }
 
+// Semana da grade da integração: N dias úteis a partir de `start` (fim de
+// semana pulado; `start` caindo no sábado/domingo começa na segunda).
+export const WEEK_DAYS = 5;
+export function businessDaysFrom(start, n = WEEK_DAYS) {
+  const out = []; const d = new Date(start); d.setHours(0, 0, 0, 0);
+  while (out.length < n) { const w = d.getDay(); if (w !== 0 && w !== 6) out.push(new Date(d)); d.setDate(d.getDate() + 1); }
+  return out;
+}
+
+// Grade da SEMANA, de hora em hora (07/10/2026): a integração dura 1h e começa
+// na hora cheia, então cada dia é uma coluna com os horários dele e a semana
+// inteira cabe numa olhada só, sem clicar no dia antes. ‹ › andam uma semana
+// útil; `start` é o primeiro dia visível. O ocupado vem do mesmo `busy`
+// (has/info) da SlotGrid — com hourLong, a hora trava se a meia hora seguinte
+// estiver ocupada. Só aparece o que dá pra marcar: hora ocupada ou que já
+// passou vira um vão (a mesma hora segue na mesma linha em todos os dias) e a
+// hora sem vaga em nenhum dia sai da grade.
+const chevron = (d) => (
+  <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+    <path d={d} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+export function WeekSlotGrid({ start, setStart, slot, setSlot, busy }) {
+  const days = businessDaysFrom(start);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const canBack = days[0] > businessDaysFrom(today, 1)[0];
+  const shift = (dir) => {
+    if (dir > 0) { const d = new Date(days[days.length - 1]); d.setDate(d.getDate() + 1); setStart(businessDaysFrom(d, 1)[0]); return; }
+    const d = new Date(days[0]); let n = 0;
+    while (n < WEEK_DAYS && d > today) { d.setDate(d.getDate() - 1); if (d.getDay() !== 0 && d.getDay() !== 6) n++; }
+    setStart(d < today ? today : d);
+  };
+  const now = Date.now();
+  const at = (day, h) => { const c = new Date(day); c.setHours(h, 0, 0, 0); return c; };
+  const free = (day, h) => { const c = at(day, h); return c.getTime() >= now && !busy.has(cellKey(c)); };
+  const hours = Array.from({ length: CALL_H1 - CALL_H0 }, (_, i) => CALL_H0 + i)
+    .filter((h) => days.some((day) => free(day, h) || slot === slotVal(day, h, 0)));
+  const fmt = (d, o) => d.toLocaleDateString("pt-BR", o).replace(/\./g, "");
+  const range = `${fmt(days[0], { day: "2-digit", month: "2-digit" })} – ${fmt(days[days.length - 1], { day: "2-digit", month: "2-digit" })}`;
+  return (
+    <div className="week-slots">
+      <div className="week-slots-nav">
+        <button type="button" onClick={() => shift(-1)} disabled={!canBack} aria-label="semana anterior">{chevron("M10 3 5 8l5 5")}</button>
+        <span className="mono">{range}</span>
+        <button type="button" onClick={() => shift(1)} aria-label="próxima semana">{chevron("m6 3 5 5-5 5")}</button>
+      </div>
+      {hours.length === 0 ? (
+        <div className="week-slots-none mono">nenhum horário livre nesta semana · use › pra ver a próxima</div>
+      ) : (
+        <div className="week-slots-grid" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))`, gridTemplateRows: `auto repeat(${hours.length}, auto)` }}>
+          {days.map((day) => {
+            const open = hours.filter((h) => free(day, h));
+            return (
+              <div key={ymd(day)} className="week-slots-col" role="group" aria-label={fmt(day, { weekday: "long", day: "2-digit", month: "2-digit" })}>
+                <div className={"week-slots-day mono" + (sameYMD(day, today) ? " is-today" : "")}>
+                  <b>{fmt(day, { weekday: "short" })}</b> {fmt(day, { day: "2-digit", month: "2-digit" })}
+                </div>
+                {hours.map((h, i) => {
+                  const val = slotVal(day, h, 0);
+                  const sel = slot === val;
+                  if (!sel && !free(day, h)) {
+                    return <span key={h} className="week-slot-gap mono" aria-hidden="true">{i === 0 && !open.length ? "lotado" : ""}</span>;
+                  }
+                  return (
+                    <button key={h} type="button" onClick={() => setSlot(val)} title="marcar" aria-pressed={sel}
+                      className={"week-slot mono" + (sel ? " is-sel" : "")}>{pad2(h)}:00</button>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // "Quando retomar": N dias à frente, 9h, nunca no fim de semana (a mesma régua
 // dos atalhos de próximo toque na ficha do lead). Devolve o formato do
 // <input type="datetime-local"> — hora local, sem fuso.
@@ -2181,8 +2404,11 @@ const RETRY_PRESETS = [
   ["+60d", () => retryPreset(60)],
 ];
 
-function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet, onAfter, onTouch }) {
+function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet, onAfter, onTouch, onReschedule }) {
   const dests = withoutWonStep(saasCfg, lead, destinationsFor(saasCfg, lead));
+  // Na Integração o "retomar" é a reunião que já aconteceu: registra e marca
+  // quando voltar, sem a palavra "tentativa" (não é cliente que não atendeu).
+  const inInteg = stageKind(saasCfg, lead.stage || firstStage(saasCfg)) === "integracao";
   const stageMeta = Object.fromEntries((saasCfg?.funnel || []).map((f) => [f.stage, f]));
   const closers = usersByRole("closer");
   const integrators = usersByRole("integrator");
@@ -2194,6 +2420,10 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   // Observação do closer pra quem integra (lead.integrationNote): aparece no
   // Resumo do cliente e entra no briefing da integração.
   const [integNote, setIntegNote] = useS(lead.integrationNote || "");
+  // Como a integração é agendada: "horario" (marca na grade agora), "link"
+  // (manda o link de convite e o cliente marca) ou "depois" (vai sem horário).
+  // Só muda o que aparece: link e depois movem sem integrationAt, como antes.
+  const [schedMode, setSchedMode] = useS("horario");
   const [payment, setPayment] = useS(lead.paymentMethod || "");
   // O que foi VENDIDO (um item por produto do catálogo: plano, ciclo e valor):
   // o card só vai pra Integração depois de fechar, e a entrega precisa do escopo.
@@ -2218,7 +2448,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   useE(() => {
     setDest(null); setCloser(lead.closer || ""); setSlot(lead.callAt || ""); setDay(nextBusinessDays(1)[0]); setRetryAt(""); setFupDay("");
     setIntegrator(lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
-    setPayment(lead.paymentMethod || ""); setReason(""); setNote(""); setIntegNote(lead.integrationNote || "");
+    setPayment(lead.paymentMethod || ""); setReason(""); setNote(""); setIntegNote(lead.integrationNote || ""); setSchedMode(bookingLinkPending(lead, lead.integrator) ? "link" : "horario");
     setItems(dealItemsFromLead(lead));
     setOffer(lead.proposalOffer || ""); setOfferProduct(lead.proposalProduct || "");
     setEmail(lead.email || ""); setEmailTouched(false); setMeetBusy(false); setMeetRes(null); setMeetErr(null);
@@ -2243,25 +2473,37 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     setFupDay(sug);
   }, [dest, callSummary]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Agenda do Google de quem integra (Integração e Remarcar): chamado antes do
+  // retorno antecipado, como todo hook. Sem integrador escolhido, não lê nada.
+  const gUser = !dest || dest.retry ? "" : dest.reschedule ? (lead.integrator || "") : setupType(dest.kind) === "integrator" ? integrator : "";
+  // Na entrega a grade é a da semana (WeekSlotGrid): lê o Google dos 5 dias úteis.
+  const gUntil = setupType(dest?.kind) === "integrator" && !dest?.retry && !dest?.reschedule ? businessDaysFrom(day).at(-1) : null;
+  const gBusy = useGoogleBusy(gUser, day, lead.id, gUntil);
+
   if (dests.length === 0) return null;
   // "Retomar" tem setup próprio (a data de voltar) e NÃO herda o do kind da
   // etapa atual — senão um retry em follow-up abriria a grade de agendamento.
-  const setup = !dest ? null : dest.retry ? "retry" : setupType(dest.kind);
+  const setup = !dest ? null : dest.retry ? "retry" : dest.reschedule ? "reschedule" : setupType(dest.kind);
   const days = nextBusinessDays(6);
 
   // Horas ocupadas na agenda do closer (cada call = 1h; ignora o próprio lead).
   // Follow-up não entra: é só DIA e nunca ocupa a agenda.
   const busy = setup === "call" && closer ? callBusyKeys(leads, closer, lead.id)
     : setup === "integrator" && integrator ? integBusyKeys(leads, integrator, lead.id)
+    : setup === "reschedule" && lead.integrator ? integBusyKeys(leads, lead.integrator, lead.id)
     : new Set();
+  // Integração e Remarcar também travam o que está ocupado no Google de quem integra.
+  const integGrid = setup === "integrator" || setup === "reschedule" ? hourLong(withGoogleBusy(busy, gBusy)) : busy;
 
   // Escolher um destino inicializa a agenda com o horário que já existe no lead
   // (call/follow-up = callAt; integração = integrationAt), pra permitir reagendar.
   const chooseDest = (d) => {
-    const same = dest && dest.stage === d.stage && !!dest.retry === !!d.retry;
+    const same = dest && dest.stage === d.stage && !!dest.retry === !!d.retry && !!dest.reschedule === !!d.reschedule;
     const next = same ? null : d;
     setDest(next);
     if (!next) return;
+    // Remarcar: a grade começa vazia (o horário antigo é o que está sendo trocado).
+    if (next.reschedule) { setSlot(""); setDay(nextBusinessDays(1)[0]); return; }
     // Retomar: já nasce preenchido com a cadência do estágio (o "amanhã" de
     // antes), então quem só quer registrar a tentativa confirma num clique e
     // quem precisa de outra data muda ali mesmo.
@@ -2278,6 +2520,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
       : st === "call" ? (lead.callAt || "")
       : "";
     setSlot(at);
+    if (st === "integrator") setSchedMode(bookingLinkPending(lead, integrator) ? "link" : "horario");
     setDay(at ? parseYMD(at.slice(0, 10)) : nextBusinessDays(1)[0]);
   };
 
@@ -2306,6 +2549,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const offerDone = !!offer && (offer === "nenhuma" || !askProduct || !!offerProduct);
   const ready = !dest ? false
     : isRetry ? !!retryAt
+    : setup === "reschedule" ? !!slot
     : setup === "call" ? !!(closer && slot)
     : setup === "followup" ? !!closer && !!fupDay && (!fromCall || offerDone) // saindo da call, a proposta na mesa é obrigatória
     : setup === "integrator" ? !!(integrator && (dest.kind !== "integracao" || dealReady))
@@ -2328,9 +2572,14 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
 
   function confirm() {
     if (!ready) return;
+    // Link de convite já enviado e o cliente ainda não marcou: marcar outro
+    // horário por cima pode virar integração em dobro.
+    if (setup === "integrator" && slot && bookingLinkPending(lead, integrator)
+      && !window.confirm(`O link de convite foi enviado ${sentAgo(lead.integrationLinkSentAt)} e o cliente ainda não marcou. Se ele marcar pelo link também, a integração fica em dobro (quem integra é avisado). Marcar ${slotFmt(slot)} mesmo assim?`)) return;
     // Retomar não move o card: registra a tentativa e marca quando voltar (num
     // lead novo é o servidor que promove pra Qualificando, no toque).
-    if (isRetry) { onTouch && onTouch(retryAt); return; }
+    if (isRetry) { onTouch && onTouch(retryAt, inInteg ? "integração feita · segue na Integração" : ""); return; }
+    if (setup === "reschedule") { onReschedule && onReschedule(slot); return; }
     const patch = { stage: dest.stage };
     if (setup === "call") { patch.closer = closer; patch.callAt = slot; if (email.trim()) patch.email = email.trim(); }
     // Follow-up: mantém o closer e marca o DIA do Contato 1 (followupAt, sem
@@ -2399,6 +2648,14 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     return plans.filter((p) => p.id === rows[i]?.product || (!picked.has(p.id) && (p.oneOff || !p.product || !taken.has(p.product))));
   };
   const multi = rows.length > 1;
+  // Modo de pagamento: com um produto divide a linha com o valor; com dois ou
+  // mais vale pra venda inteira e desce pro fim, ao lado do total.
+  const paymentField = (
+    <div>
+      <div className="kicker" style={label}>Modo de pagamento *</div>
+      <PaymentMethodPicker value={payment} onChange={setPayment} style={pickStyle} inputStyle={inputStyle} />
+    </div>
+  );
   const dealFields = (hint) => (
     <div className="today-deal">
       {rows.map((r, i) => {
@@ -2412,6 +2669,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                   aria-label={`Remover o produto ${i + 1}`}>remover</button>
               </div>
             )}
+            {/* Duas linhas (07/10/2026): produto | plano e valor | pagamento.
+                Antes o produto ficava sozinho à esquerda com um vão embaixo e
+                plano/valor empilhados à direita. */}
             <div className="today-dest-grid">
               {askProduct && (
                 <div>
@@ -2421,22 +2681,22 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                     onPick={(price) => setItem(r.key, { amount: String(price.value), ...(price.plan ? { plan: price.plan } : {}) })} />
                 </div>
               )}
-              <div className="today-deal-side">
-                {askProduct && (
-                  <div>
-                    <div className="kicker" style={label}>Plano fechado *</div>
-                    <Choice label={multi ? `Plano fechado ${i + 1}` : "Plano fechado"} size="sm" value={r.closed}
-                      options={cycleChoices(r.planObj, r.closed)} onChange={(v) => setItem(r.key, { plan: v })} />
-                    {r.planObj?.custom && <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>plano sob consulta: sem preço de tabela, informe o valor fechado</div>}
-                  </div>
-                )}
+              {askProduct && (
                 <div>
-                  <label className="kicker" style={label} htmlFor={`deal-amount-${lead.id}-${i}`}>{monthly ? "Valor mensal (R$) *" : multi ? "Valor deste produto (R$) *" : "Valor do negócio (R$) *"}</label>
-                  <input id={`deal-amount-${lead.id}-${i}`} type="text" inputMode="decimal" autoComplete="off" value={r.amount} placeholder={monthly ? "ex.: 599" : "ex.: 7.188"}
-                    onChange={(e) => setItem(r.key, { amount: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") confirm(); }} style={fieldStyle} />
-                  {monthly && <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>recorrência: a cada 30 dias do fechamento o acumulado do cliente soma mais uma mensalidade</div>}
+                  <div className="kicker" style={label}>Plano fechado *</div>
+                  <Choice label={multi ? `Plano fechado ${i + 1}` : "Plano fechado"} size="sm" value={r.closed}
+                    options={cycleChoices(r.planObj, r.closed)} onChange={(v) => setItem(r.key, { plan: v })} />
+                  {r.planObj?.custom && <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>plano sob consulta: sem preço de tabela, informe o valor fechado</div>}
                 </div>
+              )}
+              <div>
+                <label className="kicker" style={label} htmlFor={`deal-amount-${lead.id}-${i}`}>{monthly ? "Valor mensal (R$) *" : multi ? "Valor deste produto (R$) *" : "Valor do negócio (R$) *"}</label>
+                <input id={`deal-amount-${lead.id}-${i}`} type="text" inputMode="decimal" autoComplete="off" value={r.amount} placeholder={monthly ? "ex.: 599" : "ex.: 7.188"}
+                  onChange={(e) => setItem(r.key, { amount: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") confirm(); }} style={fieldStyle} />
+                {monthly ? <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>recorrência: a cada 30 dias do fechamento o acumulado do cliente soma mais uma mensalidade</div>
+                  : !multi && <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>{hint}</div>}
               </div>
+              {!multi && paymentField}
             </div>
           </div>
         );
@@ -2444,17 +2704,18 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
       {askProduct && plansFor(rows.length).length > 0 && (
         <button type="button" className="today-deal-add" onClick={() => setItems((cur) => [...cur, dealItem()])}>+ adicionar outro produto</button>
       )}
-      <div className="today-dest-grid">
-        <div>
-          <div className="kicker" style={label}>Modo de pagamento *</div>
-          <PaymentMethodPicker value={payment} onChange={setPayment} style={pickStyle} inputStyle={inputStyle} />
+      {/* Com um produto o total é o próprio valor (com a dica embaixo dele);
+          o total só aparece somando dois ou mais. */}
+      {multi && (
+        <div className="today-dest-grid">
+          {paymentField}
+          <div>
+            <div className="kicker" style={label}>Total da venda</div>
+            <div className="today-dest-static"><strong className="tnum">{amountNum > 0 ? money(amountNum) : "—"}</strong></div>
+            <div className="mono dim" style={{ fontSize: 10, marginTop: 2 }}>soma dos {rows.length} produtos · {hint}</div>
+          </div>
         </div>
-        <div>
-          <div className="kicker" style={label}>{multi ? "Total da venda" : "Receita"}</div>
-          <div className="today-dest-static"><strong className="tnum">{amountNum > 0 ? money(amountNum) : "—"}</strong></div>
-          <div className="mono dim" style={{ fontSize: 10, marginTop: 2 }}>{multi ? `soma dos ${rows.length} produtos · ${hint}` : hint}</div>
-        </div>
-      </div>
+      )}
     </div>
   );
 
@@ -2473,6 +2734,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
               <button key="retry" onClick={() => chooseDest(d)}
                 title={d.promote
                   ? `Não atendeu ou ainda não fechou · registra a tentativa, vai pra ${d.stage} e você escolhe quando voltar`
+                  : inInteg ? "A reunião aconteceu e a entrega continua · registra na timeline, o card fica em Integração e você escolhe quando voltar"
                   : "Não atendeu · registra a tentativa e você escolhe o dia e a hora de voltar"}
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 7, height: 42, padding: "0 16px", borderRadius: 999,
@@ -2481,7 +2743,22 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                   color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 13, fontWeight: 600,
                 }}>
                 <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
-                {d.promote ? `${d.stage} · retomar` : "Retomar"}
+                {d.promote ? `${d.stage} · retomar` : inInteg ? "Reunião feita · seguir depois" : "Retomar"}
+              </button>
+            );
+          }
+          if (d.reschedule) {
+            const on = !!dest?.reschedule;
+            return (
+              <button key="reschedule" onClick={() => chooseDest(d)}
+                title="Novo horário da integração na agenda do integrador · o card fica em Integração e o convite do Meet acompanha"
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 7, height: 42, padding: "0 16px", borderRadius: 999,
+                  background: on ? "var(--accent-soft)" : "var(--bg-1)",
+                  border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-strong)"),
+                  color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 13, fontWeight: 600,
+                }}>
+                ↻ Remarcar integração
               </button>
             );
           }
@@ -2528,8 +2805,24 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                   style={{ ...fieldStyle, width: "auto", height: 28, fontFamily: "var(--mono)", fontSize: 11.5 }} />
               </div>
               <div className="mono dim" style={{ fontSize: 10.5 }}>
-                registra a tentativa de contato{dest.promote ? ` e manda o card pra ${dest.stage}` : ""} · o lead volta na sua fila nesse horário
+                {inInteg
+                  ? "registra que a integração aconteceu · o card fica em Integração e volta na sua fila nesse horário"
+                  : <>registra a tentativa de contato{dest.promote ? ` e manda o card pra ${dest.stage}` : ""} · o lead volta na sua fila nesse horário</>}
               </div>
+            </div>
+          )}
+
+          {/* Remarcar a integração: novo horário na agenda do integrador. O
+              servidor move o evento do Meet junto (o cliente recebe o convite
+              atualizado) e o card continua em Integração. */}
+          {setup === "reschedule" && (
+            <div>
+              <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginBottom: 6 }}>
+                {lead.integrator ? `Horários livres na agenda de ${displayName(lead.integrator)} · a integração ocupa 1h` : "Novo horário da integração · a integração ocupa 1h"}
+              </div>
+              <SlotGrid days={days} day={day} setDay={setDay} slot={slot} setSlot={setSlot} busy={integGrid} />
+              {slot && <div className="mono" style={{ fontSize: 11.5, color: "var(--accent)", marginTop: 8 }}>Integração: {slotFmt(slot)}</div>}
+              {lead.integrator && <div className="mono dim" style={{ fontSize: 10, marginTop: 6 }}>{googleBusyNote(gBusy, displayName(lead.integrator))}</div>}
             </div>
           )}
 
@@ -2613,6 +2906,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                     {dealFields("vira a receita do closer")}
                   </section>
                 )}
+                {/* A entrega em três passos, na ordem em que se decide: QUEM faz,
+                    QUANDO (uma das três formas, só a escolhida aparece) e o que
+                    quem integra precisa saber. */}
                 <section className="today-dest-section" aria-label="A entrega">
                   <h4 className="today-dest-title">A entrega</h4>
                   <div className="today-dest-grid">
@@ -2627,25 +2923,45 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                         <div className="today-dest-static">{displayName(lead.closer)} <span className="mono dim">fica registrado</span></div>
                       </div>
                     )}
-                    <div className="is-wide">
-                      <label className="kicker" style={label} htmlFor={`integ-note-${lead.id}`}>Obs. pra {integLabel}</label>
-                      <textarea id={`integ-note-${lead.id}`} className="inp today-dest-note" rows={2} value={integNote} maxLength={1000}
-                        onChange={(e) => setIntegNote(e.target.value)}
-                        placeholder="o que quem integra precisa saber: combinados, acessos, prazos, particularidades do cliente…" />
-                    </div>
                   </div>
-                  {integrator ? (
-                    <div>
-                      <div className="kicker" style={{ marginBottom: 8 }}>
-                        Quando fazer a {integLabel} · agenda de {displayName(integrator)}
-                      </div>
-                      <SlotGrid days={days} day={day} setDay={setDay} slot={slot} setSlot={setSlot} busy={busy} />
-                      {slot && <div className="mono" style={{ fontSize: 11.5, color: "var(--accent)", marginTop: 8 }}>{integLabel[0].toUpperCase() + integLabel.slice(1)}: {slotFmt(slot)} · {displayName(integrator)}</div>}
-                      <div className="mono dim" style={{ fontSize: 10, marginTop: 6 }}>entra na agenda nesse horário e replica na agenda pessoal do integrador (se ele conectou o Google). Sem horário, só move pra {integLabel}.</div>
+                  <div className="today-sched">
+                    <div className="kicker" style={label}
+                      title={`O horário marcado entra na Agenda e replica na agenda pessoal de quem integra (se conectou o Google). Sem horário, o card só vai pra ${integLabel}.`}>
+                      Agendamento{integrator ? ` · agenda de ${displayName(integrator)}` : ""} <span aria-hidden="true">ⓘ</span>
                     </div>
-                  ) : (
-                    <div className="mono dim" style={{ fontSize: 11 }}>escolha o responsável pra ver os horários livres da agenda dele</div>
-                  )}
+                    {!integrator ? (
+                      <div className="mono dim" style={{ fontSize: 11 }}>escolha o responsável pra agendar na agenda dele</div>
+                    ) : (
+                      <>
+                        <Choice label="Como agendar" size="sm" value={schedMode}
+                          onChange={(v) => { setSchedMode(v); if (v !== "horario") setSlot(""); }}
+                          options={[
+                            { value: "horario", label: "Marcar agora" },
+                            ...(dest.kind === "integracao" ? [{ value: "link", label: "Enviar link" }] : []),
+                            { value: "depois", label: "Marcar depois" },
+                          ]} />
+                        {schedMode === "horario" && (
+                          <div>
+                            <WeekSlotGrid start={day} setStart={setDay} slot={slot} setSlot={setSlot} busy={integGrid} />
+                            <div className={"today-sched-picked" + (slot ? " is-set" : "")} role="status">
+                              {slot ? `✓ ${slotFmt(slot)} · ${displayName(integrator)}` : "escolha um horário livre na grade"}
+                            </div>
+                            {googleBusyNote(gBusy, displayName(integrator)) && <div className="mono dim" style={{ fontSize: 10, marginTop: 4 }}>{googleBusyNote(gBusy, displayName(integrator))}</div>}
+                          </div>
+                        )}
+                        {schedMode === "link" && <BookingLinkActions lead={lead} userId={integrator} />}
+                        {schedMode === "depois" && (
+                          <div className="mono dim" style={{ fontSize: 11 }}>o card vai pra {integLabel} sem horário; marque depois pelo Remarcar da atividade</div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  <div>
+                    <label className="kicker" style={label} htmlFor={`integ-note-${lead.id}`}>Obs. pra {integLabel}</label>
+                    <textarea id={`integ-note-${lead.id}`} className="inp today-dest-note" rows={2} value={integNote} maxLength={1000}
+                      onChange={(e) => setIntegNote(e.target.value)}
+                      placeholder="o que quem integra precisa saber: combinados, acessos, prazos, particularidades do cliente…" />
+                  </div>
                 </section>
               </div>
             );
@@ -2699,7 +3015,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                 height: 32, padding: "0 16px", borderRadius: 999, fontSize: 12.5, fontWeight: 600,
                 background: ready ? "var(--btn-bg, var(--accent))" : "var(--bg-2)", color: ready ? "var(--btn-fg, var(--accent-fg))" : "var(--fg-4)",
                 border: "1px solid " + (ready ? "var(--btn-bg, var(--accent))" : "var(--line-2)"), cursor: ready ? "pointer" : "not-allowed",
-              }}>{isRetry ? "registrar tentativa e retomar →" : setup === "followup" ? "agendar follow-up →" : `mover pra ${dest.stage} →`}</button>
+              }}>{isRetry ? (inInteg ? "registrar a reunião e seguir →" : "registrar tentativa e retomar →") : setup === "reschedule" ? "salvar novo horário →" : setup === "followup" ? "agendar follow-up →" : `mover pra ${dest.stage} →`}</button>
               <button onClick={() => setDest(null)} className="mono dim" style={{ fontSize: 11.5 }}>cancelar</button>
             </div>
           )}

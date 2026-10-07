@@ -9,45 +9,47 @@ const html = proposalSlidesPageHtml(proposal, {editable:true,configOnly:true,cat
 try {
   for (const width of [1440,1920,390]) {
     const page = await h.open(width,'&card');
-    const saves = [];
-    await page.route('**/p/card-preview?**', route => route.fulfill({contentType:'text/html',body:html}));
-    await page.route('**/public/proposals/card-preview', route => {
-      saves.push(route.request().postDataJSON());
-      return route.fulfill({json:{ok:true}});
-    });
     await page.getByRole('textbox',{name:'Buscar na fila'}).fill('Bruno');
     await page.locator('.today-open-script').first().click();
-    const frame=page.frameLocator('iframe[title="Configurar apresentação"]');
-    await frame.getByLabel('Pedidos/mês',{exact:true}).waitFor();
-    await frame.locator('[data-prod="plataforma"]').getByText('LeverAds',{exact:true}).waitFor();
-    assert.equal(await frame.getByText('Plataforma',{exact:true}).count(),0);
-    const present=frame.getByRole('link',{name:'Apresentar ↗',exact:true});
-    const presentUrl=new URL(await present.getAttribute('href'));
+    // Configuração nativa: peças do cockpit (sem iframe, sem select nativo) e
+    // os planos com o nome da tela Planos, inclusive pacote além de Essencial/Escala.
+    const cfgBox=page.locator('.today-presentation .deck-cfg');
+    await cfgBox.getByLabel('Pedidos/mês',{exact:true}).waitFor();
+    assert.equal(await page.locator('iframe[title="Configurar apresentação"]').count(),0);
+    assert.equal(await cfgBox.locator('select').count(),0);
+    const saves=()=>page.evaluate(()=>window.__reviewMutations.filter(m=>m.method==='saveProposalConfig').map(m=>m.cfg));
+    const saved=async()=>{await cfgBox.getByText('salvo',{exact:true}).waitFor();return (await saves()).at(-1);};
+    await cfgBox.getByRole('button',{name:/^Plano LeverAds: Ads Essencial$/}).click();
+    const list=page.getByRole('listbox',{name:'Plano LeverAds'});
+    assert.ok(await list.getByText('Lever OEM',{exact:true}).isVisible(),'planos agrupados pela linha');
+    assert.ok(await list.getByRole('option',{name:/Ads Essencial \+ OEM/}).isVisible());
+    await list.getByRole('option',{name:/Ads Enterprise/}).click();
+    let last=await saved();
+    assert.equal(last.linha+'_'+last.tier,'ads_enterprise');
+    assert.equal(await cfgBox.locator('.deck-cfg-value strong').innerText(),'12× R$ 2.997');
+    const present=cfgBox.getByRole('link',{name:'Apresentar ↗',exact:true});
+    const presentUrl=new URL(await present.getAttribute('href'),page.url());
     assert.equal(presentUrl.searchParams.has('embed'),false);
     assert.equal(presentUrl.searchParams.get('k'),'review');
     assert.equal(await present.getAttribute('target'),'_blank');
-    const valueBox=await frame.locator('.cfg-value > div').first().boundingBox();
-    const presentBox=await present.boundingBox();
-    assert.ok(presentBox.x>=valueBox.x+valueBox.width);
-    assert.equal(await frame.locator('[data-cfg-screen]').evaluate(e=>getComputedStyle(e).backgroundColor),await frame.locator('body').evaluate(e=>getComputedStyle(e).backgroundColor));
-    assert.equal(await page.getByRole('link',{name:'Abrir configuração na apresentação ↗'}).count(),0);
-    assert.equal(await frame.getByLabel('Nome',{exact:true}).isVisible(),false);
-    assert.equal(await frame.getByLabel('Empresa',{exact:true}).isVisible(),false);
-    assert.equal(await frame.getByLabel('Contas',{exact:true}).isVisible(),false);
-    await frame.getByLabel('Pedidos/mês',{exact:true}).fill('420');
-    await frame.getByText('salvo',{exact:true}).waitFor();
-    assert.equal(saves.at(-1).deckC.pedidos,420);
-    assert.equal(saves.at(-1).k,'review');
-    await frame.getByLabel('Ticket médio (R$)',{exact:true}).fill('85');
-    await frame.getByText('salvo',{exact:true}).waitFor();
-    assert.equal(saves.at(-1).deckC.ticket,85);
-    await frame.getByRole('button',{name:'Semestral · 6×',exact:true}).click();
-    await frame.getByText('salvo',{exact:true}).waitFor();
-    assert.equal(saves.at(-1).deckC.periodo,'semestral');
-    assert.equal(await frame.locator('.cfg-value [data-f="mensalFmt"]').innerText(),'699');
-    assert.equal(saves.at(-1).deckC.nome,'Bruno Teixeira');
-    await page.waitForFunction(()=>{const f=document.querySelector('iframe[title="Configurar apresentação"]');return f&&f.clientHeight>=f.contentDocument.querySelector('[data-cfg-screen]').scrollHeight;});
-    assert.ok(await frame.locator('body').evaluate(e=>e.scrollWidth<=innerWidth));
+    await cfgBox.getByLabel('Pedidos/mês',{exact:true}).fill('420');
+    last=await saved();
+    assert.equal(last.pedidos,420);
+    await cfgBox.getByLabel('Ticket médio (R$)',{exact:true}).fill('85');
+    last=await saved();
+    assert.equal(last.ticket,85);
+    await cfgBox.getByRole('radio',{name:'Semestral · 6×',exact:true}).click();
+    last=await saved();
+    assert.equal(last.periodo,'semestral');
+    assert.equal(await cfgBox.locator('.deck-cfg-value strong').innerText(),'6× R$ 3.297');
+    await cfgBox.getByRole('checkbox',{name:/Lever Price/}).click();
+    await cfgBox.getByRole('button',{name:/^Plano Lever Price: Lever Price · Escala$/}).waitFor();
+    last=await saved();
+    assert.equal(last.price,true);
+    assert.equal(await cfgBox.locator('.deck-cfg-value strong').innerText(),'6× R$ 3.644');
+    assert.equal(last.nome,'Bruno');
+    assert.ok(await cfgBox.evaluate(e=>e.scrollWidth<=e.clientWidth));
+    await h.capture(page,`card-config-${width}`);
     await page.locator('.lead-answers-editor > summary').click();
     await page.getByRole('combobox',{name:'Quantas contas?'}).selectOption('3-5');
     await page.locator('.lead-answers-editor > summary').click();
@@ -83,6 +85,13 @@ try {
     await page.locator('.today-script-identity').getByRole('button',{name:'Mais adiante',exact:true}).waitFor();
     await page.close();
   }
+  // Proposta sem deck de slides (OEM, de fora): o card segue no iframe da página.
+  const fallback = await h.open(1440,'&card&deckIframe');
+  await fallback.route('**/p/card-preview?**', route => route.fulfill({contentType:'text/html',body:html}));
+  await fallback.getByRole('textbox',{name:'Buscar na fila'}).fill('Bruno');
+  await fallback.locator('.today-open-script').first().click();
+  await fallback.frameLocator('iframe[title="Configurar apresentação"]').getByLabel('Pedidos/mês',{exact:true}).waitFor();
+  await fallback.close();
   assert.deepEqual(h.errors,[]);
-  console.log('Card: configuração compartilhada, respostas, histórico, duas colunas e mobile aprovados.');
+  console.log('Card: configuração nativa com os planos do catálogo, fallback em iframe, respostas, histórico, duas colunas e mobile aprovados.');
 } finally { await h.close(); }

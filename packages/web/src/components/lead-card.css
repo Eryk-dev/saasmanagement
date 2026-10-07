@@ -68,3 +68,16 @@
 .lead-section, .lead-disclosure { border: 0; border-radius: 24px; box-shadow: var(--shadow-card); }
 .lead-panel-button, .lead-panel-close { border-radius: 999px; }
 .lead-panel-facts dd { font-family: var(--display); font-size: 18px; }
+
+/* Etapa do lead na ficha (06/10/2026): próximo passo igual ao das Atividades + outra etapa por fase. */
+.lead-stage-current { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--fg-2); }
+.lead-stage-current i, .lead-stage-chip i { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.lead-stage-moves .kicker { display: block; margin-bottom: 8px; }
+.lead-stage-next { display: flex; flex-wrap: wrap; gap: 8px; }
+.lead-stage-chip { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 14px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--bg-1); color: var(--fg-2); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.lead-stage-chip:hover { border-color: var(--accent-line); color: var(--accent); }
+.lead-stage-chip.is-loss { color: var(--neg); }
+.lead-stage-chip.is-loss:hover { border-color: var(--neg); color: var(--neg); }
+.lead-stage-hint { margin: 8px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--fg-4); }
+.lead-stage-other { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-1); }
+.lead-stage-other .kicker { margin: 0; }

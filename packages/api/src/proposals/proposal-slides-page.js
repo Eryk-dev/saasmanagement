@@ -9,11 +9,10 @@
 // toggles e todos os números do deck saem dali. Nenhum número é escrito no
 // texto do slide.
 //
-// A conta do plano é a MESMA no servidor e na tela zero: calcOferta() é uma
-// função só, injetada no script da página por toString(). Os preços vêm do
-// catálogo v2 (proposal-catalog.js / migrations.ensureProposalCatalog), nunca
-// escritos aqui: Lever Ads e Lever OEM × Essencial/Escala, Lever Price ×
-// Essencial/Escala/Enterprise, pacote de OEM avulso e conta extra.
+// A conta do plano é a MESMA no servidor, na tela zero e no card de Atividades:
+// calcOferta() e deckChoices() moram em shared/deck-offer.js e entram no script
+// da página por toString(). Preços e planos vêm do catálogo v2, a projeção dos
+// planos de Comercial → Planos (billing/plan-catalog.js), nunca escritos aqui.
 //
 // Funcionalidades preservadas do original: escala pra caber na tela, navegação
 // por teclado (setas, PgUp/PgDn, espaço, Home/End, número, R), toque nas metades
@@ -23,6 +22,10 @@
 //
 // REGRA DO ARQUIVO (igual ao proposal-page.js): o HTML é UM template literal —
 // nada de crase dentro dele nem do script do cliente, que usa concatenação.
+
+import { calcOferta, deckChoices } from "../shared/deck-offer.js";
+
+export { calcOferta };
 
 // Exportado porque a apresentação de CRIAÇÃO DE ANÚNCIOS (proposal-oem-page.js)
 // roda no MESMO palco: dois decks, um design system só.
@@ -841,114 +844,6 @@ const SLIDES = `
 
 `;
 
-// ── A conta do plano ────────────────────────────────────────────────────────
-// UMA função, usada no servidor (pra montar o deck do link do cliente) e
-// injetada no script da tela zero por toString() — assim o número que o closer
-// vê montando e o que o cliente recebe não podem divergir. Sem crases: ela é
-// serializada dentro do template literal da página.
-export function calcOferta(cat, st) {
-  var prods = (cat && cat.products) || {};
-  var anual = st.periodo !== "semestral";
-  var parcelas = anual ? 12 : 6;
-  var fmt = function (n) { return Math.round(Number(n) || 0).toLocaleString("pt-BR"); };
-  var contas = Math.max(1, Math.round(Number(st.contas) || 1));
-  var extraPer = Number(((cat.addons || {}).contaExtra || {}).per) || 100;
-  var mensal = 0, setup = 0, nomes = [], entregaveis = [];
-
-  var plat = st.plataforma ? prods[st.linha + "_" + st.tier] : null;
-  if (plat) {
-    var per = Number((anual ? plat.anu : plat.sem).per) || 0;
-    var inclusas = Number(plat.contas) || 0;
-    var extras = Math.max(0, contas - inclusas);
-    mensal += per + extras * extraPer;
-    nomes.push(plat.name);
-    entregaveis.push({
-      tag: plat.name,
-      itens: ((plat.inclui || {}).motor || []).concat((plat.inclui || {}).plataforma || []),
-      notaDestaque: extras ? "Contas extras:" : "Contas inclusas:",
-      nota: extras
-        ? extras + " conta" + (extras > 1 ? "s" : "") + " além das " + inclusas + " do pacote, R$ " + fmt(extraPer) + " por conta em cada parcela."
-        : inclusas + " contas no pacote, prontas pra receber os anúncios."
-    });
-  }
-
-  var price = st.price ? prods["price_" + st.priceTier] : null;
-  if (price) {
-    mensal += Number((anual ? price.anu : price.sem).per) || 0;
-    nomes.push(price.name);
-    entregaveis.push({
-      tag: price.name,
-      itens: ((price.inclui || {}).motor || []).concat((price.inclui || {}).plataforma || []),
-      notaDestaque: "Margem primeiro:",
-      nota: "o preço se move sozinho o dia inteiro, sempre acima da margem que você definir."
-    });
-  }
-
-  var packs = (cat.oemPacks || []);
-  var pack = st.oem ? packs.filter(function (x) { return Number(x.qty) === Number(st.oemPack); })[0] : null;
-  if (pack) {
-    setup += Number(pack.price) || 0;
-    nomes.push("OEM " + fmt(pack.qty));
-    entregaveis.push({
-      tag: "OEM · anúncio perfeito",
-      itens: [
-        fmt(pack.qty) + " anúncios criados e publicados",
-        "Título otimizado por marketplace",
-        "Descrição e ficha técnica específicas",
-        "Compatibilidade completa de veículos"
-      ],
-      notaDestaque: "Pagamento único:",
-      nota: "R$ " + fmt(setup) + " na contratação, fora das parcelas do plano."
-    });
-  }
-
-  entregaveis.push({
-    tag: "O lado humano",
-    itens: [
-      "Suporte humano via WhatsApp",
-      "Call de plano de ação e setup",
-      "Resultado conferido mês a mês",
-      "Garantia incondicional de 2 meses"
-    ],
-    notaDestaque: "Time Lever dentro da sua operação:",
-    nota: "quem vende todo dia, cuidando de quem vende todo dia."
-  });
-
-  var vistaPct = Math.min(90, Math.max(0, Number(st.vistaPct) || 0));
-  var vista = mensal * parcelas * (1 - vistaPct / 100);
-  // Ticket e pedidos vêm da CALL (o formulário não pergunta): sem os dois o
-  // slide "Na prática" sai da apresentação em vez de mostrar uma conta falsa.
-  var ticket = Math.max(0, Number(st.ticket) || 0);
-  var vendas = mensal && ticket ? Math.ceil(mensal / ticket) : 0;
-  var pedidos = Math.max(0, Number(st.pedidos) || 0);
-  var pct = pedidos && vendas ? (vendas / pedidos * 100) : 0;
-  var demo = nomes.length ? nomes.join(", ").replace(/, ([^,]*)$/, " e $1") : "a plataforma";
-
-  return {
-    planoNome: nomes.length ? nomes.join(" + ") : "Selecione um produto",
-    demoLista: demo,
-    periodoLabel: anual ? "anual" : "semestral",
-    parcelas: parcelas,
-    mensal: mensal,
-    mensalFmt: fmt(mensal),
-    vistaFmt: fmt(vista),
-    setupFmt: fmt(setup),
-    oemPackFmt: pack ? fmt(pack.qty) : "0",
-    pedidosFmt: fmt(pedidos),
-    ticketFmt: fmt(ticket),
-    vendasNecessarias: vendas,
-    percentualExtra: pct ? pct.toFixed(1).replace(".", ",") + "%" : "—",
-    entregaveis: entregaveis,
-    mostra: {
-      ads: !!plat,
-      oem: st.linha === "oem" && !!plat ? true : !!pack,
-      price: !!price,
-      pratica: vendas > 0 && pedidos > 0,
-      resultados: true
-    }
-  };
-}
-
 // Contas que o lead declarou no FORMULÁRIO. A pergunta é por faixa
 // ("3-5", "6-10", "10+"): vale o piso da faixa, que é o único número que o
 // formulário garante; o closer sobe na call. Sem resposta, 0 (em branco).
@@ -965,12 +860,28 @@ export function contasDoForm(answers, calc) {
 // do catálogo sugere. Pedidos/mês, ticket médio e desconto à vista o form não
 // pergunta: ficam em branco pro closer preencher na call (Leo, 18/09/2026),
 // nunca um número inventado que o cliente pudesse levar a sério.
-export function deckConfig(p, { suggested = "" } = {}) {
+// Com `catalog`, linha, pacote, Price e pacote de OEM só valem se forem planos
+// que o catálogo vende (deckChoices); sem ele, as chaves de sempre.
+export function deckConfig(p, { suggested = "", catalog = null } = {}) {
   const s = (p.state && p.state.deckC) || {};
   const lead = (p.data && p.data.lead) || {};
   const answers = (p.data && p.data.answers) || {};
   const [linhaSug, tierSug] = String(suggested || "ads_essencial").split("_");
   const num = (v, d) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.round(Number(v)) : d);
+  const choices = catalog && catalog.products ? deckChoices(catalog) : null;
+  if (choices && choices.plataforma.length) {
+    const plat = choices.plataforma.find((x) => x.linha === String(s.linha || "") && x.tier === String(s.tier || ""))
+      || choices.plataforma.find((x) => x.key === String(suggested || ""))
+      || choices.plataforma.find((x) => x.linha === String(s.linha || ""))
+      || choices.plataforma[0];
+    const priceTier = (choices.price.find((x) => x.tier === String(s.priceTier || "")) || choices.price[0] || {}).tier || "essencial";
+    const pack = choices.oemPacks.find((x) => String(x.qty) === String(s.oemPack || "")) || choices.oemPacks[0];
+    return {
+      ...deckConfig(p, { suggested }),
+      linha: plat.linha, tier: plat.tier, priceTier,
+      oemPack: pack ? String(pack.qty) : String(s.oemPack || "1000"),
+    };
+  }
   return {
     nome: String(s.nome || lead.firstName || lead.name || "").slice(0, 60),
     empresa: String(s.empresa || lead.company || "").slice(0, 80),
@@ -1146,7 +1057,7 @@ export function deckOutline() {
 
 export function proposalSlidesPageHtml(p, { editable = false, previewBanner = false, catalog = null, suggested = "", results = null, configOnly = false } = {}) {
   configOnly = !!editable && !!configOnly;
-  const cfg = deckConfig(p, { suggested });
+  const cfg = deckConfig(p, { suggested, catalog });
   const slim = slimCatalog(catalog || {});
   // Link do CLIENTE: a oferta vai congelada no snapshot (shareProposalOffer) —
   // mexer no catálogo depois do envio não pode mudar o número que ele já viu.
@@ -1230,6 +1141,7 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
 (function () {
   var D = ${escJson(dados)};
   var calcOferta = ${calcOferta.toString()};
+  var deckChoices = ${deckChoices.toString()};
   var cfg = D.cfg;
   var canvas = document.getElementById("canvas");
   var todos = [].slice.call(canvas.children);
@@ -1510,11 +1422,12 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
       var per = Number((cfg.periodo === "semestral" ? pr.sem : pr.anu).per) || 0;
       return "R$ " + per.toLocaleString("pt-BR") + "/mês";
     }
+    // Planos escolhíveis: os do catálogo (deckChoices), com o nome de cada um.
+    var escolhas = deckChoices(D.catalog);
     function tiersDa(linha) {
-      return ["essencial", "escala"].filter(function (t) { return D.catalog.products[linha + "_" + t]; })
-        .map(function (t) {
-          var pr = D.catalog.products[linha + "_" + t];
-          return { v: t, t: (t === "escala" ? "Escala" : "Essencial") + " · " + (pr.contas || 0) + " contas · " + precoDe(linha + "_" + t) };
+      return escolhas.plataforma.filter(function (x) { return x.linha === linha; })
+        .map(function (x) {
+          return { v: x.tier, t: x.name + " · " + x.contas + " contas · " + precoDe(x.key) };
         });
     }
     function pintarCfg() {
@@ -1524,18 +1437,17 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
         else if (el.type === "number") el.value = Number(cfg[k]) > 0 ? cfg[k] : "";
         else if (el.tagName !== "SELECT") el.value = cfg[k];
       });
-      var linhas = ["ads", "oem"].filter(function (l) { return D.catalog.products[l + "_essencial"] || D.catalog.products[l + "_escala"]; })
-        .map(function (l) { return { v: l, t: l === "oem" ? "Lever OEM (autopeças)" : "Lever Ads" }; });
+      var linhas = [];
+      escolhas.plataforma.forEach(function (x) {
+        if (!linhas.some(function (l) { return l.v === x.linha; })) linhas.push({ v: x.linha, t: x.group });
+      });
       opts(document.querySelector('[data-cfg="linha"]'), linhas, cfg.linha);
       opts(document.querySelector('[data-cfg="tier"]'), tiersDa(cfg.linha), cfg.tier);
-      opts(document.querySelector('[data-cfg="priceTier"]'), ["essencial", "escala", "enterprise"]
-        .filter(function (t) { return D.catalog.products["price_" + t]; })
-        .map(function (t) {
-          var pr = D.catalog.products["price_" + t];
-          return { v: t, t: pr.name.replace("Lever Price · ", "") + " · " + precoDe("price_" + t) };
-        }), cfg.priceTier);
-      opts(document.querySelector('[data-cfg="oemPack"]'), (D.catalog.oemPacks || []).map(function (pk) {
-        return { v: String(pk.qty), t: Number(pk.qty).toLocaleString("pt-BR") + " anúncios · R$ " + Number(pk.price).toLocaleString("pt-BR") };
+      opts(document.querySelector('[data-cfg="priceTier"]'), escolhas.price.map(function (x) {
+        return { v: x.tier, t: x.name + " · " + precoDe(x.key) };
+      }), cfg.priceTier);
+      opts(document.querySelector('[data-cfg="oemPack"]'), escolhas.oemPacks.map(function (pk) {
+        return { v: String(pk.qty), t: pk.qty.toLocaleString("pt-BR") + " anúncios · R$ " + pk.price.toLocaleString("pt-BR") };
       }), cfg.oemPack);
       var pl = D.catalog.products[cfg.linha + "_" + cfg.tier];
       var sub = document.querySelector('[data-preco="plataforma"]');

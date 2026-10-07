@@ -88,7 +88,15 @@ try {
   const fakeGoal = {
     since: "2026-08-01", until: "2026-08-31", today: "2026-08-08",
     businessDays: 21, businessDaysElapsed: 5, ended: false, current: true,
-    sale: { target: 60000, sold: 34000, progress: 0.5667, expectedProgress: 0.24, status: "ahead" },
+    sale: {
+      target: 60000, sold: 34000, progress: 0.5667, expectedProgress: 0.24, status: "ahead",
+      // Série do gráfico "Vendas por dia": esparsa e somando o sold.
+      days: [
+        { day: "2026-08-04", revenue: 12000, contracts: 2 },
+        { day: "2026-08-06", revenue: 14000, contracts: 3 },
+        { day: "2026-08-08", revenue: 8000, contracts: 1 },
+      ],
+    },
     contracts: { target: 10, sold: 6, progress: 0.6, expectedProgress: 0.24, status: "ahead" },
   };
   const fakeTeam = {
@@ -100,6 +108,28 @@ try {
   };
   const fakeWin = { since: "2026-08-01", until: "2026-08-08", businessDays: 6, days: 8, label: "este mês", short: "mês" };
 
+  // Metas: histórico (jul fechado batido, ago fechado não, set corrente) e o
+  // horizonte de planejamento jan/26 → dez/27 com set/26 como mês corrente.
+  const fakeHist = {
+    from: "2026-07", to: "2026-09", today: "2026-09-10",
+    ticket: { value: 5000, source: "prev_month", month: "2026-08" },
+    months: [
+      { month: "2026-07", target: 120000, source: "default", sold: 130000, contracted: 130000, progress: 1.0833, expectedProgress: 1, status: "ahead", soldN: 26, contractsTarget: 24, ended: true, current: false, keyAccount: null },
+      { month: "2026-08", target: 180000, source: "month", sold: 150000, contracted: 162000, progress: 0.8333, expectedProgress: 1, status: "behind", soldN: 30, contractsTarget: 36, ended: true, current: false, keyAccount: { count: 1, revenue: 120000, soldWith: 270000, countWith: 31 } },
+      { month: "2026-09", target: 225000, source: "month", sold: 90000, contracted: 95000, progress: 0.4, expectedProgress: 0.36, status: "ahead", soldN: 18, contractsTarget: 45, ended: false, current: true, keyAccount: null },
+    ],
+    years: [{ year: 2026, target: 525000, sold: 370000, contracted: 387000, soldN: 74, contractsTarget: 105, progress: 0.7048, months: 3, closedMonths: 2 }],
+  };
+  const planMonths = [];
+  for (let y = 2026; y <= 2027; y++) for (let m = 1; m <= 12; m++) {
+    const month = `${y}-${String(m).padStart(2, "0")}`;
+    planMonths.push({ month, target: month === "2026-08" ? 180000 : null, effective: month < "2026-08" ? 120000 : Math.round(180000 * Math.pow(1.25, (y - 2026) * 12 + m - 8)), source: month < "2026-08" ? "default" : month === "2026-08" ? "month" : "growth", current: month === "2026-09", past: month < "2026-09" });
+  }
+  const fakePlan = {
+    months: planMonths, horizon: { from: "2026-01", to: "2027-12", current: "2026-09" }, meses: { "2026-08": "180000" }, setMeses() {},
+    hist: fakeHist, ano: 2026, setAno() {}, growth: "25", setGrowth() {}, aplicar() {}, inp: {},
+  };
+
   const cases = [
     ["inbox", "/src/screens/whatsapp.jsx", "WhatsappInboxScreen", {}, "Inbox"],
     ["inbox-mensagens", "/src/components/wa-thread.jsx", "WaBubbles", { variant: "inbox", messages: [{ id: "wa-test", direction: "out", author: "sdr-bot", text: "Mensagem do robô", at: nowIso, status: "read" }] }, "Mensagem do robô"],
@@ -107,7 +137,14 @@ try {
     ["overview-meta", "/src/screens/overview.jsx", "MetaMesCard", { pace: fakePace, goal: fakeGoal, onNav() {} }, "contratos assinados"],
     // O termômetro (14/09): a coluna, a marca do pace e a distância em palavras.
     ["overview-termometro", "/src/screens/overview.jsx", "MetaMesCard", { pace: fakePace, goal: fakeGoal, onNav() {} }, "do pace"],
+    // Vendas por dia (07/10): o gráfico só existe com goal.sale.days.
+    ["overview-vendas-dia", "/src/screens/overview.jsx", "MetaMesCard", { pace: fakePace, goal: fakeGoal, onNav() {} }, "Vendas por dia"],
     ["overview-funil", "/src/screens/overview.jsx", "FunilPeriodo", { team: fakeTeam, win: fakeWin, pLabel: "este mês" }, "Ganhos"],
+    // Metas (07/10): histórico meta × realizado e o planejamento em quatro trimestres.
+    ["metas-historico", "/src/screens/metas.jsx", "HistoricoCard", { hist: fakeHist, histErr: null, onRetry() {} }, "meta batida"],
+    ["metas-historico-ano", "/src/screens/metas.jsx", "HistoricoCard", { hist: fakeHist, histErr: null, onRetry() {} }, "2026 até agora"],
+    ["metas-planejamento", "/src/screens/metas.jsx", "PlanejamentoCard", fakePlan, "Q1 · jan a mar"],
+    ["metas-planejamento-semestre", "/src/screens/metas.jsx", "PlanejamentoCard", fakePlan, "1º semestre"],
     ["metrics", "/src/screens/metrics.jsx", "MetricsScreen", {}, "Publicidade"],
     ["expenses", "/src/screens/expenses.jsx", "ExpensesScreen", {}, "Pagamentos"],
     ["financeiro-pizza", "/src/screens/finance-hub.jsx", "GastosCard", { month: "2026-09", recebidosMes: 2000, setores: { deducoes: { imposto: 600 }, cogs: { ia: 200, wa: 100 }, sm: { ads: 100 } } }, "30,0%"],
@@ -510,15 +547,48 @@ try {
     // Integração cobra o mesmo fechamento. Sem Integração na lista, ela entra
     // no lugar; funil sem etapa de Integração mantém o Ganho.
     const { withoutWonStep } = await server.ssrLoadModule("/src/screens/today.jsx");
-    const steps = (cfg, lead) => withoutWonStep(cfg, lead, destinationsFor(cfg, lead)).map((d) => (d.retry ? "retry" : d.stage));
+    const steps = (cfg, lead) => withoutWonStep(cfg, lead, destinationsFor(cfg, lead)).map((d) => (d.retry ? "retry" : d.reschedule ? "remarcar" : d.stage));
     eq("follow-up sem Ganho", steps({ funnel }, { id: "l1", stage: "Follow-up" }), ["Integração", "Nutrição", "Desqualificado"]);
     eq("call: Integração no lugar do Ganho", steps({ funnel }, { id: "l1", stage: "Call agendada" }), ["retry", "No show", "Follow-up", "Integração", "Desqualificado"]);
-    eq("na Integração, o voltar pro Ganho some", steps({ funnel }, { id: "l1", stage: "Integração" }), []);
+    // Integração (06/10/2026): reunião feita (retomar na etapa) e remarcar.
+    eq("na Integração, o voltar pro Ganho some", steps({ funnel }, { id: "l1", stage: "Integração" }), ["retry", "remarcar"]);
+    eq("remarcar só existe na Integração", steps({ funnel, nextSteps: { followup: ["remarcar", "nutricao"] } }, { id: "l1", stage: "Follow-up" }), ["Nutrição"]);
     const semInteg = funnel.filter((f) => f.kind !== "integracao");
     eq("sem etapa de Integração, o Ganho fica", steps({ funnel: semInteg }, { id: "l1", stage: "Follow-up" }), ["Ganho", "Nutrição", "Desqualificado"]);
     console.log("✓ destino-nutricao");
   } catch (err) {
     console.error(`✗ destino-nutricao: ${err.message}`);
+    failed++;
+  }
+
+  // Filtro de segmento do Pipeline (06/10/2026): lead.niche normalizado, texto
+  // livre de autopeças e OEM sem resposta caem na opção de autopeças do produto.
+  try {
+    const { leadSegment, segmentOptions, segmentMatch, NO_SEGMENT } = await server.ssrLoadModule("/src/lib/segments.js");
+    const eq = (name, got, want) => {
+      if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`${name}: ${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`);
+    };
+    const cfg = { leadQuestions: [{ key: "niche", options: [
+      { value: "autopecas", label: "Autopeças" }, { value: "moda", label: "Moda" }, { value: "outros", label: "Outros" },
+    ] }] };
+    eq("código do form", leadSegment({ niche: "autopecas" }, cfg), "autopecas");
+    eq("texto livre do robô", leadSegment({ niche: "Auto Peças" }, cfg), "autopecas");
+    eq("rótulo com acento", leadSegment({ niche: "Moda" }, cfg), "moda");
+    eq("OEM sem resposta é autopeças", leadSegment({ formProduct: "oem" }, cfg), "autopecas");
+    eq("sem nada", leadSegment({}, cfg), "");
+    eq("texto fora das opções", leadSegment({ niche: "Pet Shop" }, cfg), "pet shop");
+    const outroCodigo = { leadQuestions: [{ key: "niche", options: [{ value: "auto", label: "Autopeças e acessórios" }] }] };
+    eq("opção de autopeças com outro código", leadSegment({ formProduct: "oem" }, outroCodigo), "auto");
+    eq("texto livre na opção de outro código", leadSegment({ niche: "autopeças" }, outroCodigo), "auto");
+    const leads = [{ niche: "autopecas" }, { formProduct: "oem" }, { niche: "Pet Shop" }, {}];
+    eq("opções com contagem", segmentOptions(cfg, leads).map((o) => `${o.value}:${o.hint}`),
+      ["autopecas:2", "moda:0", "outros:0", "pet shop:1", `${NO_SEGMENT}:1`]);
+    eq("produto sem segmento não mostra filtro", segmentOptions({}, [{}, {}]), []);
+    eq("filtro", leads.filter((l) => segmentMatch(l, cfg, "autopecas")).length, 2);
+    eq("filtro sem segmento", leads.filter((l) => segmentMatch(l, cfg, NO_SEGMENT)).length, 1);
+    console.log("✓ pipeline-segmento");
+  } catch (err) {
+    console.error(`✗ pipeline-segmento: ${err.message}`);
     failed++;
   }
 
@@ -619,6 +689,118 @@ try {
     console.error(`✗ call-cumprida-sai-da-fila: ${err.message}`);
     failed++;
   }
+
+  // Em andamento ≠ atrasada (07/10): a atividade das 9h às 9h01 está sendo
+  // cumprida. Call/integração têm a duração (1h), consulta a dela, toque e
+  // confirmação 30 min — a confirmação nunca além do horário da call.
+  try {
+    const { isLateItem, isRunningItem } = await server.ssrLoadModule("/src/screens/today.jsx");
+    const eq = (name, got, want) => { if (got !== want) throw new Error(`${name}: ${got} ≠ ${want}`); };
+    const M = 60000, t = Date.parse("2026-10-07T12:00:00Z");
+    const call = { due: { t, type: "call" } };
+    eq("call 1 min depois não está atrasada", isLateItem(call, t + M), false);
+    eq("call 1 min depois está em andamento", isRunningItem(call, t + M), true);
+    eq("call atrasa ao fim da 1h", isLateItem(call, t + 60 * M), true);
+    const toque = { due: { t, type: "toque" } };
+    eq("toque com 29 min ainda no prazo", isLateItem(toque, t + 29 * M), false);
+    eq("toque atrasa aos 30 min", isLateItem(toque, t + 30 * M), true);
+    const conf10 = { due: { t, type: "confirm" }, confirm: true, l: { callAt: new Date(t + 10 * M).toISOString() } };
+    eq("confirmação de 10 min no prazo antes da call", isLateItem(conf10, t + 9 * M), false);
+    eq("confirmação de 10 min atrasa quando a call começa", isLateItem(conf10, t + 10 * M), true);
+    const consulta = { consulta: { durationMin: 90 }, due: { t, type: "consulta" } };
+    eq("consulta de 90 min em andamento aos 80", isLateItem(consulta, t + 80 * M), false);
+    eq("feita nunca atrasa", isLateItem({ ...toque, done: true }, t + 300 * M), false);
+    eq("antes da hora não está em andamento", isRunningItem(call, t - M), false);
+    // A tarefa de confirmação vence antes da call (2h, 1h, 10 min): o verbo
+    // diz a hora da call, senão "13:00 · atrasada" parece horário errado.
+    const { actionVerb } = await server.ssrLoadModule("/src/screens/today.jsx");
+    const callL = { callAt: "2026-10-07T15:00", integrationAt: "2026-10-07T16:30" };
+    const verbo = (extra) => actionVerb({ l: callL, confirm: true, due: { t, type: "confirm" }, ...extra });
+    eq("confirmação 2h cita a call", verbo({ confirmWindow: "2h" }), "confirmar a call das 15:00");
+    eq("positivar cita a call", verbo({ confirmWindow: "10min" }), "positivar a confirmação · call das 15:00");
+    eq("ligar cita a call", verbo({ confirmWindow: "ligar" }), "ligar pro cliente (sem positiva) · call das 15:00");
+    eq("integração cita o horário dela", verbo({ confirmWindow: "2h", confirmKind: "integracao" }), "confirmar a integração das 16:30");
+    eq("sem horário, só o verbo", actionVerb({ l: {}, confirm: true, confirmWindow: "2h" }), "confirmar a call");
+    console.log("✓ em-andamento-nao-e-atraso");
+  } catch (err) {
+    console.error(`✗ em-andamento-nao-e-atraso: ${err.message}`);
+    failed++;
+  }
+
+  // Link de convite do integrador (07/10): escolhido o integrador, o gate da
+  // Integração mostra a agenda dele pra mandar ao cliente; sem link cadastrado,
+  // diz onde cadastrar em vez de sumir.
+  const savedUsers = window.SEED.USERS;
+  try {
+    const { BookingLinkActions } = await server.ssrLoadModule("/src/components/booking-link.jsx");
+    const { bookingInviteText, meetingInviteText } = await server.ssrLoadModule("/src/lib/wa-copy.js");
+    const link = "https://calendar.app.google/YfS45BGrP3Nb9aA88";
+    window.SEED.USERS = [{ id: "eryk", name: "Eryk", roles: ["integrator"], bookingUrl: link }, { id: "vitor", name: "Vitor", roles: ["integrator"] }];
+    const lead = { id: "l1", name: "Ana Prado", phone: "11999990000" };
+    const html = renderToString(React.createElement(BookingLinkActions, { lead, userId: "eryk" }));
+    if (!html.includes(`href="${link}"`)) throw new Error("o botão de abrir não aponta pra agenda do integrador");
+    // Na mensagem vai o link curto do cockpit (preview em português), não o do Google.
+    const waHref = decodeURIComponent((html.match(/href="(https:\/\/wa\.me\/[^"]+)"/) || [])[1] || "").replace(/&amp;/g, "&");
+    if (!waHref.includes("/a/eryk?t=integracao&l=l1") || waHref.includes("calendar.app.google")) throw new Error(`mensagem do WhatsApp sem o link curto do cockpit (com o card): ${waHref}`);
+    // Conflito operador × cliente: a grade soma o ocupado do Google ao do
+    // cockpit, diz de onde vem o bloqueio e sabe quando o link está pendente.
+    const T = await server.ssrLoadModule("/src/screens/today.jsx");
+    const cockpitBusy = { has: (k) => k === "a", info: () => ({ kind: "call" }) };
+    const juntos = T.withGoogleBusy(cockpitBusy, { keys: new Set(["b"]), connected: true });
+    if (!juntos.has("a") || !juntos.has("b") || juntos.has("c")) throw new Error("grade não somou cockpit + Google");
+    if (juntos.info("b")?.reason !== "ocupado na agenda do Google" || juntos.info("a")?.kind !== "call") throw new Error("tooltip do bloqueio errado");
+    if (T.withGoogleBusy(cockpitBusy, { keys: new Set(), connected: false }) !== cockpitBusy) throw new Error("sem Google, a grade é a do cockpit");
+    if (!T.googleBusyNote({ connected: false }, "Vitor").includes("só o que está no cockpit")) throw new Error("aviso de sem Google");
+    // A integração dura 1h: 09:30 trava quando as 10:00 estão ocupadas (mesma régua do salvar).
+    const hora = T.hourLong({ has: (k) => k === "2026-10-08-10-00" || k === "2026-10-08-23-30" });
+    if (!hora.has("2026-10-08-09-30") || !hora.has("2026-10-08-10-00") || hora.has("2026-10-08-09-00") || hora.has("2026-10-08-10-30")) throw new Error("régua de 1h da integração na grade");
+    if (!hora.has("2026-10-08-23-00") || hora.info("2026-10-08-09-30")?.reason !== "a integração dura 1h e esbarra no horário seguinte") throw new Error("virada de dia / motivo da régua de 1h");
+    if (!T.googleBusyNote({ connected: true }, "Eryk").includes("agenda do Google de Eryk")) throw new Error("aviso com Google");
+    const agora = Date.parse("2026-10-07T15:00:00Z");
+    const enviado = { integrationLinkSentAt: "2026-10-07T13:00:00Z", integrationLinkUser: "eryk" };
+    if (!T.bookingLinkPending(enviado, "eryk", agora)) throw new Error("link enviado há 2h devia estar pendente");
+    if (T.bookingLinkPending(enviado, "vitor", agora)) throw new Error("link de outro integrador não pende pra este");
+    if (T.bookingLinkPending({ ...enviado, integrationAt: "2026-10-09T10:00" }, "eryk", agora)) throw new Error("com integração marcada não está mais pendente");
+    if (T.bookingLinkPending({ ...enviado, integrationLinkSentAt: "2026-09-20T10:00:00Z" }, "eryk", agora)) throw new Error("link de 17 dias atrás não pende");
+    const { sentAgo } = await server.ssrLoadModule("/src/components/booking-link.jsx");
+    if (sentAgo("2026-10-07T13:00:00Z", agora) !== "há 2h" || sentAgo("2026-10-07T14:55:00Z", agora) !== "há 5 min") throw new Error("tempo desde o envio");
+    // Ligar à mão a marcação sem card: só cards em Integração/Pós-venda de quem
+    // recebeu (ou sem integrador), os "aguardando marcar" primeiro, com busca.
+    const { bookingCandidates } = await server.ssrLoadModule("/src/components/booking-link.jsx");
+    const saasList = [{ id: "lv", funnel: [{ stage: "Integração", kind: "integracao" }, { stage: "Call", kind: "call" }] }];
+    const cands = bookingCandidates([
+      { id: "z", saas: "lv", name: "Zeca", stage: "Integração", integrator: "eryk" },
+      { id: "a", saas: "lv", name: "Ana", stage: "Integração", integrator: "eryk", integrationAt: "2026-10-20T10:00" },
+      { id: "m", saas: "lv", name: "Mara", stage: "Integração", integrator: "eryk", integrationLinkSentAt: "2026-10-07T13:00:00Z" },
+      { id: "s", saas: "lv", name: "Sem dono", stage: "Integração" },
+      { id: "v", saas: "lv", name: "Do Vitor", stage: "Integração", integrator: "vitor" },
+      { id: "c", saas: "lv", name: "Na call", stage: "Call", integrator: "eryk" },
+    ], saasList, "eryk", "", agora).map((r) => r.l.id);
+    if (cands.join(",") !== "m,s,z,a") throw new Error(`cards pra ligar a marcação: ${cands.join(",")}`);
+    if (bookingCandidates([{ id: "z", saas: "lv", name: "Zeca", company: "Padaria", stage: "Integração" }], saasList, "eryk", "pada", agora).length !== 1) throw new Error("busca na janela de ligar");
+    if (!html.includes("https://wa.me/5511999990000?text=")) throw new Error("sem o envio pelo WhatsApp do lead");
+    const convite = bookingInviteText(lead, "Eryk", link);
+    if (!convite.startsWith("Olá, Ana!") || !convite.includes("agenda de Eryk") || !convite.includes(`\n📅 ${link}\n`)) throw new Error(`convite da agenda mal formatado:\n${convite}`);
+    // Convite da call/integração formatado como o do Google: dia e hora de
+    // Brasília (45 min), o link em linha própria; sem horário, só o link.
+    const meet = "https://meet.google.com/xew-pfhv-huu";
+    const integ = meetingInviteText({ ...lead, saas: "leverads", integrationCallUrl: meet, integrationAt: "2026-10-07T12:00" }, "integracao");
+    for (const parte of ["Olá, Ana!", "Sua integração com a ", "📅 Quarta-feira, 7 de outubro", "🕐 12:00 às 12:45 (horário de Brasília)", `🎥 Link da videochamada: ${meet}`]) {
+      if (!integ.includes(parte)) throw new Error(`convite da integração sem "${parte}":\n${integ}`);
+    }
+    const isoUtc = meetingInviteText({ ...lead, callUrl: meet, callAt: "2026-10-07T15:00:00.000Z" }, "call");
+    if (!isoUtc.includes("🕐 12:00 às 12:45")) throw new Error(`horário em ISO UTC precisa sair em Brasília:\n${isoUtc}`);
+    const semHora = meetingInviteText({ ...lead, callUrl: meet }, "call");
+    if (semHora.includes("📅") || !semHora.includes(meet)) throw new Error("call sem horário vai só com o link");
+    if (meetingInviteText({ ...lead }, "call") !== "") throw new Error("sem sala não há convite");
+    const semLink = renderToString(React.createElement(BookingLinkActions, { lead, userId: "vitor" }));
+    if (!semLink.includes("ainda não cadastrou")) throw new Error("integrador sem link precisa dizer onde cadastrar");
+    if (renderToString(React.createElement(BookingLinkActions, { lead, userId: "" })) !== "") throw new Error("sem integrador não mostra nada");
+    console.log("✓ link-de-convite-e-convite-formatado");
+  } catch (err) {
+    console.error(`✗ link-de-convite-e-convite-formatado: ${err.message}`);
+    failed++;
+  } finally { window.SEED.USERS = savedUsers; }
 
   // Cadência de 7 dias por coluna (Dia 2…Dia 7, #881): cada dia tem roteiro
   // próprio, linha em Scripts/Próximos passos, e o Depois da ação oferece

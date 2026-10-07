@@ -3,6 +3,9 @@ import "./entity-form.css";
 import { ENTITIES, leadQuestionFields, customEntityFields } from "../lib/entities.js";
 import { Drawer } from "./overlay.jsx";
 import { api } from "../lib/api.js";
+import { SelectPopover } from "./select-popover.jsx";
+import { Checkbox } from "./form-controls.jsx";
+import { DateTimeField } from "./datetime-field.jsx";
 // Reusable create/edit modal, driven by the per-entity config in entities.js.
 // Mirrors deal.jsx's right-drawer overlay. Create vs edit is decided by record.id.
 
@@ -124,10 +127,10 @@ function toPayload(fields, values) {
     // omitido e a edição manteria o valor antigo pelo merge.
     if (raw === "" || raw == null) { if (f.sendBlank) out[f.key] = ""; continue; }
     if (f.type === "number" || f.type === "money") {
-      const n = Number(raw);
+      const n = numberInput(raw, f.type === "money");
       if (!Number.isNaN(n)) out[f.key] = n;
     } else if (f.type === "pct") {
-      const n = Number(raw);
+      const n = numberInput(raw);
       if (!Number.isNaN(n)) out[f.key] = n / 100;
     } else if (f.type === "datetime") {
       // datetime-local (naive) → ISO UTC, formato dos campos de agenda do GPS.
@@ -138,6 +141,18 @@ function toPayload(fields, values) {
     }
   }
   return out;
+}
+
+// Número digitado em texto (sem o spinner do type="number"): aceita "1,5",
+// "3582" e "3.582,50". Ponto só é milhar em dinheiro ("3.582"); em número e
+// percentual "2.125" é decimal (é assim que o valor gravado volta pro campo).
+// Vazio ou lixo vira NaN e o campo fica fora do payload.
+function numberInput(raw, money = false) {
+  let t = String(raw ?? "").trim().replace(/[^\d.,-]/g, "");
+  if (!t) return NaN;
+  if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+  else if (money && /^-?\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
+  return Number(t);
 }
 
 // `bare`: renderiza só o form (campos + rodapé), sem o overlay/drawer próprio —
@@ -275,11 +290,15 @@ function EntityForm({ entityKey, record, onClose, onSaved, onOpenLead, bare = fa
   );
 }
 
+// Gatilho do SelectPopover/DateTimeField na medida dos campos deste formulário.
+const pickStyle = { height: 30, background: "var(--bg-2)", borderColor: "var(--line-1)", borderRadius: "var(--r-2)", fontSize: 13 };
+
 function Field({ f, value, values, onChange, recordId }) {
   const [customOpen, setCustomOpen] = useState(false); // "Outro (digitar)…" ativo neste select
+  const fieldId = `ef-${f.key}`;
   let input;
   if (f.type === "textarea") {
-    input = <textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={f.placeholder} rows={3} style={{ ...inputStyle, height: "auto", minHeight: 60, padding: "6px 8px", resize: "vertical" }} />;
+    input = <textarea id={fieldId} value={value} onChange={(e) => onChange(e.target.value)} placeholder={f.placeholder} rows={3} style={{ ...inputStyle, height: "auto", minHeight: 60, padding: "6px 8px", resize: "vertical" }} />;
   } else if (f.type === "funnel") {
     input = <FunnelEditor stages={value || []} onChange={onChange} />;
   } else if (f.type === "questions") {
@@ -292,19 +311,16 @@ function Field({ f, value, values, onChange, recordId }) {
     input = (
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, padding: "4px 0" }}>
         {opts.map((o) => (
-          <label key={String(o.value)} style={{ display: "inline-flex", gap: 5, alignItems: "center", fontSize: 12, cursor: "pointer" }}>
-            <input type="checkbox" checked={sel.includes(o.value)} onChange={() => toggle(o.value)} />
-            {o.label}
-          </label>
+          <Checkbox key={String(o.value)} checked={sel.includes(o.value)} onChange={() => toggle(o.value)}>
+            <span style={{ fontSize: 12.5 }}>{o.label}</span>
+          </Checkbox>
         ))}
       </div>
     );
   } else if (f.type === "bool") {
     input = (
-      <select value={value} onChange={(e) => onChange(e.target.value)} style={inputStyle}>
-        <option value="false">Não</option>
-        <option value="true">Sim</option>
-      </select>
+      <SelectPopover label={f.label} value={value} onChange={onChange} style={pickStyle}
+        options={[{ value: "false", label: "Não" }, { value: "true", label: "Sim" }]} />
     );
   } else if (f.type === "select") {
     const opts = resolveOptions(f, values);
@@ -315,21 +331,22 @@ function Field({ f, value, values, onChange, recordId }) {
     const custom = f.allowCustom && (customOpen || isCustomValue);
     input = (
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <select
-          value={custom ? CUSTOM_OPT : value}
-          onChange={(e) => {
-            if (e.target.value === CUSTOM_OPT) { setCustomOpen(true); onChange(""); }
-            else { setCustomOpen(false); onChange(e.target.value); }
+        <SelectPopover label={f.label} style={pickStyle}
+          value={custom ? CUSTOM_OPT : String(value ?? "")}
+          placeholder={f.blankLabel || "Selecione…"}
+          onChange={(v) => {
+            if (v === CUSTOM_OPT) { setCustomOpen(true); onChange(""); }
+            else { setCustomOpen(false); onChange(v); }
           }}
-          style={inputStyle}
-        >
-          <option value="">{f.blankLabel || "Selecione…"}</option>
-          {opts.map((o) => <option key={String(o.value)} value={o.value}>{o.label}</option>)}
-          {f.allowCustom && <option value={CUSTOM_OPT}>Outro (digitar)…</option>}
-        </select>
+          options={[
+            // Vazio vira opção (o "Selecione…" do nativo também era escolhível).
+            { value: "", label: f.blankLabel || "—" },
+            ...opts.map((o) => ({ value: String(o.value), label: o.label })),
+            ...(f.allowCustom ? [{ value: CUSTOM_OPT, label: "Outro (digitar)…" }] : []),
+          ]} />
         {custom && (
           <input
-            type="text" value={value} placeholder="Digite a resposta específica"
+            type="text" value={value} placeholder="Digite a resposta específica" aria-label={`${f.label}: resposta específica`}
             autoFocus={customOpen}
             onChange={(e) => onChange(e.target.value)}
             style={inputStyle}
@@ -337,32 +354,52 @@ function Field({ f, value, values, onChange, recordId }) {
         )}
       </div>
     );
+  } else if (f.type === "date" || f.type === "datetime") {
+    input = <DateTimeField id={fieldId} label={f.label} value={value} onChange={onChange} withTime={f.type === "datetime"} style={pickStyle} />;
   } else {
     const numeric = f.type === "number" || f.type === "money" || f.type === "pct";
     input = (
       <div style={{ position: "relative" }}>
         {f.type === "money" && <span className="mono dim" style={{ position: "absolute", left: 8, top: 7, fontSize: 12 }}>R$</span>}
-        <input
-          type={numeric ? "number" : f.type === "date" ? "date" : f.type === "datetime" ? "datetime-local" : "text"} step="any"
+        <input id={fieldId}
+          type="text" inputMode={numeric ? "decimal" : undefined} autoComplete="off"
           value={value} placeholder={f.placeholder}
-          list={f.suggestions?.length ? `dl-${f.key}` : undefined}
           onChange={(e) => onChange(e.target.value)}
           style={{ ...inputStyle, paddingLeft: f.type === "money" ? 28 : 8, paddingRight: f.type === "pct" ? 22 : 8 }}
         />
-        {/* Sugestões (datalist nativo): um clique preenche, digitar continua livre. */}
-        {f.suggestions?.length > 0 && <datalist id={`dl-${f.key}`}>{f.suggestions.map((o) => <option key={o} value={o} />)}</datalist>}
         {f.type === "pct" && <span className="mono dim" style={{ position: "absolute", right: 8, top: 7, fontSize: 12 }}>%</span>}
       </div>
     );
+    // Sugestões em chips (era um <datalist> nativo): um clique preenche e
+    // digitar continua livre.
+    if (f.suggestions?.length > 0) {
+      input = (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {input}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {f.suggestions.map((o) => (
+              <button key={o} type="button" onClick={() => onChange(o)} aria-pressed={value === o}
+                style={{ height: 24, padding: "0 9px", borderRadius: 999, fontSize: 11.5,
+                  border: "1px solid " + (value === o ? "var(--accent-line)" : "var(--line-1)"),
+                  background: value === o ? "var(--accent-soft)" : "var(--bg-1)", color: value === o ? "var(--accent)" : "var(--fg-2)" }}>
+                {o}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
   }
+  // div, não <label>: o clique numa opção do SelectPopover subia até o label e
+  // reabria a lista. Campo de texto se liga ao rótulo pelo htmlFor.
   return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: f.full ? "1 / -1" : "auto" }}>
-      <span className="kicker">
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: f.full ? "1 / -1" : "auto", minWidth: 0 }}>
+      <label className="kicker" htmlFor={fieldId}>
         {f.label}{f.required && <span style={{ color: "var(--neg)" }}> *</span>}
-      </span>
+      </label>
       {input}
       {f.help && <span className="mono dim" style={{ fontSize: 10 }}>{f.help}</span>}
-    </label>
+    </div>
   );
 }
 

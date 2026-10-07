@@ -262,8 +262,9 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
   // Itens de DIA (follow-up) moram na faixa do topo; a grade de horas só
   // desenha o que tem horário.
   const timed = shown.filter((e) => !e.allDay);
+  // Agrupados por operador (mesma ordem das faixas) e, dentro dele, por nome.
   const allDayOf = (d) => shown.filter((e) => e.allDay && e.t.toDateString() === d.toDateString())
-    .sort((a, b) => String(a.l.name || "").localeCompare(String(b.l.name || "")));
+    .sort((a, b) => personRank(a.who || "") - personRank(b.who || "") || String(a.l.name || "").localeCompare(String(b.l.name || "")));
   // Filtro ligado esconde integrações, consultas e compromissos em silêncio —
   // e aí "marquei a integração e não apareceu na agenda" (Leo, 25/08). O aviso
   // conta o que ficou de fora e devolve a visão inteira num clique.
@@ -345,9 +346,12 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
       const blocks = rawBlocks.map((x) => ({ ...x, personLane: null, personLanes: 0 }));
       return { placed, blocks, persons: [] };
     }
+    // Quem só tem follow-up no dia também ganha faixa: o follow-up mora na
+    // coluna do operador dele na faixa de DIA, não solto pra todo mundo.
     const persons = [...new Set([
       ...baseLanes,
       ...dayEvents.map(e => e.who || ""),
+      ...allDayOf(d).map(e => e.who || ""),
       ...rawBlocks.flatMap(x => blockPersons(x.b)),
     ])].sort((a, b) => personRank(a) - personRank(b) || String(a).localeCompare(String(b)));
     const laneOf = new Map(persons.map((p, i) => [p, i]));
@@ -679,30 +683,43 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
             );
           })}
         </div>
-        {/* Faixa de DIA INTEIRO: follow-ups (sem horário, não ocupam a agenda). */}
+        {/* Faixa de DIA INTEIRO: follow-ups (sem horário, não ocupam a agenda).
+            No Dia e na Equipe ela se divide nas mesmas faixas por operador da
+            grade (cada follow-up embaixo do nome de quem faz); na Semana, sem
+            faixas, os follow-ups do dia vêm agrupados por operador. */}
         {days.some((d) => allDayOf(d).length > 0) && (
           <div className="agenda-allday" style={{ display: "grid", gridTemplateColumns: colTemplate, minWidth: gradeMin, borderBottom: "1px solid var(--line-1)" }}>
             <span className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)", padding: "6px 6px 0 0", textAlign: "right" }}>dia</span>
             {days.map((d, i) => {
               const itens = allDayOf(d);
+              const persons = dayLayouts[i].persons;
+              const pill = ({ l, who }) => {
+                const tc = AGENDA_TYPE_COLORS["follow-up"];
+                const late = localDayStart(followupDueDay(l)) < new Date().setHours(0, 0, 0, 0);
+                return (
+                  <button key={l.id} type="button" onClick={(e) => { e.stopPropagation(); onOpenLead && onOpenLead(l); }}
+                    title={`follow-up · ${followupBadge(l)}${late ? " · atrasado" : ""} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"} · dia inteiro, sem horário`}
+                    className="mono" style={{
+                      display: "inline-flex", alignItems: "center", gap: 4, maxWidth: "100%", minWidth: 0, height: 22, padding: "0 7px",
+                      borderRadius: 999, background: tc.bg, color: AGENDA_INK, fontSize: 10, fontWeight: 700, cursor: "pointer",
+                      border: `1px dashed ${late ? "var(--neg)" : tc.line}`, borderLeft: `4px solid ${toneOf(who)}`,
+                    }}>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>↩ {l.name}</span>
+                    <span className="tnum" style={{ flexShrink: 0, opacity: 0.75 }}>{followupBadge(l).replace("Contato ", "C")}</span>
+                  </button>
+                );
+              };
+              const lane = { display: "flex", flexWrap: "wrap", gap: 4, alignContent: "flex-start", minWidth: 0 };
+              if (!persons.length) {
+                return <div key={i} style={{ ...lane, borderLeft: "1px solid var(--line-1)", padding: 4 }}>{itens.map(pill)}</div>;
+              }
               return (
-                <div key={i} style={{ borderLeft: "1px solid var(--line-1)", padding: 4, display: "flex", flexWrap: "wrap", gap: 4, alignContent: "flex-start", minWidth: 0 }}>
-                  {itens.map(({ l, who }) => {
-                    const tc = AGENDA_TYPE_COLORS["follow-up"];
-                    const late = localDayStart(followupDueDay(l)) < new Date().setHours(0, 0, 0, 0);
-                    return (
-                      <button key={l.id} type="button" onClick={(e) => { e.stopPropagation(); onOpenLead && onOpenLead(l); }}
-                        title={`follow-up · ${followupBadge(l)}${late ? " · atrasado" : ""} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"} · dia inteiro, sem horário`}
-                        className="mono" style={{
-                          display: "inline-flex", alignItems: "center", gap: 4, maxWidth: "100%", minWidth: 0, height: 22, padding: "0 7px",
-                          borderRadius: 999, background: tc.bg, color: AGENDA_INK, fontSize: 10, fontWeight: 700, cursor: "pointer",
-                          border: `1px dashed ${late ? "var(--neg)" : tc.line}`, borderLeft: `4px solid ${toneOf(who)}`,
-                        }}>
-                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>↩ {l.name}</span>
-                        <span className="tnum" style={{ flexShrink: 0, opacity: 0.75 }}>{followupBadge(l).replace("Contato ", "C")}</span>
-                      </button>
-                    );
-                  })}
+                <div key={i} style={{ display: "flex", borderLeft: "1px solid var(--line-1)", minWidth: 0 }}>
+                  {persons.map((p, pi) => (
+                    <div key={p || "none"} style={{ ...lane, flex: 1, padding: 4, borderLeft: pi > 0 ? "1px dashed var(--line-1)" : undefined }}>
+                      {itens.filter((e) => (e.who || "") === p).map(pill)}
+                    </div>
+                  ))}
                 </div>
               );
             })}

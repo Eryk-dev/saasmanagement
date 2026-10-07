@@ -3,7 +3,8 @@
 
 import { dispatchProposal } from "./dispatch.js";
 import { publicBase } from "../platform/request.js";
-import { buildCustomProposal, proposalOffersOf, publicProposal, shareProposalOffer, syncProposalLeadSnapshot } from "./proposal.js";
+import { buildCustomProposal, proposalOffersOf, publicProposal, shareProposalOffer, syncProposalLeadSnapshot, syncProposalCatalog, deckConfigOf, saveDeckConfig } from "./proposal.js";
+import { slimCatalog } from "./proposal-slides-page.js";
 import { proposalPageHtml } from "./proposal-page.js";
 import { logActivity } from "../crm/lead-flow.js";
 
@@ -80,9 +81,39 @@ export function registerLeadProposalRoutes(app, repo) {
   app.get("/api/leads/:id/proposal-offers", async (req, reply) => {
     const lead = await repo.get("leads", req.params.id);
     if (!lead) return reply.code(404).send({ error: "Not found" });
-    const proposal = lead.proposta_id ? await repo.get("proposals", lead.proposta_id) : null;
+    let proposal = lead.proposta_id ? await repo.get("proposals", lead.proposta_id) : null;
     if (!proposal) return { proposal: null, offers: [] };
+    proposal = await syncProposalCatalog(repo, proposal);
     return { proposal: proposal.id, offers: proposalOffersOf(proposal) };
+  });
+
+  // ── Configuração da apresentação no card de Atividades ────────────────────
+  // A tela zero do deck de slides desenhada pelo próprio cockpit (SelectPopover,
+  // tokens, tema), em vez do iframe da página pública. Lê e grava a MESMA
+  // configuração (state.deckC), com os planos de hoje. Outro layout (OEM,
+  // proposta de fora) devolve só o layout: o card segue no iframe.
+  const deckPayload = (p) => ({
+    proposal: p.id, layout: "slides", cfg: deckConfigOf(p), catalog: slimCatalog(p.calc?.catalog || {}),
+  });
+  async function workingDeck(lead) {
+    const p = lead.proposta_id ? await repo.get("proposals", lead.proposta_id) : null;
+    if (!p || p.layout !== "slides" || !p.editKey || p.sharedFrom) return { p: null, layout: p?.layout || "" };
+    return { p: await syncProposalCatalog(repo, await syncProposalLeadSnapshot(repo, p)) };
+  }
+  app.get("/api/leads/:id/proposal-config", async (req, reply) => {
+    const lead = await repo.get("leads", req.params.id);
+    if (!lead) return reply.code(404).send({ error: "Not found" });
+    const { p, layout } = await workingDeck(lead);
+    return p ? deckPayload(p) : { proposal: null, layout };
+  });
+  app.put("/api/leads/:id/proposal-config", async (req, reply) => {
+    const lead = await repo.get("leads", req.params.id);
+    if (!lead) return reply.code(404).send({ error: "Not found" });
+    const deckC = req.body?.deckC;
+    if (!deckC || typeof deckC !== "object") return reply.code(400).send({ error: "deckC é obrigatório" });
+    const { p } = await workingDeck(lead);
+    if (!p) return reply.code(409).send({ error: "o lead não tem apresentação em slides pra configurar" });
+    return deckPayload(await saveDeckConfig(repo, p, deckC));
   });
 
   app.post("/api/leads/:id/proposal-share", async (req, reply) => {
@@ -90,7 +121,7 @@ export function registerLeadProposalRoutes(app, repo) {
     if (!lead) return reply.code(404).send({ error: "Not found" });
     let proposal = lead.proposta_id ? await repo.get("proposals", lead.proposta_id) : null;
     if (!proposal) return reply.code(400).send({ error: "lead ainda não tem proposta gerada" });
-    proposal = await syncProposalLeadSnapshot(repo, proposal);
+    proposal = await syncProposalCatalog(repo, await syncProposalLeadSnapshot(repo, proposal));
     const body = req.body && typeof req.body === "object" ? req.body : {};
     const result = await shareProposalOffer(repo, proposal, body.offer, { baseUrl: publicBase(req) });
     if (!result.ok) return reply.code(400).send({ error: result.error });

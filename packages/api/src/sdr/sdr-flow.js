@@ -247,7 +247,12 @@ export function leadPainFocus(product, lead) {
   // lead de eletrônicos — visto 23/08). Nicho vazio mantém o OEM: o anúncio
   // segmenta autopeças.
   const oemFits = !lead?.niche || isAutoPecas(lead.niche);
-  return { code, label: product?.painMap?.[code] || "", mode: code === "OEM" && oemFits ? "oem" : "clone" };
+  // Dor PRICE (Leo, 07/10): precificação não depende de nicho — preço
+  // desatualizado dói igual em autopeças e em moda —, então ela não passa pela
+  // cerca do `oemFits`. O modo "price" NÃO entra no roteiro fixo do OEM (que é
+  // gateado em mode === "oem"): só troca o pitch e o foco da IA.
+  const mode = code === "PRICE" ? "price" : code === "OEM" && oemFits ? "oem" : "clone";
+  return { code, label: product?.painMap?.[code] || "", mode };
 }
 
 // A conversa com IA vale pra este lead? Modo normal: chave `conversation` e
@@ -304,12 +309,17 @@ export function firstTouchText({ nome, sdrName, resumo, pain = null, niche = "" 
   if (pain?.mode === "oem") return firstTouchOemText({ nome });
   const oi = nome ? `Oiii, ${nome}.` : "Oiii.";
   const eu = sdrName ? `${sdrName} falando, da LeverAds.` : "Aqui é da LeverAds.";
-  const oemSide = pain?.mode !== "oem" && isAutoPecas(niche)
+  // Lead de PRICE não leva o puxadinho do OEM: ele clicou num criativo de
+  // preço, e somar um segundo produto na abertura dilui a única coisa que o
+  // trouxe. Sem dor nenhuma o comportamento é o de antes (autopeças ouve o OEM).
+  const oemSide = pain?.mode !== "oem" && pain?.mode !== "price" && isAutoPecas(niche)
     ? " E pra autopeças, ela ainda cria o anúncio completo só com o código OEM: fotos, título, descrição e compatibilidade."
     : "";
   const pitch = pain?.mode === "oem"
     ? "A LeverAds cria o anúncio completo da sua autopeça só com o OEM (part number): fotos, título de 200 caracteres, descrição e compatibilidade inteira, pronto pra revisar e publicar em menos de 5 minutos. Isso ajudaria na sua operação?"
-    : `A LeverAds te ajuda a gerenciar múltiplas contas de Mercado Livre e Shopee de forma automática, com clonagem de anúncios, estoque, atendimento e edição em um lugar só.${oemSide} Isso ajudaria na sua operação hoje?`;
+    : pain?.mode === "price"
+      ? "O Lever Price acerta o preço dos seus anúncios sozinho, por regra de margem e de concorrência, e te avisa de todo anúncio que sai da regra, sem ninguém conferir planilha. Isso ajudaria na sua operação?"
+      : `A LeverAds te ajuda a gerenciar múltiplas contas de Mercado Livre e Shopee de forma automática, com clonagem de anúncios, estoque, atendimento e edição em um lugar só.${oemSide} Isso ajudaria na sua operação hoje?`;
   return `${oi} ${eu} Recebi seu diagnóstico aqui: ${resumo}. ${pitch}`;
 }
 

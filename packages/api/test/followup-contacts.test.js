@@ -192,3 +192,64 @@ test("migrateFollowupDays: hora vira dia, passo sai dos toques (máx. 3) e roda 
   await repo.update("leads", "a", { followupAt: "2099-03-03T10:00" });
   assert.equal(await migrateFollowupDays(repo), 0, "marcador: não roda de novo");
 });
+
+// ── Imagem de cada contato ──────────────────────────────────────────────────
+const mpPayload = (boundary, name, mime, bytes) => Buffer.concat([
+  Buffer.from(`--${boundary}\r\ncontent-disposition: form-data; name="file"; filename="${name}"\r\ncontent-type: ${mime}\r\n\r\n`),
+  bytes, Buffer.from(`\r\n--${boundary}--\r\n`),
+]);
+
+test("normalize: imagem só aceita o caminho do asset do follow-up", () => {
+  const out = normalizeFollowupContacts([
+    { imagem: "/public/followup/fua_abc-123" },
+    { imagem: "https://evil.test/x.png" },
+    { imagem: "/public/tasks/tka_1" },
+  ]);
+  assert.equal(out[0].imagem, "/public/followup/fua_abc-123");
+  assert.equal(out[1].imagem, "");
+  assert.equal(out[2].imagem, "");
+  assert.equal(out[3].imagem, "");
+});
+
+test("imagem do contato: upload, serviço público, troca e remoção limpam o arquivo antigo", async () => {
+  const { default: multipart } = await import("@fastify/multipart");
+  const repo = makeMemRepo();
+  const app = Fastify();
+  await app.register(multipart);
+  registerRoutes(app, repo);
+  const boundary = "----cockpittest";
+  const headers = { "content-type": `multipart/form-data; boundary=${boundary}` };
+  const send = (name, mime, bytes) => app.inject({ method: "POST", url: "/api/followup-contacts/image", headers, payload: mpPayload(boundary, name, mime, bytes) });
+
+  assert.equal((await send("a.svg", "image/svg+xml", Buffer.from("<svg/>"))).statusCode, 400, "só raster");
+  assert.equal((await send("a.png", "image/png", Buffer.alloc(3 * 1024 * 1024 + 1))).statusCode, 413);
+
+  const a = (await send("a.png", "image/png", Buffer.from("png-a"))).json();
+  assert.match(a.url, /^\/public\/followup\/fua_/);
+  const img = await app.inject({ url: a.url });
+  assert.equal(img.statusCode, 200);
+  assert.equal(img.headers["content-type"], "image/png");
+  assert.equal(img.body, "png-a");
+
+  const put = (contacts) => app.inject({ method: "PUT", url: "/api/followup-contacts", payload: { contacts } });
+  let r = (await put([{ imagem: a.url }, {}, {}, {}])).json();
+  assert.equal(r.contacts[0].imagem, a.url);
+  assert.equal((await app.inject({ url: "/api/followup-contacts" })).json().contacts[0].imagem, a.url);
+
+  // Troca: a imagem nova vale, a antiga sai do banco.
+  const b = (await send("b.jpg", "image/jpeg", Buffer.from("jpg-b"))).json();
+  r = (await put([{ imagem: b.url }, { imagem: a.url.replace(a.id, "fua_inexistente") }, {}, {}])).json();
+  assert.equal(r.contacts[0].imagem, b.url);
+  assert.equal(await repo.get("followup_assets", a.id), null);
+  assert.equal((await app.inject({ url: a.url })).statusCode, 404);
+
+  // Remoção: contato sem imagem e arquivo apagado.
+  r = (await put([{}, {}, {}, {}])).json();
+  assert.equal(r.contacts[0].imagem, "");
+  assert.equal(await repo.get("followup_assets", b.id), null);
+  assert.equal((await app.inject({ url: "/api/followup_assets" })).statusCode, 404, "fora do CRUD genérico");
+});
+
+test("upload da imagem do follow-up é escrita da tela Configurações", () => {
+  assert.deepEqual(screenForRequest("POST", "/api/followup-contacts/image"), ["settings"]);
+});

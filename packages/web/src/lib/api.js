@@ -130,6 +130,7 @@ export const api = {
   // Meu perfil: nome e foto do PRÓPRIO usuário (o cargo continua sendo gestão,
   // em Ajustes → Equipe). Todas devolvem o usuário atualizado.
   updateMe: (name) => req("PATCH", "/api/auth/me", { name }),
+  updateMyBookingUrl: (bookingUrl) => req("PATCH", "/api/auth/me", { bookingUrl }),
   uploadMyPhoto: async (blob, name = "foto.jpg") => {
     const fd = new FormData();
     fd.append("file", blob, name);
@@ -175,6 +176,9 @@ export const api = {
   // Ofertas do deck do lead (a principal + as secretas da escada) e o link
   // pronto pro cliente de UMA delas — o que vai no WhatsApp.
   proposalOffers: (id) => req("GET", `/api/leads/${id}/proposal-offers`),
+  // Tela zero do deck de slides no card de Atividades (planos de hoje).
+  proposalConfig: (id) => req("GET", `/api/leads/${id}/proposal-config`),
+  saveProposalConfig: (id, deckC) => req("PUT", `/api/leads/${id}/proposal-config`, { deckC }),
   shareProposal: (id, offer) => req("POST", `/api/leads/${id}/proposal-share`, { offer }),
   // Proposta personalizada (objetiva): capa + combinado+valor. `preview:true`
   // devolve { html } sem salvar; senão faz upsert e devolve { id, url }.
@@ -218,6 +222,10 @@ export const api = {
   googleUserStatus: () => req("GET", "/api/google/user/status"),
   googleUserAuthUrl: () => req("GET", "/api/google/user/auth-url"),
   googleUserDisconnect: () => req("POST", "/api/google/user/disconnect"),
+  // Horários ocupados na agenda do Google de quem vai atender (só intervalos).
+  // Liga à mão a marcação pelo link de convite (sem card) ao card escolhido.
+  linkBooking: (eventId, body) => req("POST", `/api/google/bookings/${encodeURIComponent(eventId)}/link`, body),
+  googleBusy: (user, from, to = from, exclude = "") => req("GET", `/api/google/busy?${new URLSearchParams({ user, from, to, ...(exclude ? { exclude } : {}) })}`),
   // body opcional: { guests: [emails] } ou { email } — convidados extras da call.
   createMeet: (leadId, body) => req("POST", `/api/leads/${leadId}/meet`, body),
   // Encerra a conferência aberta da sala (sala esquecida trava a transcrição).
@@ -333,6 +341,8 @@ export const api = {
   // Reunião com o cliente (Clientes): marca no lead dele, com Meet novo quando
   // a anterior já aconteceu, e resume a última pela permissão da tela Clientes.
   customerMeeting: (customerId, body) => req("POST", `/api/customers/${customerId}/meeting`, body),
+  // Remarcar da atividade de Integração: solta a sala usada e o Meet acompanha.
+  integrationMeeting: (leadId, body) => req("POST", `/api/leads/${leadId}/integration-meeting`, body),
   customerMeetingSummary: (customerId, force = false) => req("POST", `/api/customers/${customerId}/meeting-summary`, { force }),
   // Briefing de passagem pro integrador (lê a transcrição da call de VENDA).
   integrationBrief: (leadId, force = false) => req("POST", `/api/leads/${leadId}/integration-brief`, { force }),
@@ -419,6 +429,8 @@ export const api = {
   // product.monthlyCashTarget (a meta que a Visão geral e a Análise perseguem).
   metas: (saas) => req("GET", `/api/metas/${encodeURIComponent(saas)}`),
   saveMetas: (saas, goals, company) => req("PUT", `/api/metas/${encodeURIComponent(saas)}`, company ? { goals, company } : { goals }),
+  // Histórico meta × realizado mês a mês (a mesma conta do /window por mês).
+  metasHistory: (saas) => req("GET", `/api/metas/${encodeURIComponent(saas)}/history`),
   // Treinamentos: base de flashcards por vaga + fila FSRS individual (Anki).
   flashcards: (saas) => req("GET", `/api/flashcards/${encodeURIComponent(saas)}`),
   saveFlashcards: (saas, cards, settings) => req("PUT", `/api/flashcards/${encodeURIComponent(saas)}`, settings ? { cards, settings } : { cards }),
@@ -578,6 +590,12 @@ export const api = {
   // Follow-up em 4 contatos: mensagens e prazos (config global, Configurações).
   followupContacts: () => req("GET", "/api/followup-contacts"),
   saveFollowupContacts: (contacts) => req("PUT", "/api/followup-contacts", { contacts }),
+  // Imagem de um contato do follow-up → { id, url }; vale ao salvar a configuração com ela.
+  followupImage: (file) => {
+    const fd = new FormData();
+    fd.append("file", file, file.name || "imagem.png");
+    return upload("/api/followup-contacts/image", fd);
+  },
   // Widget de feedback (FAB em toda tela): rotas próprias, abertas a qualquer
   // sessão — /api/tasks é guardado pela tela "tasks" e o widget não pode
   // depender dela. O POST cria o card no quadro; o GET traz o recorte do painel

@@ -11,6 +11,10 @@ import { sanitizeSupportSaas } from "./support-scope.js";
 import { looksLikeJwt } from "./auth-jwt.js";
 import { makeIdentityAdmin, staffRolesFor } from "./identity-admin.js";
 import { NOT_CONFIGURED, UPSTREAM_FAILED } from "../platform/http-status.js";
+import { sanitizeBookingUrl, bookingPreview, bookingPageHtml, bookingMissingHtml } from "./booking-page.js";
+import { publicBase } from "../platform/request.js";
+import { recordBookingClick } from "../google/booking-sync.js";
+import { sanitizeWorkHours } from "../shared/work-hours.js";
 
 const SESSION_TTL_MS = 7 * 24 * 3600 * 1000;
 
@@ -92,6 +96,9 @@ const publicUser = (u) => ({
   // PLANO-AUTH: migra no primeiro login antigo depois do vínculo).
   email: u.email || "",
   identityPasswordSet: !!u.identityPasswordAt,
+  bookingUrl: u.bookingUrl || "",
+  // Horário de atendimento (shared/work-hours.js): [] = agenda aberta 7h-21h.
+  workHours: sanitizeWorkHours(u.workHours),
 });
 
 // Usuário do cockpit ligado a uma conta da identidade (claim `sub` do JWT).
@@ -328,17 +335,29 @@ export function registerAuthRoutes(app, repo, { identity = makeIdentityAdmin() }
   // Ajustes (SETTINGS_WRITE_PREFIXES cobre /api/auth/users), então quem tem
   // telas restritas (SDR, Ana) também consegue se editar. Cargo NÃO entra aqui
   // — etiquetas de papel continuam sendo gestão, em Ajustes → Equipe.
+  // O link de convite do Google Agenda também é do próprio usuário (Ajustes →
+  // Integrações → Minha conta Google) e pode vir sozinho, sem o nome.
   app.patch("/api/auth/me", async (req, reply) => {
     const me = await currentUser(req);
     if (!me) return reply.code(401).send({ error: "sessão inválida" });
-    const name = String(req.body?.name || "").trim();
-    if (name.length < 2) return reply.code(400).send({ error: "nome precisa de 2+ caracteres" });
-    // O login casa por id OU nome (case-insensitive): deixar dois usuários com o
-    // mesmo nome tornaria a entrada ambígua.
-    const taken = (await repo.list("users")).some((u) => u.id !== me.id
-      && (u.id.toLowerCase() === name.toLowerCase() || String(u.name || "").toLowerCase() === name.toLowerCase()));
-    if (taken) return reply.code(409).send({ error: "já existe alguém no time com esse nome" });
-    const updated = await repo.update("users", me.id, { name });
+    const body = req.body || {};
+    const patch = {};
+    if (body.bookingUrl !== undefined) {
+      const bookingUrl = sanitizeBookingUrl(body.bookingUrl);
+      if (bookingUrl === null) return reply.code(400).send({ error: "o link de convite precisa ser um endereço https (ex.: https://calendar.app.google/…)" });
+      patch.bookingUrl = bookingUrl;
+    }
+    if (body.name !== undefined || !Object.keys(patch).length) {
+      const name = String(body.name || "").trim();
+      if (name.length < 2) return reply.code(400).send({ error: "nome precisa de 2+ caracteres" });
+      // O login casa por id OU nome (case-insensitive): deixar dois usuários com o
+      // mesmo nome tornaria a entrada ambígua.
+      const taken = (await repo.list("users")).some((u) => u.id !== me.id
+        && (u.id.toLowerCase() === name.toLowerCase() || String(u.name || "").toLowerCase() === name.toLowerCase()));
+      if (taken) return reply.code(409).send({ error: "já existe alguém no time com esse nome" });
+      patch.name = name;
+    }
+    const updated = await repo.update("users", me.id, patch);
     return publicUser(updated);
   });
 
@@ -381,6 +400,22 @@ export function registerAuthRoutes(app, repo, { identity = makeIdentityAdmin() }
     return reply.type(doc.mime || "image/png").send(Buffer.from(doc.data || "", "base64"));
   });
 
+  // Link curto do convite de agenda (ABERTA, em OPEN_PREFIXES): o preview do
+  // WhatsApp sai em português e quem clica cai na agenda do Google da pessoa.
+  // ?s= produto (marca no título) · ?t= integracao|call|reuniao. Ver booking-page.js.
+  app.get("/a/:id", async (req, reply) => {
+    const user = await repo.get("users", String(req.params.id || "").toLowerCase());
+    const s = String(req.query?.s || "").trim().toLowerCase();
+    const product = s ? await repo.get("products", s).catch(() => null) : null;
+    const page = user && bookingPreview({ user, brand: product?.name || "", what: String(req.query?.t || ""), base: publicBase(req) });
+    if (!page) return reply.code(404).type("text/html; charset=utf-8").send(bookingMissingHtml());
+    // ?l= card do lead: o clique (gente, não robô de preview) liga a marcação
+    // que aparecer na agenda ao card certo (google/booking-sync.js).
+    if (req.query?.l) { try { await recordBookingClick(repo, { userId: user.id, leadId: String(req.query.l), ua: req.headers["user-agent"] }); } catch { /* o redirecionamento vale mais */ } }
+    reply.header("cache-control", "private, no-store");
+    return reply.type("text/html; charset=utf-8").send(bookingPageHtml(page));
+  });
+
   // Gestão mínima do time (qualquer autenticado — todos admins na v1).
   app.get("/api/auth/users", async () => (await repo.list("users")).map(publicUser));
 
@@ -407,7 +442,7 @@ export function registerAuthRoutes(app, repo, { identity = makeIdentityAdmin() }
   app.patch("/api/auth/users/:id", async (req, reply) => {
     const user = await repo.get("users", req.params.id);
     if (!user) return reply.code(404).send({ error: "Not found" });
-    const { name, roles, password, saas, screens, compLevel, supportSaas, authUserId } = req.body || {};
+    const { name, roles, password, saas, screens, compLevel, supportSaas, authUserId, workHours } = req.body || {};
     const patch = {};
     // Liga (ou desliga, com "") a conta da identidade central. Uma conta só
     // pode estar ligada a um usuário do cockpit.
@@ -419,6 +454,9 @@ export function registerAuthRoutes(app, repo, { identity = makeIdentityAdmin() }
       }
       patch.authUserId = id;
     }
+    // Horário de atendimento: as grades de call/integração e o SDR automático
+    // só oferecem horário dentro dele. [] volta pra agenda aberta.
+    if (workHours !== undefined) patch.workHours = sanitizeWorkHours(workHours);
     // Nível do plano de remuneração (1 jr · 2 pl · 3 sn): régua das metas de
     // contratos/receita do card da pessoa na Visão geral (comp-plan.js).
     if (compLevel !== undefined) {

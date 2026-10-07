@@ -74,6 +74,8 @@ const NAV = [
   { id: "today",      label: "Atividades", icon: "◷",  group: "main" },
   { id: "training",   label: "Treinamentos",      icon: "✎",  group: "main", notSaas: "elo" },
 
+  { id: "agenda",     label: "Agenda",         icon: "▦",  group: "comercial", notSaas: "elo" },
+  { id: "whatsapp",   label: "Inbox",          icon: "✆",  group: "comercial", notSaas: "elo" }, // WhatsApp + DMs de IG/Messenger
   { id: "pipeline",   label: "Pipeline",       icon: "≡",  group: "comercial", notSaas: "elo" },
   // hidden (Leo, 10/09/2026): Outbound e Análise de Equipe saem do menu; rotas e telas seguem no código (abrem por URL).
   { id: "outbound",   label: "Outbound",       icon: "⌖",  group: "comercial", notSaas: "elo", hidden: true }, // radar de contas (Cold Calling 2.0)
@@ -86,8 +88,6 @@ const NAV = [
   { id: "offers",     label: "Links de pagamento", icon: "◇", group: "comercial", notSaas: "elo" }, // gerar cobrança no nome do lead/cliente + histórico de quem pagou
   { id: "contracts",  label: "Contratos",      icon: "▧",  group: "comercial", notSaas: "elo" }, // biblioteca de modelos de contrato (resgatar → preencher → assinar)
   { id: "intform",    label: "Formulário de Integração", icon: "☑", group: "comercial", notSaas: "elo" }, // questionário que o cliente fechado responde antes da call de integração
-  { id: "agenda",     label: "Agenda",         icon: "▦",  group: "comercial", notSaas: "elo" },
-  { id: "whatsapp",   label: "Inbox",          icon: "✆",  group: "comercial", notSaas: "elo" }, // WhatsApp + DMs de IG/Messenger
 
   // Suporte (14/09/2026): fila de tickets com SLA por prioridade + as regras do
   // relógio e quem atende cada produto. Vale pra todo produto (Elo inclusive).

@@ -33,7 +33,9 @@ function SelectList({ anchor, options, value, onPick, onClose, title, searchable
     else if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => Math.max(0, a - 1)); }
     else if (e.key === "Enter") { e.preventDefault(); if (list[active]) onPick(list[active]); }
     else if (e.key === "Tab") onClose();
-    e.stopPropagation();
+    // O Esc segue até o useEsc do Popover (fecha a lista do topo da pilha);
+    // parado aqui, a lista não fechava pelo teclado.
+    if (e.key !== "Escape") e.stopPropagation();
   };
   return (
     <Popover anchor={anchor} onClose={onClose} width={width} title={title} maxHeight={360}>

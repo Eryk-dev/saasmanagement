@@ -40,10 +40,20 @@ export function chaseCeiling(target, sold) {
 // mês agendado antes dele (escada 180k → 270k → 405k com 50% segue 607,5k,
 // 911k, … sozinha). Mês digitado continua vencendo; sem nenhum mês agendado
 // não há âncora e a regra não se aplica.
-const monthIndex = (m) => {
+// Mês "AAAA-MM" ↔ índice inteiro (ano × 12 + mês): aritmética de meses sem
+// Date (que trocaria de mês em UTC vs. São Paulo). Exportados pra tela Metas
+// e pro histórico varrerem meses com a MESMA conta.
+export const monthIndex = (m) => {
   const [y, mm] = String(m).split("-").map(Number);
   return y * 12 + (mm - 1);
 };
+export const monthOf = (idx) => `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, "0")}`;
+// Primeiro e último dia do mês ("AAAA-MM-01" → "AAAA-MM-31").
+export function monthBounds(month) {
+  const [y, mm] = String(month).split("-").map(Number);
+  const last = new Date(Date.UTC(y, mm, 0)).getUTCDate();
+  return { since: `${month}-01`, until: `${month}-${String(last).padStart(2, "0")}` };
+}
 
 export function cashTargetFor(product, month) {
   const byMonth = product?.monthlyCashTargets;
@@ -158,8 +168,13 @@ function planMetric(remaining, days, today) {
 
 // Ticket compartilhado pelo pace e pela meta da janela. Não precisa de
 // timeline, WhatsApp, anúncios nem propostas para calcular uma entrada média.
-function averageEntryOf(product, { invoices, leads, customers, goals }, now) {
+function averageEntryOf(product, { invoices, leads, saleLeads = leads, customers, goals, mpPayments = [] }, now) {
   const today = dayKey(now);
+  // Mês fechado anterior ao de `now` (base do ticket médio).
+  const prevMonth = (() => { const d = new Date(`${today.slice(0, 7)}-01T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7); })();
+  const [pmY, pmM] = prevMonth.split("-").map(Number);
+  const prevMonthEnd = `${prevMonth}-${String(new Date(pmY, pmM, 0).getDate()).padStart(2, "0")}`;
+  const inPrevMonth = (iso) => { const day = dayKey(iso); return !!day && day >= `${prevMonth}-01` && day <= prevMonthEnd; };
   const since90 = dayKey(new Date(now.getTime() - 89 * DAY));
   const inRange = (iso, since) => {
     const day = dayKey(iso);
@@ -171,9 +186,15 @@ function averageEntryOf(product, { invoices, leads, customers, goals }, now) {
   const customerStartByLead = customerStartMap(customers);
   const winLeadsIn = (test) => [...winsIn(product, leads, test, customerStartByLead).keys()]
     .map((id) => leadById.get(id)).filter(Boolean);
-  // Entrada média por nova venda: 1ª fatura paga de cada assinatura/cliente.
-  // Sem esse vínculo, degrada pra qualquer fatura paga recente; depois TCV ganho
-  // e, por último, ticket configurado — a fonte volta explícita pra interface.
+  // ── Ticket médio = o do MÊS ANTERIOR (Leo, 06/10/2026) ─────────────────────
+  // A meta de contratos do mês nasce de meta de receita do mês ÷ ticket médio
+  // do mês anterior. O ticket é o MESMO número do placar e da faixa Meta do
+  // mês daquele mês: vendido RECONHECIDO (à vista cheio; faturado, parcelado
+  // e recorrente só o que caiu no mês) ÷ nº de vendas (fechamentos + upsells,
+  // `saleLeads` = a base do dinheiro, com a mentoria), sem conta grande.
+  // Mês anterior sem venda (produto novo) cai na cadeia antiga: 1ª fatura paga
+  // de cada cliente, faturas pagas recentes, TCV dos ganhos recentes e, por
+  // último, o ticket configurado — a fonte volta explícita pra interface.
   //
   // CONTA GRANDE (customer.keyAccount, ex.: Galante) fica FORA do ticket médio:
   // um fechamento de R$ 120 mil no meio de vendas de R$ 3-7 mil quebra a cadeia
@@ -191,8 +212,18 @@ function averageEntryOf(product, { invoices, leads, customers, goals }, now) {
   const paidRecent = paid.filter((i) => inRange(i.paidAt, since90) && !isKeyInvoice(i));
   const wonRecent90 = winLeadsIn((iso) => inRange(iso, since90)).filter((l) => !isKeyLead(l));
   const configuredTicket = goals.find((g) => g.scope === "role" && g.key === "closer" && g.metric === "ticket");
-  let averageEntry = averageAmount(initialRecent);
-  let averageEntrySource = averageEntry != null ? "initial_payments" : "";
+  const saleById = new Map(saleLeads.map((l) => [l.id, l]));
+  const prevWinLeads = [...winsIn(product, saleLeads, inPrevMonth, customerStartByLead).keys()]
+    .map((id) => saleById.get(id)).filter((l) => l && !isKeyLead(l));
+  const prevUps = upsellSalesIn(invoices, inPrevMonth, { saas: product.id }).filter((i) => !isKeyAccountUpsell(keyCustomerIds, i));
+  const prevSold = round2(revenueOf(prevWinLeads, saleValuer({ invoices, mpPayments, customers, inWin: inPrevMonth }))
+    + upsellRevenueOf(prevUps, upsellValuer(inPrevMonth)));
+  const prevSoldN = prevWinLeads.length + prevUps.length;
+  const prevTicket = prevSoldN > 0 && prevSold > 0 ? round2(prevSold / prevSoldN) : null;
+  const previousMonth = { month: prevMonth, sold: prevSold, soldN: prevSoldN, ticket: prevTicket };
+  let averageEntry = prevTicket;
+  let averageEntrySource = averageEntry != null ? "prev_month" : "";
+  if (averageEntry == null) { averageEntry = averageAmount(initialRecent); averageEntrySource = averageEntry != null ? "initial_payments" : ""; }
   if (averageEntry == null) { averageEntry = averageAmount(paidRecent); averageEntrySource = averageEntry != null ? "paid_invoices" : ""; }
   if (averageEntry == null) { averageEntry = averageAmount(wonRecent90); averageEntrySource = averageEntry != null ? "won_tcv" : ""; }
   if (averageEntry == null && Number(configuredTicket?.target) > 0) {
@@ -200,7 +231,7 @@ function averageEntryOf(product, { invoices, leads, customers, goals }, now) {
     averageEntrySource = "configured_ticket";
   }
 
-  return { averageEntry, averageEntrySource };
+  return { averageEntry, averageEntrySource, previousMonth };
 }
 
 // Propostas criadas HOJE, filtradas no Postgres. `proposals` é a maior coleção
@@ -298,9 +329,14 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   });
   const receivableAmount = round2(receivables.reduce((a, i) => a + (Number(i.amount) || 0), 0));
 
+  // Mês fechado anterior (janela das taxas no fallback e base do ticket médio).
+  const prevMonth = (() => { const d = new Date(`${month}-01T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7); })();
+  const [pmY, pmM] = prevMonth.split("-").map(Number);
+  const prevMonthEnd = `${prevMonth}-${String(new Date(pmY, pmM, 0).getDate()).padStart(2, "0")}`;
+  const inPrevMonth = (iso) => inRange(iso, `${prevMonth}-01`, prevMonthEnd);
   const keyCustomerIds = keyAccountIds(customers);
   const isKeyLead = (l) => isKeyAccountLead(keyCustomerIds, l);
-  const { averageEntry, averageEntrySource } = averageEntryOf(product, { invoices, leads, customers, goals }, now);
+  const { averageEntry, averageEntrySource, previousMonth } = averageEntryOf(product, { invoices, leads, saleLeads, customers, goals, mpPayments }, now);
 
   // ── Taxas da cadeia: os 30 DIAS MÓVEIS (decisão do Leo, 25/08/2026) ────────
   // Antes a janela era o mês fechado anterior (08/08: "o correto é o funil").
@@ -335,10 +371,6 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   // ganho na janela), cai no mês fechado anterior; sem amostra lá também, as
   // taxas caem na meta configurada e depois no benchmark.
   const humanIds = new Set(users.map((u) => u.id));
-  const prevMonth = (() => { const d = new Date(`${month}-01T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7); })();
-  const [pmY, pmM] = prevMonth.split("-").map(Number);
-  const prevMonthEnd = `${prevMonth}-${String(new Date(pmY, pmM, 0).getDate()).padStart(2, "0")}`;
-  const inPrevMonth = (iso) => inRange(iso, `${prevMonth}-01`, prevMonthEnd);
   const enteredPrev = leads.filter((l) => inPrevMonth(l.createdAt));
   const wonPrev = winLeadsIn(inPrevMonth).length;
   // Janela PRIMÁRIA: 30d móveis. Só cai no mês fechado quando os 30d não têm
@@ -633,6 +665,8 @@ export async function computePipelinePace(repo, product, now = new Date()) {
       return {
         target: contractsTarget,
         targetSource: Number(product.monthlyContractsTarget) > 0 ? "company" : (contractsTarget != null ? "ticket" : ""),
+        ticketSource: averageEntrySource, // prev_month = receita do mês ÷ ticket médio do mês anterior
+        ticketMonth: averageEntrySource === "prev_month" ? prevMonth : "",
         sold: soldN,
         soldToday: soldTodayN,
         gap: contractsTarget != null ? Math.max(0, contractsTarget - soldN) : null,
@@ -673,6 +707,7 @@ export async function computePipelinePace(repo, product, now = new Date()) {
       mrr,
       averageEntry,
       averageEntrySource,
+      previousMonth, // { month, sold, soldN, ticket }: a base do ticket médio
     },
     marketing: { spend30, leads30, cpl },
     paceAdjust, // histórico pré-cockpit somado ao funil (null quando não há)
@@ -727,22 +762,31 @@ function monthBizDays(month) {
   return n;
 }
 
-export async function computeWindowGoal(repo, product, since, until, now = new Date()) {
-  repo = metricsReader(repo, product.id);
-  const today = dayKey(now);
+// Leitura ÚNICA das coleções que a meta da janela e o histórico mensal usam,
+// já filtradas pelo produto. `realLeads` é a base das TAXAS (isRealLead) e
+// `saleLeads` a do DINHEIRO (isSaleLead, mentoria entra) — o ticket precisa
+// das duas (averageEntryOf).
+async function loadWindowData(repo, product) {
   const [allLeads, allCustomers, allInvoices, mpPayments, allGoals] = await Promise.all([
     repo.list("leads"), repo.list("customers"),
     repo.list("invoices"), repo.list("mp_payments").catch(() => []), repo.list("goals"),
   ]);
-  const customers = allCustomers.filter((c) => c.saas === product.id);
-  // Ticket sem contas grandes e a meta de contratos digitada: a MESMA régua do
-  // pace do mês corrente, pra as duas faixas nunca divergirem.
-  const { averageEntry } = averageEntryOf(product, {
+  return {
+    realLeads: allLeads.filter((l) => l.saas === product.id && isRealLead(l)),
+    saleLeads: allLeads.filter((l) => l.saas === product.id && isSaleLead(l)),
+    customers: allCustomers.filter((c) => c.saas === product.id),
     invoices: allInvoices.filter((i) => i.saas === product.id),
-    leads: allLeads.filter((l) => l.saas === product.id && isRealLead(l)),
-    customers,
+    mpPayments,
     goals: allGoals.filter((g) => !g.saas || g.saas === product.id),
-  }, now);
+  };
+}
+
+// Núcleo SÍNCRONO da meta de uma janela: recebe as coleções já carregadas e o
+// ticket já resolvido, devolve meta × realizado da janela. É o MESMO código
+// pro /window da Visão geral e pra cada mês do histórico da tela Metas —
+// extraído de propósito, pra um mês fechado mostrar o mesmo número nos dois
+// lugares (teste de consistência em revenue-on-receipt.test.js).
+function windowGoalFrom(product, { saleLeads, customers, invoices, mpPayments }, { since, until, today, averageEntry }) {
   const avg = Number(averageEntry) > 0 ? Number(averageEntry) : null;
   const companyContracts = Number(product.monthlyContractsTarget) > 0 ? Math.round(Number(product.monthlyContractsTarget)) : null;
 
@@ -765,7 +809,7 @@ export async function computeWindowGoal(repo, product, since, until, now = new D
   // Vendido na janela: régua oficial da venda (isWonLead + wonAt) sobre a base
   // do DINHEIRO — a mentoria entra normal (Leo, 16/08) e o R$ é o RECONHECIDO
   // (faturado/recorrente só pelo que entrou, Leo 29/08).
-  const leads = allLeads.filter((l) => l.saas === product.id && isSaleLead(l));
+  const leads = saleLeads;
   const inWin = (iso) => { const d = dayKey(iso); return d && d >= since && d <= until; };
   const winAt = winsIn(product, leads, inWin, customerStartMap(customers));
   // CONTA GRANDE fora do RESULTADO (Leo, 19/08): um bespoke de R$ 120 mil no
@@ -778,17 +822,40 @@ export async function computeWindowGoal(repo, product, since, until, now = new D
   const winLeads = winLeadsAll.filter((l) => !isKeyAccountLead(keyIds, l));
   const keyWinLeads = winLeadsAll.filter((l) => isKeyAccountLead(keyIds, l));
   // MESMA régua do mês: faturado/recorrente conta só o que entrou NA JANELA.
-  const valueOf = saleValuer({
-    invoices: allInvoices.filter((i) => i.saas === product.id), mpPayments, customers, inWin,
-  });
+  const valueOf = saleValuer({ invoices, mpPayments, customers, inWin });
   // Upsell é venda — mesma régua do mês (metrics-core).
-  const upsAll = upsellSalesIn(allInvoices, inWin, { saas: product.id });
+  const upsAll = upsellSalesIn(invoices, inWin, { saas: product.id });
   const ups = upsAll.filter((i) => !isKeyAccountUpsell(keyIds, i));
   const keyUps = upsAll.filter((i) => isKeyAccountUpsell(keyIds, i));
   const upsValue = upsellValuer(inWin);
   const sold = round2(revenueOf(winLeads, valueOf) + upsellRevenueOf(ups, upsValue));
   const contracted = round2(tcvOf(winLeads) + upsellContractedOf(ups));
   const soldN = winLeads.length + ups.length;
+
+  // Vendido reconhecido DIA A DIA da janela (soma = sale.sold; a soma das
+  // contagens = contracts.sold). O gráfico "Vendas por dia" da Visão geral lê
+  // daqui em vez de somar lead.amount por conta própria — senão as barras
+  // subiriam pelo contrato cheio e não fechariam com o número grande logo
+  // acima delas. Não confundir com `sale.byDay` do /api/pipeline-pace (mês
+  // corrente, array DENSO de números indexado por dia do mês): aqui a chave é
+  // a data cheia, porque a janela do filtro pode cruzar meses, e a lista é
+  // ESPARSA — só dias com venda, pra uma janela de 90 dias não carregar
+  // centenas de zeros. Dia com contrato de boleto que ainda não caiu entra com
+  // revenue 0 e contracts 1 (o contrato existiu; o dinheiro é que não entrou).
+  const porDia = new Map();
+  const acc = (iso, valor, n) => {
+    const d = dayKey(iso);
+    if (!d || d < since || d > until) return;
+    const cur = porDia.get(d) || { revenue: 0, contracts: 0 };
+    cur.revenue += valor;
+    cur.contracts += n;
+    porDia.set(d, cur);
+  };
+  for (const l of winLeads) acc(winAt.get(l.id), valueOf(l), 1);
+  for (const i of ups) acc(upsellSoldAt(i), upsValue(i), 1);
+  const days = [...porDia.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([day, v]) => ({ day, revenue: round2(v.revenue), contracts: v.contracts }));
 
   const ended = until < today;
   const expectedFrac = bizDays > 0 ? round4(bizElapsed / bizDays) : 1;
@@ -809,6 +876,7 @@ export async function computeWindowGoal(repo, product, since, until, now = new D
       // Contrato cheio da janela: `contracted - sold` é o faturado/recorrente
       // que ainda não caiu (a UI explica a diferença em vez de escondê-la).
       contracted,
+      days, // série diária da janela (ver o bloco acima); soma = sold
       progress: targetRevenue > 0 ? round4(sold / targetRevenue) : null,
       expectedProgress: expectedFrac,
       status: statusOf(sold, targetRevenue),
@@ -823,6 +891,123 @@ export async function computeWindowGoal(repo, product, since, until, now = new D
     keyAccount: keyAccountNote(keyWinLeads, customers, sold, soldN, valueOf, keyUps, upsValue),
   };
 }
+
+export async function computeWindowGoal(repo, product, since, until, now = new Date()) {
+  repo = metricsReader(repo, product.id);
+  const today = dayKey(now);
+  const data = await loadWindowData(repo, product);
+  // Ticket sem contas grandes e a meta de contratos digitada: a MESMA régua do
+  // pace do mês corrente, pra as duas faixas nunca divergirem.
+  const { averageEntry } = averageEntryOf(product, {
+    invoices: data.invoices, leads: data.realLeads, saleLeads: data.saleLeads,
+    customers: data.customers, mpPayments: data.mpPayments, goals: data.goals,
+  }, now);
+  return windowGoalFrom(product, data, { since, until, today, averageEntry });
+}
+
+// ── Histórico mensal: meta × realizado, mês a mês ────────────────────────────
+// A tela Metas mostra os meses passados pra acompanhar se a escada (25% ao
+// mês) está sendo cumprida. Cada mês é EXATAMENTE a janela 01→último dia do
+// /window (mesmo núcleo, mesmo ticket), então o que a Visão geral mostra ao
+// filtrar julho é o que aparece aqui em julho. Carrega as coleções UMA vez e
+// varre os meses — chamar /window 12 vezes refaria a leitura 12 vezes.
+//
+// Piso em jun/2026 (início da operação no cockpit, o mesmo MIN_MONTH da Visão
+// geral): leads antigos com stageSince de antes puxariam o começo pra meses
+// zerados com meta 120k "não batida", que não existiram de verdade.
+export const HISTORY_FLOOR = "2026-06";
+
+export async function computeMonthlyHistory(repo, product, { from = null, now = new Date() } = {}) {
+  repo = metricsReader(repo, product.id);
+  const today = dayKey(now);
+  const currentMonth = today.slice(0, 7);
+  const data = await loadWindowData(repo, product);
+  const { averageEntry, averageEntrySource, previousMonth } = averageEntryOf(product, {
+    invoices: data.invoices, leads: data.realLeads, saleLeads: data.saleLeads,
+    customers: data.customers, mpPayments: data.mpPayments, goals: data.goals,
+  }, now);
+
+  // Primeiro mês com venda (ganho ou upsell), limitado pelo piso.
+  let firstSale = "";
+  const always = () => true;
+  for (const at of winsIn(product, data.saleLeads, always, customerStartMap(data.customers)).values()) {
+    const d = dayKey(at);
+    if (d && (!firstSale || d < firstSale)) firstSale = d;
+  }
+  for (const i of upsellSalesIn(data.invoices, always, { saas: product.id })) {
+    const d = dayKey(upsellSoldAt(i));
+    if (d && (!firstSale || d < firstSale)) firstSale = d;
+  }
+  let start = from || (firstSale ? firstSale.slice(0, 7) : currentMonth);
+  if (start < HISTORY_FLOOR) start = HISTORY_FLOOR;
+  if (start > currentMonth) start = currentMonth;
+
+  const months = [];
+  for (let idx = monthIndex(start); idx <= monthIndex(currentMonth); idx++) {
+    const month = monthOf(idx);
+    const { since, until } = monthBounds(month);
+    const w = windowGoalFrom(product, data, { since, until, today, averageEntry });
+    const ka = w.keyAccount;
+    months.push({
+      month,
+      target: w.sale.target,
+      source: cashTargetFor(product, month).source,
+      sold: w.sale.sold,
+      contracted: w.sale.contracted,
+      progress: w.sale.progress,
+      expectedProgress: w.sale.expectedProgress,
+      status: w.sale.status,
+      soldN: w.contracts.sold,
+      contractsTarget: w.contracts.target,
+      contractsProgress: w.contracts.progress,
+      contractsStatus: w.contracts.status,
+      businessDays: w.businessDays,
+      businessDaysElapsed: w.businessDaysElapsed,
+      ended: w.ended,
+      current: w.current,
+      keyAccount: ka ? { count: ka.count, revenue: ka.revenue, names: ka.names, soldWith: ka.soldWith, countWith: ka.countWith } : null,
+    });
+  }
+
+  // Totais por ano: somam só os meses LISTADOS (jun..out, não jan..dez).
+  const byYear = new Map();
+  for (const m of months) {
+    const year = Number(m.month.slice(0, 4));
+    const y = byYear.get(year) || { year, target: 0, sold: 0, contracted: 0, soldN: 0, contractsTarget: 0, hasContractsTarget: false, months: 0, closedMonths: 0 };
+    y.target += m.target || 0;
+    y.sold += m.sold || 0;
+    y.contracted += m.contracted || 0;
+    y.soldN += m.soldN || 0;
+    if (m.contractsTarget != null) { y.contractsTarget += m.contractsTarget; y.hasContractsTarget = true; }
+    y.months++;
+    if (m.ended) y.closedMonths++;
+    byYear.set(year, y);
+  }
+  const years = [...byYear.values()].map((y) => ({
+    year: y.year,
+    target: round2(y.target),
+    sold: round2(y.sold),
+    contracted: round2(y.contracted),
+    soldN: y.soldN,
+    contractsTarget: y.hasContractsTarget ? Math.round(y.contractsTarget * 10) / 10 : null,
+    progress: y.target > 0 ? round4(y.sold / y.target) : null,
+    months: y.months,
+    closedMonths: y.closedMonths,
+  }));
+
+  return {
+    saas: product.id, from: start, to: currentMonth, today, floor: HISTORY_FLOOR,
+    ticket: { value: Number(averageEntry) > 0 ? Number(averageEntry) : null, source: averageEntrySource || "", month: previousMonth?.month || null },
+    months, years,
+  };
+}
+
+// Com cache de resultado (mesmo padrão do pace): a tela Metas pede o histórico
+// a cada abertura e depois de salvar; a chave inclui o dia e o `from`.
+export function cachedMonthlyHistory(repo, product, { from = null, now = new Date(), fresh = false } = {}) {
+  return memoCompute(repo, `metas-history:${product.id}:${dayKey(now)}:${from || ""}`, () => computeMonthlyHistory(repo, product, { from, now }), { fresh });
+}
+
 
 // Rodapé da conta grande: o que ficou de FORA do resultado e quanto o período
 // daria com ela. Sem isso a exclusão vira número sumido sem explicação.

@@ -56,6 +56,7 @@ export const COLLECTIONS = {
   task_boards: [],
   activities: [],
   activity_assets: [], // foto anexada a um toque da timeline (base64, servida em /public/activities/:id)
+  followup_assets: [], // imagem de um contato do follow-up (base64, servida em /public/followup/:id; ref em app_config/followup_contacts)
   task_assets: [],   // arquivo anexado a uma tarefa do kanban (base64, servido em /public/tasks/:id; refs em task.attachments/cover)
   task_events: [],   // atividade de cada tarefa (criou, atribuiu, moveu, concluiu, comentou...) — PRIVATE, lida por GET /api/tasks/:id/activity (tasks-core.js)
   notifications: [], // caixa de entrada por pessoa (atribuído, mencionado, comentário, vencimento) — PRIVATE, rotas /api/notifications (routes.tasks.js)

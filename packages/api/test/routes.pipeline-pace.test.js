@@ -550,3 +550,46 @@ test("sem histórico de ganho suficiente, a exposição madura não se aplica (f
   assert.equal(c.leadToWin.source, "history");
   await app.close();
 });
+
+// ── Ticket médio do MÊS ANTERIOR (Leo, 06/10/2026) ──────────────────────────
+// A meta de contratos do mês = meta de receita do mês ÷ ticket médio do mês
+// anterior, pela MESMA régua da faixa daquele mês: vendido reconhecido ÷ nº de
+// vendas (à vista cheio; parcelado só o que caiu), sem conta grande.
+test("ticket médio = vendido reconhecido do mês anterior ÷ nº de vendas; a meta de contratos sai dele", async () => {
+  const { app, repo } = await build({ monthlyCashTarget: 120000 });
+  // Junho: 3 vendas. A à vista (10k) conta cheia; a PIX parcelado (6k) só o que
+  // caiu em junho (nada, fatura em aberto); a conta grande (90k) fica fora.
+  await repo.create("customers", { id: "cA", saas: "leverads", startedAt: "2026-06-10T15:00:00.000Z" });
+  await repo.create("customers", { id: "cB", saas: "leverads", startedAt: "2026-06-20T15:00:00.000Z", paymentMethod: "pix_parcelado" });
+  await repo.create("customers", { id: "cK", saas: "leverads", startedAt: "2026-06-25T15:00:00.000Z", keyAccount: true });
+  await repo.create("leads", { id: "jA", saas: "leverads", stage: "Ganho", customerId: "cA", wonAt: "2026-06-10T15:00:00.000Z", amount: 10000, paymentMethod: "pix", createdAt: "2026-06-01T12:00:00.000Z" });
+  await repo.create("leads", { id: "jB", saas: "leverads", stage: "Ganho", customerId: "cB", wonAt: "2026-06-20T15:00:00.000Z", amount: 6000, paymentMethod: "pix_parcelado", createdAt: "2026-06-02T12:00:00.000Z" });
+  await repo.create("leads", { id: "jK", saas: "leverads", stage: "Ganho", customerId: "cK", wonAt: "2026-06-25T15:00:00.000Z", amount: 90000, paymentMethod: "pix", createdAt: "2026-06-03T12:00:00.000Z" });
+  await repo.create("invoices", { id: "iB1", saas: "leverads", customer: "cB", kind: "installment", status: "open", amount: 2000, dueDate: "2026-06-20T15:00:00.000Z" });
+  // Julho (mês corrente) tem a 1ª fatura paga de um cliente novo: antes era a
+  // fonte do ticket; agora só entra se junho não tiver venda.
+  await repo.create("customers", { id: "c1", saas: "leverads", startedAt: "2026-07-03T15:00:00.000Z" });
+  await repo.create("invoices", { id: "i1", saas: "leverads", customer: "c1", status: "paid", amount: 30000, paidAt: "2026-07-03T15:00:00.000Z" });
+
+  const r = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json();
+  assert.equal(r.context.averageEntrySource, "prev_month");
+  assert.deepEqual(r.context.previousMonth, { month: "2026-06", sold: 10000, soldN: 2, ticket: 5000 }); // (10k + 0) ÷ 2, conta grande fora
+  assert.equal(r.context.averageEntry, 5000);
+  assert.equal(r.contracts.target, 24, "120k ÷ ticket de junho (5k)");
+  assert.equal(r.contracts.targetSource, "ticket");
+  assert.equal(r.contracts.ticketSource, "prev_month");
+  assert.equal(r.contracts.ticketMonth, "2026-06");
+  await app.close();
+});
+
+test("mês anterior sem venda: o ticket cai na cadeia antiga (1ª fatura paga) e a tela sabe disso", async () => {
+  const { app, repo } = await build({ monthlyCashTarget: 120000 });
+  await repo.create("customers", { id: "c1", saas: "leverads", startedAt: "2026-07-03T15:00:00.000Z" });
+  await repo.create("invoices", { id: "i1", saas: "leverads", customer: "c1", status: "paid", amount: 30000, paidAt: "2026-07-03T15:00:00.000Z" });
+  const r = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json();
+  assert.equal(r.context.averageEntrySource, "initial_payments");
+  assert.deepEqual(r.context.previousMonth, { month: "2026-06", sold: 0, soldN: 0, ticket: null });
+  assert.equal(r.contracts.target, 4); // 120k ÷ 30k
+  assert.equal(r.contracts.ticketMonth, "");
+  await app.close();
+});

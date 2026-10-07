@@ -363,12 +363,10 @@ export function DealProductField({ saas, value, onChange, plan = "", amount = nu
   return (
     <div>
       <label className="kicker" style={labelStyle || { display: "block", marginBottom: 4 }}>Produto vendido {required ? "*" : ""}</label>
-      <SelectWithCustom ids={products.map((p) => p.id)} value={value}
+      <PopoverWithCustom label="Produto vendido" placeholder="o que ele comprou na apresentação…" inputStyle={fieldStyle}
+        value={value} options={products.map((p) => ({ value: p.id, label: p.label, group: p.group }))}
         onChange={(v) => onChange(v, products.find((p) => p.id === v) || null)}
-        fieldStyle={fieldStyle} placeholder="— o que ele comprou na apresentação —"
-        customLabel="Personalizado… (escrever o produto)" customPlaceholder="escreva o produto vendido…">
-        <ProductOptions products={products} />
-      </SelectWithCustom>
+        customLabel="Personalizado… (escrever o produto)" customPlaceholder="escreva o produto vendido…" />
       <CatalogPriceChips all={cur?.prices || []} plan={plan} amount={amount} onPick={onPick} />
     </div>
   );

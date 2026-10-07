@@ -4,7 +4,7 @@ import { useData } from "../data.jsx";
 import { usersByRole, currentUser, displayName } from "../lib/users.js";
 import { stageKind, KINDS } from "../lib/funnel.js";
 import { SlotGrid, nextBusinessDays, busyView, callBusyKeys, destinationsFor, setupType } from "../screens/today.jsx";
-import { moveGate, MoveLeadModal, applyGatedMove } from "./stage-move.jsx";
+import { moveGate, MoveLeadModal, applyGatedMove, moveErrorText } from "./stage-move.jsx";
 import { PrimaryButton } from "../atoms.jsx";
 
 // "Próxima ação" do card, dentro do inbox: a conversa andou → o card anda
@@ -288,7 +288,7 @@ function NextActionModal({ leadId, onScheduled, onResolved, onClose }) {
         saasCfg={saasCfg}
         onCancel={() => setGateMove(null)}
         onConfirm={(mp, extra) => {
-          applyGatedMove(mp, extra, lead.id).then(() => { refresh(); onResolved?.(lead.id); }).catch((err2) => { console.warn("movimento não persistido:", err2.message); window.toast && window.toast("O movimento do card não foi salvo · tente de novo", "neg"); });
+          applyGatedMove(mp, extra, lead.id).then(() => { refresh(); onResolved?.(lead.id); }).catch((err2) => { console.warn("movimento não persistido:", err2.message); window.toast && window.toast(moveErrorText(err2), "neg"); });
           setGateMove(null);
           setDone({ moved: gateMove.toStage });
         }}
