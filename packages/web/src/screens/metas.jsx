@@ -1,6 +1,6 @@
 import React from "react";
 import "./metas.css";
-import { PageHead } from "../components/viz.jsx";
+import { PageHead, Segmented } from "../components/viz.jsx";
 import { Info } from "../components/story.jsx";
 import { Avatar } from "../atoms.jsx";
 import { api } from "../lib/api.js";
@@ -66,6 +66,18 @@ const mesCurto = (ym) => {
   const nomes = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
   return y && m ? `${nomes[m - 1]}/${String(y).slice(2)}` : "";
 };
+// Mês "AAAA-MM" → índice inteiro (a MESMA conta do servidor em pipeline-pace.js):
+// a diferença entre dois índices é o expoente da regra de crescimento.
+const monthIndex = (m) => { const [y, mm] = String(m).split("-").map(Number); return y * 12 + (mm - 1); };
+// Trimestre do mês (1..4) e os três meses de um trimestre do ano.
+const quarterOf = (m) => Math.floor((Number(String(m).slice(5, 7)) - 1) / 3) + 1;
+const QUARTER_MONTHS = ["jan a mar", "abr a jun", "jul a set", "out a dez"];
+// Como a meta daquele mês foi definida (a origem que o servidor devolve).
+const META_SOURCE = { month: "meta agendada", growth: "pela regra de crescimento", default: "meta padrão do produto", system: "meta padrão do sistema" };
+// Veredito de mês FECHADO (sem pace: ou bateu ou não).
+const VEREDITO = { red: "não bateu", ok: "não bateu", green: "meta batida", gold: "super meta" };
+const LVL_COLOR = { red: "var(--neg)", ok: "var(--accent)", green: "var(--pos)", gold: "var(--gold)" };
+
 const BLOCKED = {
   ticket: "sem ticket médio ainda (nenhuma fatura paga nem valor lançado nos ganhos): preencha o Ticket médio no card do Closer e a cadeia passa a fechar.",
   closeRate: "a conversão da call está zerada, sem histórico e sem meta: preencha Call → ganho no card do Closer.",
@@ -191,6 +203,168 @@ function CadeiaDaMeta({ data, applyDerived }) {
   );
 }
 
+// ── Histórico: meta × realizado mês a mês ────────────────────────────────────
+// Uma régua por mês (a MESMA Regua da Visão geral e do card Meta do mês), do
+// mais recente pro mais antigo. Mês fechado não tem pace: ou bateu ou não, e o
+// chip vira veredito. O corrente segue com o traço do "hoje". Embaixo, o
+// acumulado do ano, pra responder "estamos cumprindo a escada?" sem somar.
+function histVeredito(m) {
+  const expected = m.ended ? 1 : m.expectedProgress;
+  const lvl = levelOf(m.sold, m.target, expected);
+  return { lvl, chip: m.ended && lvl ? VEREDITO[lvl] : undefined, expected: m.ended ? null : m.expectedProgress };
+}
+function HistoricoCard({ hist, histErr, onRetry }) {
+  const rows = hist ? [...hist.months].reverse() : [];
+  return (
+    <Card title="Histórico"
+      hint={<>
+        meta × realizado, mês a mês · a mesma régua da Visão geral
+        {infoDot("Realizado = receita RECONHECIDA do mês (à vista e cartão 12x contam inteiro; boleto faturado, PIX parcelado e assinatura recorrente só o que caiu no mês), com upsell contando como venda e conta grande fora da régua (ela aparece na nota da linha). Meta = a que valia naquele mês: agendada, pela regra de crescimento ou o padrão. Contratos = fechamentos + upsells contra a meta de contratos (receita ÷ ticket médio do mês anterior ao atual, igual à Visão geral). Mês fechado mostra o veredito; o corrente mostra onde o pace pede hoje.")}
+      </>}>
+      <div className="metas-hist">
+        {!hist && !histErr && <div className="mono dim" style={{ fontSize: 12 }}>carregando histórico…</div>}
+        {histErr && <div role="alert" className="metas-notice" style={{ padding: 0, background: "transparent" }}>Histórico indisponível: {histErr} <button onClick={onRetry}>Tentar novamente</button></div>}
+        {hist && rows.length === 0 && <div className="dim" style={{ fontSize: 12.5 }}>nenhum mês com venda ainda</div>}
+        {rows.map((m) => {
+          const { lvl, chip, expected } = histVeredito(m);
+          const ka = m.keyAccount;
+          const subParts = [
+            m.contractsTarget != null ? `${int(m.soldN)} de ${int(m.contractsTarget)} contratos` : `${int(m.soldN)} contratos`,
+            m.contracted > m.sold ? `contratado ${money(m.contracted)}` : null,
+            ka ? `+ ${money(ka.revenue)} de conta grande fora da régua` : null,
+          ].filter(Boolean);
+          return (
+            <div key={m.month} className="metas-hist-row">
+              <Regua
+                label={<span style={{ color: m.current ? "var(--fg-1)" : "var(--fg-2)" }}>{mesCurto(m.month)}{m.current && <span className="dim" style={{ fontWeight: 400, fontSize: 11.5 }}> · em andamento</span>}</span>}
+                title={`${mesLabel(m.month)}: ${money(m.sold)} de ${money(m.target || 0)} (${META_SOURCE[m.source] || "meta"})${m.ended ? "" : ` · ${int((m.expectedProgress || 0) * 100)}% dos dias úteis passaram`}.`}
+                valueText={<><strong className="tnum" style={{ color: "var(--fg-1)", fontWeight: 650 }}>{money(m.sold)}</strong> / {money(m.target || 0)} · {Math.round((m.progress || 0) * 100)}%</>}
+                pct={m.progress} expectedPct={expected} lvl={lvl} chipLabel={chip}
+                sub={subParts.join(" · ")} />
+            </div>
+          );
+        })}
+        {hist && (hist.years || []).slice().reverse().map((y) => (
+          <div key={y.year} className="metas-hist-year">
+            <b>{`${y.year}${y.closedMonths < y.months ? " até agora" : ""}`}</b>{` · ${money(y.sold)} de ${money(y.target)} (${Math.round((y.progress || 0) * 100)}%) · ${int(y.soldN)}${y.contractsTarget != null ? ` de ${int(y.contractsTarget)}` : ""} contratos · ${int(y.months)} ${y.months === 1 ? "mês" : "meses"}`}
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// ── Planejamento: o ano em quatro trimestres ─────────────────────────────────
+// Cada coluna é um trimestre com os três meses: mês passado mostra a meta da
+// época (e o realizado, quando o histórico já chegou), mês corrente e futuros
+// têm o campo (vazio = segue a regra/placeholder). Trimestre, semestre e ano
+// são SOMA dos meses — a edição continua mensal, porque a regra é "25% ao
+// mês" e o total é consequência dela.
+function PlanejamentoCard({ months, horizon, meses, setMeses, hist, ano, setAno, growth, setGrowth, aplicar, inp }) {
+  const anos = [...new Set(months.map((m) => Number(m.month.slice(0, 4))))];
+  const doAno = months.filter((m) => Number(m.month.slice(0, 4)) === ano);
+  const histBy = Object.fromEntries((hist?.months || []).map((m) => [m.month, m]));
+  // Meta que vale pro mês: o digitado no campo, senão o que o servidor resolve.
+  const metaDe = (m) => { const v = Number(String(meses[m.month] ?? "").trim()); return v > 0 ? v : (m.effective || 0); };
+  const soma = (list) => list.reduce((a, m) => a + metaDe(m), 0);
+  // Realizado acumulado dos meses com histórico (fechados e o corrente).
+  const realizado = (list) => {
+    const com = list.filter((m) => histBy[m.month]);
+    if (!com.length) return null;
+    return { sold: com.reduce((a, m) => a + (histBy[m.month].sold || 0), 0), meta: soma(com), parcial: com.some((m) => histBy[m.month].current) };
+  };
+  const fmtReal = (r) => r ? `realizado${r.parcial ? " até agora" : ""} ${money(r.sold)} · ${Math.round((r.meta > 0 ? r.sold / r.meta : 0) * 100)}%` : null;
+  const ultimo = months.at(-1);
+  const quarters = [1, 2, 3, 4].map((q) => doAno.filter((m) => quarterOf(m.month) === q));
+  const sem = [doAno.filter((m) => quarterOf(m.month) <= 2), doAno.filter((m) => quarterOf(m.month) >= 3)];
+  return (
+    <Card title="Planejamento"
+      hint={<>
+        trimestre, semestre e ano somam os meses · na virada do mês o valor novo assume sozinho
+        {infoDot(`Escolha o crescimento e clique em definir: todos os meses futuros até ${mesCurto(ultimo?.month)} são preenchidos compondo a porcentagem por cima da meta do mês atual (nada é gravado até salvar metas). Valor digitado num mês vence sempre; mês vazio segue a regra de crescimento por cima do último agendado, e mês além do horizonte continua crescendo sozinho pela mesma regra. Meses passados mostram a meta que valia na época e o realizado do Histórico.`)}
+      </>}
+      action={
+        <span className="metas-plan-actions">
+          {anos.length > 1 && <Segmented value={ano} options={anos.map((y) => ({ value: y, label: String(y) }))} onChange={setAno} />}
+          <label title="Porcentagem composta por cima da meta do mês atual (com 25%: 281 mil, 352 mil, 439 mil e assim por diante)."
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, color: "var(--fg-2)", cursor: "help" }}>
+            crescimento
+            <input type="number" min="0" step="1" inputMode="decimal" aria-label="Crescimento ao mês" value={growth}
+              onChange={(e) => setGrowth(e.target.value)} placeholder="ex.: 25"
+              className="tnum" style={{ ...inp, height: 32, width: 68, textAlign: "right" }} />
+            <span className="mono dim" style={{ fontSize: 12 }}>% ao mês</span>
+          </label>
+          <button onClick={aplicar} disabled={!(Number(growth) > 0)}
+            title="Preenche os meses futuros a partir da meta do mês atual. Confira e clique em salvar metas."
+            style={{ height: 32, padding: "0 13px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, opacity: Number(growth) > 0 ? 1 : 0.55 }}>
+            definir até {mesCurto(ultimo?.month)}
+          </button>
+        </span>
+      }>
+      <div className="metas-plan">
+        <div className="metas-plan-quarters">
+          {quarters.map((list, qi) => {
+            const r = realizado(list);
+            return (
+              <div key={qi} className="metas-plan-q">
+                <div className="kicker" style={{ marginBottom: 4 }}>{`Q${qi + 1} · ${QUARTER_MONTHS[qi]}`}</div>
+                {list.map((m) => {
+                  const h = histBy[m.month];
+                  const vazio = (meses[m.month] ?? "") === "";
+                  if (m.past) {
+                    const v = h ? histVeredito(h) : null;
+                    return (
+                      <div key={m.month} className="metas-plan-row past"
+                        title={`${mesLabel(m.month)}: meta ${money(metaDe(m))} (${META_SOURCE[m.source] || "meta"})${h ? ` · realizado ${money(h.sold)}` : ""}`}>
+                        <span className="mes">{mesCurto(m.month)}</span>
+                        <span className="vals">
+                          <span className="tnum" style={{ fontSize: 12.5, color: "var(--fg-3)", whiteSpace: "nowrap" }}>{money(metaDe(m))}</span>
+                          {h && (
+                            <span className="tnum" style={{ fontSize: 12.5, fontWeight: 650, color: LVL_COLOR[v.lvl] || "var(--fg-2)", whiteSpace: "nowrap" }}>
+                              <span className="metas-dot" style={{ background: LVL_COLOR[v.lvl] || "var(--fg-4)" }} />{money(h.sold)}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <label key={m.month} className={`metas-plan-row${m.current ? " current" : ""}`}
+                      title={vazio ? `sem valor próprio: ${m.source === "growth" ? "segue a regra de crescimento" : META_SOURCE[m.source] || "mantém o valor atual"} (${money(m.effective)})` : undefined}>
+                      <span className="mes">
+                        {mesCurto(m.month)}{m.current && <span className="dim" style={{ fontWeight: 400 }}> · atual</span>}
+                        {vazio && m.source === "growth" && <span className="dim" style={{ display: "block", fontSize: 10.5 }}>pela regra</span>}
+                      </span>
+                      <span className="mono dim" style={{ fontSize: 12 }}>R$</span>
+                      <input type="number" min="0" step="1" inputMode="decimal" aria-label={`Meta de ${mesLabel(m.month)}`}
+                        value={meses[m.month] ?? ""}
+                        onChange={(e) => setMeses((p) => ({ ...p, [m.month]: e.target.value }))}
+                        placeholder={String(m.effective)}
+                        className="tnum" style={{ ...inp, textAlign: "right" }} />
+                    </label>
+                  );
+                })}
+                <div className="metas-plan-foot">
+                  <span>trimestre <b className="tnum">{money(soma(list))}</b></span>
+                  {r && <span className="tnum" style={{ color: r.sold >= r.meta ? "var(--pos)" : "var(--fg-4)" }}>{fmtReal(r)}</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="metas-plan-summary">
+          {[["1º semestre", sem[0]], ["2º semestre", sem[1]], [`ano ${ano}`, doAno]].map(([nome, list]) => {
+            const r = realizado(list);
+            return (
+              <span key={nome}>{nome} <b className="tnum">{money(soma(list))}</b>{r && <span className="dim"> · {fmtReal(r)}</span>}</span>
+            );
+          })}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function MetasScreen() {
   const [product] = useActiveSaas();
   return <MetasWorkspace key={product?.id} product={product} />;
@@ -213,6 +387,8 @@ function MetasWorkspace({product}) {
   const [saving, setSaving] = useS(false);
   const [note, setNote] = useS(null);
   const [reload, setReload] = useS(0), [paceErr, setPaceErr] = useS(null), [refreshNeeded, setRefreshNeeded] = useS(false), [levelBusy, setLevelBusy] = useS(false);
+  const [hist, setHist] = useS(null), [histErr, setHistErr] = useS(null); // histórico meta × realizado (bloco próprio)
+  const [anoPlano, setAnoPlano] = useS(null); // ano do card Planejamento (null = o corrente)
   const busy = React.useRef(false), alive = React.useRef(true);
   useE(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   async function readPace() {
@@ -220,10 +396,15 @@ function MetasWorkspace({product}) {
     try { const p = await api.pipelinePace(product.id); if (alive.current) setPace(p); }
     catch (e) { if (alive.current) { setPace(null); setPaceErr(e.message); } }
   }
+  async function readHist() {
+    setHistErr(null);
+    try { const h = await api.metasHistory(product.id); if (alive.current) setHist(h); }
+    catch (e) { if (alive.current) { setHist(null); setHistErr(e.message); } }
+  }
   async function refreshSaved() {
     if (busy.current) return;
     busy.current = true; setSaving(true);
-    try { applyData(await api.metas(product.id)); setRefreshNeeded(false); setNote({ok:true,text:"metas salvas · valem em todo campo que mostra meta"}); await readPace(); }
+    try { applyData(await api.metas(product.id)); setRefreshNeeded(false); setNote({ok:true,text:"metas salvas · valem em todo campo que mostra meta"}); await Promise.all([readPace(), readHist()]); }
     catch (e) { setNote({ok:false,text:`Metas gravadas. Não foi possível atualizar a tela: ${e.message}`}); }
     finally { busy.current = false; setSaving(false); }
   }
@@ -243,9 +424,10 @@ function MetasWorkspace({product}) {
   useE(() => {
     if (!product?.id) return;
     let alive = true;
-    setData(null); setErr(null); setNote(null); setPace(null);
+    setData(null); setErr(null); setNote(null); setPace(null); setHist(null);
     api.metas(product.id).then((d) => alive && applyData(d)).catch((e) => alive && setErr(e.message));
     readPace();
+    readHist();
     return () => { alive = false; };
   }, [product?.id, reload]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -258,7 +440,11 @@ function MetasWorkspace({product}) {
   // O MÊS ATUAL é o campo principal (é o que a plataforma persegue agora); a
   // agenda dos seguintes vive no card do fim.
   const mesAtualInfo = (data?.company?.months || []).find((m) => m.current) || null;
-  const proximosMeses = (data?.company?.months || []).filter((m) => !m.current);
+  // Horizonte do planejamento (jan do ano corrente → dez do próximo): os meses
+  // FUTUROS são os que o botão "definir" preenche; os passados ficam como estão.
+  const todosMeses = data?.company?.months || [];
+  const mesesFuturos = todosMeses.filter((m) => !m.past && !m.current);
+  const horizon = data?.company?.horizon || null;
   // Métricas sem campo de vaga: as que seguem o plano de REMUNERAÇÃO
   // (contratos/receita do closer, por nível) e as que são a META DO MÊS DA
   // EQUIPE (contratos/receita do SDR) — o placar resolve as duas sozinho.
@@ -314,18 +500,23 @@ function MetasWorkspace({product}) {
     setRoleVals((p) => ({ ...p, ...Object.fromEntries(list.map((g) => [rk(g.role, g.metric), String(Math.round(g.target))])) }));
     setNote({ ok: true, text: "campos preenchidos pelo pace · confira e clique em salvar metas" });
   }
-  // Define a AGENDA inteira de uma vez (pedido do Leo, 08/08): meta do mês
-  // atual × (1 + g%)^k preenche os campos dos próximos meses. Não salva nada:
-  // os valores ficam visíveis pra conferir e o salvar metas é quem grava.
+  // Define o PLANEJAMENTO inteiro de uma vez (pedido do Leo, 08/08; horizonte
+  // anual em 07/10): meta do mês atual × (1 + g%)^k preenche os meses futuros
+  // até dez do ano seguinte. k = distância em meses até o mês atual, em
+  // POTÊNCIA DIRETA sobre a base (não arredonda em cadeia), que é exatamente a
+  // conta do servidor (cashTargetFor) — então o que a tela mostra é o que a
+  // regra daria se o campo ficasse vazio. Mês passado nunca é tocado. Não
+  // salva nada: os valores ficam visíveis pra conferir e o salvar metas grava.
   function aplicarCrescimento() {
     const g = Number(String(growth).trim());
     const digitado = Number(String(mesAtualDraft).trim());
     const base = digitado > 0 ? digitado : (mesAtualInfo?.effective || 0);
-    if (!(g > 0) || !(base > 0) || !proximosMeses.length) return;
+    if (!(g > 0) || !(base > 0) || !mesesFuturos.length || !mesAtualInfo) return;
+    const k0 = monthIndex(mesAtualInfo.month);
     const next = {};
-    proximosMeses.forEach((m, i) => { next[m.month] = String(Math.round(base * Math.pow(1 + g / 100, i + 1))); });
+    for (const m of mesesFuturos) next[m.month] = String(Math.round(base * Math.pow(1 + g / 100, monthIndex(m.month) - k0)));
     setMeses((p) => ({ ...p, ...next }));
-    setNote({ ok: true, text: `agenda definida: ${money(base)} crescendo ${g}% ao mês · confira e clique em salvar metas` });
+    setNote({ ok: true, text: `planejamento definido até ${mesCurto(mesesFuturos.at(-1).month)}: ${money(base)} crescendo ${g}% ao mês · confira e clique em salvar metas` });
   }
   // ── Meta por PESSOA ────────────────────────────────────────────────────────
   // O placar cobra de cada um: plano de Remuneração (nível) > meta de vaga
@@ -430,8 +621,8 @@ function MetasWorkspace({product}) {
       await api.saveMetas(product.id, goals, { contractsTarget: contratos, growthPct: growth, months: meses });
       accepted = true;
       applyData(await api.metas(product.id));
-      // Meta nova = pace novo: as réguas e a cadeia recalculam por cima do salvo.
-      await readPace();
+      // Meta nova = pace novo: as réguas, a cadeia e o histórico recalculam por cima do salvo.
+      await Promise.all([readPace(), readHist()]);
       setNote({ ok: true, text: "metas salvas · valem em todo campo que mostra meta" });
     } catch (e) {
       setRefreshNeeded(accepted);
@@ -759,58 +950,25 @@ function MetasWorkspace({product}) {
               </div>
             </Card>
 
-            {/* 5 · Agenda de metas: planejamento (mexe pouco), por isso no fim.
-                O crescimento é uma AÇÃO (Leo, 08/08): escolhe a %, clica em
-                definir e os próximos meses são preenchidos compondo por cima da
-                meta do mês atual — visíveis, conferíveis, gravados no salvar.
-                A % também fica salva como regra: mês além da agenda continua
-                crescendo sozinho por cima do último agendado. */}
-            <Card title="Agenda de metas"
-              hint={<>
-                na virada do mês, o valor novo assume sozinho
-                {infoDot(`Escolha o crescimento e clique em definir: os próximos ${proximosMeses.length} meses são preenchidos compondo a porcentagem por cima da meta do mês atual (nada é gravado até salvar). Valor digitado num mês vence sempre, e mês além da agenda continua crescendo sozinho pela mesma regra.`)}
-              </>}
-              action={
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <label title="Porcentagem composta por cima da meta do mês atual (com 50%: 180 mil, 270 mil, 405 mil e assim por diante)."
-                    style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, color: "var(--fg-2)", cursor: "help" }}>
-                    crescimento
-                    <input type="number" min="0" step="1" inputMode="decimal" aria-label="Crescimento ao mês" value={growth}
-                      onChange={(e) => setGrowth(e.target.value)} placeholder="ex.: 50"
-                      className="tnum" style={{ ...inp, height: 32, width: 68, textAlign: "right" }} />
-                    <span className="mono dim" style={{ fontSize: 12 }}>% ao mês</span>
-                  </label>
-                  <button onClick={aplicarCrescimento} disabled={!(Number(growth) > 0)}
-                    title="Preenche os campos dos próximos meses a partir da meta do mês atual. Confira e clique em salvar metas."
-                    style={{ height: 32, padding: "0 13px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, opacity: Number(growth) > 0 ? 1 : 0.55 }}>
-                    definir os {proximosMeses.length} meses
-                  </button>
-                </span>
-              }>
-              <div className="metas-agenda">
-                {proximosMeses.length > 0 && (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 190px), 1fr))", gap: 10 }}>
-                    {proximosMeses.map((m) => (
-                      <label key={m.month} style={{ display: "flex", alignItems: "center", gap: 8 }}
-                        title={(meses[m.month] ?? "") === "" ? `sem valor próprio: ${m.source === "growth" ? "segue a regra de crescimento" : "mantém o valor atual"} (${money(m.effective)})` : undefined}>
-                        <span style={{ flex: 1, fontSize: 13, color: "var(--fg-2)" }}>
-                          {mesLabel(m.month)}
-                          {(meses[m.month] ?? "") === "" && m.source === "growth" && <span className="dim" style={{ display: "block", fontSize: 10.5 }}>pela regra</span>}
-                        </span>
-                        <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                          <span className="mono dim" style={{ fontSize: 12 }}>R$</span>
-                          <input type="number" min="0" step="1" inputMode="decimal"
-                            value={meses[m.month] ?? ""}
-                            onChange={(e) => setMeses((p) => ({ ...p, [m.month]: e.target.value }))}
-                            placeholder={String(m.effective)}
-                            className="tnum" style={{ ...inp, width: 110, textAlign: "right" }} />
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </Card>
+            {/* 5 · Histórico: meta × realizado mês a mês (acompanhamento da
+                escada). Cada linha é a MESMA régua da Visão geral filtrada no
+                mês (receita reconhecida, conta grande fora), vinda do
+                /api/metas/:saas/history, que calcula todos os meses de uma vez. */}
+            <HistoricoCard hist={hist} histErr={histErr} onRetry={readHist} />
+
+            {/* 6 · Planejamento: a agenda virou ano inteiro em QUATRO TRIMESTRES
+                (Leo, 07/10), com semestre e ano somando os meses. Planejamento
+                mexe pouco, por isso no fim. O crescimento é uma AÇÃO (Leo,
+                08/08): escolhe a %, clica em definir e os meses futuros são
+                preenchidos compondo por cima da meta do mês atual — visíveis,
+                conferíveis, gravados no salvar. A % também fica salva como
+                regra: mês além do horizonte continua crescendo sozinho. */}
+            {horizon && (
+              <PlanejamentoCard
+                months={todosMeses} horizon={horizon} meses={meses} setMeses={setMeses} hist={hist}
+                ano={anoPlano || Number(horizon.current.slice(0, 4))} setAno={setAnoPlano}
+                growth={growth} setGrowth={setGrowth} aplicar={aplicarCrescimento} inp={inp} />
+            )}
 
             <div className="dim" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
               campo vazio segue a meta do mês pela cadeia; sem cadeia, vale o benchmark padrão. As metas alimentam o placar de Desempenho do time e todo campo que compara com meta.
@@ -822,4 +980,4 @@ function MetasWorkspace({product}) {
   );
 }
 
-export { MetasScreen };
+export { MetasScreen, HistoricoCard, PlanejamentoCard };

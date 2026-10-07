@@ -197,3 +197,14 @@ export function deriveGoalsFromPace(pace, opts = {}) {
     ].filter((g) => Number(g.target) > 0),
   };
 }
+
+// ── Horizonte da agenda de metas ─────────────────────────────────────────────
+// A tela Metas planeja por TRIMESTRE (Q1..Q4), semestre e ano: o GET devolve
+// de janeiro do ano corrente a dezembro do ano seguinte, com os meses passados
+// (pra fechar os trimestres do ano e casar com o histórico). Ano fiscal =
+// calendário. Era "corrente + 6" (botão "definir os 6 meses"); 7 meses não
+// fecham quatro trimestres.
+export function metasHorizon(currentMonth) {
+  const year = Number(String(currentMonth).slice(0, 4));
+  return { from: `${year}-01`, to: `${year + 1}-12`, current: currentMonth };
+}

@@ -416,6 +416,8 @@ export const api = {
   // product.monthlyCashTarget (a meta que a Visão geral e a Análise perseguem).
   metas: (saas) => req("GET", `/api/metas/${encodeURIComponent(saas)}`),
   saveMetas: (saas, goals, company) => req("PUT", `/api/metas/${encodeURIComponent(saas)}`, company ? { goals, company } : { goals }),
+  // Histórico meta × realizado mês a mês (a mesma conta do /window por mês).
+  metasHistory: (saas) => req("GET", `/api/metas/${encodeURIComponent(saas)}/history`),
   // Treinamentos: base de flashcards por vaga + fila FSRS individual (Anki).
   flashcards: (saas) => req("GET", `/api/flashcards/${encodeURIComponent(saas)}`),
   saveFlashcards: (saas, cards, settings) => req("PUT", `/api/flashcards/${encodeURIComponent(saas)}`, settings ? { cards, settings } : { cards }),
