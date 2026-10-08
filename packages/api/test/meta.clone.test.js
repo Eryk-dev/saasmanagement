@@ -274,3 +274,76 @@ test("erro que NÃO é limite falha de primeira (não fica tentando à toa)", as
   await assert.rejects(() => meta.listAdsets("c1"), /Invalid parameter/);
   assert.equal(chamadas, 1);
 });
+
+// ── Cópia recusada por posicionamento em par (08/10/2026) ─────────────────────
+// Caso real do Leo ao clonar "1436 [PRICE]": "Invalid parameter · To place ads
+// in Instagram Explore Home, please also select Instagram Explore · [código
+// 100/2490392]". O conjunto antigo roda assim, mas a cópia é recusada. Saída:
+// recriar o conjunto campo a campo com o par completo.
+const { placementPairFromError } = await import("../src/marketing/meta.js");
+const EXPLORE_ERR = { message: "Invalid parameter", error_user_msg: "To place ads in Instagram Explore Home, please also select Instagram Explore.", code: 100, error_subcode: 2490392 };
+
+test("placementPairFromError: lê o 'please also select X' da Meta e mapeia pra posição", () => {
+  assert.deepEqual(placementPairFromError("Meta API -> 400: Invalid parameter · To place ads in Instagram Explore Home, please also select Instagram Explore. · [código 100/2490392]"), ["instagram_positions", "explore"]);
+  assert.deepEqual(placementPairFromError("please also select Facebook Reels"), ["facebook_positions", "facebook_reels"]);
+  assert.equal(placementPairFromError("please also select Marte"), null, "rótulo desconhecido não vira chute");
+  assert.equal(placementPairFromError("Invalid parameter [código 100]"), null);
+});
+
+test("copyAdSet: recusa por par de posicionamento → recria o conjunto com o par completo e avisa", async () => {
+  const f = recorder((url, body) => {
+    if (/\/as_src\/copies$/.test(url)) return { error: EXPLORE_ERR };
+    if (/\/as_src\?fields=/.test(url)) return {
+      id: "as_src", name: "1436 [PRICE]", campaign_id: "cp_price", account_id: "123",
+      targeting: { age_min: 25, geo_locations: { countries: ["BR"] }, instagram_positions: ["stream", "explore_home"], facebook_positions: ["feed"] },
+      optimization_goal: "LEAD_GENERATION", billing_event: "IMPRESSIONS", bid_strategy: "LOWEST_COST_WITHOUT_CAP",
+      daily_budget: "2500", promoted_object: { page_id: "pg1" }, end_time: "2020-01-01T00:00:00+0000",
+      attribution_spec: [{ event_type: "CLICK_THROUGH", window_days: 7 }],
+    };
+    if (/\/act_123\/adsets$/.test(url)) return { id: "as_new" };
+    throw new Error("chamada inesperada " + url);
+  });
+  const meta = makeMeta({ fetch: f, accessToken: "tok" });
+  const r = await meta.copyAdSet("as_src", { statusOption: "ACTIVE", deepCopy: false });
+  assert.deepEqual(r, { adsetId: "as_new", adIds: [], rebuilt: true, fixed: ["explore"] });
+  const create = f.calls.find((c) => /\/act_123\/adsets$/.test(c.url));
+  assert.ok(create, "POST no /adsets da conta");
+  const t = JSON.parse(create.body.targeting);
+  assert.deepEqual(t.instagram_positions, ["stream", "explore_home", "explore"], "o par entra sem perder o resto");
+  assert.deepEqual(t.geo_locations, { countries: ["BR"] });
+  assert.equal(create.body.campaign_id, "cp_price");
+  assert.equal(create.body.status, "ACTIVE");
+  assert.equal(create.body.daily_budget, "2500");
+  assert.equal(create.body.promoted_object, JSON.stringify({ page_id: "pg1" }));
+  assert.equal(create.body.end_time, undefined, "end_time no passado fica de fora");
+  assert.equal(create.body.account_id, undefined);
+  assert.equal(create.body.start_time, undefined);
+});
+
+test("copyAdSet: a recriação aprende um 2º par na recusa seguinte; outro erro qualquer sobe como está; deep copy não recria", async () => {
+  let posts = 0;
+  const f = recorder((url) => {
+    if (/\/as_src\/copies$/.test(url)) return { error: EXPLORE_ERR };
+    if (/\/as_src\?fields=/.test(url)) return { id: "as_src", account_id: "123", campaign_id: "cp", targeting: { instagram_positions: ["explore_home"], facebook_positions: ["facebook_reels"] }, optimization_goal: "LEAD_GENERATION", billing_event: "IMPRESSIONS" };
+    if (/\/act_123\/adsets$/.test(url)) {
+      posts++;
+      if (posts === 1) return { error: { message: "Invalid parameter", error_user_msg: "To place ads in Facebook Reels, please also select Facebook Feed.", code: 100, error_subcode: 2490392 } };
+      return { id: "as_new2" };
+    }
+    throw new Error("chamada inesperada " + url);
+  });
+  const meta = makeMeta({ fetch: f, accessToken: "tok" });
+  const r = await meta.copyAdSet("as_src", { deepCopy: false });
+  assert.deepEqual(r.fixed, ["explore", "feed"]);
+  assert.equal(r.adsetId, "as_new2");
+  const last = f.calls.at(-1);
+  assert.deepEqual(JSON.parse(last.body.targeting).facebook_positions, ["facebook_reels", "feed"]);
+
+  const f2 = recorder(() => ({ error: { message: "Invalid parameter", code: 100, error_subcode: 1815857 } }));
+  await assert.rejects(() => makeMeta({ fetch: f2, accessToken: "tok" }).copyAdSet("as_src", { deepCopy: false }), /1815857/);
+  assert.equal(f2.calls.length, 1, "erro que não é de par não tenta recriar");
+
+  const f3 = recorder(() => ({ error: EXPLORE_ERR }));
+  await assert.rejects(() => makeMeta({ fetch: f3, accessToken: "tok" }).copyAdSet("as_src", { deepCopy: true }), /2490392/);
+  assert.equal(f3.calls.length, 1);
+});

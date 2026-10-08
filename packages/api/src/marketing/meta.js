@@ -50,6 +50,42 @@ const RETRY_WAITS_MS = [30_000, 60_000, 120_000, 240_000];
 let throttleListener = null;
 export function onMetaThrottle(fn) { throttleListener = fn; }
 
+// Posicionamentos que a Meta exige EM PAR na hora de criar/copiar um conjunto
+// ("To place ads in Instagram Explore Home, please also select Instagram
+// Explore", código 100/2490392). Conjunto antigo rodando com o par incompleto
+// passa, mas a CÓPIA dele é recusada. Mapa rótulo da mensagem → posição.
+const PLACEMENT_BY_LABEL = {
+  "instagram explore": ["instagram_positions", "explore"],
+  "instagram explore home": ["instagram_positions", "explore_home"],
+  "instagram feed": ["instagram_positions", "stream"],
+  "instagram stories": ["instagram_positions", "story"],
+  "instagram reels": ["instagram_positions", "reels"],
+  "instagram profile feed": ["instagram_positions", "profile_feed"],
+  "instagram profile reels": ["instagram_positions", "profile_reels"],
+  "instagram search": ["instagram_positions", "ig_search"],
+  "facebook feed": ["facebook_positions", "feed"],
+  "facebook stories": ["facebook_positions", "story"],
+  "facebook reels": ["facebook_positions", "facebook_reels"],
+  "facebook marketplace": ["facebook_positions", "marketplace"],
+  "facebook video feeds": ["facebook_positions", "video_feeds"],
+  "facebook right column": ["facebook_positions", "right_hand_column"],
+  "facebook search": ["facebook_positions", "search"],
+};
+const PLACEMENT_PAIR_RX = /please also select ([^.·\[]+)/i;
+// Lê "please also select X" e devolve [campo, posição] ou null.
+export function placementPairFromError(message) {
+  const m = PLACEMENT_PAIR_RX.exec(String(message || ""));
+  if (!m) return null;
+  return PLACEMENT_BY_LABEL[m[1].trim().toLowerCase()] || null;
+}
+// Campos do conjunto que a Graph aceita de volta num POST /adsets. Fora da
+// lista: account_id, campaign_attribution, learning stage etc. (só leitura).
+const ADSET_COPY_FIELDS = ["name", "campaign_id", "account_id", "targeting", "optimization_goal", "billing_event",
+  "bid_strategy", "bid_amount", "daily_budget", "lifetime_budget", "promoted_object", "attribution_spec", "end_time",
+  "destination_type", "optimization_sub_event", "pacing_type", "is_dynamic_creative", "frequency_control_specs",
+  "dsa_beneficiary", "dsa_payor"];
+const ADSET_JSON_FIELDS = new Set(["targeting", "promoted_object", "attribution_spec", "pacing_type", "frequency_control_specs"]);
+
 export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), onThrottle = (i) => throttleListener?.(i) } = {}) {
   const configured = () => !!accessToken;
   const acct = (id) => (String(id).startsWith("act_") ? String(id) : `act_${id}`);
@@ -89,6 +125,47 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ ...params, access_token: accessToken }).toString(),
     }));
+  }
+
+  async function rebuildAdSet(adsetId, { campaignId, status = "PAUSED", firstError = null } = {}) {
+    const fields = new URLSearchParams({ fields: ADSET_COPY_FIELDS.join(","), access_token: accessToken });
+    const src = await get(`${GRAPH}/${adsetId}?${fields}`);
+    if (!src.account_id) throw new Error(`Meta: não li o conjunto de origem pra recriar (${firstError?.message || "sem account_id"})`);
+    const targeting = JSON.parse(JSON.stringify(src.targeting || {}));
+    const fixed = [];
+    const apply = (pair) => {
+      const [field, pos] = pair;
+      const list = Array.isArray(targeting[field]) ? targeting[field] : [];
+      if (list.includes(pos)) return false;
+      targeting[field] = [...list, pos];
+      fixed.push(pos);
+      return true;
+    };
+    const first = placementPairFromError(firstError?.message);
+    if (first) apply(first);
+    const params = {};
+    for (const k of ADSET_COPY_FIELDS) {
+      if (k === "account_id" || src[k] == null || src[k] === "") continue;
+      // end_time no passado é recusado; start_time fica de fora (começa agora).
+      if (k === "end_time" && new Date(src[k]).getTime() <= Date.now()) continue;
+      params[k] = ADSET_JSON_FIELDS.has(k) ? JSON.stringify(k === "targeting" ? targeting : src[k]) : String(src[k]);
+    }
+    if (campaignId) params.campaign_id = String(campaignId);
+    params.status = status;
+    let lastErr = firstError;
+    for (let tentativa = 0; tentativa < 3; tentativa++) {
+      params.targeting = JSON.stringify(targeting);
+      try {
+        const created = await post(`${acct(src.account_id)}/adsets`, params);
+        if (!created.id) throw new Error("Meta: recriação do conjunto não retornou id");
+        return { adsetId: String(created.id), adIds: [], rebuilt: true, fixed };
+      } catch (err) {
+        lastErr = err;
+        const pair = placementPairFromError(err.message);
+        if (!pair || !apply(pair)) break;
+      }
+    }
+    throw new Error(`cópia recusada pela Meta e a recriação também falhou: ${String(lastErr?.message || lastErr)}`);
   }
 
   return {
@@ -584,11 +661,21 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
     // mesma campanha do original e PAUSADO. É a base do "clonar e trocar o
     // vídeo": público, orçamento, posicionamento, otimização e copy vêm de
     // brinde do conjunto de origem. Retorna { adsetId, adIds } dos cópias.
+    // Quando a Meta recusa a cópia por posicionamento em par (2490392, ver
+    // PLACEMENT_BY_LABEL), o conjunto é RECRIADO campo a campo com o par
+    // completado; `rebuilt` e `fixed` contam o que foi feito pro aviso do job.
     async copyAdSet(adsetId, { campaignId, statusOption = "PAUSED", deepCopy = true } = {}) {
       if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
       const params = { deep_copy: deepCopy ? "true" : "false", status_option: statusOption };
       if (campaignId) params.campaign_id = String(campaignId);
-      const body = await post(`${adsetId}/copies`, params);
+      let body;
+      try {
+        body = await post(`${adsetId}/copies`, params);
+      } catch (err) {
+        // Só sem anúncios dentro (deep copy é outro caminho) e só o erro de par.
+        if (deepCopy || !placementPairFromError(err.message)) throw err;
+        return rebuildAdSet(adsetId, { campaignId, status: statusOption, firstError: err });
+      }
       const copied = String(body.copied_adset_id || body.id || "");
       if (!copied) throw new Error("Meta: cópia do conjunto não retornou id");
       const adIds = (body.ad_object_ids || [])
@@ -597,6 +684,11 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
         .filter(Boolean);
       return { adsetId: copied, adIds };
     },
+
+    // Recria um conjunto a partir do original, completando os pares de
+    // posicionamento que a Meta pede. Tenta até 3 vezes: cada recusa nova
+    // ("please also select X") entra no targeting e o POST vai de novo.
+    async rebuildAdSet(adsetId, opts) { return rebuildAdSet(adsetId, opts); },
 
     // Anúncios de um conjunto (id + nome), pra ler o criativo do ORIGINAL antes
     // de montar o novo. Ignora os já apagados.
