@@ -7,8 +7,16 @@
 .sla-dirty {font-size:11.5px;color:var(--warn);}
 .sla-page .support-settings-body {padding:0;gap:12px;}
 .sla-cols,.sla-integration {margin:0;padding:0;border:0;min-width:0;}
-.sla-cols {columns:3 330px;column-gap:12px;}
-.sla-cols > section {break-inside:avoid;display:flow-root;margin:0 0 12px;}
+/* Abas SLA · Tickets · Linear: cada uma com poucos cartões, lado a lado. */
+.sla-tabs {flex:0 0 auto;align-self:flex-start;display:inline-flex;gap:3px;padding:4px;margin:0 10px;border-radius:999px;background:var(--bg-1);box-shadow:var(--shadow-card);max-width:calc(100% - 20px);overflow-x:auto;}
+.sla-tabs button {display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 18px;border-radius:999px;font-size:12.5px;font-weight:500;color:var(--fg-3);white-space:nowrap;}
+.sla-tabs button:hover {color:var(--fg-1);}
+.sla-tabs button[aria-selected=true] {background:var(--btn-bg);color:var(--btn-fg);font-weight:600;}
+.sla-tabs button:focus-visible {outline:2px solid var(--accent);outline-offset:2px;}
+.sla-tab-dot {width:6px;height:6px;border-radius:999px;background:var(--warn);}
+.sla-cols {display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:12px;align-items:start;}
+.sla-cols > section {display:flow-root;margin:0;min-width:0;}
+.sla-integration {display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:12px;align-items:start;}
 .sla-page .capsule-card > div:first-child {padding:20px 22px 0!important;}
 .sla-page .capsule-card .card-title {font-family:var(--sans);font-size:13px;font-weight:500;letter-spacing:.13em;line-height:normal;color:var(--fg-3);}
 .sla-page .capsule-card .card-title::before {width:5px;height:14px;margin-right:7px;}
@@ -45,7 +53,9 @@
  .sla-page input,.sla-page select,.sla-page button {min-height:44px;}
  .sla-page {padding-bottom:90px;scroll-padding-bottom:90px;}
  .sla-head-actions {width:100%;justify-content:flex-end;}
- .sla-cols {columns:1;}
+ .sla-cols,.sla-integration {grid-template-columns:minmax(0,1fr);}
+ .sla-tabs button {flex:1 1 0;padding:0 12px;}
+ .sla-tabs {display:flex;align-self:stretch;}
  .sla-page .support-policy {grid-template-columns:minmax(0,1.2fr) minmax(65px,.8fr) minmax(65px,.8fr);gap:7px;}
  .sla-page .support-policy > .inp {height:44px;}
  .sla-page .support-policy > :first-child {grid-column:auto;}

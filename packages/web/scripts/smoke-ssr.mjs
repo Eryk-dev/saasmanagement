@@ -1391,6 +1391,77 @@ try {
     if (!html.includes("linear.app ↗")) throw new Error("URL solta deveria virar link curto pelo domínio");
     if (!html.includes(">o painel<")) throw new Error("link markdown deveria manter o rótulo");
     if (!html.includes("<b>Correção PO</b>")) throw new Error("negrito não renderizou");
+
+    // Comentário do Hermes (LEV-548): pergunta curta + apêndice técnico em
+    // <details>. As tags não podem sair como texto e o apêndice entra recolhido.
+    const apendice = "Base: develop 739584a. Hipótese 1: o arquivo é modelo-produtos.xlsx " + "e o gerador \\_xlsx\\_bytes ".repeat(60);
+    const hermes = [
+      "**Hermes · validação**", "", "Localizei dois modelos diferentes de custos.", "",
+      "**Precisa de:**", "- \\[Eryk\\] Pode anexar ao card a planilha entregue?", "- [Cliente] Em qual aplicativo abriu a planilha?", "",
+      "<details>", "", apendice, "", "</details>", "", "Estado: `needs_context`.",
+      "", "+++ Log do Linear", "linha recolhida", "+++",
+    ].join("\n");
+    const bh = M.parseBlocks(hermes);
+    const det = bh.filter((b) => b.tipo === "detalhes");
+    if (det.length !== 2 || det[1].titulo !== "Log do Linear") throw new Error("<details> e +++ deveriam virar seções recolhíveis");
+    if (bh[bh.length - 2]?.texto !== "Estado: `needs_context`.") throw new Error("texto depois do </details> se perdeu");
+    if (M.visibleLength(hermes) > 1200) throw new Error("o apêndice recolhido não deveria contar pro 'ver tudo'");
+    const hh = renderToString(wrap(React.createElement(M.LinearMarkdown, { text: hermes, onExpired() {} })));
+    if (/&lt;\/?details|\+\+\+/.test(hh)) throw new Error("marcação de seção recolhível sobrou como texto");
+    if (!hh.includes("<details") || hh.includes("<details open")) throw new Error("apêndice deveria entrar recolhido");
+    if (!hh.includes("<b>Eryk</b>") || !hh.includes("<b>Cliente</b>")) throw new Error("destinatário do pedido deveria sair em negrito");
+    if (hh.includes("\\_") || !hh.includes("_xlsx_bytes")) throw new Error("escape do Linear sobrou na tela");
+
+    // Apêndice técnico real (LEV-551): parágrafos corridos viram estrutura.
+    const tecnico = [
+      "<details>",
+      "Fluxo develop 834800148a68: frontend/src/pages/CompatPage.tsx:589-632 → POST /api/compat/copy em app/routers/compat.py:349-519; caminho depende de perfil permanente; claim dedicado :1669-1752/:1857-1883; leitura /logs app/routers/compat.py:588-613.",
+      "Hipóteses testáveis: H1 job manual fora do claim (copy_queue.py:1669-1752), não observada; H2 falha da origem deixa histórico órfão, refutada; H3 retry parece fila parada, demonstrada.",
+      "Reprodução executada: python -m pytest -q → 3 passed; nenhum teste falhou por bug. Sucesso: 2 jobs pending/0 → success/1. Negativos: sem destinos 400 sem escrita. Regressões finais: 28 passed.",
+      "</details>",
+    ].join("\n");
+    const dt = M.parseBlocks(tecnico)[0];
+    const hipoteses = dt.blocos.find((b) => b.tipo === "lista" && b.itens[0].startsWith("H1"));
+    if (!hipoteses || hipoteses.itens.length !== 3) throw new Error("H1/H2/H3 separados por ';' deveriam virar lista");
+    if (!dt.blocos.some((b) => b.tipo === "texto" && b.texto.startsWith("Negativos:"))) throw new Error("frase rotulada no meio do parágrafo deveria abrir parágrafo próprio");
+    const th = renderToString(wrap(React.createElement(M.LinearMarkdown, { text: tecnico, onExpired() {} })));
+    for (const rotulo of ["Fluxo develop 834800148a68:", "Hipóteses testáveis:", "Sucesso:", "Regressões finais:"]) {
+      if (!th.includes(`<b>${rotulo}</b>`)) throw new Error(`rótulo "${rotulo}" deveria sair em negrito`);
+    }
+    for (const ref of ["frontend/src/pages/CompatPage.tsx:589-632", "POST /api/compat/copy", "copy_queue.py:1669-1752"]) {
+      if (!th.includes(`linear-md-ref">${ref}<`)) throw new Error(`"${ref}" deveria sair como referência de código`);
+    }
+    // Pergunta do Hermes (produção, 28/09): a API manda o comentário inteiro;
+    // o bloco do Hermes mostra só os pedidos de "Precisa de:".
+    const HS = await server.ssrLoadModule("/src/screens/tickets/hermes-section.jsx");
+    const comentario = [
+      "**Hermes · validação**", "",
+      "O relato pergunta se o pacote funciona, mas não informa uma tentativa nem um erro concreto.",
+      "Executei 10 testes sintéticos na develop original: todos passaram.", "",
+      "**Precisa de:**",
+      "- \\[Cliente\\] Qual tela ou pacote está chamando de promoção automática? Pode enviar uma captura?",
+      "- [Cliente] Em qual conta e anúncio tentou usar, e o que apareceu?", "",
+      "<details>", "Base: develop 739584a. Hipótese 1: x?", "</details>", "",
+      "Estado: `needs_context`.",
+    ].join("\n");
+    const pedidos = HS.pedidosDaPergunta(comentario);
+    if (pedidos.length !== 2 || pedidos.some((p) => p.para !== "Cliente")) throw new Error(`pedidos do Hermes errados: ${JSON.stringify(pedidos)}`);
+    if (!pedidos[0].texto.startsWith("Qual tela")) throw new Error("o destinatário deveria sair do texto do pedido");
+    const semSecao = HS.pedidosDaPergunta("Olhei o caso.\nQual empresa é esse grupo?\n<details>\nTeste x?\n</details>");
+    if (semSecao.length !== 1 || !semSecao[0].texto.startsWith("Qual empresa")) throw new Error("sem 'Precisa de', as linhas com '?' fora do <details> são os pedidos");
+    const ph = renderToString(wrap(React.createElement(HS.HermesCard, { hermes: { question: { at: "2026-09-28T18:31:00Z", text: comentario } }, onExpired() {} })));
+    if (ph.includes("Executei 10 testes") || ph.includes("Estado")) throw new Error("o bloco do Hermes não deveria repetir o comentário inteiro");
+
+    // LEV-609: parado por falha da bancada, "Precisa de:" na mesma linha.
+    const parada = "**Hermes · validação**\n\nParei após 3 rodadas: bancada instável.\n\n**Precisa de:** [Eryk] resolver o motivo acima na bancada e responder neste card.";
+    const destrava = HS.pedidosDaPergunta(parada);
+    if (destrava.length !== 1 || destrava[0].para !== "Eryk" || !destrava[0].texto.startsWith("resolver")) throw new Error(`'Precisa de:' na mesma linha: ${JSON.stringify(destrava)}`);
+    const sh = renderToString(wrap(React.createElement(HS.HermesCard, { hermes: { stalled: { at: "2026-10-02T12:06:00Z", reason: "Parei após 3 rodadas: bancada instável.", text: parada } }, onExpired() {} })));
+    if (!sh.includes("O Hermes parou") || !sh.includes("Para Eryk") || sh.includes("perguntou")) throw new Error("parada da bancada deveria aparecer como parada, não como pergunta");
+    const TK = await server.ssrLoadModule("/src/lib/tickets.js");
+    const chipParado = TK.hermesChip({ status: "open", hermes: { labeled: true, active: true, phase: "pergunta", stalled: { reason: "bancada instável" } } });
+    if (chipParado?.text !== "Hermes · Parado") throw new Error(`chip do card parado: ${chipParado?.text}`);
+    if (M.parseBlocks("Texto\n<!-- sem dependencias: triagem inicial -->\nfim").some((b) => /<!--|dependencias/.test(b.texto || ""))) throw new Error("comentário HTML não deveria aparecer");
     console.log("✓ linear-markdown");
   } catch (err) {
     console.error(`✗ linear-markdown: ${err.message}`);

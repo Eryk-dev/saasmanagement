@@ -173,4 +173,21 @@ export const SDR_TEMPLATES = [
     body: "Oi {{1}}, nossa conversa começa em 10 minutos! O link pra entrar é este: {{2}}. Te esperamos lá!",
     example: ["Roberto", "https://meet.google.com/abc-defg-hij"],
   },
+  // Lead que veio pelo PRICE (roteiro de 08/10, copy do Leo) anda no mesmo
+  // roteiro do OEM com copy própria: abordagem (M1) e confirmação da manhã
+  // são por produto; 2h e 10min reaproveitam os *_oem (só horário e link).
+  {
+    name: "sdr_primeiro_toque_price",
+    category: "MARKETING",
+    language: "pt_BR",
+    body: "Oiii {{1}}, tudo bem? Recebemos aqui seu interesse, com o Lever Price você cadastra uma vez só o custo, a margem e o imposto de cada produto e, a partir daí, tudo acontece de forma automática: a plataforma confere seus anúncios no Mercado Livre 24 horas por dia, a cada minuto, mantém seu lucro dentro do esperado e ainda coloca seus produtos nas melhores promoções do ML: relâmpago, campanhas como Black Friday e 10.10, rebate e, quando não tem nenhuma delas, cria a promoção do vendedor pra seu anúncio nunca ficar fora de oferta. Isso ajudaria na sua operação?",
+    example: ["Roberto"],
+  },
+  {
+    name: "sdr_lembrete_manha_price",
+    category: "UTILITY",
+    language: "pt_BR",
+    body: "Bom dia {{1}}, tudo bom? Temos um horário reservado para {{2}}, tudo certo? Na reunião vamos te mostrar na prática como o Lever Price cuida do preço e das promoções dos seus anúncios, além de tirar todas suas dúvidas. Posso contar com sua presença? Caso não consiga comparecer, me sinalize para liberar seu horário, por favor.",
+    example: ["Roberto", "hoje às 11h"],
+  },
 ];

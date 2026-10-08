@@ -8,13 +8,13 @@ import { SearchInput } from "../../components/search-input.jsx";
 import { useActiveSaas } from "../../lib/workspace.js";
 import { currentUser, isAdminUser } from "../../lib/users.js";
 import { useIsMobile } from "../../lib/responsive.js";
-import { TICKET_STATUSES, STATUS_BY_KEY, PRIORITY_RANK, kindOf, isDone, slaState, agentStats, supportScope, fold, noScopeHint, linearKey } from "../../lib/tickets.js";
+import { TICKET_STATUSES, STATUS_BY_KEY, PRIORITY_RANK, kindOf, isDone, slaState, agentStats, supportScope, fold, noScopeHint, linearKey, hermesHolding, hermesNeedsHuman } from "../../lib/tickets.js";
 import { useBoardDnd } from "../../components/kanban/dnd.js";
 import { useTicketsStore } from "./store.js";
 import { parseTicketHash, openTicketHash, clearTicketHash, useTicketHash } from "./hash.js";
 import { TicketsBoard } from "./board.jsx";
 import { TicketsList } from "./list-view.jsx";
-import { TicketDetail } from "./detail.jsx";
+import { TicketDetail, confirmHermes } from "./detail.jsx";
 import { NewTicketModal } from "./new-ticket.jsx";
 import { AgentKpis } from "./agent-kpis.jsx";
 import { Menu } from "../../components/menu.jsx";
@@ -34,7 +34,7 @@ const VIEW_KEY = "cockpit_tickets_view";
 const FILTER_KEY = "cockpit_tickets_filter";
 const readLs = (k, fallback, allowed) => { try { const v = localStorage.getItem(k); return allowed.includes(v) ? v : fallback; } catch { return fallback; } };
 const writeLs = (k, v) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } };
-const FILTERS = ["open", "mine", "unassigned", "risk", "waiting", "done", "all"];
+const FILTERS = ["open", "mine", "unassigned", "risk", "hermes", "waiting", "done", "all"];
 const SLA_RANK = { breached: 0, warning: 1, ok: 2, paused: 3, met: 4, none: 5 };
 
 export function matchesFilter(t, filter, { me, now }) {
@@ -46,6 +46,8 @@ export function matchesFilter(t, filter, { me, now }) {
     case "risk": { if (kind === "done") return false; const s = slaState(t, now).overall; return s === "breached" || s === "warning"; }
     case "waiting": return kind === "waiting";
     case "done": return kind === "done";
+    // Com o Hermes: o card está com ele agora, ou foi entregue e espera o aceite.
+    case "hermes": return kind !== "done" && (hermesHolding(t) || (!!t.hermes?.requested && !t.hermes?.labeled));
     default: return true;
   }
 }
@@ -59,7 +61,7 @@ export function inDoneColumn(t, filter, { me }) {
   switch (filter) {
     case "mine": return !!me && t.assignee === me;
     case "unassigned": return !t.assignee;
-    case "risk": case "waiting": return false;
+    case "risk": case "waiting": case "hermes": return false;
     default: return true;
   }
 }
@@ -150,7 +152,12 @@ export function TicketsScreen() {
     return mine.filter((t) => [String(t.number), linearKey(t), t.subject, t.requester?.name, t.requester?.email, t.category, ...(t.tags || [])].some((v) => fold(v).includes(k)));
   }, [mine, q]);
   const counts = useMemo(() => Object.fromEntries(FILTERS.map((f) => [f, searched.filter((t) => matchesFilter(t, f, { me, now })).length])), [searched, me, now]);
-  const visible = useMemo(() => searched.filter((t) => matchesFilter(t, filter, { me, now })).sort(queueOrder(now)), [searched, filter, me, now]);
+  // No filtro do Hermes, quem espera um aprovador (Validar, pergunta) vem primeiro.
+  const visible = useMemo(() => {
+    const order = queueOrder(now);
+    const sort = filter === "hermes" ? (a, b) => (hermesNeedsHuman(b) - hermesNeedsHuman(a)) || order(a, b) : order;
+    return searched.filter((t) => matchesFilter(t, filter, { me, now })).sort(sort);
+  }, [searched, filter, me, now]);
   const totals = useMemo(() => {
     const open = mine.filter((t) => kindOf(t.status) !== "done");
     return { unassigned: open.filter((t) => !t.assignee).length, open: open.length };
@@ -180,6 +187,7 @@ export function TicketsScreen() {
   const patchTicket = useCallback((id, patch, label) => {
     const before = byId.get(id);
     if (!before || Object.keys(patch).every((k) => (before[k] || "") === (patch[k] || ""))) return;
+    if (!confirmHermes(before, patch)) return;
     const undo = Object.fromEntries(Object.keys(patch).map((k) => [k, before[k] ?? ""]));
     mutate({
       ids: [id], silent: false, label,
@@ -229,6 +237,11 @@ export function TicketsScreen() {
     { id: "mine", label: "Meus", n: counts.mine },
     { id: "unassigned", label: "Sem responsável", n: counts.unassigned },
     { id: "risk", label: "SLA em risco", n: counts.risk, title: "estourados ou passando de 80% do prazo" },
+    // Só aparece com o acompanhamento do Hermes ligado no produto (ou com algum
+    // card ainda com ele, se desligarem no meio do caminho).
+    ...(settings?.linear?.hermes?.enabled || counts.hermes
+      ? [{ id: "hermes", label: "Com o Hermes", n: counts.hermes, title: "cards em que o Hermes está trabalhando; quem espera um aprovador vem primeiro" }]
+      : []),
   ];
   const escondidos = [
     { id: "waiting", label: "Aguardando cliente", n: counts.waiting },

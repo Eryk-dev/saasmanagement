@@ -11,20 +11,34 @@ import { currentUser, isAdminUser } from "../lib/users.js";
 import { TICKET_PRIORITIES, TICKET_STATUSES, supportScope, noScopeHint } from "../lib/tickets.js";
 import { SelectPopover } from "../components/select-popover.jsx";
 import { Checkbox, HoursInput, SwitchRow } from "../components/form-controls.jsx";
+import { HERMES_PHASE_KEYS, HERMES_PHASE_LABEL, phaseByName } from "../../../api/src/shared/hermes-phase.js";
 
-// Suporte · Configurações de SLA, por produto do workspace ativo:
-//   · prazos de 1ª resposta e de resolução por prioridade (em horas ÚTEIS
-//     quando o expediente está ligado — a API conta em minutos);
-//   · expediente, pausa do relógio, aviso antecipado e fechamento automático;
-//   · categorias da fila, portal do cliente e aviso por e-mail;
-//   · atendentes: quem atende qual produto. Esse é o ACL do Suporte — quem não
-//     é admin só inclui/remove produtos que ele mesmo atende (a API confere).
+// Suporte · Configurações de SLA, por produto do workspace ativo, em três abas:
+//   · SLA: prazos de 1ª resposta e de resolução por prioridade (em horas ÚTEIS
+//     quando o expediente está ligado — a API conta em minutos), expediente,
+//     pausa do relógio, aviso antecipado e fechamento automático;
+//   · Tickets: categorias da fila, portal do cliente e aviso por e-mail, e os
+//     atendentes — quem atende qual produto. Esse é o ACL do Suporte: quem não
+//     é admin só inclui/remove produtos que ele mesmo atende (a API confere);
+//   · Linear · Hermes: o espelho dos tickets com as issues do time e, num
+//     cartão próprio, o acompanhamento do Hermes (que depende do espelho).
+// O rascunho é um só: Salvar grava as três abas, e a aba com alteração
+// pendente ganha um ponto.
 
 const { useState, useEffect, useMemo, useCallback, useRef } = React;
 
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => ({ value: h, label: `${String(h).padStart(2, "0")}h` }));
 const WARN_OPTIONS = [0.5, 0.7, 0.8, 0.9].map((v) => ({ value: v, label: `com ${Math.round(v * 100)}% do prazo` }));
 const CLOSE_OPTIONS = [0, 2, 3, 5, 7, 14, 30].map((d) => ({ value: d, label: d === 0 ? "nunca" : `${d} dias` }));
+
+// Cada aba e os campos do rascunho que ela edita (o ponto de "não salvo").
+const TABS = [
+  { id: "sla", label: "SLA", fields: ["policies", "businessHours", "pauseOn", "warnAt", "autoCloseResolvedDays"] },
+  { id: "tickets", label: "Tickets", fields: ["categories", "portal", "notifyCustomerByEmail"] },
+  { id: "linear", label: "Linear · Hermes", fields: ["linear"] },
+];
+const TAB_KEY = "cockpit_support_settings_tab";
+const tabDirty = (tab, draft, saved) => !!draft && !!saved && tab.fields.some((f) => JSON.stringify(draft[f]) !== JSON.stringify(saved[f]));
 
 // div, não <label>: o seletor (Popover) dentro de label reabre a lista no clique.
 // O controle desce pro pé da célula (marginTop auto): rótulo que quebra em duas
@@ -50,6 +64,8 @@ export function SupportSettingsScreen() {
   const [busy, setBusy] = useState(false);
   const [newCategory, setNewCategory] = useState("");
   const [saveError, setSaveError] = useState("");
+  const [tab, setTabState] = useState(() => { try { const t = localStorage.getItem(TAB_KEY); return TABS.some((x) => x.id === t) ? t : "sla"; } catch { return "sla"; } });
+  const setTab = (t) => { setTabState(t); try { localStorage.setItem(TAB_KEY, t); } catch { /* ignore */ } };
   const request = useRef(0), pending = useRef(false), productRef = useRef(saasId);
   productRef.current = saasId;
 
@@ -99,6 +115,29 @@ export function SupportSettingsScreen() {
         )}
       </div></header>
       {saveError && <div role="alert" className="sla-error">{saveError}. O preenchimento foi mantido; tente Salvar novamente.</div>}
+      {handles && draft && (
+        <div className="sla-tabs" role="tablist" aria-label="Seções das configurações">
+          {TABS.map((t) => {
+            const pendente = tabDirty(t, draft, saved);
+            return (
+              <button key={t.id} type="button" role="tab" id={`sla-tab-${t.id}`} aria-controls={`sla-panel-${t.id}`} aria-selected={tab === t.id}
+                tabIndex={tab === t.id ? 0 : -1} onClick={() => setTab(t.id)}
+                onKeyDown={(e) => {
+                  const i = TABS.findIndex((x) => x.id === t.id);
+                  const n = e.key === "ArrowRight" ? i + 1 : e.key === "ArrowLeft" ? i - 1 : null;
+                  if (n === null) return;
+                  e.preventDefault();
+                  const prox = TABS[(n + TABS.length) % TABS.length].id;
+                  setTab(prox);
+                  document.getElementById(`sla-tab-${prox}`)?.focus();
+                }}>
+                {t.label}
+                {pendente && <span className="sla-tab-dot" title="alterações não salvas nesta aba" aria-label="alterações não salvas" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {!handles ? (
         <EmptyState title={`Você não atende ${product?.name || "este produto"}`} hint={noScopeHint(product?.name)} />
@@ -109,9 +148,9 @@ export function SupportSettingsScreen() {
       ) : !draft ? (
         <div className="mono dim" style={{ fontSize: 12, padding: "24px var(--pad-x)" }}>carregando…</div>
       ) : (
-        <div className="support-settings-body">
-          <fieldset className="sla-cols" disabled={busy}>
-            <Card title="Prazos por prioridade" hint={draft.businessHours.enabled ? "em horas úteis, dentro do expediente abaixo" : "em horas corridas (expediente desligado)"}>
+        <div className="support-settings-body" role="tabpanel" id={`sla-panel-${tab}`} aria-labelledby={`sla-tab-${tab}`}>
+          {tab === "sla" && <fieldset className="sla-cols" disabled={busy}>
+            <Card title="Prazos por prioridade" hint={draft.businessHours.enabled ? "em horas úteis, dentro do expediente do relógio" : "em horas corridas (expediente desligado)"}>
               <div style={{ padding: "8px var(--inset-x) 16px" }}>
                 <div className="support-policy kicker" style={{ paddingTop: 4 }}>
                   <span>Prioridade</span><span>1ª resposta</span><span>Resolução</span>
@@ -126,23 +165,6 @@ export function SupportSettingsScreen() {
                 {TICKET_PRIORITIES.some((p) => draft.policies[p.key].resolutionMin < draft.policies[p.key].firstResponseMin) && (
                   <div role="alert" style={{ fontSize: 12.5, color: "var(--neg)", marginTop: 8 }}>A resolução não pode vencer antes da 1ª resposta.</div>
                 )}
-              </div>
-            </Card>
-
-            <Card title="Categorias" hint="organizam a fila e o relatório futuro">
-              <div style={{ padding: "12px var(--inset-x) 18px", display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-                {draft.categories.map((c) => (
-                  <span key={c} className="chip" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                    {c}
-                    <button type="button" aria-label={`Remover ${c}`} onClick={() => set({ categories: draft.categories.filter((x) => x !== c) })} style={{ color: "var(--fg-4)" }}>✕</button>
-                  </span>
-                ))}
-                <form onSubmit={(e) => { e.preventDefault(); const v = newCategory.trim(); if (v && !draft.categories.includes(v)) set({ categories: [...draft.categories, v] }); setNewCategory(""); }}
-                  style={{ display: "inline-flex", gap: 6 }}>
-                  <input className="inp" aria-label="Nova categoria" value={newCategory} maxLength={60} onChange={(e) => setNewCategory(e.target.value)} placeholder="nova categoria" style={{ width: 160 }} />
-                  <SecondaryButton size="sm" type="submit" disabled={!newCategory.trim()}>Adicionar</SecondaryButton>
-                </form>
-                {draft.categories.length === 0 && <span className="mono dim" style={{ fontSize: 12 }}>sem categorias · a fila funciona sem elas</span>}
               </div>
             </Card>
 
@@ -177,6 +199,25 @@ export function SupportSettingsScreen() {
                 </div>
               </div>
             </Card>
+          </fieldset>}
+
+          {tab === "tickets" && <><fieldset className="sla-cols" disabled={busy}>
+            <Card title="Categorias" hint="organizam a fila e o relatório futuro">
+              <div style={{ padding: "12px var(--inset-x) 18px", display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                {draft.categories.map((c) => (
+                  <span key={c} className="chip" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    {c}
+                    <button type="button" aria-label={`Remover ${c}`} onClick={() => set({ categories: draft.categories.filter((x) => x !== c) })} style={{ color: "var(--fg-4)" }}>✕</button>
+                  </span>
+                ))}
+                <form onSubmit={(e) => { e.preventDefault(); const v = newCategory.trim(); if (v && !draft.categories.includes(v)) set({ categories: [...draft.categories, v] }); setNewCategory(""); }}
+                  style={{ display: "inline-flex", gap: 6 }}>
+                  <input className="inp" aria-label="Nova categoria" value={newCategory} maxLength={60} onChange={(e) => setNewCategory(e.target.value)} placeholder="nova categoria" style={{ width: 160 }} />
+                  <SecondaryButton size="sm" type="submit" disabled={!newCategory.trim()}>Adicionar</SecondaryButton>
+                </form>
+                {draft.categories.length === 0 && <span className="mono dim" style={{ fontSize: 12 }}>sem categorias · a fila funciona sem elas</span>}
+              </div>
+            </Card>
 
             <Card title="Portal do cliente" hint="o cliente abre e acompanha o chamado sem login">
               <div style={{ padding: "12px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 12 }}>
@@ -204,8 +245,9 @@ export function SupportSettingsScreen() {
             </Card>
 
           </fieldset>
-          <AgentsCard saasId={saasId} version={version} />
-          <fieldset className="sla-integration" disabled={busy}><LinearCard draft={draft} set={set} disabled={busy} saasId={saasId} version={version} /></fieldset>
+          <AgentsCard saasId={saasId} version={version} /></>}
+
+          {tab === "linear" && <fieldset className="sla-integration" disabled={busy}><LinearCard draft={draft} set={set} disabled={busy} saasId={saasId} version={version} /></fieldset>}
         </div>
       )}
     </div>
@@ -249,7 +291,10 @@ function LinearCard({ draft, set, disabled, saasId, version }) {
   const team = teams.find((t) => t.id === l.teamId) || null;
   const webhookUrl = `${typeof location !== "undefined" ? location.origin : ""}/api/webhooks/linear`;
 
+  // O Hermes ganha cartão próprio na mesma aba: depende do espelho ligado e do
+  // catálogo do Linear (time, colunas, pessoas), mas é outro assunto.
   return (
+    <>
     <Card title="Linear" hint="espelho dos tickets deste produto com as issues do time">
       <div style={{ padding: "12px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 12 }}>
         {erro && <div role="alert" className="sla-error">Não deu para carregar o catálogo do Linear. <button onClick={() => setAttempt(n => n + 1)}>Tentar novamente</button></div>}
@@ -318,6 +363,15 @@ function LinearCard({ draft, set, disabled, saasId, version }) {
         )}
       </div>
     </Card>
+    {catalog?.configured && (
+      <Card title="Hermes" hint={l.enabled ? "o agente que corrige bug de cliente no Linear" : "ligue o espelho do Linear acima para acompanhar o Hermes"}>
+        <div style={{ padding: "12px var(--inset-x) 18px" }}>
+          <HermesSettings catalog={catalog} team={team} hermes={l.hermes || {}} disabled={!l.enabled} saasId={saasId} version={version}
+            onChange={(patch) => setL({ hermes: { ...(l.hermes || {}), ...patch } })} />
+        </div>
+      </Card>
+    )}
+    </>
   );
 }
 
@@ -363,6 +417,113 @@ function LinearPeople({ catalog, people, disabled, saasId, version, onChange }) 
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// Hermes: o agente que corrige bug de cliente trabalha no Linear (etiqueta
+// própria, colunas Validar / Aguardando resposta / Aprovado). Ligado aqui, o
+// ticket mostra em que fase o card está e os aprovadores decidem pelo cockpit.
+// Só admin escolhe quem aprova (a API confere); as ações saem no Linear pela
+// chave do servidor, assinadas com o nome de quem clicou.
+const WINDOW_OPTIONS = [
+  { value: "noite", label: "à noite (23h–04h) · dá pra desistir até lá" },
+  { value: "imediato", label: "na hora · aprovar já publica" },
+];
+const PHASE_OPTIONS = HERMES_PHASE_KEYS.map((k) => ({ value: k, label: HERMES_PHASE_LABEL[k] }));
+function HermesSettings({ catalog, team, hermes, disabled, saasId, version, onChange }) {
+  const [agents, setAgents] = useState(null);
+  const admin = isAdminUser();
+  useEffect(() => {
+    let vivo = true;
+    api.supportAgents().then((a) => { if (vivo) setAgents(a || []); }).catch(() => { if (vivo) setAgents([]); });
+    return () => { vivo = false; };
+  }, [version]);
+  const on = hermes.enabled === true && !disabled;
+  const pessoas = catalog?.people || [];
+  const candidatos = (agents || []).filter((a) => a.admin || (a.supportSaas || []).includes(saasId))
+    .sort((x, y) => String(x.name).localeCompare(String(y.name), "pt-BR"));
+  const aprovadores = hermes.approvers || [];
+  const alternar = (id) => onChange({ approvers: aprovadores.includes(id) ? aprovadores.filter((x) => x !== id) : [...aprovadores, id] });
+  const setFase = (stateId, fase) => {
+    const next = { ...(hermes.phases || {}) };
+    if (fase) next[stateId] = fase; else delete next[stateId];
+    onChange({ phases: next });
+  };
+  // Releitura sob demanda: corrige o retrato de cards que ficaram parados
+  // antes de o cockpit reconhecer o caso (ex.: parada por falha da bancada).
+  const [relendo, setRelendo] = useState(false);
+  const reler = async () => {
+    if (relendo) return;
+    setRelendo(true);
+    try { await api.supportHermesReread(saasId); toast("Relendo os cards do Hermes · os chips atualizam em seguida", "pos"); }
+    catch (err) { toast(`Não deu para reler · ${err.message || "tente de novo"}`, "neg"); }
+    finally { setRelendo(false); }
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, opacity: disabled ? 0.55 : 1 }}>
+      <SwitchRow disabled={disabled} checked={hermes.enabled === true} onChange={(v) => onChange({ enabled: v })}
+        title="Acompanhar o Hermes nos tickets"
+        hint="o ticket mostra a fase do card do Hermes (Validar, Aguardando resposta, Aprovado, no ar) e avisa os aprovadores quando é a vez deles · ao salvar ligado, os cards abertos são relidos em segundo plano" />
+      {on && (
+        <button type="button" onClick={reler} disabled={relendo} className="hermes-reler" style={{ alignSelf: "flex-start", fontSize: 12, fontWeight: 600, color: "var(--accent)", textDecoration: "underline", textUnderlineOffset: 2 }}>
+          {relendo ? "relendo…" : "reler os cards do Hermes agora"}
+        </button>
+      )}
+      {hermes.enabled === true && (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
+            <Field label="Etiqueta do Hermes" hint="o card com esta etiqueta e sem ninguém do time atribuído está com o Hermes">
+              <input className="inp" value={hermes.label ?? "Hermes"} disabled={!on} maxLength={40} onChange={(e) => onChange({ label: e.target.value })} />
+            </Field>
+            <Field label="Usuário do Hermes no Linear" hint="é por ele que o cockpit reconhece o card de validação, a pergunta e o “no ar às”">
+              <SelectPopover label="Usuário do Hermes no Linear" value={hermes.linearUserId || ""} disabled={!on} searchable={pessoas.length > 8}
+                options={[{ value: "", label: "pelo nome (Hermes)", color: "var(--fg-3)" }, ...pessoas.map((p) => ({ value: p.id, label: p.name }))]}
+                onChange={(v) => onChange({ linearUserId: v })} />
+            </Field>
+            <Field label="Publicação" hint="como o Hermes publica neste produto: muda o que dá pra fazer depois de aprovar">
+              <SelectPopover label="Publicação" value={hermes.publishWindow || "noite"} disabled={!on} options={WINDOW_OPTIONS}
+                onChange={(v) => onChange({ publishWindow: v })} />
+            </Field>
+          </div>
+
+          {team?.states?.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span className="kicker">Coluna do Linear → fase do Hermes<Info texto="o automático lê o nome da coluna; troque só o que estiver errado" /></span>
+              {team.states.map((st) => (
+                <div key={st.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--fg-3)" }}>
+                  <span className="support-ellipsis" style={{ width: 150, flexShrink: 0 }}>{st.name}</span>
+                  <span style={{ flex: 1, maxWidth: 260, minWidth: 0 }}>
+                    <SelectPopover size="sm" label={`Fase do Hermes na coluna ${st.name}`} disabled={!on} value={hermes.phases?.[st.id] || ""}
+                      options={[{ value: "", label: `automático · ${HERMES_PHASE_LABEL[phaseByName(st)]}` }, ...PHASE_OPTIONS]}
+                      onChange={(v) => setFase(st.id, v)} />
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span className="kicker">Aprovadores<Info texto="aprovam, pedem ajuste, recusam e revertem — o resto da equipe acompanha. Só admin muda esta lista" /></span>
+            {agents === null && <div className="mono dim" style={{ fontSize: 12 }}>carregando a equipe…</div>}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {candidatos.map((a) => (
+                <button key={a.id} type="button" className="tickets-filter" aria-pressed={aprovadores.includes(a.id)} disabled={!on || !admin}
+                  title={admin ? "Aprova as correções do Hermes neste produto" : "Só admin escolhe os aprovadores"} onClick={() => alternar(a.id)}>{a.name}</button>
+              ))}
+            </div>
+            {on && aprovadores.length === 0 && <div style={{ fontSize: 12, color: "var(--warn)" }}>Sem aprovador, ninguém recebe o aviso de “Validar” e as ações ficam só no Linear.</div>}
+          </div>
+
+          <Checkbox checked={hermes.actions === true} disabled={!on} onChange={(v) => onChange({ actions: v })}>
+            aprovar, pedir ajuste, recusar e reverter pelo cockpit
+          </Checkbox>
+          <InfoNota>
+            As ações aparecem no card do Linear como <b>{catalog?.viewer || "o dono da chave"}</b>, com o nome de quem clicou no fim do comentário (“— nome, via Cockpit”).
+            O Hermes precisa aceitar esse autor; combine com quem cuida do Hermes antes de ligar. “Entregar ao Hermes” usa o comando <code className="mono">hermes: assumir</code>.
+          </InfoNota>
+        </>
+      )}
     </div>
   );
 }

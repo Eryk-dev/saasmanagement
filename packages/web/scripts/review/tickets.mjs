@@ -64,5 +64,30 @@ try{
  for(const [width,q]of [[390,''],[1440,'&theme=dark'],[1440,'&empty']]){
   const page=await h.open(width,q);await h.capture(page,`state-${width}-${q||'mobile'}`);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));if(!q.includes('empty')){await openFirst(page);await h.capture(page,`detail-${width}-${q||'mobile'}`);const box=await detail(page).boundingBox();assert.ok(box.x>=0&&box.x+box.width<=width);await showData(detail(page));await h.capture(page,`data-${width}-${q||'mobile'}`);}await page.close();
  }
- assert.deepEqual(h.errors,[]);console.log('Tickets: Kanban/Lista, filtros, gaveta, abas, criação, resposta mock, descarte, exclusão, falhas/retry, mobile e tema escuro OK.');
+ // Hermes (?hermes): o ticket é o mesmo; a fase do card aparece no chip, no filtro e na seção lateral, e as ações do guia saem pelo diálogo.
+ const hm=await h.open(1440,'&hermes');const hermesCard=hm.locator('.support-card').filter({hasText:'#1044'});await hermesCard.getByText('Hermes · Validar v2').waitFor();
+ const filtroHermes=hm.getByRole('button',{name:/^Com o Hermes/});assert.match(await filtroHermes.textContent(),/3$/,'com o Hermes: validar, pergunta e parado pela bancada (o do time e o no ar ficam fora)');await filtroHermes.click();
+ assert.match(await hm.locator('.support-card .support-card-meta .mono').first().textContent(),/#1044|#1045/);await h.capture(hm,'hermes-filter');
+ await hermesCard.locator('.support-card-subject').click();const hd=detail(hm);const sec=hd.locator('.hermes-section');await sec.getByRole('button',{name:'Aprovar v2'}).waitFor();assert.equal(await sec.getAttribute('data-human'),'1');
+ await sec.getByRole('button',{name:'ler o card de validação'}).click();await hd.locator('.hermes-card').getByText('O que acontecia').waitFor();assert.equal(await hd.getByText('Antes de aprovar, confiram').count(),0,'sem checklist');await h.capture(hm,'hermes-detail-validar');
+ // Atribuir com o caso no Hermes pede confirmação; recusar a pergunta não salva.
+ const antes=await hm.evaluate(()=>(window.__hermesActions||[]).length);hm.once('dialog',d=>{assert.match(d.message(),/está com o Hermes/);d.dismiss();});
+ await hd.getByRole('button',{name:'atribuir…'}).click();await hm.getByRole('option',{name:/Tiago/}).first().click().catch(async()=>{await hm.getByText('Tiago',{exact:true}).last().click();});
+ assert.equal(await hd.getByRole('button',{name:'atribuir…'}).count(),1,'responsável não muda sem confirmar');
+ await sec.getByRole('button',{name:'Aprovar v2'}).click();const dlg=hm.getByRole('dialog',{name:/Aprovar a correção v2/});await dlg.getByRole('button',{name:'Aprovar v2'}).waitFor();await h.capture(hm,'hermes-approve-dialog');
+ await dlg.getByRole('button',{name:'Aprovar v2'}).click();await dlg.waitFor({state:'hidden'});await sec.getByText(/Aprovado v2 · publica entre 23h/).waitFor();
+ const acoes=await hm.evaluate(()=>window.__hermesActions);assert.equal(acoes.length,antes+1);assert.deepEqual(acoes.at(-1).body.action,'aprovar');assert.equal(acoes.at(-1).body.version,2,'aprova a versão lida');
+ await sec.getByRole('button',{name:'Desistir da aprovação'}).waitFor();await h.capture(hm,'hermes-approved');await hd.getByRole('button',{name:'Fechar',exact:true}).click();
+ // Pergunta do Hermes: responder exige texto.
+ await hm.locator('.support-card').filter({hasText:'#1045'}).locator('.support-card-subject').click();await sec.getByRole('button',{name:'Responder'}).click();const resp=hm.getByRole('dialog',{name:'Responder ao Hermes'});
+ assert.ok(await resp.getByRole('button',{name:'Responder'}).isDisabled());await resp.getByRole('textbox').fill('É a Auto Center de Ribeirão Preto.');await resp.getByRole('button',{name:'Responder'}).click();await resp.waitFor({state:'hidden'});
+ assert.equal((await hm.evaluate(()=>window.__hermesActions)).at(-1).body.text,'É a Auto Center de Ribeirão Preto.');await hd.getByRole('button',{name:'Fechar',exact:true}).click();
+ // Ticket comum: entregar ao Hermes.
+ await hm.getByRole('button',{name:/^Abertos/}).click();await hm.locator('.support-card').filter({hasText:'#1040'}).locator('.support-card-subject').click();await hd.locator('.hermes-section').getByRole('button',{name:'Entregar ao Hermes'}).click();
+ const ent=hm.getByRole('dialog',{name:'Entregar ao Hermes'});await ent.getByRole('button',{name:'Entregar ao Hermes'}).click();await ent.waitFor({state:'hidden'});await hd.locator('.hermes-section').getByText(/aguardando o Hermes assumir/).waitFor();await h.capture(hm,'hermes-delivered');await hm.close();
+ for(const [width,q]of [[390,'&hermes'],[1440,'&hermes&theme=dark']]){
+  const page=await h.open(width,q);const card=page.locator('.support-card').filter({hasText:'#1044'});await card.locator('.support-card-subject').click();await showData(detail(page));await detail(page).locator('.hermes-section').getByRole('button',{name:'Aprovar v2'}).waitFor();
+  await h.capture(page,`hermes-${width}-${q.includes('dark')?'dark':'mobile'}`);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.close();
+ }
+ assert.deepEqual(h.errors,[]);console.log('Tickets: Kanban/Lista, filtros, gaveta, abas, criação, resposta mock, descarte, exclusão, falhas/retry, mobile, tema escuro e Hermes OK.');
 }finally{await h.close();}

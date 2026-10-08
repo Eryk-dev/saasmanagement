@@ -376,7 +376,6 @@ export const api = {
   // toca a Meta em background (subir + processar + clonar leva minutos, e
   // requisição aberta esse tempo todo morre no proxy). O acompanhamento é o
   // adVideoJob abaixo.
-  uploadCreative: (saas, formData, onProgress) => upload(`/api/marketing/${saas}/creatives`, formData, onProgress),
   // Criar anúncio clonando um conjunto e trocando o vídeo (mesmo padrão).
   adFromVideo: (saas, formData, onProgress) => upload(`/api/marketing/${saas}/ad-from-video`, formData, onProgress),
   adVideoJob: (jobId) => req("GET", `/api/marketing/job/${jobId}`),
@@ -678,6 +677,7 @@ export const api = {
   ticketQuickReply: (ticketId, qrId) => req("POST", `/api/tickets/${encodeURIComponent(ticketId)}/quick-replies/${encodeURIComponent(qrId)}/render`, {}),
   supportSettings: (saas) => req("GET", `/api/support/settings/${encodeURIComponent(saas)}`),
   supportSettingsSave: (saas, body) => req("PUT", `/api/support/settings/${encodeURIComponent(saas)}`, body),
+  supportHermesReread: (saas) => req("POST", `/api/support/settings/${encodeURIComponent(saas)}/hermes/reread`),
   // Espelho com o Linear: catálogo pra tela de configuração (times, projetos e
   // colunas do fluxo) e as ações de um ticket (mandar agora, vincular a uma
   // issue que já existe, desvincular).
@@ -685,6 +685,11 @@ export const api = {
   ticketLinear: (id) => req("GET", `/api/tickets/${encodeURIComponent(id)}/linear`),
   ticketLinearSync: (id, issue = "") => req("POST", `/api/tickets/${encodeURIComponent(id)}/linear`, issue ? { issue } : {}),
   ticketLinearUnlink: (id) => req("DELETE", `/api/tickets/${encodeURIComponent(id)}/linear`),
+  // Hermes no ticket: retrato + permissões (sem chamar o Linear) e as ações do
+  // guia (aprovar, ajuste, recusar, responder, desistir, reverter, passar para
+  // o time, entregar ao Hermes).
+  ticketHermes: (id) => req("GET", `/api/tickets/${encodeURIComponent(id)}/hermes`),
+  ticketHermesAction: (id, body) => req("POST", `/api/tickets/${encodeURIComponent(id)}/hermes`, body),
   supportAgents: () => req("GET", "/api/support/agents"),
   supportAgentSave: (id, body) => req("PUT", `/api/support/agents/${encodeURIComponent(id)}`, body),
   notifications: (unread = false) => req("GET", `/api/notifications${unread ? "?unread=1" : ""}`),

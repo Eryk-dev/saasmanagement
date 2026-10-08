@@ -24,6 +24,5 @@ export const metricsReviewMock={
  metaAdsets:id=>({adsets:clone(objects.adsets.filter(o=>o.campaignId===id))}),
  adCreative:checked('adCreative',()=>({type:'none'})),
  adFromVideo:checked('adFromVideo',()=>{(window.__adsUploads ||= []).push('clone');return{jobId:'job-demo'};}),
- uploadCreative:checked('uploadCreative',()=>{(window.__adsUploads ||= []).push('creative');return{jobId:'job-demo'};}),
  adVideoJob:()=>params.has('jobfail')?{status:'error',error:'Falha fictícia no processamento'}:({status:'done',result:{adsetName:'99 [B]',name:'99 [B]',status:'PAUSED'}}),
 };

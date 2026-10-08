@@ -43,15 +43,17 @@ test("getAdCreativeSpec: devolve object_story_spec + url_tags", async () => {
   assert.equal(spec.video_data.video_id, "v_old");
   assert.equal(urlTags, "utm_source=meta");
   assert.match(f.calls[0].url, /\/ad_copy\?/);
-  assert.match(decodeURIComponent(f.calls[0].url), /creative\{object_story_spec,url_tags\}/);
+  assert.match(decodeURIComponent(f.calls[0].url), /creative\{object_story_spec,asset_feed_spec,degrees_of_freedom_spec,url_tags\}/);
 });
 
 test("createVideoCreativeFromSpec: troca só o vídeo/thumb e preserva o resto", async () => {
   const f = recorder(() => ({ id: "cr_new" }));
   const meta = makeMeta({ fetch: f, accessToken: "tok" });
   const sourceSpec = { page_id: "10", instagram_user_id: "20", video_data: { video_id: "v_old", image_url: "old", message: "copy mantida", call_to_action: { type: "LEARN_MORE", value: { link: "https://x" } } } };
-  const id = await meta.createVideoCreativeFromSpec("act_9", { name: "1303 [B]", sourceSpec, videoId: "v_new", imageUrl: "thumb_new", urlTags: "utm_source=meta" });
+  const freedom = { creative_features_spec: { standard_enhancements: { enroll_status: "OPT_IN" }, image_touchups: { enroll_status: "OPT_OUT" } } };
+  const id = await meta.createVideoCreativeFromSpec("act_9", { name: "1303 [B]", sourceSpec, freedom, videoId: "v_new", imageUrl: "thumb_new", urlTags: "utm_source=meta" });
   assert.equal(id, "cr_new");
+  assert.deepEqual(JSON.parse(f.calls[0].body.degrees_of_freedom_spec), { creative_features_spec: { image_touchups: { enroll_status: "OPT_OUT" } } }, "melhorias iguais às do original, sem a chave descontinuada");
   const spec = JSON.parse(f.calls[0].body.object_story_spec);
   assert.equal(spec.video_data.video_id, "v_new");   // trocou
   assert.equal(spec.video_data.image_url, "thumb_new");
@@ -273,4 +275,103 @@ test("erro que NÃO é limite falha de primeira (não fica tentando à toa)", as
   const meta = makeMeta({ fetch: f, accessToken: "t", sleep: async () => {} });
   await assert.rejects(() => meta.listAdsets("c1"), /Invalid parameter/);
   assert.equal(chamadas, 1);
+});
+
+// ── Cópia recusada por posicionamento em par (08/10/2026) ─────────────────────
+// Caso real do Leo ao clonar "1436 [PRICE]": "Invalid parameter · To place ads
+// in Instagram Explore Home, please also select Instagram Explore · [código
+// 100/2490392]". Regra dele: clone EXATO, o cockpit não ajusta nada; o erro
+// diz o que fazer no conjunto de origem.
+const { placementPairHint, freedomSpecForCopy } = await import("../src/marketing/meta.js");
+const EXPLORE_ERR = { message: "Invalid parameter", error_user_msg: "To place ads in Instagram Explore Home, please also select Instagram Explore.", code: 100, error_subcode: 2490392 };
+
+test("placementPairHint: extrai a dica da Meta; outra mensagem não é par", () => {
+  assert.equal(placementPairHint("Meta API -> 400: Invalid parameter · To place ads in Instagram Explore Home, please also select Instagram Explore. · [código 100/2490392]"), "To place ads in Instagram Explore Home, please also select Instagram Explore");
+  assert.equal(placementPairHint("Invalid parameter [código 100]"), null);
+});
+
+test("copyAdSet: recusa por par de posicionamento NÃO recria nem altera nada; o erro diz o que ajustar na origem", async () => {
+  const f = recorder((url) => (/\/as_src\/copies$/.test(url) ? { error: EXPLORE_ERR } : { id: "nunca" }));
+  const meta = makeMeta({ fetch: f, accessToken: "tok" });
+  await assert.rejects(() => meta.copyAdSet("as_src", { deepCopy: false }), (err) => {
+    assert.match(err.message, /2490392/);
+    assert.match(err.message, /copia o conjunto exatamente como está/);
+    assert.match(err.message, /ajuste o conjunto de origem no Gerenciador \(To place ads in Instagram Explore Home, please also select Instagram Explore\)/);
+    return true;
+  });
+  assert.equal(f.calls.length, 1, "uma chamada só: nada de ler o conjunto nem criar outro");
+  // Outro erro sobe como está.
+  const f2 = recorder(() => ({ error: { message: "Invalid parameter", code: 100, error_subcode: 1815857 } }));
+  await assert.rejects(() => makeMeta({ fetch: f2, accessToken: "tok" }).copyAdSet("as_src", { deepCopy: false }), (err) => !/Gerenciador/.test(err.message) && /1815857/.test(err.message));
+});
+
+test("freedomSpecForCopy: melhorias do original vão como estão; só standard_enhancements (descontinuada) sai", () => {
+  const src = { creative_features_spec: { standard_enhancements: { enroll_status: "OPT_IN" }, image_touchups: { enroll_status: "OPT_OUT" }, enhance_cta: { enroll_status: "OPT_OUT" }, text_optimizations: { enroll_status: "OPT_IN" } } };
+  assert.deepEqual(freedomSpecForCopy(src), { creative_features_spec: { image_touchups: { enroll_status: "OPT_OUT" }, enhance_cta: { enroll_status: "OPT_OUT" }, text_optimizations: { enroll_status: "OPT_IN" } } });
+  assert.deepEqual(src.creative_features_spec.standard_enhancements, { enroll_status: "OPT_IN" }, "origem intocada");
+  assert.equal(freedomSpecForCopy(null), null);
+  assert.equal(freedomSpecForCopy({ creative_features_spec: { standard_enhancements: { enroll_status: "OPT_OUT" } } }), null, "só a descontinuada = nada a mandar");
+});
+
+// ── Texto no asset_feed_spec (08/10/2026) ─────────────────────────────────────
+// O "1491 [PRICE]" subiu sem texto principal, título e descrição: o anúncio de
+// origem guardava tudo no asset_feed_spec e o clone só olhava o video_data.
+const { assetFeedWithVideo } = await import("../src/marketing/meta.js");
+const FEED = {
+  ad_formats: ["SINGLE_VIDEO"],
+  bodies: [{ text: "Texto principal do 1436", adlabels: [{ id: "l1", name: "body_a" }] }],
+  titles: [{ text: "Headline do 1436" }],
+  descriptions: [{ text: "Descrição" }],
+  link_urls: [{ website_url: "https://leverads.com.br/diagnostico", display_url: "leverads.com.br" }],
+  call_to_action_types: ["LEARN_MORE"],
+  videos: [{ video_id: "v_old", thumbnail_url: "old", adlabels: [{ id: "l9", name: "video_a" }] }, { video_id: "v_old2", adlabels: [{ id: "l9", name: "video_a" }, { id: "l8", name: "video_b" }] }],
+  additional_data: { x: 1 }, autotranslate: ["pt"], id: "afs1",
+};
+
+test("getAdCreativeSpec: lê também o asset_feed_spec", async () => {
+  const f = recorder(() => ({ creative: { object_story_spec: { page_id: "1", video_data: { video_id: "v_old" } }, asset_feed_spec: FEED, degrees_of_freedom_spec: { creative_features_spec: { enhance_cta: { enroll_status: "OPT_OUT" } } }, url_tags: "utm_source=meta" } }));
+  const meta = makeMeta({ fetch: f, accessToken: "tok" });
+  const r = await meta.getAdCreativeSpec("ad_src");
+  assert.deepEqual(r.assetFeed, FEED);
+  assert.deepEqual(r.freedom, { creative_features_spec: { enhance_cta: { enroll_status: "OPT_OUT" } } });
+  assert.match(decodeURIComponent(f.calls[0].url), /creative\{object_story_spec,asset_feed_spec,degrees_of_freedom_spec,url_tags\}/);
+});
+
+test("assetFeedWithVideo: mantém textos/links/CTA, troca os vídeos pelo novo com os rótulos, tira o que a escrita recusa", () => {
+  const feed = assetFeedWithVideo(FEED, { videoId: "v_new", imageUrl: "thumb_new" });
+  assert.deepEqual(feed.bodies, FEED.bodies);
+  assert.deepEqual(feed.titles, FEED.titles);
+  assert.deepEqual(feed.descriptions, FEED.descriptions);
+  assert.deepEqual(feed.link_urls, FEED.link_urls);
+  assert.deepEqual(feed.call_to_action_types, ["LEARN_MORE"]);
+  assert.deepEqual(feed.videos, [{ video_id: "v_new", thumbnail_url: "thumb_new", adlabels: [{ id: "l9", name: "video_a" }, { id: "l8", name: "video_b" }] }]);
+  assert.equal(feed.additional_data, undefined);
+  assert.equal(feed.autotranslate, undefined);
+  assert.equal(feed.id, undefined);
+  assert.equal(FEED.videos.length, 2, "origem intocada");
+  // Sem texto no feed (ou sem feed), segue pelo video_data.
+  assert.equal(assetFeedWithVideo(null, { videoId: "v" }), null);
+  assert.equal(assetFeedWithVideo({ videos: [{ video_id: "v_old" }] }, { videoId: "v" }), null);
+  // Feed sem ad_formats ganha SINGLE_VIDEO.
+  assert.deepEqual(assetFeedWithVideo({ bodies: [{ text: "x" }] }, { videoId: "v" }).ad_formats, ["SINGLE_VIDEO"]);
+});
+
+test("createVideoCreativeFromSpec: com texto no asset_feed_spec, cria com o feed e o object_story_spec só de página/Instagram", async () => {
+  const f = recorder(() => ({ id: "cr_feed" }));
+  const meta = makeMeta({ fetch: f, accessToken: "tok" });
+  const sourceSpec = { page_id: "10", instagram_user_id: "20", video_data: { video_id: "v_old", image_url: "old", call_to_action: { type: "LEARN_MORE", value: { link: "https://x" } } } };
+  const freedom = { creative_features_spec: { enhance_cta: { enroll_status: "OPT_OUT" } } };
+  const id = await meta.createVideoCreativeFromSpec("act_9", { name: "1491 [PRICE]", sourceSpec, assetFeed: FEED, freedom, videoId: "v_new", imageUrl: "thumb_new", urlTags: "utm_source=meta" });
+  assert.equal(id, "cr_feed");
+  const b = f.calls[0].body;
+  assert.deepEqual(JSON.parse(b.degrees_of_freedom_spec), freedom);
+  assert.deepEqual(JSON.parse(b.object_story_spec), { page_id: "10", instagram_user_id: "20" }, "sem video_data junto do feed");
+  const feed = JSON.parse(b.asset_feed_spec);
+  assert.equal(feed.bodies[0].text, "Texto principal do 1436");
+  assert.equal(feed.titles[0].text, "Headline do 1436");
+  assert.equal(feed.videos[0].video_id, "v_new");
+  assert.equal(b.url_tags, "utm_source=meta");
+  assert.equal(b.name, "1491 [PRICE]");
+  // Origem sem página: erro claro.
+  await assert.rejects(() => meta.createVideoCreativeFromSpec("act_9", { name: "x", sourceSpec: { video_data: {} }, assetFeed: FEED, videoId: "v", imageUrl: "t" }), /não tem página/);
 });

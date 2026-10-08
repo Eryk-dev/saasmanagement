@@ -50,6 +50,53 @@ const RETRY_WAITS_MS = [30_000, 60_000, 120_000, 240_000];
 let throttleListener = null;
 export function onMetaThrottle(fn) { throttleListener = fn; }
 
+// A Meta recusa COPIAR um conjunto cujo posicionamento está sem o par que ela
+// passou a exigir ("To place ads in Instagram Explore Home, please also select
+// Instagram Explore", código 100/2490392), mesmo o original rodando assim.
+// Regra do Leo (08/10/2026): o clone é EXATO, o cockpit não mexe em nada do
+// conjunto de origem nem aceita ajuste da Meta; a dica dela vai pro erro e o
+// time ajusta o conjunto de origem no Gerenciador.
+const PLACEMENT_PAIR_RX = /to place ads in [^.·\[]+, please also select [^.·\[]+/i;
+export function placementPairHint(message) {
+  const m = PLACEMENT_PAIR_RX.exec(String(message || ""));
+  return m ? m[0].trim() : null;
+}
+// Melhorias automáticas do criativo (Advantage+ creative): o clone leva o
+// degrees_of_freedom_spec do anúncio de origem COMO ESTÁ (ligado ou desligado,
+// recurso a recurso), em vez de deixar a Meta aplicar o padrão dela no criativo
+// novo. Só `standard_enhancements` sai: a Graph descontinuou essa chave e
+// recusa o POST com ela (100/3858504), mesmo vindo da própria leitura.
+export function freedomSpecForCopy(freedom) {
+  if (!freedom || typeof freedom !== "object") return null;
+  const out = JSON.parse(JSON.stringify(freedom));
+  if (out.creative_features_spec && typeof out.creative_features_spec === "object") {
+    delete out.creative_features_spec.standard_enhancements;
+    if (!Object.keys(out.creative_features_spec).length) delete out.creative_features_spec;
+  }
+  return Object.keys(out).length ? out : null;
+}
+// Partes do asset_feed_spec que a Graph aceita de volta na criação de um
+// criativo. Fora: images (vira vídeo), id, e campos que a leitura devolve mas
+// a escrita recusa (additional_data, reasons_to_shop, autotranslate…).
+const ASSET_FEED_FIELDS = ["ad_formats", "bodies", "titles", "descriptions", "link_urls", "call_to_action_types",
+  "call_to_actions", "optimization_type", "asset_customization_rules", "groups", "captions"];
+const hasFeedText = (afs) => !!afs && ["bodies", "titles", "descriptions"].some((k) => Array.isArray(afs[k]) && afs[k].length);
+// Feed de origem com os vídeos trocados pelo novo (que herda os rótulos de
+// todos os vídeos antigos, pra regra de personalização por posicionamento
+// continuar apontando pra um vídeo que existe). null = origem sem texto no
+// feed, segue pelo object_story_spec.video_data.
+export function assetFeedWithVideo(assetFeed, { videoId, imageUrl }) {
+  if (!hasFeedText(assetFeed)) return null;
+  const feed = {};
+  for (const k of ASSET_FEED_FIELDS) if (assetFeed[k] != null) feed[k] = JSON.parse(JSON.stringify(assetFeed[k]));
+  const labels = [];
+  for (const v of Array.isArray(assetFeed.videos) ? assetFeed.videos : []) {
+    for (const l of v.adlabels || []) if (!labels.some((x) => x.name === l.name)) labels.push(l);
+  }
+  feed.videos = [{ video_id: String(videoId), ...(imageUrl ? { thumbnail_url: imageUrl } : {}), ...(labels.length ? { adlabels: labels } : {}) }];
+  if (!Array.isArray(feed.ad_formats) || !feed.ad_formats.length) feed.ad_formats = ["SINGLE_VIDEO"];
+  return feed;
+}
 export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), onThrottle = (i) => throttleListener?.(i) } = {}) {
   const configured = () => !!accessToken;
   const acct = (id) => (String(id).startsWith("act_") ? String(id) : `act_${id}`);
@@ -584,11 +631,21 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
     // mesma campanha do original e PAUSADO. É a base do "clonar e trocar o
     // vídeo": público, orçamento, posicionamento, otimização e copy vêm de
     // brinde do conjunto de origem. Retorna { adsetId, adIds } dos cópias.
+    // Cópia EXATA (Leo, 08/10): nada do conjunto de origem é alterado pra
+    // agradar a Meta. Recusa por posicionamento em par vira erro com a dica
+    // dela e o que fazer no Gerenciador.
     async copyAdSet(adsetId, { campaignId, statusOption = "PAUSED", deepCopy = true } = {}) {
       if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
       const params = { deep_copy: deepCopy ? "true" : "false", status_option: statusOption };
       if (campaignId) params.campaign_id = String(campaignId);
-      const body = await post(`${adsetId}/copies`, params);
+      let body;
+      try {
+        body = await post(`${adsetId}/copies`, params);
+      } catch (err) {
+        const hint = placementPairHint(err.message);
+        if (hint) err.message += ` · o cockpit copia o conjunto exatamente como está e não altera o posicionamento por conta própria: ajuste o conjunto de origem no Gerenciador (${hint}) e tente de novo`;
+        throw err;
+      }
       const copied = String(body.copied_adset_id || body.id || "");
       if (!copied) throw new Error("Meta: cópia do conjunto não retornou id");
       const adIds = (body.ad_object_ids || [])
@@ -621,10 +678,17 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
     // e as UTMs de atribuição).
     async getAdCreativeSpec(adId) {
       if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
-      const params = new URLSearchParams({ fields: "creative{object_story_spec,url_tags}", access_token: accessToken });
+      // asset_feed_spec: é onde o Gerenciador guarda texto principal, título,
+      // descrição, link e CTA dos anúncios criados por ele hoje (formato
+      // flexível / Advantage+). Nesses, o object_story_spec.video_data vem só
+      // com o vídeo, e clonar só por ele dá anúncio SEM TEXTO (caso do Leo,
+      // 08/10: "1491 [PRICE]" subiu com os campos vazios).
+      // degrees_of_freedom_spec: as melhorias automáticas (Advantage+ creative)
+      // do original, pra copiar como estão (ver freedomSpecForCopy).
+      const params = new URLSearchParams({ fields: "creative{object_story_spec,asset_feed_spec,degrees_of_freedom_spec,url_tags}", access_token: accessToken });
       const body = await get(`${GRAPH}/${adId}?${params}`);
       const c = body.creative || {};
-      return { spec: c.object_story_spec || null, urlTags: c.url_tags || "" };
+      return { spec: c.object_story_spec || null, assetFeed: c.asset_feed_spec || null, freedom: c.degrees_of_freedom_spec || null, urlTags: c.url_tags || "" };
     },
 
     // Mídia do criativo de UM anúncio — pra pré-visualizar o vídeo/imagem na
@@ -659,9 +723,29 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
 
     // Cria um criativo NOVO a partir do object_story_spec de origem, trocando só
     // o vídeo (video_id + thumbnail) e mantendo todo o resto do spec.
-    async createVideoCreativeFromSpec(adAccountId, { name, sourceSpec, videoId, imageUrl, urlTags }) {
+    async createVideoCreativeFromSpec(adAccountId, { name, sourceSpec, assetFeed = null, freedom = null, videoId, imageUrl, urlTags }) {
       if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
       const spec = sourceSpec ? JSON.parse(JSON.stringify(sourceSpec)) : null;
+      // Melhorias automáticas iguais às do original, recurso a recurso.
+      const dof = freedomSpecForCopy(freedom);
+      const extras = { ...(urlTags ? { url_tags: urlTags } : {}), ...(dof ? { degrees_of_freedom_spec: JSON.stringify(dof) } : {}) };
+      // Texto no asset_feed_spec: o criativo novo vai com o MESMO feed (textos,
+      // títulos, descrições, links, CTA, formato) e só os vídeos trocados pelo
+      // novo. O object_story_spec aí leva só página e Instagram (a Meta recusa
+      // video_data junto com asset_feed_spec).
+      const feed = assetFeedWithVideo(assetFeed, { videoId, imageUrl });
+      if (feed) {
+        if (!spec?.page_id) throw new Error("o anúncio de origem não tem página no object_story_spec — não dá pra montar o criativo");
+        const story = { page_id: spec.page_id };
+        for (const k of ["instagram_user_id", "instagram_actor_id"]) if (spec[k]) story[k] = spec[k];
+        const body = await post(`${acct(adAccountId)}/adcreatives`, {
+          name,
+          object_story_spec: JSON.stringify(story),
+          asset_feed_spec: JSON.stringify(feed),
+          ...extras,
+        });
+        return String(body.id);
+      }
       if (!spec || !spec.video_data) {
         throw new Error("o anúncio de origem não é um anúncio de vídeo simples (sem object_story_spec.video_data) — troca de vídeo não se aplica");
       }
@@ -675,7 +759,7 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       const body = await post(`${acct(adAccountId)}/adcreatives`, {
         name,
         object_story_spec: JSON.stringify(spec),
-        ...(urlTags ? { url_tags: urlTags } : {}),
+        ...extras,
       });
       return String(body.id);
     },

@@ -27,6 +27,7 @@ import {
   ACTOR_LINEAR, STATUS_KIND, TICKET_PRIORITIES, createTicket, loadSettings, saveSettings, patchTicket,
   recordTicketEvents, ticketTitle,
 } from "./tickets-core.js";
+import { normalizeHermesSettings, applyHermesIssue, applyHermesComment, isCockpitSigned, isHermesAuthor, parseHermesComment } from "./ticket-hermes.js";
 
 export const OUTBOX = "linear_outbox";
 export const MIRROR_MESSAGE_MODES = ["all", "public", "none"];
@@ -85,6 +86,7 @@ export function normalizeLinearSettings(src) {
     syncAssignee: s.syncAssignee !== false,
     people: normalizePeople(s.people),
     statusMap, stateBack,
+    hermes: normalizeHermesSettings(s.hermes),
   };
 }
 
@@ -512,6 +514,10 @@ export async function applyLinearIssue(repo, issue, { now = nowIso(), log, linea
     assigneeId: linearNow !== undefined ? linearNow : prevMirror.assigneeId,
   });
   await stampLinear(repo, ticket.id, stamp);
+  // Hermes: fase do card pelo estado, etiqueta e assignee (ticket-hermes.js).
+  // Etiqueta ausente do payload = não dá pra concluir, vale o que já se sabia.
+  const labels = issue.labels === undefined ? undefined : issueLabelNames(issue);
+  await applyHermesIssue(repo, ticket.id, { state: issue.state, labels, assignee: issueAssignee(issue) }, cfg.hermes, { now, log });
   return { ticket: ticket.id, patch };
 }
 
@@ -525,7 +531,7 @@ export async function applyLinearComment(repo, { issueId, comment, now = nowIso(
   const cid = str(comment?.id, 120);
   const ticket = await findTicketByIssue(repo, issueId);
   if (!ticket || !cid) return null;
-  if ((ticket.linear?.posted || []).includes(cid)) return { skipped: "own" };
+  if ((ticket.linear?.posted || []).includes(cid) || isCockpitSigned(comment?.body)) return { skipped: "own" };
   // `seenComments` é a memória do que já passou por aqui. A mensagem no doc não
   // basta como registro: ela pode ser apagada (e foi, quando o histórico da
   // issue saiu do ticket) e aí a reconciliação traria tudo de volta.
@@ -536,6 +542,12 @@ export async function applyLinearComment(repo, { issueId, comment, now = nowIso(
   const autor = str(comment?.user?.name, 120) || "Linear";
   const ref = ticket.linear?.identifier || "Linear";
   const titulo = ticketTitle(ticket);
+  // Comentário do Hermes atualiza o retrato (versão em validação, "no ar às",
+  // aceite do pedido de entrega). O texto continua só no Linear.
+  if (ticket.hermes?.labeled || ticket.hermes?.requested) {
+    const { linear: cfg } = await loadSettings(repo, ticket.saas);
+    await applyHermesComment(repo, ticket, comment, cfg?.hermes, { now });
+  }
 
   await stampLinear(repo, ticket.id, {
     seenComments: capIds([...(ticket.linear?.seenComments || []), cid]),
@@ -563,6 +575,53 @@ export async function applyLinearComment(repo, { issueId, comment, now = nowIso(
   }
   log?.info?.(`linear: comentário ${cid} em ${ref} → aviso no ticket #${ticket.number}`);
   return { ticket: ticket.id, comment: cid, notified: avisados };
+}
+
+// Ligar o Hermes num produto (ou trocar etiqueta, usuário ou de-para) relê os
+// cards dos tickets abertos: o retrato só nasce quando o card muda, e um card
+// parado em Validar ficaria invisível até alguém mexer nele no Linear. Dos
+// comentários antigos do Hermes só contam o último card de validação e o
+// último "no ar" (e a parada por falha da bancada, quando é o último) — a
+// atividade não ganha o histórico inteiro de uma vez.
+export async function backfillHermes(repo, saas, { linear, log, now = nowIso() } = {}) {
+  if (!linear?.configured?.()) return { skipped: "not_configured" };
+  const { linear: cfg } = await loadSettings(repo, saas);
+  if (!cfg?.enabled || !cfg.hermes?.enabled) return { skipped: "disabled" };
+  const abertos = (await repo.listWhere("tickets", { saas })).filter((t) => t.linearIssueId && STATUS_KIND[t.status] !== "done");
+  const out = { tickets: abertos.length, hermes: 0, errors: 0 };
+  for (const t of abertos) {
+    try {
+      const r = await linear.issueWithComments(t.linearIssueId);
+      if (!r?.issue) continue;
+      await applyHermesIssue(repo, t.id, { state: r.issue.state, labels: issueLabelNames(r.issue), assignee: issueAssignee(r.issue) }, cfg.hermes, { now, log });
+      const cur = await repo.get("tickets", t.id);
+      if (!cur?.hermes?.labeled && !cur?.hermes?.requested) continue;
+      out.hermes++;
+      const doHermes = (r.comments || []).filter((c) => isHermesAuthor(c.user, cfg.hermes))
+        .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
+      const ultimo = (kind) => [...doHermes].reverse().find((c) => parseHermesComment(c.body).kind === kind);
+      // Parado em "Aguardando resposta" por falha da bancada: vale se a parada
+      // for o último comentário dele (depois dela, ele retomou).
+      const fim = doHermes[doHermes.length - 1];
+      const parado = cur.hermes.phase === "pergunta" && fim && parseHermesComment(fim.body).kind === "stalled" ? fim : null;
+      for (const c of [ultimo("validation"), cur.hermes.phase === "no_ar" ? ultimo("live") : null, parado].filter(Boolean)) {
+        await applyHermesComment(repo, await repo.get("tickets", t.id), c, cfg.hermes, { now });
+      }
+    } catch (err) {
+      out.errors++;
+      log?.warn?.(`hermes: releitura do ticket #${t.number}: ${err.message}`);
+    }
+  }
+  log?.info?.(`hermes: releitura de ${saas} · ${out.hermes} de ${out.tickets} tickets com o Hermes${out.errors ? ` · ${out.errors} falhas` : ""}`);
+  return out;
+}
+
+// Comentário que o cockpit postou por fora da fila (ações do Hermes): entra em
+// `posted` pra não voltar como aviso pelo webhook/reconciliação.
+export async function rememberPosted(repo, ticketId, commentId) {
+  const cur = await repo.get("tickets", ticketId);
+  if (!cur || !commentId) return null;
+  return stampLinear(repo, ticketId, { posted: capIds([...(cur.linear?.posted || []), commentId]) });
 }
 
 // Vínculo manual com uma issue que já existe (o atendente cola ENG-123 ou a URL).

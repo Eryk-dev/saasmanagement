@@ -186,3 +186,19 @@ test("reservas não abrem dias posteriores nem escondem vagas após o limite ant
   holds.push({ at: last.slots[0].at, leadId: "other" });
   assert.deepEqual((await sdrSlotsForLead(repo, { ...options, grade: "A", holds })).slots, []);
 });
+
+// Leo, 08/10: "terça ou quarta" (o robô ofereceu segunda) e "quarta que vem"
+// não viravam pedido.
+test("'terça ou quarta' pede os dois dias; 'quarta que vem' e 'sexta feira também' viram pedido", () => {
+  const w = sdrAgendaWindow([inbound("terça ou quarta")], NOW);
+  assert.equal(w.requested, true);
+  assert.equal(w.startDate, "2026-09-22");
+  assert.equal(w.days, 2);
+  assert.equal(sdrAgendaWindow([inbound("Conseguimos quinta ou sexta?")], NOW).days, 2);
+  assert.equal(sdrAgendaWindow([inbound("quarta que vem")], NOW).startDate, "2026-09-23");
+  assert.equal(sdrAgendaWindow([inbound("Quarta feira que vem fica bom?")], NOW).startDate, "2026-09-23");
+  assert.equal(sdrAgendaWindow([inbound("Sexta feira também")], NOW).startDate, "2026-09-25");
+  for (const text of ["fechei a loja quarta", "Amanhã não consigo", "18"]) {
+    assert.equal(sdrAgendaWindow([inbound(text)], NOW).requested, false, text);
+  }
+});

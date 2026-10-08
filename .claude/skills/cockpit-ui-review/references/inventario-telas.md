@@ -686,8 +686,14 @@ Validação: 1.739 testes da API, testes web/smoke, build e revisão visual apro
   notificações e autorização continuam na API. Pausas, texto do portal e
   integração Linear permanecem disponíveis, embora a prancha os resuma/omita;
   por isso as alturas e distribuição dos cards dependem do conteúdo real.
-  A integração Linear fica após Atendentes. A navegação entre rotas continua
-  sem confirmação global de rascunho desta tela.
+  A navegação entre rotas continua sem confirmação global de rascunho desta tela.
+- **Abas (08/10/2026):** os cards espalhados em três colunas viraram três abas
+  (`role="tablist"`, setas ←/→, aba lembrada em `cockpit_support_settings_tab`):
+  **SLA** (prazos + relógio), **Tickets** (categorias, portal e atendentes) e
+  **Linear · Hermes** (espelho e, em cartão próprio ao lado, o Hermes). O rascunho e o Salvar continuam únicos; a
+  aba com alteração pendente ganha um ponto `--warn`. A comparação com a prancha
+  passou a medir só cabeçalho e início/largura das colunas (a prancha não tem a
+  linha de abas); `REVIEW_FLOWS=1` roda os fluxos sem a prancha local.
 
 Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
 

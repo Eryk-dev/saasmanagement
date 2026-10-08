@@ -455,7 +455,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         job.step = "lendo o anúncio de origem";
         const sourceAds = await meta.adsOfAdSet(sourceAdsetId);
         if (!sourceAds.length) throw new Error("o conjunto de origem não tem anúncio pra copiar — escolha um conjunto que já tenha um anúncio de vídeo");
-        const { spec, urlTags } = await meta.getAdCreativeSpec(sourceAds[0].id);
+        const { spec, assetFeed, freedom, urlTags } = await meta.getAdCreativeSpec(sourceAds[0].id);
         // 2. sobe o vídeo novo + a thumbnail (a Meta exige uma).
         job.step = "subindo o vídeo pra Meta";
         const onProgress = (p) => { job.step = `subindo o vídeo pra Meta · ${Math.round(p * 100)}%`; };
@@ -469,6 +469,8 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         //    código 100/3858504). Copiamos o conjunto (público, orçamento,
         //    posicionamento, otimização) e montamos o anúncio novo por cima.
         job.step = "clonando o conjunto de origem";
+        //    Cópia EXATA (Leo, 08/10): nenhum ajuste sugerido/exigido pela Meta é
+        //    aplicado; se ela recusar, o erro diz o que ajustar na origem.
         const copy = await meta.copyAdSet(sourceAdsetId, { statusOption: statusNovo, deepCopy: false });
         // 4. renomeia o conjunto clonado.
         await meta.renameObject(copy.adsetId, finalName);
@@ -500,7 +502,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         //    (e a thumbnail dele) mudam. Nasce PAUSADO.
         job.step = "criando o anúncio com o vídeo novo";
         const creativeId = await meta.createVideoCreativeFromSpec(product.metaAdAccount, {
-          name: finalName, sourceSpec: spec, videoId, imageUrl, urlTags: urlTags || CREATIVE_URL_TAGS,
+          name: finalName, sourceSpec: spec, assetFeed, freedom, videoId, imageUrl, urlTags: urlTags || CREATIVE_URL_TAGS,
         });
         const ad = await meta.createAd(product.metaAdAccount, { adsetId: copy.adsetId, creativeId, name: finalName, status: statusFinal });
         const ads = [{ id: String(ad.id), name: finalName }];

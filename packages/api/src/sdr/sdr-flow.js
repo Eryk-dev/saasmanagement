@@ -25,7 +25,7 @@
 // O motor é um poller de 60s no molde do drip-runner (single-flight, no-op sem
 // produto ligado), iniciado no index.js.
 import { findThreadByPhone, listMessages, recordMessage, waMatchKey } from "../whatsapp/wa-store.js";
-import { lastRealReply, isOfferMsg, offeredSlotsIn, windowOpenAt, AUTO_REPLY_RX, GREETING_ONLY_RX } from "./sdr-signals.js";
+import { lastRealReply, isOfferMsg, offeredSlotsIn, windowOpenAt, AUTO_REPLY_RX, GREETING_ONLY_RX, collapseSameDay } from "./sdr-signals.js";
 import { upsertNotification } from "../tasks/tasks-core.js";
 import { digits } from "../whatsapp/whatsapp.js";
 import { kindOf, firstStage, isNoShowStage, isWonLead, stageByKind } from "../crm/stages.js";
@@ -203,6 +203,7 @@ export function sdrBotConfig(product) {
       // fallback enquanto a Meta não aprova (e pra lead sem nome utilizável).
       firstTouchOem: cfg.templates?.firstTouchOem || "sdr_primeiro_toque_oem_v2",
       firstTouchOemV1: cfg.templates?.firstTouchOemV1 || "sdr_primeiro_toque_oem",
+      firstTouchPrice: cfg.templates?.firstTouchPrice || "sdr_primeiro_toque_price",
       firstTouch: cfg.templates?.firstTouch || "sdr_primeiro_toque_v2",
       // "call" nunca chega no lead (Leo, 23/08): templates novos falam
       // "conversa"; os antigos aprovados seguem de fallback até a revisão.
@@ -218,6 +219,7 @@ export function sdrBotConfig(product) {
       reminderManhaOemImg: cfg.templates?.reminderManhaOemImg || "sdr_lembrete_manha_oem_img",
       reminderLinkOem: cfg.templates?.reminderLinkOem || "sdr_lembrete_link_oem",
       reminder10minOem: cfg.templates?.reminder10minOem || "sdr_lembrete_10min_oem",
+      reminderManhaPrice: cfg.templates?.reminderManhaPrice || "sdr_lembrete_manha_price",
       rescue: cfg.templates?.rescue || "sdr_resgate_conversa",
       secondTouch: cfg.templates?.secondTouch || "sdr_retomada_conversa",
       // Variações aprovadas da retomada: o lote de 2º toque sorteia entre elas
@@ -249,8 +251,9 @@ export function leadPainFocus(product, lead) {
   const oemFits = !lead?.niche || isAutoPecas(lead.niche);
   // Dor PRICE (Leo, 07/10): precificação não depende de nicho — preço
   // desatualizado dói igual em autopeças e em moda —, então ela não passa pela
-  // cerca do `oemFits`. O modo "price" NÃO entra no roteiro fixo do OEM (que é
-  // gateado em mode === "oem"): só troca o pitch e o foco da IA.
+  // cerca do `oemFits`. Desde 08/10 o modo "price" anda no MESMO roteiro fixo
+  // do OEM (M1..M4, preço, lembretes), com a copy própria do Lever Price
+  // (price*Text aqui e scriptParts no sdr-brain.js).
   const mode = code === "PRICE" ? "price" : code === "OEM" && oemFits ? "oem" : "clone";
   return { code, label: product?.painMap?.[code] || "", mode };
 }
@@ -305,21 +308,26 @@ export function firstTouchOemText({ nome }) {
   return `Oiii${nome ? ` ${nome}` : ""}, tudo bem? Recebemos aqui seu interesse, com o Lever OEM você digita o código e recebe o anúncio completo, com fotos, título de 200 caracteres, descrição e compatibilidade, pronto para revisar e publicar no Mercado Livre e Shopee. Isso ajudaria na sua operação?`;
 }
 
+// ROTEIRO LEVER PRICE (copy alinhada com o Leo em 08/10/2026, no molde do
+// OEM): abordagem fixa, sem nome do SDR e sem o resumo do diagnóstico. Mesmo
+// corpo do template sdr_primeiro_toque_price (janela fechada). O pitch é dito
+// UMA vez (aqui); M2/M3 só agendam e confirmam, pra não soar repetitivo.
+export function firstTouchPriceText({ nome }) {
+  return `Oiii${nome ? ` ${nome}` : ""}, tudo bem? Recebemos aqui seu interesse, com o Lever Price você cadastra uma vez só o custo, a margem e o imposto de cada produto e, a partir daí, tudo acontece de forma automática: a plataforma confere seus anúncios no Mercado Livre 24 horas por dia, a cada minuto, mantém seu lucro dentro do esperado e ainda coloca seus produtos nas melhores promoções do ML: relâmpago, campanhas como Black Friday e 10.10, rebate e, quando não tem nenhuma delas, cria a promoção do vendedor pra seu anúncio nunca ficar fora de oferta. Isso ajudaria na sua operação?`;
+}
+
 export function firstTouchText({ nome, sdrName, resumo, pain = null, niche = "" }) {
   if (pain?.mode === "oem") return firstTouchOemText({ nome });
+  if (pain?.mode === "price") return firstTouchPriceText({ nome });
   const oi = nome ? `Oiii, ${nome}.` : "Oiii.";
   const eu = sdrName ? `${sdrName} falando, da LeverAds.` : "Aqui é da LeverAds.";
   // Lead de PRICE não leva o puxadinho do OEM: ele clicou num criativo de
   // preço, e somar um segundo produto na abertura dilui a única coisa que o
   // trouxe. Sem dor nenhuma o comportamento é o de antes (autopeças ouve o OEM).
-  const oemSide = pain?.mode !== "oem" && pain?.mode !== "price" && isAutoPecas(niche)
+  const oemSide = isAutoPecas(niche)
     ? " E pra autopeças, ela ainda cria o anúncio completo só com o código OEM: fotos, título, descrição e compatibilidade."
     : "";
-  const pitch = pain?.mode === "oem"
-    ? "A LeverAds cria o anúncio completo da sua autopeça só com o OEM (part number): fotos, título de 200 caracteres, descrição e compatibilidade inteira, pronto pra revisar e publicar em menos de 5 minutos. Isso ajudaria na sua operação?"
-    : pain?.mode === "price"
-      ? "O Lever Price acerta o preço dos seus anúncios sozinho, por regra de margem e de concorrência, e te avisa de todo anúncio que sai da regra, sem ninguém conferir planilha. Isso ajudaria na sua operação?"
-      : `A LeverAds te ajuda a gerenciar múltiplas contas de Mercado Livre e Shopee de forma automática, com clonagem de anúncios, estoque, atendimento e edição em um lugar só.${oemSide} Isso ajudaria na sua operação hoje?`;
+  const pitch = `A LeverAds te ajuda a gerenciar múltiplas contas de Mercado Livre e Shopee de forma automática, com clonagem de anúncios, estoque, atendimento e edição em um lugar só.${oemSide} Isso ajudaria na sua operação hoje?`;
   return `${oi} ${eu} Recebi seu diagnóstico aqui: ${resumo}. ${pitch}`;
 }
 
@@ -372,9 +380,22 @@ export function oemMorningParts(nome, quando) {
     "Na reunião vamos te mostrar na prática o passo a passo para criar anúncios completos em escala, explicar as funcionalidades da plataforma e tirar todas suas dúvidas. Posso contar com sua presença? Caso não consiga comparecer, me sinalize para liberar seu horário, por favor.",
   ];
 }
-function reminderTextOem(key, { nome, quando, link }) {
+// Manhã do lead de PRICE (08/10): único ponto do roteiro que relembra o que
+// vai ser mostrado (podem ter passado dias desde a abordagem). Sem foto: o Leo
+// ainda não mandou print do painel; quando mandar, entra como no OEM.
+export function priceMorningParts(nome, quando) {
+  const bomDia = nome ? `Bom dia ${nome}, tudo bom?` : "Bom dia, tudo bom?";
+  return [
+    `${bomDia} Temos um horário reservado para ${quando}, tudo certo?`,
+    "Na reunião vamos te mostrar na prática como o Lever Price cuida do preço e das promoções dos seus anúncios, além de tirar todas suas dúvidas. Posso contar com sua presença? Caso não consiga comparecer, me sinalize para liberar seu horário, por favor.",
+  ];
+}
+// Lembretes dos roteiros fixos (OEM e PRICE): a manhã é por produto; o de 2h
+// e o de 10min só falam de horário e link, então os dois roteiros dividem o
+// mesmo texto (e os mesmos templates *_oem na janela fechada).
+function reminderTextOem(key, { nome, quando, link, script = "oem" }) {
   const voc = nome ? `${nome}, nossa` : "Nossa";
-  if (key === "manha") return oemMorningParts(nome, quando).join(" ");
+  if (key === "manha") return (script === "price" ? priceMorningParts(nome, quando) : oemMorningParts(nome, quando)).join(" ");
   if (key === "2h") {
     return link
       ? `${voc} conversa é ${quando}. O link pra entrar é este: ${link}. Qualquer imprevisto por favor me avise.`
@@ -387,8 +408,9 @@ function reminderTextOem(key, { nome, quando, link }) {
   }
   return null;
 }
-export function reminderText(key, { nome, quando, link, oem = false }) {
-  if (oem) { const t = reminderTextOem(key, { nome, quando, link }); if (t) return t; }
+export function reminderText(key, { nome, quando, link, oem = false, script = "" }) {
+  const mode = oem ? "oem" : script === "price" ? "price" : "";
+  if (mode) { const t = reminderTextOem(key, { nome, quando, link, script: mode }); if (t) return t; }
   const oi = nome ? `Oi ${nome}!` : "Oi!";
   if (key === "24h") return `${oi} Confirmando nossa conversa ${quando}, tudo certo? Qualquer imprevisto me fala por aqui que eu remarco sem problema.`;
   // Manhã do dia da call (Leo, 30/09): mesmo pedido de positiva do 2h, com o
@@ -423,7 +445,7 @@ export function reminderText(key, { nome, quando, link, oem = false }) {
 // horário"). Depois desse, o lead fica pro time — insistir mais vira chateação.
 function rescue2Text({ nome, slots = [], now }) {
   const oi = nome ? `Oi ${nome},` : "Oi,";
-  if (slots.length >= 2) return `${oi} consegui dois horários novos com nosso especialista: ${slotLabel(slots[0].at, now)} ou ${slotLabel(slots[1].at, now)}. Qual fica melhor pra você?`;
+  if (slots.length >= 2) return `${oi} consegui dois horários novos com nosso especialista: ${collapseSameDay(`${slotLabel(slots[0].at, now)} ou ${slotLabel(slots[1].at, now)}`)}. Qual fica melhor pra você?`;
   if (slots.length === 1) return `${oi} consegui um horário novo com nosso especialista, ${slotLabel(slots[0].at, now)}. Fica bom pra você?`;
   return `${oi} ainda dá tempo de remarcar nossa conversa. Me diz o melhor dia e período que eu vejo aqui na agenda.`;
 }
@@ -434,18 +456,19 @@ function rescue2Text({ nome, slots = [], now }) {
 export function offerNudgeText({ nome, pair = [], kept = false, now }) {
   const oi = `${now.getUTCHours() < 12 ? "Bom dia" : "Boa tarde"}${nome ? ` ${nome}` : ""}!`;
   const l = pair.map((s) => slotLabel(s.at, now));
+  const dupla = l.length >= 2 ? collapseSameDay(`${l[0]} ou ${l[1]}`) : ""; // "hoje às 14h ou às 16h"
   if (kept) return l.length >= 2
-    ? `${oi} Ficou ${l[0]} ou ${l[1]} pra nossa conversa com o especialista?`
+    ? `${oi} Ficou ${dupla} pra nossa conversa com o especialista?`
     : `${oi} Ficou ${l[0]} pra nossa conversa com o especialista?`;
   return l.length >= 2
-    ? `${oi} Os horários de ontem já não estão mais livres, mas consigo ${l[0]} ou ${l[1]}, qual fica melhor pra você?`
+    ? `${oi} Os horários de ontem já não estão mais livres, mas consigo ${dupla}, qual fica melhor pra você?`
     : `${oi} O horário de ontem já não está mais livre, mas consigo ${l[0]}, fica bom pra você?`;
 }
 
 function rescueText({ nome, slots = [], now }) {
   const oi = nome ? `Oi ${nome},` : "Oi,";
   const base = `${oi} passei no nosso horário marcado e não te encontrei, acontece! Quer que eu remarque?`;
-  if (slots.length >= 2) return `${base} Tenho ${slotLabel(slots[0].at, now)} ou ${slotLabel(slots[1].at, now)} livres, me diz qual fica bom que eu já reservo.`;
+  if (slots.length >= 2) return `${base} Tenho ${collapseSameDay(`${slotLabel(slots[0].at, now)} ou ${slotLabel(slots[1].at, now)}`)} livres, me diz qual fica bom que eu já reservo.`;
   if (slots.length === 1) return `${base} Consigo te encaixar ${slotLabel(slots[0].at, now)}, fica bom?`;
   return `${base} Me diz um horário que fica bom pra você que eu já reservo.`;
 }
@@ -632,9 +655,13 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
               // específico não estiver aprovado. Sem nenhum aprovado, espera.
               // OEM (roteiro de 05/10): o v2 só com nome utilizável (o corpo é
               // "Oiii {{1}}, tudo bem?"); senão o v1, que aceita o fallback.
+              // PRICE (roteiro de 08/10): mesma regra do nome; sem nome ou sem
+              // aprovação cai nos genéricos (melhor um toque geral que nenhum).
               const prefs = pain?.mode === "oem"
                 ? [nome ? cfg.templates.firstTouchOem : "", cfg.templates.firstTouchOemV1, cfg.templates.firstTouch]
-                : [cfg.templates.firstTouchMulti, cfg.templates.firstTouch];
+                : pain?.mode === "price"
+                  ? [nome ? cfg.templates.firstTouchPrice : "", cfg.templates.firstTouchMulti, cfg.templates.firstTouch]
+                  : [cfg.templates.firstTouchMulti, cfg.templates.firstTouch];
               const tplName = prefs.filter(Boolean).find((n) => names.has(n)) || null;
               if (!tplName) { stats.skipped++; continue; }
               // Parâmetros pelo corpo do template (o v2 do OEM só leva o nome).
@@ -1012,7 +1039,9 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           if (!due) continue;
           const nome = greetName(lead.name);
           const quando = slotLabel(lead.callAt, wnow);
-          const oem = leadPainFocus(product, lead)?.mode === "oem"; // roteiro Lever OEM (05/10)
+          const script = leadPainFocus(product, lead)?.mode; // roteiros fixos: Lever OEM (05/10) e Lever Price (08/10)
+          const oem = script === "oem";
+          const price = script === "price";
           const phone = lead.waPhone || lead.phone;
           const thread = await findThreadByPhone(repo, phone);
           const to = thread?.phone || phone;
@@ -1092,15 +1121,17 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
             // frente (manhã sem link; 2h e 10min com link). Só com nome
             // utilizável (os corpos abrem com o nome); sem aprovação ou sem
             // nome, caem nos genéricos.
-            const oemTpls = oem && nome ? [
-              due.key === "manha" && oemMediaId ? cfg.templates.reminderManhaOemImg : "",
-              due.key === "manha" ? cfg.templates.reminderManhaOem : "",
+            // Lead de PRICE: manhã própria; 2h e 10min reaproveitam os do OEM
+            // (só horário e link, sem produto).
+            const oemTpls = (oem || price) && nome ? [
+              due.key === "manha" && oem && oemMediaId ? cfg.templates.reminderManhaOemImg : "",
+              due.key === "manha" ? (price ? cfg.templates.reminderManhaPrice : cfg.templates.reminderManhaOem) : "",
               due.key === "2h" && callUrl ? cfg.templates.reminderLinkOem : "",
               due.key === "10min" && callUrl ? cfg.templates.reminder10minOem : "",
             ] : [];
             const tplLembrete = [...oemTpls, callUrl ? cfg.templates.reminderLink : "", callUrl ? "sdr_lembrete_link" : "", cfg.templates.reminder, "sdr_lembrete_call"].filter(Boolean).find((n) => names.has(n));
             if (tplLembrete) {
-              const params = [cfg.templates.reminderManhaOemImg, cfg.templates.reminderManhaOem].includes(tplLembrete) ? [nome, quando]
+              const params = [cfg.templates.reminderManhaOemImg, cfg.templates.reminderManhaOem, cfg.templates.reminderManhaPrice].includes(tplLembrete) ? [nome, quando]
                 : tplLembrete === cfg.templates.reminderLinkOem ? [nome, quando, callUrl]
                   : tplLembrete === cfg.templates.reminder10minOem ? [nome, callUrl]
                     : [cfg.templates.reminderLink, "sdr_lembrete_link"].includes(tplLembrete) ? [nome || "tudo bem", quando, callUrl] : [nome || "tudo bem", quando];
@@ -1124,7 +1155,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
                   }
                   await sendText({ phone: to, text: t2, phoneId, saas: product.id, leadId: lead.id });
                 } else {
-                  await sendText({ phone: to, text: reminderText(due.key, { nome, quando, link: callUrl, oem }), phoneId, saas: product.id, leadId: lead.id });
+                  await sendText({ phone: to, text: reminderText(due.key, { nome, quando, link: callUrl, oem, script }), phoneId, saas: product.id, leadId: lead.id });
                 }
               } catch (err) {
                 if (!outsideWindow(err)) throw err; // nosso registro dizia aberta, a Meta discorda

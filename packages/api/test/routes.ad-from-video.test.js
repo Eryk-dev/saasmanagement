@@ -36,7 +36,7 @@ function fakeMeta(overrides = {}) {
     async createAd(acct, o) { calls.push(["createAd", acct, o]); return { id: "ad_novo", status: "PAUSED" }; },
     async copyAdSet(id, o) { calls.push(["copyAdSet", id, o]); return { adsetId: "as_copy", adIds: [] }; },
     async renameObject(id, name) { calls.push(["renameObject", id, name]); return { id, name }; },
-    async getAdCreativeSpec(id) { calls.push(["getAdCreativeSpec", id]); return { spec: { page_id: "1", video_data: { video_id: "v_old" } }, urlTags: "" }; },
+    async getAdCreativeSpec(id) { calls.push(["getAdCreativeSpec", id]); return { spec: { page_id: "1", video_data: { video_id: "v_old" } }, assetFeed: { bodies: [{ text: "copy" }] }, freedom: { creative_features_spec: { enhance_cta: { enroll_status: "OPT_OUT" } } }, urlTags: "" }; },
     async createVideoCreativeFromSpec(acct, o) { calls.push(["createVideoCreativeFromSpec", acct, o]); return "cr_new"; },
     async updateAd(id, o) { calls.push(["updateAd", id, o]); return { id, name: o.name }; },
     async setObjectBudget(id, brl) { calls.push(["setObjectBudget", id, brl]); return { id, dailyBudget: brl }; },
@@ -97,6 +97,8 @@ test("clona conjunto, renomeia «1303 [B]» e troca só o vídeo; nasce pausado"
   assert.equal(create.videoId, "vid_1");
   assert.equal(create.imageUrl, "https://thumb");
   assert.match(create.urlTags, /utm_source=meta/); // sem url_tags de origem → usa a convenção
+  assert.deepEqual(create.assetFeed, { bodies: [{ text: "copy" }] }, "o asset_feed_spec da origem vai junto (textos do anúncio)");
+  assert.deepEqual(create.freedom, { creative_features_spec: { enhance_cta: { enroll_status: "OPT_OUT" } } }, "melhorias automáticas da origem vão como estão");
   const novo = meta.calls.find((c) => c[0] === "createAd")[2];
   assert.equal(novo.adsetId, "as_copy");   // no conjunto NOVO, não no de origem
   assert.equal(novo.creativeId, "cr_new");

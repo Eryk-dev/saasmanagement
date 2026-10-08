@@ -137,6 +137,8 @@ export async function saveSettings(repo, saas, body, { by = ACTOR_API, now = now
     merged.linear = { ...cur.linear, ...src.linear };
     if (isObj(src.linear.statusMap)) merged.linear.statusMap = { ...cur.linear.statusMap, ...src.linear.statusMap };
     if (isObj(src.linear.stateBack)) merged.linear.stateBack = { ...cur.linear.stateBack, ...src.linear.stateBack };
+    // Hermes: merge raso; o de-para de fases e os aprovadores trocam inteiros.
+    if (isObj(src.linear.hermes)) merged.linear.hermes = { ...cur.linear.hermes, ...src.linear.hermes };
   }
   if (isObj(src.policies)) {
     merged.policies = { ...cur.policies };
@@ -238,7 +240,7 @@ export function composeTicket(input, { by = ACTOR_API, now = nowIso() } = {}) {
 }
 
 const MANAGED = new Set(["id", "number", "saas", "channel", "messages", "attachments", "sla", "portalToken", "createdAt", "createdBy",
-  "updatedAt", "updatedBy", "closedAt", "version", "lastMessageAt", "lastCustomerAt", "lastAgentAt", "linear", "linearIssueId"]);
+  "updatedAt", "updatedBy", "closedAt", "version", "lastMessageAt", "lastCustomerAt", "lastAgentAt", "linear", "linearIssueId", "hermes"]);
 
 export function sanitizeTicketPatch(body, cur) {
   const src = isObj(body) ? body : {};
