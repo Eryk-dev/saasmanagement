@@ -13,19 +13,32 @@ import { SelectPopover } from "../components/select-popover.jsx";
 import { Checkbox, HoursInput, SwitchRow } from "../components/form-controls.jsx";
 import { HERMES_PHASE_KEYS, HERMES_PHASE_LABEL, phaseByName } from "../../../api/src/shared/hermes-phase.js";
 
-// Suporte · Configurações de SLA, por produto do workspace ativo:
-//   · prazos de 1ª resposta e de resolução por prioridade (em horas ÚTEIS
-//     quando o expediente está ligado — a API conta em minutos);
-//   · expediente, pausa do relógio, aviso antecipado e fechamento automático;
-//   · categorias da fila, portal do cliente e aviso por e-mail;
-//   · atendentes: quem atende qual produto. Esse é o ACL do Suporte — quem não
-//     é admin só inclui/remove produtos que ele mesmo atende (a API confere).
+// Suporte · Configurações de SLA, por produto do workspace ativo, em três abas:
+//   · SLA: prazos de 1ª resposta e de resolução por prioridade (em horas ÚTEIS
+//     quando o expediente está ligado — a API conta em minutos), expediente,
+//     pausa do relógio, aviso antecipado e fechamento automático;
+//   · Tickets: categorias da fila, portal do cliente e aviso por e-mail, e os
+//     atendentes — quem atende qual produto. Esse é o ACL do Suporte: quem não
+//     é admin só inclui/remove produtos que ele mesmo atende (a API confere);
+//   · Linear · Hermes: o espelho dos tickets com as issues do time e, num
+//     cartão próprio, o acompanhamento do Hermes (que depende do espelho).
+// O rascunho é um só: Salvar grava as três abas, e a aba com alteração
+// pendente ganha um ponto.
 
 const { useState, useEffect, useMemo, useCallback, useRef } = React;
 
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => ({ value: h, label: `${String(h).padStart(2, "0")}h` }));
 const WARN_OPTIONS = [0.5, 0.7, 0.8, 0.9].map((v) => ({ value: v, label: `com ${Math.round(v * 100)}% do prazo` }));
 const CLOSE_OPTIONS = [0, 2, 3, 5, 7, 14, 30].map((d) => ({ value: d, label: d === 0 ? "nunca" : `${d} dias` }));
+
+// Cada aba e os campos do rascunho que ela edita (o ponto de "não salvo").
+const TABS = [
+  { id: "sla", label: "SLA", fields: ["policies", "businessHours", "pauseOn", "warnAt", "autoCloseResolvedDays"] },
+  { id: "tickets", label: "Tickets", fields: ["categories", "portal", "notifyCustomerByEmail"] },
+  { id: "linear", label: "Linear · Hermes", fields: ["linear"] },
+];
+const TAB_KEY = "cockpit_support_settings_tab";
+const tabDirty = (tab, draft, saved) => !!draft && !!saved && tab.fields.some((f) => JSON.stringify(draft[f]) !== JSON.stringify(saved[f]));
 
 // div, não <label>: o seletor (Popover) dentro de label reabre a lista no clique.
 // O controle desce pro pé da célula (marginTop auto): rótulo que quebra em duas
@@ -51,6 +64,8 @@ export function SupportSettingsScreen() {
   const [busy, setBusy] = useState(false);
   const [newCategory, setNewCategory] = useState("");
   const [saveError, setSaveError] = useState("");
+  const [tab, setTabState] = useState(() => { try { const t = localStorage.getItem(TAB_KEY); return TABS.some((x) => x.id === t) ? t : "sla"; } catch { return "sla"; } });
+  const setTab = (t) => { setTabState(t); try { localStorage.setItem(TAB_KEY, t); } catch { /* ignore */ } };
   const request = useRef(0), pending = useRef(false), productRef = useRef(saasId);
   productRef.current = saasId;
 
@@ -100,6 +115,29 @@ export function SupportSettingsScreen() {
         )}
       </div></header>
       {saveError && <div role="alert" className="sla-error">{saveError}. O preenchimento foi mantido; tente Salvar novamente.</div>}
+      {handles && draft && (
+        <div className="sla-tabs" role="tablist" aria-label="Seções das configurações">
+          {TABS.map((t) => {
+            const pendente = tabDirty(t, draft, saved);
+            return (
+              <button key={t.id} type="button" role="tab" id={`sla-tab-${t.id}`} aria-controls={`sla-panel-${t.id}`} aria-selected={tab === t.id}
+                tabIndex={tab === t.id ? 0 : -1} onClick={() => setTab(t.id)}
+                onKeyDown={(e) => {
+                  const i = TABS.findIndex((x) => x.id === t.id);
+                  const n = e.key === "ArrowRight" ? i + 1 : e.key === "ArrowLeft" ? i - 1 : null;
+                  if (n === null) return;
+                  e.preventDefault();
+                  const prox = TABS[(n + TABS.length) % TABS.length].id;
+                  setTab(prox);
+                  document.getElementById(`sla-tab-${prox}`)?.focus();
+                }}>
+                {t.label}
+                {pendente && <span className="sla-tab-dot" title="alterações não salvas nesta aba" aria-label="alterações não salvas" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {!handles ? (
         <EmptyState title={`Você não atende ${product?.name || "este produto"}`} hint={noScopeHint(product?.name)} />
@@ -110,9 +148,9 @@ export function SupportSettingsScreen() {
       ) : !draft ? (
         <div className="mono dim" style={{ fontSize: 12, padding: "24px var(--pad-x)" }}>carregando…</div>
       ) : (
-        <div className="support-settings-body">
-          <fieldset className="sla-cols" disabled={busy}>
-            <Card title="Prazos por prioridade" hint={draft.businessHours.enabled ? "em horas úteis, dentro do expediente abaixo" : "em horas corridas (expediente desligado)"}>
+        <div className="support-settings-body" role="tabpanel" id={`sla-panel-${tab}`} aria-labelledby={`sla-tab-${tab}`}>
+          {tab === "sla" && <fieldset className="sla-cols" disabled={busy}>
+            <Card title="Prazos por prioridade" hint={draft.businessHours.enabled ? "em horas úteis, dentro do expediente do relógio" : "em horas corridas (expediente desligado)"}>
               <div style={{ padding: "8px var(--inset-x) 16px" }}>
                 <div className="support-policy kicker" style={{ paddingTop: 4 }}>
                   <span>Prioridade</span><span>1ª resposta</span><span>Resolução</span>
@@ -127,23 +165,6 @@ export function SupportSettingsScreen() {
                 {TICKET_PRIORITIES.some((p) => draft.policies[p.key].resolutionMin < draft.policies[p.key].firstResponseMin) && (
                   <div role="alert" style={{ fontSize: 12.5, color: "var(--neg)", marginTop: 8 }}>A resolução não pode vencer antes da 1ª resposta.</div>
                 )}
-              </div>
-            </Card>
-
-            <Card title="Categorias" hint="organizam a fila e o relatório futuro">
-              <div style={{ padding: "12px var(--inset-x) 18px", display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-                {draft.categories.map((c) => (
-                  <span key={c} className="chip" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                    {c}
-                    <button type="button" aria-label={`Remover ${c}`} onClick={() => set({ categories: draft.categories.filter((x) => x !== c) })} style={{ color: "var(--fg-4)" }}>✕</button>
-                  </span>
-                ))}
-                <form onSubmit={(e) => { e.preventDefault(); const v = newCategory.trim(); if (v && !draft.categories.includes(v)) set({ categories: [...draft.categories, v] }); setNewCategory(""); }}
-                  style={{ display: "inline-flex", gap: 6 }}>
-                  <input className="inp" aria-label="Nova categoria" value={newCategory} maxLength={60} onChange={(e) => setNewCategory(e.target.value)} placeholder="nova categoria" style={{ width: 160 }} />
-                  <SecondaryButton size="sm" type="submit" disabled={!newCategory.trim()}>Adicionar</SecondaryButton>
-                </form>
-                {draft.categories.length === 0 && <span className="mono dim" style={{ fontSize: 12 }}>sem categorias · a fila funciona sem elas</span>}
               </div>
             </Card>
 
@@ -178,6 +199,25 @@ export function SupportSettingsScreen() {
                 </div>
               </div>
             </Card>
+          </fieldset>}
+
+          {tab === "tickets" && <><fieldset className="sla-cols" disabled={busy}>
+            <Card title="Categorias" hint="organizam a fila e o relatório futuro">
+              <div style={{ padding: "12px var(--inset-x) 18px", display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                {draft.categories.map((c) => (
+                  <span key={c} className="chip" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    {c}
+                    <button type="button" aria-label={`Remover ${c}`} onClick={() => set({ categories: draft.categories.filter((x) => x !== c) })} style={{ color: "var(--fg-4)" }}>✕</button>
+                  </span>
+                ))}
+                <form onSubmit={(e) => { e.preventDefault(); const v = newCategory.trim(); if (v && !draft.categories.includes(v)) set({ categories: [...draft.categories, v] }); setNewCategory(""); }}
+                  style={{ display: "inline-flex", gap: 6 }}>
+                  <input className="inp" aria-label="Nova categoria" value={newCategory} maxLength={60} onChange={(e) => setNewCategory(e.target.value)} placeholder="nova categoria" style={{ width: 160 }} />
+                  <SecondaryButton size="sm" type="submit" disabled={!newCategory.trim()}>Adicionar</SecondaryButton>
+                </form>
+                {draft.categories.length === 0 && <span className="mono dim" style={{ fontSize: 12 }}>sem categorias · a fila funciona sem elas</span>}
+              </div>
+            </Card>
 
             <Card title="Portal do cliente" hint="o cliente abre e acompanha o chamado sem login">
               <div style={{ padding: "12px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 12 }}>
@@ -205,8 +245,9 @@ export function SupportSettingsScreen() {
             </Card>
 
           </fieldset>
-          <AgentsCard saasId={saasId} version={version} />
-          <fieldset className="sla-integration" disabled={busy}><LinearCard draft={draft} set={set} disabled={busy} saasId={saasId} version={version} /></fieldset>
+          <AgentsCard saasId={saasId} version={version} /></>}
+
+          {tab === "linear" && <fieldset className="sla-integration" disabled={busy}><LinearCard draft={draft} set={set} disabled={busy} saasId={saasId} version={version} /></fieldset>}
         </div>
       )}
     </div>
@@ -250,7 +291,10 @@ function LinearCard({ draft, set, disabled, saasId, version }) {
   const team = teams.find((t) => t.id === l.teamId) || null;
   const webhookUrl = `${typeof location !== "undefined" ? location.origin : ""}/api/webhooks/linear`;
 
+  // O Hermes ganha cartão próprio na mesma aba: depende do espelho ligado e do
+  // catálogo do Linear (time, colunas, pessoas), mas é outro assunto.
   return (
+    <>
     <Card title="Linear" hint="espelho dos tickets deste produto com as issues do time">
       <div style={{ padding: "12px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 12 }}>
         {erro && <div role="alert" className="sla-error">Não deu para carregar o catálogo do Linear. <button onClick={() => setAttempt(n => n + 1)}>Tentar novamente</button></div>}
@@ -310,8 +354,6 @@ function LinearCard({ draft, set, disabled, saasId, version }) {
             </div>
             {l.syncAssignee !== false && <LinearPeople catalog={catalog} people={l.people || {}} disabled={!l.enabled}
               saasId={saasId} version={version} onChange={(people) => setL({ people })} />}
-            <HermesSettings catalog={catalog} team={team} hermes={l.hermes || {}} disabled={!l.enabled} saasId={saasId} version={version}
-              onChange={(patch) => setL({ hermes: { ...(l.hermes || {}), ...patch } })} />
             <InfoNota>
               Para o Linear avisar o cockpit na hora, cadastre <code className="mono">{webhookUrl}</code> em Settings → API → Webhooks, com os eventos <b>Issues</b> e <b>Comments</b>.
               {catalog.webhook ? " O segredo do webhook já está configurado no servidor." : " Falta o segredo no servidor (LINEAR_WEBHOOK_SECRET) — sem ele a rota recusa, e a volta só chega na reconciliação."}
@@ -321,6 +363,15 @@ function LinearCard({ draft, set, disabled, saasId, version }) {
         )}
       </div>
     </Card>
+    {catalog?.configured && (
+      <Card title="Hermes" hint={l.enabled ? "o agente que corrige bug de cliente no Linear" : "ligue o espelho do Linear acima para acompanhar o Hermes"}>
+        <div style={{ padding: "12px var(--inset-x) 18px" }}>
+          <HermesSettings catalog={catalog} team={team} hermes={l.hermes || {}} disabled={!l.enabled} saasId={saasId} version={version}
+            onChange={(patch) => setL({ hermes: { ...(l.hermes || {}), ...patch } })} />
+        </div>
+      </Card>
+    )}
+    </>
   );
 }
 
@@ -400,7 +451,7 @@ function HermesSettings({ catalog, team, hermes, disabled, saasId, version, onCh
     onChange({ phases: next });
   };
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid var(--line-1)", paddingTop: 12, opacity: disabled ? 0.55 : 1 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, opacity: disabled ? 0.55 : 1 }}>
       <SwitchRow disabled={disabled} checked={hermes.enabled === true} onChange={(v) => onChange({ enabled: v })}
         title="Acompanhar o Hermes nos tickets"
         hint="o ticket mostra a fase do card do Hermes (Validar, Aguardando resposta, Aprovado, no ar) e avisa os aprovadores quando é a vez deles · ao salvar ligado, os cards abertos são relidos em segundo plano" />

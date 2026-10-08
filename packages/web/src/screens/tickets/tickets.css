@@ -79,6 +79,14 @@ button.agent-metric:hover .agent-metric-go { color: var(--fg-1); transform: tran
    sistema; a Conversa fica só com o atendimento. */
 .support-msg[data-kind="linear"] { background: var(--bg-1); }
 .support-msg[data-kind="linear-desc"] { background: var(--bg-inset); }
+/* Apêndice técnico de comentário (<details> / +++ do Linear): recolhido, a
+   pergunta que vem antes é o que se lê primeiro. */
+.linear-md-details { border-top: 1px solid var(--line-1); padding-top: 6px; }
+.linear-md-details > summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--fg-3); width: fit-content; border-radius: 4px; }
+.linear-md-details > summary:hover { color: var(--fg-1); }
+.linear-md-details > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.linear-md-details[open] > summary { margin-bottom: 6px; }
+.linear-md-details > div { font-size: 12.5px; color: var(--fg-2); }
 .support-composer textarea { width: 100%; box-sizing: border-box; min-height: 56px; height: 64px; resize: vertical; font: inherit; font-size: 13px; line-height: 1.5; padding: 8px 10px; }
 .support-composer[data-kind="note"] textarea { background: var(--warn-soft); }
 

@@ -5,7 +5,7 @@ import { PrimaryButton, SecondaryButton, toast } from "../../atoms.jsx";
 import { Drawer, Modal } from "../../components/overlay.jsx";
 import { SelectPopover } from "../../components/select-popover.jsx";
 import { QuickReplyList, useQuickReplies, filterQuickReplies, orderForPicker, slashTokenAt } from "./quick-reply-picker.jsx";
-import { LinearMarkdown } from "./linear-markdown.jsx";
+import { LinearMarkdown, visibleLength } from "./linear-markdown.jsx";
 import { HermesSection, HermesCard } from "./hermes-section.jsx";
 import { UserPicker, UserAvatarRing } from "../../components/user-picker.jsx";
 import { isAdminUser } from "../../lib/users.js";
@@ -479,7 +479,7 @@ function LinearPane({ ticket, onUseDraft }) {
           <span className="kicker">Descrição da issue</span>
           <div className="support-msg" data-kind="linear-desc">
             {issue.description
-              ? (issue.description.length > 1200
+              ? (visibleLength(issue.description) > 1200
                 ? <Recolhivel><LinearMarkdown text={issue.description} onExpired={load} /></Recolhivel>
                 : <LinearMarkdown text={issue.description} onExpired={load} />)
               : <span className="dim">sem descrição no Linear</span>}
@@ -499,7 +499,7 @@ function LinearPane({ ticket, onUseDraft }) {
             <span>{c.user?.name || "alguém"} · {fmtWhen(c.createdAt)}</span>
             {c.fromCockpit && <span className="chip" title="saiu daqui: resposta ou nota do ticket espelhada na issue">do cockpit</span>}
           </div>
-          {c.body.length > 1200
+          {visibleLength(c.body) > 1200
             ? <Recolhivel altura={200}><LinearMarkdown text={c.body} onExpired={load} /></Recolhivel>
             : <LinearMarkdown text={c.body} onExpired={load} />}
         </div>

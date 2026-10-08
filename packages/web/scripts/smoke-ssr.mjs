@@ -1391,6 +1391,26 @@ try {
     if (!html.includes("linear.app ↗")) throw new Error("URL solta deveria virar link curto pelo domínio");
     if (!html.includes(">o painel<")) throw new Error("link markdown deveria manter o rótulo");
     if (!html.includes("<b>Correção PO</b>")) throw new Error("negrito não renderizou");
+
+    // Comentário do Hermes (LEV-548): pergunta curta + apêndice técnico em
+    // <details>. As tags não podem sair como texto e o apêndice entra recolhido.
+    const apendice = "Base: develop 739584a. Hipótese 1: o arquivo é modelo-produtos.xlsx " + "e o gerador \\_xlsx\\_bytes ".repeat(60);
+    const hermes = [
+      "**Hermes · validação**", "", "Localizei dois modelos diferentes de custos.", "",
+      "**Precisa de:**", "- \\[Eryk\\] Pode anexar ao card a planilha entregue?", "- [Cliente] Em qual aplicativo abriu a planilha?", "",
+      "<details>", "", apendice, "", "</details>", "", "Estado: `needs_context`.",
+      "", "+++ Log do Linear", "linha recolhida", "+++",
+    ].join("\n");
+    const bh = M.parseBlocks(hermes);
+    const det = bh.filter((b) => b.tipo === "detalhes");
+    if (det.length !== 2 || det[1].titulo !== "Log do Linear") throw new Error("<details> e +++ deveriam virar seções recolhíveis");
+    if (bh[bh.length - 2]?.texto !== "Estado: `needs_context`.") throw new Error("texto depois do </details> se perdeu");
+    if (M.visibleLength(hermes) > 1200) throw new Error("o apêndice recolhido não deveria contar pro 'ver tudo'");
+    const hh = renderToString(wrap(React.createElement(M.LinearMarkdown, { text: hermes, onExpired() {} })));
+    if (/&lt;\/?details|\+\+\+/.test(hh)) throw new Error("marcação de seção recolhível sobrou como texto");
+    if (!hh.includes("<details") || hh.includes("<details open")) throw new Error("apêndice deveria entrar recolhido");
+    if (!hh.includes("<b>Eryk</b>") || !hh.includes("<b>Cliente</b>")) throw new Error("destinatário do pedido deveria sair em negrito");
+    if (hh.includes("\\_") || !hh.includes("_xlsx_bytes")) throw new Error("escape do Linear sobrou na tela");
     console.log("✓ linear-markdown");
   } catch (err) {
     console.error(`✗ linear-markdown: ${err.message}`);

@@ -18,11 +18,44 @@ const { useState } = React;
 
 const IMG_RE = /^!\[([^\]]*)\]\(([^)\s]+)\)\s*$/;
 const HEAD_RE = /^(#{1,6})\s+(.*)$/;
-const LIST_RE = /^\s*[-*+]\s+(.*)$/;
+const LIST_RE = /^\s*(?:[-*+]|\d{1,3}[.)])\s+(.*)$/;
 const QUOTE_RE = /^\s*>\s?(.*)$/;
 const RULE_RE = /^\s*(-{3,}|\*{3,}|_{3,})\s*$/;
+// Seção recolhível: o `<details>` que agentes (o Hermes) escrevem e o
+// `+++ título … +++` que o editor do Linear grava. O conteúdo é o apêndice
+// técnico — aberto, ele soterrava a pergunta que vem antes.
+const DETAILS_OPEN_RE = /^\s*<details[^>]*>\s*(.*)$/i;
+const DETAILS_CLOSE_RE = /^(.*?)\s*<\/details>\s*$/i;
+const SUMMARY_RE = /^\s*<summary[^>]*>(.*?)<\/summary>\s*(.*)$/i;
+const FOLD_RE = /^\s*\+\+\+\s*(.*)$/;
 // Só http(s) entra no DOM: `javascript:` e afins ficam como texto.
 const safeUrl = (u) => (/^https?:\/\//i.test(String(u || "")) ? String(u) : "");
+
+// Separa as linhas de uma seção recolhível: devolve título, miolo e onde parar.
+function recolhivel(linhas, i) {
+  const fold = FOLD_RE.exec(linhas[i]);
+  if (fold && !DETAILS_OPEN_RE.test(linhas[i])) {
+    let fim = i + 1;
+    while (fim < linhas.length && !/^\s*\+\+\+\s*$/.test(linhas[fim])) fim++;
+    return { titulo: fold[1].trim(), miolo: linhas.slice(i + 1, fim), proxima: fim + 1 };
+  }
+  const miolo = [];
+  let resto = DETAILS_OPEN_RE.exec(linhas[i])[1];
+  let titulo = "";
+  let nivel = 1;
+  let j = i;
+  for (;;) {
+    const summary = !titulo && SUMMARY_RE.exec(resto);
+    if (summary) { titulo = summary[1].trim(); resto = summary[2]; }
+    if (DETAILS_OPEN_RE.test(resto)) nivel++;
+    const fecha = DETAILS_CLOSE_RE.exec(resto);
+    if (fecha && --nivel === 0) { if (fecha[1].trim()) miolo.push(fecha[1]); break; }
+    if (resto.trim() || miolo.length) miolo.push(resto);
+    if (++j >= linhas.length) break;
+    resto = linhas[j];
+  }
+  return { titulo, miolo, proxima: j + 1 };
+}
 
 // Texto → blocos. Puro e exportado: o smoke do web testa por aqui.
 export function parseBlocks(text) {
@@ -42,10 +75,17 @@ export function parseBlocks(text) {
     blocos.push(b);
   };
   let vazia = false;
-  for (const linha of linhas) {
+  for (let i = 0; i < linhas.length; i++) {
+    const linha = linhas[i];
     if (!linha.trim()) { vazia = true; continue; }
     const separado = vazia; // houve linha em branco antes desta
     vazia = false;
+    if (DETAILS_OPEN_RE.test(linha) || (FOLD_RE.test(linha) && FOLD_RE.exec(linha)[1].trim())) {
+      const { titulo, miolo, proxima } = recolhivel(linhas, i);
+      blocos.push({ tipo: "detalhes", titulo, blocos: parseBlocks(miolo.join("\n")) });
+      i = proxima - 1;
+      continue;
+    }
     const img = IMG_RE.exec(linha);
     if (img) {
       // Sem URL http(s) confiável a imagem não entra: sobra a legenda, que já
@@ -68,10 +108,16 @@ export function parseBlocks(text) {
 
 // Negrito, código, link markdown e URL solta. O resto sai como texto puro.
 const INLINE_RE = /(\*\*[^*]+\*\*|__[^_]+__|`[^`]+`|\[[^\]]+\]\([^)\s]+\)|https?:\/\/\S+)/g;
+// O Linear devolve `\_`, `\[`, `\*` escapados; na tela é só o caractere.
+const unescape = (s) => s.replace(/\\([\\`*_{}[\]()#+\-.!<>|~])/g, "$1");
+// `[Eryk] Pode anexar…`: quem precisa responder, no começo do pedido.
+const DESTINO_RE = /^\\?\[([^\]\\]{1,40})\\?\]\s+(?!\()/;
 export function Inline({ text }) {
+  const destino = DESTINO_RE.exec(String(text || ""));
+  if (destino) return <><b>{destino[1]}</b>{" · "}<Inline text={String(text).slice(destino[0].length)} /></>;
   const partes = String(text || "").split(INLINE_RE).filter((p) => p !== "" && p !== undefined);
   return partes.map((p, i) => {
-    if (/^\*\*[^*]+\*\*$/.test(p) || /^__[^_]+__$/.test(p)) return <b key={i}>{p.slice(2, -2)}</b>;
+    if (/^\*\*[^*]+\*\*$/.test(p) || /^__[^_]+__$/.test(p)) return <b key={i}>{unescape(p.slice(2, -2))}</b>;
     if (/^`[^`]+`$/.test(p)) return <code key={i} className="mono" style={{ fontSize: "0.92em", background: "var(--bg-inset)", padding: "1px 4px", borderRadius: 4 }}>{p.slice(1, -1)}</code>;
     const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(p);
     if (link && safeUrl(link[2])) return <a key={i} href={safeUrl(link[2])} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>{link[1]}</a>;
@@ -82,7 +128,7 @@ export function Inline({ text }) {
       // Texto num nó só: `{rotulo} ↗` sairia partido por um comentário do React.
       return <a key={i} href={p} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }} title={p}>{`${rotulo} ↗`}</a>;
     }
-    return <React.Fragment key={i}>{p}</React.Fragment>;
+    return <React.Fragment key={i}>{unescape(p)}</React.Fragment>;
   });
 }
 
@@ -107,8 +153,18 @@ function Figura({ item, onExpired }) {
   );
 }
 
+// Tamanho do que aparece sem abrir nada: decide se o comentário entra
+// recolhido. Contar o apêndice dentro de <details> cortava a pergunta curta
+// e, aberto o apêndice, prendia ele numa caixa de 200px.
+const textoDe = (b) => b.texto || (b.itens || []).map((it) => it.alt ?? it).join("\n");
+export const visibleLength = (text) =>
+  parseBlocks(text).reduce((n, b) => n + (b.tipo === "detalhes" ? b.titulo.length : textoDe(b).length), 0);
+
 export function LinearMarkdown({ text, onExpired }) {
-  const blocos = parseBlocks(text);
+  return <Blocos blocos={parseBlocks(text)} onExpired={onExpired} />;
+}
+
+function Blocos({ blocos, onExpired }) {
   if (!blocos.length) return null;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, whiteSpace: "normal" }}>
@@ -131,6 +187,14 @@ export function LinearMarkdown({ text, onExpired }) {
             <ul key={i} style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 2 }}>
               {b.itens.map((it, j) => <li key={j}><Inline text={it} /></li>)}
             </ul>
+          );
+        }
+        if (b.tipo === "detalhes") {
+          return (
+            <details key={i} className="linear-md-details">
+              <summary><Inline text={b.titulo || "Detalhes técnicos"} /></summary>
+              <Blocos blocos={b.blocos} onExpired={onExpired} />
+            </details>
           );
         }
         if (b.tipo === "regua") return <hr key={i} style={{ border: 0, borderTop: "1px solid var(--line-1)", margin: "2px 0" }} />;
