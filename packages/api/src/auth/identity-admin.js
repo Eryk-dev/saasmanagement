@@ -5,7 +5,8 @@
 //   IDENTITY_AUTH_URL      GoTrue (admin API: criar conta, definir senha)
 //   IDENTITY_SERVICE_KEY   chave service_role do GoTrue
 //   IDENTITY_REST_URL      PostgREST da identidade (RPCs identity_api)
-//   IDENTITY_COCKPIT_KEY   chave svc_cockpit (find_user_by_email, set_staff)
+//   IDENTITY_COCKPIT_KEY   chave svc_cockpit (find_user_by_email, set_staff,
+//                          org_accounts)
 //
 // Sem as quatro variáveis, o cliente é null e as rotas respondem 424.
 
@@ -66,6 +67,13 @@ export function makeIdentityAdmin({ env = process.env, fetchImpl = fetch } = {})
     // Papéis de staff; lista vazia tira o staff (e a membership na org Lever).
     async setStaff(userId, roles) {
       await rpc("set_staff", { p_user_id: userId, p_roles: roles });
+    },
+    // Contas de até 500 orgs (o LeverId devolve uma linha por conta; org sem
+    // conta vem com user_id nulo e org inexistente não vem). Nunca hash ou
+    // segredo: só papel, datas, e-mail confirmado, 2FA e origem.
+    async orgAccounts(orgIds) {
+      const rows = await rpc("org_accounts", { p_org_ids: orgIds });
+      return Array.isArray(rows) ? rows : [];
     },
   };
 }

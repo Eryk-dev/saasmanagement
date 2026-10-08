@@ -288,7 +288,15 @@ a mesma regra; os testes ficam em `sdr-brain.test.js`.
    sobrescreve senha já definida) e as etiquetas viram papéis de staff
    (`team`, `admin`, `support`) na identidade. O e-mail de definir/redefinir senha
    (admin na Equipe ou "esqueci minha senha" no login) volta ao cockpit com
-   `#…type=recovery`, tratado no `main.jsx` antes do boot. `screens.js` controla permissões por
+   `#…type=recovery`, tratado no `main.jsx` antes do boot. Na tela Clientes, a
+   badge de LeverId (`components/leverid-badge.jsx`) marca o cliente cuja org já
+   tem conta na identidade: `GET /api/customers/leverid?orgs=` (domínio
+   `customers/`, `leverid-accounts.js`, cache de 60 s por org) chama a RPC
+   `identity_api.org_accounts` com a chave `svc_cockpit` e devolve, por org,
+   papel, último acesso, e-mail confirmado e 2FA, nunca hash ou segredo. A org é
+   `customer.orgId` ou, enquanto ele não existe, `customer.leveradsOrgId` (a
+   carga preserva os ids). Sem `IDENTITY_*` a rota responde `configured: false`
+   e a badge some; identidade fora do ar vira 424. `screens.js` controla permissões por
    tela, exceções e acessos administrativos; `lib/users.js` espelha a UI.
    `roles` já participa de regras de acesso — não assumir que é só etiqueta.
    Credenciais e tokens não entram no CRUD/JSON público nem no guia.

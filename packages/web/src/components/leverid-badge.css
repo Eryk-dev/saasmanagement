@@ -1,0 +1,26 @@
+/* Badge de LeverId ao lado do nome do cliente (leverid-badge.jsx): só o
+   favicon da Lever, 16px, como botão; org suspensa ou apagada fica em cinza (o
+   aviso está no popover, que é o Popover compartilhado). */
+.leverid-badge { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 999px; background: transparent; cursor: pointer; }
+.leverid-badge:hover, .leverid-badge[aria-expanded="true"] { background: var(--hover); }
+.leverid-badge[data-off] .leverid-mark { filter: grayscale(1); opacity: .45; }
+.customer-peek-title .leverid-badge { margin-top: 3px; }
+.leverid-mark { display: block; flex-shrink: 0; }
+.leverid-mark-ring { fill: var(--fg-1); }
+.leverid-pop-kicker { display: inline-flex; align-items: center; gap: 5px; }
+.leverid-badge:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.leverid-pop { display: flex; flex-direction: column; gap: 8px; padding: 4px 6px 2px; }
+.leverid-pop header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.leverid-pop header > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.leverid-pop header strong { font-size: 14px; font-weight: 650; color: var(--fg-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.leverid-pop-sum { margin: 0; font-size: 12px; color: var(--fg-3); }
+.leverid-pop ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line-1); }
+.leverid-pop li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line-1); }
+.leverid-pop-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.leverid-pop-who > span { font-size: 12.5px; font-weight: 600; color: var(--fg-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.leverid-pop-who small, .leverid-pop-when { font-size: 11.5px; color: var(--fg-4); }
+.leverid-pop-when { flex-shrink: 0; text-align: right; }
+.leverid-pop footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-family: var(--mono); font-size: 11px; color: var(--fg-4); }
+.leverid-pop footer button { display: inline-flex; align-items: center; gap: 4px; font: inherit; font-family: var(--sans, inherit); font-size: 11.5px; color: var(--fg-3); padding: 4px 6px; border-radius: var(--r-1); }
+.leverid-pop footer button:hover { background: var(--hover); color: var(--fg-1); }

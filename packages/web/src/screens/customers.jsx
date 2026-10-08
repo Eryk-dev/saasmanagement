@@ -31,6 +31,8 @@ import { CustomerHistoryView } from "../components/customer-history.jsx";
 import { useAttribution, leadPain } from "../lib/pains.js";
 import { isChurned, CHURN_REASONS, churnReasonLabel } from "../lib/churn.js";
 import { fetchLeveradsOrgs } from "../lib/leverads.js";
+import { fetchLeverIdOrgs, customerOrgId } from "../lib/leverid.js";
+import { LeverIdBadge } from "../components/leverid-badge.jsx";
 import { printContract, issueDate, byIssuedDesc } from "../lib/contracts.js";
 // Base das URLs públicas (link de indicação do cliente): no dev o proxy do
 // Vite repassa /f pra API.
@@ -191,6 +193,21 @@ function CustomersScreen({ initialTab }) {
     const list = (CUSTOMERS || []).filter((c) => c.saas === product?.id);
     return list.sort((a, b) => (b.arr || 0) - (a.arr || 0));
   }, [CUSTOMERS, product?.id]);
+
+  // Badge de LeverId: quem do cliente já tem conta na identidade central. Uma
+  // busca para todas as orgs da lista (a API guarda 60 s); sem LeverId
+  // configurado ou fora do ar, a badge só não aparece.
+  const leverIdKey = useMemo(() => [...new Set(customers.map(customerOrgId).filter(Boolean))].sort().join(","), [customers]);
+  const [leverIdOrgs, setLeverIdOrgs] = useState({});
+  const leverIdOf = (c) => leverIdOrgs[customerOrgId(c)] || null;
+  useEffect(() => {
+    if (!leverIdKey) { setLeverIdOrgs({}); return; }
+    let alive = true;
+    fetchLeverIdOrgs(leverIdKey.split(","), api.leveridOrgs)
+      .then((res) => alive && setLeverIdOrgs(res.orgs || {}))
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [leverIdKey]);
 
   const selected = customers.find((c) => c.id === sel) || null;
   const subsOf = (c) => subs.filter((s) => s.customer === c.id);
@@ -697,6 +714,7 @@ function CustomersScreen({ initialTab }) {
                                 <div style={{ minWidth: 0 }}>
                                   <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                                     <div style={{ minWidth: 0, fontSize: 13.5, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
+                                    <LeverIdBadge org={leverIdOf(c)} orgId={customerOrgId(c)} />
                                     {casa && <Pill title={entradaLabel(c) ? `cliente desde ${entradaLabel(c)}` : undefined}>{casa}</Pill>}
                                   </div>
                                   <div style={{ fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
@@ -826,6 +844,7 @@ function CustomersScreen({ initialTab }) {
           planLabel={planLabel}
           lastContact={lastContact}
           leverOrg={leverOrgOf(selected)}
+          leverId={leverIdOf(selected)}
           onComplete={completeMilestone}
           onPatch={patchCustomer}
           onClose={() => setSel(null)}
@@ -1369,7 +1388,7 @@ function CustomerPeek(props) {
       <div className="customer-peek">
         <header className="customer-peek-head">
           <LeadGrade tier={tier} placeholder />
-          <div><div className="customer-peek-title"><h2>{customer.name}</h2><button className="customer-peek-edit" aria-label="Editar cliente" title="Editar cliente" onClick={()=>setOperation('edit')} disabled={!!busy}><Icon name="pencil" size={13}/></button></div><p>{[customer.contact,customer.keyAccount?'conta grande':null,tenureLabel(customer)?`${tenureLabel(customer)} de casa`:null].filter(Boolean).join(' · ')}</p></div>
+          <div><div className="customer-peek-title"><h2>{customer.name}</h2><LeverIdBadge org={props.leverId} orgId={customerOrgId(customer)} /><button className="customer-peek-edit" aria-label="Editar cliente" title="Editar cliente" onClick={()=>setOperation('edit')} disabled={!!busy}><Icon name="pencil" size={13}/></button></div><p>{[customer.contact,customer.keyAccount?'conta grande':null,tenureLabel(customer)?`${tenureLabel(customer)} de casa`:null].filter(Boolean).join(' · ')}</p></div>
           <button aria-label="Fechar ficha" onClick={onClose} disabled={!!busy}>✕</button>
         </header>
         <div className="customer-peek-body">
@@ -1410,7 +1429,7 @@ function CustomerPeek(props) {
   </>, document.body);
 }
 
-function CustomerModal({ operation = null, customer, lead, product, subs, invoices, planLabel, lastContact, leverOrg, onComplete, onPatch, onClose, onNewReferral, onOperation }) {
+function CustomerModal({ operation = null, customer, lead, product, subs, invoices, planLabel, lastContact, leverOrg, leverId = null, onComplete, onPatch, onClose, onNewReferral, onOperation }) {
   const { refresh } = useData();
   const [editing, setEditing] = useState(operation === "edit");
   const [changing, setChanging] = useState(null); // { sub, plans }: assinatura no "Mudar plano"
@@ -1636,6 +1655,7 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
                     : null;
                 })()}
                 <div style={{ fontFamily: "var(--display)", fontSize: 20, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{customer.name}</div>
+                <LeverIdBadge org={leverId} orgId={customerOrgId(customer)} />
                 {!churned && (st ? <Pill tone={st.tone}>{st.label}</Pill> : !isKids && <Pill tone="mut">sem assinatura</Pill>)}
                 {(customer.flags || []).map((f) => <Pill key={f} tone="warn">{f}</Pill>)}
               </div>

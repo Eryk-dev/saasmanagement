@@ -23,7 +23,7 @@ export function setupCustomersReview(seed) {
   ];
   seed.CONFIG={...(seed.CONFIG||{}),plans:{leverads:plans.filter(p=>p.code).map(p=>({id:p.id,code:p.code,name:p.name,kind:p.kind,pricing:p.pricing,group:p.group,status:p.status,prices:p.prices,options:p.options,limits:p.limits,features:p.features||{},product:p.product,accessProduct:p.access.product,priceVersion:p.priceVersion}))}};
   const first=seed.CUSTOMERS[0];
-  if(first)Object.assign(first,{plan:'Ads Escala + OEM · Anual',planCode:'oem_escala',planCycle:'anual',planCustom:'',leveradsOrgId:'org-review',planSnapshot:{code:'oem_escala',name:'Ads Escala + OEM',closedPlan:'anual',cycle:'annual',priceVersion:1,listPrice:11988,limits:{accounts:7,copiesPerDay:8000,oemPerMonth:null},features:modules(true),accessProduct:'leverads'}});
+  if(first)Object.assign(first,{plan:'Ads Escala + OEM · Anual',planCode:'oem_escala',planCycle:'anual',planCustom:'',leveradsOrgId:'org-review',orgId:'0f9a1c2e-5b7d-4e8a-9c3b-1d2e3f4a5b6c',planSnapshot:{code:'oem_escala',name:'Ads Escala + OEM',closedPlan:'anual',cycle:'annual',priceVersion:1,listPrice:11988,limits:{accounts:7,copiesPerDay:8000,oemPerMonth:null},features:modules(true),accessProduct:'leverads'}});
   subs=seed.CUSTOMERS.map((c,i)=>({id:`sub-${c.id}`,saas:c.saas,customer:c.id,plan:'annual-review',price:c.arr,cycle:'annual',status:i===7?'canceled':i===0?'past_due':'active',periodEnd:`2026-09-${20+i}`}));
   // A assinatura do primeiro cliente carrega o plano do catálogo (o plano vive na assinatura).
   if(first){const s0=subs.find(s=>s.customer===first.id);if(s0)Object.assign(s0,{plan:'plan_leverads_oem_escala',planCode:'oem_escala',planSnapshot:{...first.planSnapshot,product:'leverads'}});first.products=['leverads'];}
@@ -61,6 +61,12 @@ const reviewActivities=[
   {id:'act-call',type:'call',at:'2026-08-14T15:00:00.000Z',author:'leo',text:'Primeira ligação: qualificado, duas contas no Mercado Livre.',meta:{}},
 ];
 export const customersReviewMock={
+  // Badge de LeverId: o primeiro cliente tem a org com três contas.
+  leveridOrgs:async()=>({configured:true,orgs:{'0f9a1c2e-5b7d-4e8a-9c3b-1d2e3f4a5b6c':{name:'Zpack Embalagens',status:'active',accounts:[
+    {id:'u1',email:'marina@zpack.example',role:'owner',createdAt:'2026-10-08T19:00:00Z',lastSignInAt:'2026-09-17T13:20:00Z',emailConfirmed:true,mfa:true,source:'leverads'},
+    {id:'u2',email:'financeiro@zpack.example',role:'admin',createdAt:'2026-10-08T19:00:00Z',lastSignInAt:'2026-09-02T10:00:00Z',emailConfirmed:true,mfa:false,source:'leverads'},
+    {id:'u3',email:'operacao@zpack.example',role:'member',createdAt:'2026-10-08T19:00:00Z',lastSignInAt:null,emailConfirmed:true,mfa:false,source:'leverads'},
+  ]}}}),
   listActivities:async()=>reviewActivities.map(a=>({...a})),
   list:async col=>{if(col==='subscriptions'&&++subscriptionReads===2&&params.has('billingFail'))throw new Error('Falha na leitura das cobranças');return col==='invoices'?invoices:col==='subscriptions'?subs:col==='plans'?plans:window.SEED[col.toUpperCase()]||[];},
   planStats:async()=>{

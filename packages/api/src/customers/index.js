@@ -5,6 +5,8 @@ import { registerIntegrationRoutes } from "./routes.integrations.js";
 import { registerReferralRoutes } from "./routes.referrals.js";
 import { registerNpsRoutes } from "./routes.nps.js";
 import { registerCustomerResultsRoutes } from "./routes.customer-results.js";
+import { registerLeverIdRoutes } from "./routes.leverid.js";
+import { makeIdentityAdmin } from "../auth/identity-admin.js";
 import { startCustomerMilestones } from "./customer-milestones.js";
 import { startNpsAsks } from "./nps.js";
 import { startCustomerReports } from "./customer-reports.js";
@@ -22,6 +24,8 @@ export function register(app, repo, ctx) {
   // Resultados do cliente na ficha: número vivo do banco do produto + envio
   // manual do relatório mensal.
   registerCustomerResultsRoutes(app, repo, { mailer: ctx.mailer, whatsapp: ctx.whatsapp });
+  // Badge de LeverId: quem do cliente já tem conta na identidade central.
+  registerLeverIdRoutes(app, { identity: ctx.opts.identity !== undefined ? ctx.opts.identity : makeIdentityAdmin() });
 }
 
 export function start(repo, { clients, log, stops, jobOn }) {

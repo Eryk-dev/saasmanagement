@@ -121,6 +121,8 @@ export const api = {
   // Orgs do produto LeverAds pro select de vínculo do sync de acesso
   // (424 quando a credencial LEVERADS_* não está configurada na API).
   leveradsOrgs: () => req("GET", "/api/leverads-access/orgs"),
+  // Contas do LeverId por org (badge da tela Clientes).
+  leveridOrgs: (orgIds) => req("GET", `/api/customers/leverid?orgs=${encodeURIComponent(orgIds.join(","))}`),
   // Auth do time: o token de sessão entra no MESMO slot da key (localStorage +
   // header x-api-key) — o resto do client não muda.
   login: (username, password) => req("POST", "/api/auth/login", { username, password }),
