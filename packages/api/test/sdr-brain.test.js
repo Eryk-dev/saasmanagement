@@ -1551,3 +1551,98 @@ test("roteiro OEM · preço depois da abordagem: resposta oficial + o par de hor
   assert.equal((await repo2.get("leads", "L1")).callAt, SLOT1);
   assert.match(f2.sent.at(-1).text, /^O investimento depende da sua operação/);
 });
+
+// ── Roteiro Lever Price (copy do Leo, 08/10/2026) ────────────────────────────
+// Mesmo esqueleto do OEM com a copy própria; o pitch é dito UMA vez (M1), a M2
+// só acrescenta o DRE e os horários, a M3 só reserva (2 balões), a M4 é a do
+// OEM. Preço depois da abordagem fala do VOLUME de anúncios, sem número.
+
+const PRICE_M1 = "Oiii Rafael, tudo bem? Recebemos aqui seu interesse, com o Lever Price você cadastra uma vez só o custo, a margem e o imposto de cada produto e, a partir daí, tudo acontece de forma automática: a plataforma confere seus anúncios no Mercado Livre 24 horas por dia, a cada minuto, mantém seu lucro dentro do esperado e ainda coloca seus produtos nas melhores promoções do ML: relâmpago, campanhas como Black Friday e 10.10, rebate e, quando não tem nenhuma delas, cria a promoção do vendedor pra seu anúncio nunca ficar fora de oferta. Isso ajudaria na sua operação?";
+
+test("roteiro PRICE · M2: 'sim' à abordagem vira convite com o DRE + par de horários, sem IA e sem repetir o pitch", async () => {
+  const repo = await world({ lead: { sourcePain: "PRICE", niche: "moda" }, messages: [
+    { direction: "out", author: "sdr-bot", text: PRICE_M1, at: ISO("2026-08-19T12:50:00Z") },
+    { direction: "in", text: "Sim", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "a IA não deveria falar" }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "Sim" } });
+  assert.equal(r, "price-agendamento");
+  assert.equal(fakes.calls.length, 0, "passo coberto pelo roteiro não chama a IA");
+  assert.equal(fakes.sent.length, 2);
+  assert.equal(fakes.sent[0].text, "Maravilha Rafael. Pelo que você me passou no formulário, faz sentido te mostrar isso rodando na prática, inclusive o DRE que a plataforma gera a partir das suas vendas.");
+  assert.ok(!/margem|promoç|24 horas/.test(fakes.sent[0].text), "a M2 não repete o pitch da M1");
+  assert.match(fakes.sent[1].text, /^Tenho agenda para amanhã às 9h ou amanhã às \d{1,2}h\. Qual funciona melhor para você\?$/);
+  const log = (await repo.get("leads", "L1")).sdrLog;
+  assert.ok(log.priceScriptAt);
+  assert.equal(log.oemScriptAt, undefined);
+});
+
+test("roteiro PRICE · M3: horário escolhido reserva em 2 balões e pergunta pela presença; M4 é a mesma do OEM", async () => {
+  const repo = await world({ lead: { sourcePain: "PRICE" }, messages: [
+    { direction: "out", author: "sdr-bot", text: PRICE_M1, at: ISO("2026-08-19T12:40:00Z") },
+    { direction: "in", text: "Sim", at: ISO("2026-08-19T12:45:00Z") },
+    { direction: "out", author: "sdr-bot", text: "Tenho agenda para amanhã às 9h ou amanhã às 11h. Qual funciona melhor para você?", at: ISO("2026-08-19T12:50:00Z") },
+    { direction: "in", text: "9h", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "9h" } });
+  assert.equal(r, "agendar");
+  const lead = await repo.get("leads", "L1");
+  assert.equal(lead.callAt, SLOT1);
+  assert.equal(lead.sdrLog.presenceAskedFor, SLOT1);
+  assert.equal(fakes.sent.length, 2);
+  assert.equal(fakes.sent[0].text, "Perfeito, Rafael. Ficou então para amanhã (20/08) às 9h. É uma conversa rápida, em torno de 30/40 minutos, direto na plataforma.");
+  assert.equal(fakes.sent[1].text, "Vou deixar esse horário reservado para você. Posso contar com sua presença?");
+  // M4: o "sim" à presença vira o compromisso do OEM (não fala de produto).
+  const repo2 = await world({
+    lead: { sourcePain: "PRICE", stage: "Call agendada", callAt: SLOT1, closer: "pl", sdrLog: { presenceAskedFor: SLOT1 } },
+    messages: [
+      { direction: "out", author: "sdr-bot", text: "Vou deixar esse horário reservado para você. Posso contar com sua presença?", at: ISO("2026-08-19T12:50:00Z") },
+      { direction: "in", text: "sim", at: ISO("2026-08-19T12:59:00Z") },
+    ],
+  });
+  const f2 = makeFakes({ decisions: [{ acao: "responder", mensagem: "a IA não deveria falar" }] });
+  const r2 = await brainOf(repo2, f2).handleInbound({ message: { from: "5541999990000", text: "sim" } });
+  assert.equal(r2, "price-compromisso");
+  assert.equal(f2.calls.length, 0);
+  assert.equal(f2.sent.length, 3);
+  assert.equal(f2.sent[0].text, "Combinado então Rafael. Se possível, acesse pelo computador ou notebook para conseguir visualizar melhor todos os detalhes, ok?");
+  assert.equal((await repo2.get("leads", "L1")).sdrLog.presenceConfirmedFor, SLOT1);
+});
+
+test("roteiro PRICE · preço depois da abordagem: fala do volume de anúncios, sem número, e leva o par de horários", async () => {
+  const repo = await world({ lead: { sourcePain: "PRICE" }, messages: [
+    { direction: "out", author: "sdr-bot", text: PRICE_M1, at: ISO("2026-08-19T12:50:00Z") },
+    { direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "a IA não deveria falar" }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "quanto custa?" } });
+  assert.equal(r, "price-preco");
+  assert.equal(fakes.calls.length, 0);
+  assert.equal(fakes.sent.length, 2);
+  assert.equal(fakes.sent[0].text, "O investimento depende do volume de anúncios da sua operação. Na demonstração, nosso especialista entende melhor o seu cenário e apresenta o plano mais adequado para o momento da sua empresa.");
+  assert.ok(!/R\$|\d/.test(fakes.sent[0].text), "sem valor");
+  assert.match(fakes.sent[1].text, /^Tenho agenda para amanhã às 9h ou amanhã às \d{1,2}h\. Qual funciona melhor para você\?$/);
+  assert.ok((await repo.get("leads", "L1")).sdrLog.priceGuardAt);
+  // Aceite + preço na mesma mensagem: o horário trava e a resposta de preço é a do Price.
+  const repo2 = await world({ lead: { sourcePain: "PRICE" }, messages: [
+    { direction: "out", author: "sdr-bot", text: PRICE_M1, at: ISO("2026-08-19T12:40:00Z") },
+    { direction: "in", text: "Sim", at: ISO("2026-08-19T12:45:00Z") },
+    { direction: "out", author: "sdr-bot", text: "Tenho agenda para amanhã às 9h ou amanhã às 11h. Qual funciona melhor para você?", at: ISO("2026-08-19T12:50:00Z") },
+    { direction: "in", text: "pode ser 9h, qual o valor?", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const f2 = makeFakes({ decisions: [{ acao: "responder", mensagem: "sobre o valor..." }] });
+  const r2 = await brainOf(repo2, f2).handleInbound({ message: { from: "5541999990000", text: "pode ser 9h, qual o valor?" } });
+  assert.equal(r2, "agendar");
+  assert.equal((await repo2.get("leads", "L1")).callAt, SLOT1);
+  assert.match(f2.sent.at(-1).text, /^O investimento depende do volume de anúncios/);
+  // A IA citou valor num lead de PRICE: a trava troca pela resposta do Price.
+  const repo3 = await world({ lead: { sourcePain: "PRICE" }, messages: [
+    { direction: "out", author: "sdr-bot", text: PRICE_M1, at: ISO("2026-08-19T12:40:00Z") },
+    { direction: "in", text: "e como funciona a margem secundária?", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const f3 = makeFakes({ decisions: [{ acao: "responder", mensagem: "O plano Essencial sai por R$ 797 por mês" }] });
+  const r3 = await brainOf(repo3, f3).handleInbound({ message: { from: "5541999990000", text: "e como funciona a margem secundária?" } });
+  assert.equal(r3, "preco-travado");
+  assert.match(f3.sent.at(-1).text, /^O investimento depende do volume de anúncios/);
+});

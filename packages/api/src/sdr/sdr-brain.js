@@ -43,7 +43,7 @@ const GREETING_GAP_MS = 6 * HOUR; // conversa parada há menos disso = SEM sauda
 // mensagens seguintes referenciam curto e trazem só o novo. O template do 1º
 // toque também conta como pitch feito.
 const DEMO_RX = /demonstra|mostrar (a |o )?(leverads|plataforma|ferramenta)|funcionando ao vivo/i;
-const PITCH_RX = /t[íi]tulo de 200|part number|compatibilidade inteira|clonagem de an[úu]ncios|estoque, atendimento e edi[çc][ãa]o|gerenciar m[úu]ltiplas contas/i;
+const PITCH_RX = /t[íi]tulo de 200|part number|compatibilidade inteira|clonagem de an[úu]ncios|estoque, atendimento e edi[çc][ãa]o|gerenciar m[úu]ltiplas contas|lever price|custo, a margem e o imposto/i;
 // Horário já oferecido não se repete enquanto o lead não escolher (Leo,
 // 23/08): a re-oferta a cada resposta soa insistente (e o modelo ainda
 // rotulava o dia errado ao re-citar de cabeça).
@@ -203,8 +203,8 @@ function priceBridgeText(nome) {
 // Desvio de preço colado na CONFIRMAÇÃO do horário (aceite + "qual o valor?"
 // na mesma mensagem): sem número, sem plano, e sem repetir a pergunta de
 // agenda que acabou de ser respondida.
-function priceAfterBookingText(nome, { oem = false } = {}) {
-  if (oem) return OEM_PRICE_TEXT;
+function priceAfterBookingText(nome, { script = "" } = {}) {
+  if (SCRIPT_PRICE_TEXT[script]) return SCRIPT_PRICE_TEXT[script];
   return `Sobre o valor${nome ? ` ${nome}` : ""}: são planos diferentes e o certo pra sua operação o especialista te mostra nessa conversa, prefiro não te passar um número solto por aqui`;
 }
 // Lead na sala do Meet esperando (texto já normalizado, sem acento).
@@ -266,7 +266,16 @@ function nowLabelOf(wnow) {
 //   M4 confirmação 2       = "sim" → computador, quem decide junto, acesso e lembrete
 //   preço após a abordagem = resposta oficial + o mesmo par de horários
 // Os lembretes do dia (8h · 2h · 10min) vivem no sdr-flow.js (reminderTextOem).
+//
+// ROTEIRO LEVER PRICE (copy alinhada com o Leo, 08/10/2026): o lead de PRICE
+// anda no MESMO esqueleto (M1..M4 + preço), com a copy própria. Pra não soar
+// repetitivo (feedback do Leo no rascunho), o pitch é dito uma vez só na M1;
+// a M2 só acrescenta o DRE e os horários, a M3 só reserva. M4 é a mesma do
+// OEM (não fala de produto). O preço do Price depende do VOLUME de anúncios
+// (é o que define o pacote), e a resposta diz isso sem número nem plano.
 const OEM_PRICE_TEXT = "O investimento depende da sua operação e das suas necessidades. Na demonstração, nosso especialista entende melhor o seu cenário e apresenta os planos e valores mais adequados para o momento da sua empresa.";
+const PRICE_PRICE_TEXT = "O investimento depende do volume de anúncios da sua operação. Na demonstração, nosso especialista entende melhor o seu cenário e apresenta o plano mais adequado para o momento da sua empresa.";
+const SCRIPT_PRICE_TEXT = { oem: OEM_PRICE_TEXT, price: PRICE_PRICE_TEXT };
 // Resposta curta e positiva do lead ("sim", "pode ser", "ajudaria", "ok") que
 // move o roteiro; negativa, ressalva ou pedido de mudança fica com a IA.
 const OEM_NO_RX = /\bnao\b|\bnem\b|remarc|reagend|mudar|trocar|outr[oa]|cancel|imprevisto|talvez|depende|nao sei|prefiro/;
@@ -282,6 +291,14 @@ function oemScheduleParts(nome, pair, wnow) {
     oemOfferLine(pair, wnow),
   ];
 }
+function priceScheduleParts(nome, pair, wnow) {
+  return [
+    `${oemVoc(nome, "Maravilha")} Pelo que você me passou no formulário, faz sentido te mostrar isso rodando na prática, inclusive o DRE que a plataforma gera a partir das suas vendas.`,
+    oemOfferLine(pair, wnow),
+  ];
+}
+const scriptScheduleParts = (script, nome, pair, wnow) =>
+  (script === "price" ? priceScheduleParts : oemScheduleParts)(nome, pair, wnow);
 function oemBookingParts(nome, quando) {
   return [
     `Perfeito${nome ? `, ${nome}` : ""}. Ficou então para ${quando}.`,
@@ -289,6 +306,14 @@ function oemBookingParts(nome, quando) {
     "Vou deixar esse horário reservado para você. Posso contar com sua presença?",
   ];
 }
+function priceBookingParts(nome, quando) {
+  return [
+    `Perfeito${nome ? `, ${nome}` : ""}. Ficou então para ${quando}. É uma conversa rápida, em torno de 30/40 minutos, direto na plataforma.`,
+    "Vou deixar esse horário reservado para você. Posso contar com sua presença?",
+  ];
+}
+const scriptBookingParts = (script, nome, quando) =>
+  (script === "price" ? priceBookingParts : oemBookingParts)(nome, quando);
 function oemCommitParts(nome) {
   return [
     `${oemVoc(nome, "Combinado então")} Se possível, acesse pelo computador ou notebook para conseguir visualizar melhor todos os detalhes, ok?`,
@@ -301,8 +326,8 @@ function oemCommitParts(nome) {
 // de QUALQUER resposta da IA que tenha citado valor. Sem horário junto: a
 // re-oferta de agenda colada no preço soava insistente. Lead de OEM ouve a
 // copy do roteiro de 05/10.
-function priceDeferral(nome, { oem = false } = {}) {
-  if (oem) return OEM_PRICE_TEXT;
+function priceDeferral(nome, { script = "" } = {}) {
+  if (SCRIPT_PRICE_TEXT[script]) return SCRIPT_PRICE_TEXT[script];
   const oi = nome ? `${nome}, o` : "O";
   return `${oi} investimento é de acordo com as necessidades da sua operação: primeiro a gente entende o seu cenário, e aí te mostra os pontos que dá pra alavancar. É exatamente isso que o especialista faz na demonstração.`;
 }
@@ -824,28 +849,31 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // Lead de OEM anda num roteiro fixo; a IA só entra no que ele não cobre.
     // Resposta curta e positiva, sem pergunta, sem preço e sem dia/hora pedidos
     // (dia ou hora seguem pela agenda/IA) é o que move o roteiro.
-    const oem = leadPainFocus(product, lead)?.mode === "oem";
+    // Desde 08/10 o lead de PRICE anda no mesmo roteiro, com a copy própria
+    // (script*Parts); `script` é "oem" | "price" | "" e `scripted` liga o roteiro.
+    const script = leadPainFocus(product, lead)?.mode;
+    const scripted = script === "oem" || script === "price";
     const plainIn = plainReply(lastInText);
-    const shortYes = oem && !lastInText.includes("?") && lastInText.trim().split(/\s+/).length <= 8
+    const shortYes = scripted && !lastInText.includes("?") && lastInText.trim().split(/\s+/).length <= 8
       && (INTEREST_RX.test(lastInText) || ACCEPT_RX.test(plainIn))
       && !PRICE_ASK_RX.test(lastInText) && !FORM_MSG_RX.test(lastInText) && !OEM_NO_RX.test(plainIn)
       && !HAS_HOUR_RX.test(lastInText) && !DAY_WORD_RX.test(lastInText);
-    if (oem && !inCallWindow && !awaitingReschedule) {
+    if (scripted && !inCallWindow && !awaitingReschedule) {
       // M4 · confirmação 2 + compromisso: o "sim" ao "posso contar com sua presença?".
       if (lead.callAt && lead.sdrLog?.presenceAskedFor === lead.callAt && lead.sdrLog?.presenceConfirmedFor !== lead.callAt && shortYes) {
         await stamp(lead, { presenceConfirmedFor: lead.callAt });
         await send(oemCommitParts(nome));
-        return aborted ? "abortado" : "oem-compromisso";
+        return aborted ? "abortado" : `${script}-compromisso`;
       }
       // "ok" ao fecho do roteiro: nada a dizer (a IA inventaria conversa).
       if (lead.callAt && lead.sdrLog?.presenceConfirmedFor === lead.callAt && shortYes) return "silencio";
       // M2 · agendamento: "sim" à abordagem → convite + par de horários.
       if (!lead.callAt && !slotsOffered && demoOffered && shortYes && suggestedPair.length) {
-        await send(oemScheduleParts(nome, suggestedPair, wnow));
+        await send(scriptScheduleParts(script, nome, suggestedPair, wnow));
         if (aborted) return "abortado";
-        await stamp(lead, { oemScriptAt: new Date(nowMs).toISOString() });
+        await stamp(lead, { [`${script}ScriptAt`]: new Date(nowMs).toISOString() });
         await holdSlots(repo, { saas: product.id, leadId: lead.id, slots: suggestedPair, now: at }).catch(() => {});
-        return "oem-agendamento";
+        return `${script}-agendamento`;
       }
       // Preço depois da abordagem (1ª vez, sem call): resposta oficial + os
       // horários (no roteiro de OEM o preço LEVA a agenda). Aceite + preço na
@@ -857,11 +885,11 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
           const offer = slotsOffered && offered.length >= 2
             ? `Fica melhor ${slotLabel(offered[0].at, wnow)} ou ${slotLabel(offered[1].at, wnow)}?`
             : oemOfferLine(suggestedPair, wnow) || "Qual período fica melhor pra você, manhã ou tarde?";
-          await send([OEM_PRICE_TEXT, offer]);
+          await send([SCRIPT_PRICE_TEXT[script], offer]);
           if (aborted) return "abortado";
           await stamp(lead, { priceGuardAt: new Date(nowMs).toISOString() });
           if (!slotsOffered && suggestedPair.length) await holdSlots(repo, { saas: product.id, leadId: lead.id, slots: suggestedPair, now: at }).catch(() => {});
-          return "oem-preco";
+          return `${script}-preco`;
         }
       }
     }
@@ -935,7 +963,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
         priceWithBooking = true;
       } else if (offered.length >= 2 && ACCEPT_RX.test(plainReply(lastInText))) {
         const iso = new Date(nowMs).toISOString();
-        await send([priceDeferral(nome, { oem }), `Qual dos dois fica melhor pra você, ${slotLabel(offered[0].at, wnow)} ou ${slotLabel(offered[1].at, wnow)}?`]);
+        await send([priceDeferral(nome, { script }), `Qual dos dois fica melhor pra você, ${slotLabel(offered[0].at, wnow)} ou ${slotLabel(offered[1].at, wnow)}?`]);
         await stamp(lead, { priceGuardAt: lead.sdrLog?.priceGuardAt || iso });
         return aborted ? "abortado" : "preco-aceite-qual";
       }
@@ -1056,11 +1084,11 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       // contar com sua presença?"; o "sim" seguinte vira a M4 (compromisso).
       await send(rebook
         ? rebookConfirmText(nome, slotLabelFull(pick.at, wnow), !!(lead.email && (fresh || lead).callUrl))
-        : oem ? oemBookingParts(nome, slotLabelFull(pick.at, wnow))
+        : scripted ? scriptBookingParts(script, nome, slotLabelFull(pick.at, wnow))
           : bookingConfirmText(nome, slotLabelFull(pick.at, wnow), !!lead.email));
-      if (oem && !rebook && !aborted) await stamp(lead, { presenceAskedFor: pick.at });
+      if (scripted && !rebook && !aborted) await stamp(lead, { presenceAskedFor: pick.at });
       if (priceWithBooking && !aborted) {
-        await send(priceAfterBookingText(nome, { oem }));
+        await send(priceAfterBookingText(nome, { script }));
         await stamp(lead, { priceGuardAt: lead.sdrLog?.priceGuardAt || new Date(nowMs).toISOString() });
       }
       if (autoCallMeet) autoCallMeet(lead.id).catch(() => { /* o lembrete de 10min entrega o link quando existir */ });
@@ -1074,7 +1102,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // TRAVA DE PREÇO (1ª vez): a IA citou valor → sai a resposta oficial no
     // lugar. A 2ª e a 3ª insistência já foram tratadas pela escada lá em cima.
     if (PRICE_RX.test(parts.join(" "))) {
-      await send(priceDeferral(nome, { oem }));
+      await send(priceDeferral(nome, { script }));
       await stamp(lead, { priceGuardAt: new Date(nowMs).toISOString() });
       return "preco-travado";
     }
