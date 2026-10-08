@@ -193,12 +193,11 @@ function MetricsScreen() {
 
   const [objects, setObjects] = useState(null); // { campaigns, adsets, ads } ao vivo (gerenciamento)
   const [placements, setPlacements] = useState(null); // breakdown plataforma × posição (ao vivo)
-  const [creative, setCreative] = useState(false); // painel de novo criativo
   const [cloneAd, setCloneAd] = useState(false);    // painel de "criar anúncio" (clonar + trocar vídeo)
   // Troca de produto (workspace) fecha os painéis e descarta o rascunho de gasto
   // manual — nada pode ser registrado no produto errado. (setManual é declarado
   // abaixo; o efeito roda pós-render, então a captura é segura.)
-  useEffect(() => { setCreative(false); setCloneAd(false); setManual(null); setNote(null); }, [product?.id]); // eslint-disable-line no-use-before-define
+  useEffect(() => { setCloneAd(false); setManual(null); setNote(null); }, [product?.id]); // eslint-disable-line no-use-before-define
 
   // reset=true (troca de range/produto): zera a tela e recarrega TUDO, inclusive
   // a lista viva de campanhas. Silencioso (SSE/tick): só métricas + CAC — nada
@@ -417,14 +416,7 @@ function MetricsScreen() {
     <div className="marketing-page ads-page">
       <header className="ads-head"><div><h1>Publicidade</h1><div className="ads-connection"><i style={{background:metaOn && product.metaAdAccount ? "var(--pos)" : "var(--fg-4)"}}/>{metaOn && product.metaAdAccount ? `Meta conectada · ${product.metaAdAccount}` : "Meta não conectada"}{refreshing && <span role="status"> · atualizando…</span>}</div></div><div className="ads-head-actions">
         {metaOn && product.metaAdAccount && (
-          <PrimaryButton disabled={cloneAd || creative} onClick={() => setCloneAd(true)}>Criar anúncio</PrimaryButton>
-        )}
-        {metaOn && product.metaAdAccount && (
-          <button disabled={cloneAd || creative} onClick={() => setCreative(true)}
-            title="Criar um anúncio do zero (escolhe copy, CTA e link)"
-            style={{ height: 32, padding: "0 12px", borderRadius: 999, fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)" }}>
-            + criativo do zero
-          </button>
+          <PrimaryButton disabled={cloneAd} onClick={() => setCloneAd(true)}>Criar anúncio</PrimaryButton>
         )}
         <button disabled={manualBusy} onClick={() => manual ? closeManual() : setManual({ date: dayStr(Date.now()), name: "", spend: "" })}
           style={{ height: 32, padding: "0 12px", borderRadius: 999, fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)" }}>
@@ -471,13 +463,6 @@ function MetricsScreen() {
             onDone={(msg) => { if(currentProduct.current!==product.id)return; setCloneAd(false); latestLoad.current(); setNote({ ok: true, text: msg }); }}
             onError={(msg) => {if(currentProduct.current===product.id)setNote({ ok: false, text: msg });}}
             onClose={() => setCloneAd(false)} />
-        )}
-
-        {creative && (
-          <NewCreativePanel key={product.id} product={product} campaigns={objects && !objects.error ? objects.campaigns : []}
-            onDone={(msg) => { if(currentProduct.current!==product.id)return; setCreative(false); latestLoad.current(); setNote({ ok: true, text: msg }); }}
-            onError={(msg) => {if(currentProduct.current===product.id)setNote({ ok: false, text: msg });}}
-            onClose={() => setCreative(false)} />
         )}
 
         {manual && (
@@ -1522,10 +1507,14 @@ function FilaDeVideos({ itens, pain }) {
   );
 }
 
+// FLUXO ENXUTO (Leo, 08/10/2026): escolher a campanha e o conjunto, subir os
+// vídeos, pronto. A dor sai do nome da campanha (ou do conjunto, ou do próprio
+// arquivo), e o nome do anúncio sai do número do arquivo. Copy, título, CTA e
+// link são os do anúncio de origem (clone), então não se pergunta nada disso.
+// O select de dor só aparece quando nenhum nome carrega a tag [dor].
 function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
   const [defaults, setDefaults] = useState(null); // { painMap }
-  const [pain, setPain] = useState("");           // código escolhido ou "_new"
-  const [newPain, setNewPain] = useState({ code: "", label: "" });
+  const [painManual, setPainManual] = useState(""); // só quando a dor não vem de nome nenhum
   const [campaignId, setCampaignId] = useState("");
   const [adsets, setAdsets] = useState(null);
   const [sourceAdsetId, setSourceAdsetId] = useState("");
@@ -1558,19 +1547,10 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
   }, [product.id]);
 
   const painMap = defaults?.painMap || {};
-  const painCodeSel = pain === "_new" ? newPain.code.trim().toUpperCase() : pain;
-  const painLabelSel = pain === "_new" ? newPain.label.trim() : painMap[pain] || "";
   const activeCamps = campaigns.filter((c) => c.effectiveStatus !== "ARCHIVED" && c.effectiveStatus !== "DELETED");
-  // Campanhas cujo nome carrega o código da dor ([B]) — o alvo natural.
-  const matches = painCodeSel ? activeCamps.filter((c) => painCodeOf(c.name) === painCodeSel) : [];
+  const campaign = activeCamps.find((c) => String(c.id) === String(campaignId)) || null;
 
-  // Ao escolher a dor, resolve a campanha sozinho quando há exatamente uma [dor].
-  useEffect(() => {
-    if (matches.length === 1) setCampaignId(matches[0].id);
-    else if (matches.length === 0) setCampaignId("");
-  }, [painCodeSel]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Conjuntos da campanha resolvida — o usuário escolhe qual clonar.
+  // Conjuntos da campanha escolhida — o usuário escolhe qual clonar.
   useEffect(() => {
     if (!campaignId) { setAdsets(null); setSourceAdsetId(""); return; }
     setAdsets(null); setSourceAdsetId("");
@@ -1591,11 +1571,16 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
 
   // Linhas prontas: com arquivo, com número e dentro do limite de tamanho.
   const comArquivo = linhas.filter((l) => l.file);
+  // Dor pelo NOME: campanha → conjunto → arquivo ("UK 1491 [PRICE].mp4"). Sem
+  // tag em nenhum, o select manual aparece (caso raro: campanha sem convenção).
+  const painAuto = painCodeOf(campaign?.name) || painCodeOf(sourceAdset?.name) || painCodeOf(comArquivo[0]?.file?.name) || "";
+  const painCodeSel = painAuto || painManual;
+  const painLabelSel = painMap[painCodeSel] || "";
   const semNumero = comArquivo.filter((l) => !l.numero.trim());
   const grandes = comArquivo.filter((l) => tooBig(l.file));
   const orcamento = Number(budget.replace(",", ".")) || 0;
   const orcamentoOk = orcamento > 0 && orcamento <= MAX_BUDGET;
-  const valid = !accepted && painCodeSel && (pain !== "_new" || painLabelSel) && campaignId && sourceAdsetId
+  const valid = !accepted && painCodeSel && campaignId && sourceAdsetId
     && comArquivo.length > 0 && !semNumero.length && !grandes.length && orcamentoOk && !busy;
 
   // Um anúncio por vídeo. O ENVIO é sequencial (a banda de subida é uma só e
@@ -1661,10 +1646,36 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
   const inp = { height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
 
   return (
-    <Card title="Criar anúncio" hint="clona o conjunto da dor e troca só o vídeo · um anúncio por vídeo, nome «número [dor]»">
+    <Card title="Criar anúncio" hint="escolha a campanha e o conjunto, suba os vídeos · um anúncio por vídeo, copy e link do anúncio de origem, nome «número [dor]»">
       <fieldset disabled={busy} className="ads-creative-fields">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+          <label style={lbl}>
+            <span className="kicker">1 · Campanha</span>
+            <select value={campaignId} onChange={(e) => setCampaignId(e.target.value)} style={inp}>
+              <option value="">Selecione…</option>
+              {activeCamps.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
+          <label style={lbl}>
+            <span className="kicker">2 · Conjunto de origem (será clonado)</span>
+            <select value={sourceAdsetId} onChange={(e) => setSourceAdsetId(e.target.value)} disabled={!campaignId} style={inp}>
+              <option value="">{!campaignId ? "escolha a campanha" : adsets == null ? "carregando…" : "Selecione…"}</option>
+              {(adsets || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </label>
+          {campaignId && adsets != null && !painAuto && (
+            <label style={lbl}>
+              <span className="kicker">Dor (a campanha não tem [dor] no nome)</span>
+              <select aria-label="Dor do anúncio" value={painManual} onChange={(e) => setPainManual(e.target.value)} style={inp}>
+                <option value="">Selecione…</option>
+                {Object.entries(painMap).map(([c, l]) => <option key={c} value={c}>[{c}] {l}</option>)}
+              </select>
+            </label>
+          )}
+        </div>
+
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <span className="kicker">1 · Vídeos da leva {comArquivo.length > 1 ? `(${comArquivo.length} anúncios)` : ""}</span>
+          <span className="kicker">3 · Vídeos da leva {comArquivo.length > 1 ? `(${comArquivo.length} anúncios)` : ""}</span>
           {linhas.map((l, i) => (
             <div key={l.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <span className="mono dim" style={{ fontSize: 11, width: 16, textAlign: "right" }}>{i + 1}</span>
@@ -1689,17 +1700,6 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
-          <label style={lbl}>
-            <span className="kicker">2 · Dor do anúncio</span>
-            <select value={pain} onChange={(e) => setPain(e.target.value)} style={inp}>
-              <option value="">Selecione…</option>
-              {Object.entries(painMap).map(([c, l]) => <option key={c} value={c}>[{c}] {l}</option>)}
-              <option value="_new">+ nova dor…</option>
-            </select>
-          </label>
-        </div>
-
         {(semNumero.length > 0 || grandes.length > 0) && (
           <div className="mono" style={{ fontSize: 11.5, color: "var(--neg)", lineHeight: 1.6 }}>
             {semNumero.length > 0 && <div>sem número (o do nome do arquivo não foi achado, preencha ao lado): {semNumero.map((l) => l.file.name).join(", ")}</div>}
@@ -1707,39 +1707,9 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
           </div>
         )}
 
-        {pain === "_new" && (
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <label style={lbl}>
-              <span className="kicker">Código (1-3 letras)</span>
-              <input type="text" maxLength={3} placeholder="C" value={newPain.code}
-                onChange={(e) => setNewPain({ ...newPain, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") })}
-                style={{ ...inp, width: 80, fontFamily: "var(--mono)", textTransform: "uppercase" }} />
-            </label>
-            <label style={{ ...lbl, flex: 1, minWidth: 220 }}>
-              <span className="kicker">Nome da dor</span>
-              <input type="text" placeholder="ex.: Medo de banimento da conta" value={newPain.label}
-                onChange={(e) => setNewPain({ ...newPain, label: e.target.value })} style={inp} />
-            </label>
-          </div>
-        )}
-
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
           <label style={lbl}>
-            <span className="kicker">3 · Campanha {matches.length === 1 ? "(resolvida pela dor)" : matches.length > 1 ? "(várias [" + painCodeSel + "], escolha)" : ""}</span>
-            <select value={campaignId} onChange={(e) => setCampaignId(e.target.value)} style={inp}>
-              <option value="">{painCodeSel ? (matches.length ? "Selecione…" : `nenhuma campanha [${painCodeSel}] — escolha`) : "escolha a dor antes"}</option>
-              {activeCamps.map((c) => <option key={c.id} value={c.id}>{painCodeOf(c.name) === painCodeSel ? "● " : ""}{c.name}</option>)}
-            </select>
-          </label>
-          <label style={lbl}>
-            <span className="kicker">4 · Conjunto de origem (será clonado)</span>
-            <select value={sourceAdsetId} onChange={(e) => setSourceAdsetId(e.target.value)} disabled={!campaignId} style={inp}>
-              <option value="">{!campaignId ? "escolha a campanha" : adsets == null ? "carregando…" : "Selecione…"}</option>
-              {(adsets || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </label>
-          <label style={lbl}>
-            <span className="kicker">5 · Orçamento diário por conjunto (R$, teto {MAX_BUDGET})</span>
+            <span className="kicker">4 · Orçamento diário por conjunto (R$, teto {MAX_BUDGET})</span>
             <input type="text" inputMode="decimal" placeholder={`até ${MAX_BUDGET}`}
               value={budget} onChange={(e) => setBudget(e.target.value.replace(/[^\d.,]/g, ""))}
               style={{ ...inp, fontFamily: "var(--mono)", borderColor: budget && !orcamentoOk ? "var(--neg)" : "var(--line-2)" }} />
@@ -1784,181 +1754,13 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
         {queue.length > 0 && <FilaDeVideos itens={queue} pain={painCodeSel} />}
 
         <div className="mono dim" style={{ fontSize: 10.5, lineHeight: 1.5 }}>
-          cada vídeo vira um anúncio: clona o conjunto escolhido (mantém público, posicionamento, copy e CTA), troca só o vídeo, nomeia conjunto e anúncio como «número [dor]» e aplica o orçamento diário acima. Os vídeos sobem um de cada vez, pra Meta não recusar por excesso de chamadas. O teto de R$ {MAX_BUDGET} por conjunto é travado também no servidor, e se a campanha usar orçamento de CAMPANHA (CBO) o anúncio sobe pausado, porque ali o teto não pode ser garantido.
+          cada vídeo vira um anúncio: clona o conjunto escolhido (mantém público, posicionamento, copy, título, CTA, link e UTMs do anúncio de origem), troca só o vídeo, nomeia conjunto e anúncio como «número [dor]» (a dor vem do nome da campanha) e aplica o orçamento diário acima. Os vídeos sobem um de cada vez, pra Meta não recusar por excesso de chamadas. O teto de R$ {MAX_BUDGET} por conjunto é travado também no servidor, e se a campanha usar orçamento de CAMPANHA (CBO) o anúncio sobe pausado, porque ali o teto não pode ser garantido.
         </div>
       </fieldset>
     </Card>
   );
 }
 
-function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
-  const [defaults, setDefaults] = useState(null); // { pageId, link, painMap }
-  const [campaignId, setCampaignId] = useState("");
-  const [adsets, setAdsets] = useState(null);
-  const [adsetId, setAdsetId] = useState("");
-  const [pain, setPain] = useState("");           // código escolhido ou "_new"
-  const [newPain, setNewPain] = useState({ code: "", label: "" });
-  const [name, setName] = useState("");
-  const [title, setTitle] = useState("");
-  const [message, setMessage] = useState("");
-  const [link, setLink] = useState("");
-  const [cta, setCta] = useState("LEARN_MORE");
-  const [file, setFile] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const writing=useRef(false);
-  const [accepted,setAccepted]=useState(false);
-  const [pct, setPct] = useState(0);
-  const [step, setStep] = useState("");
-
-  useEffect(() => {
-    api.creativeDefaults(product.id)
-      .then((d) => { setDefaults(d); if (d.link) setLink((v) => v || d.link); })
-      .catch(() => setDefaults({ painMap: {} }));
-  }, [product.id]);
-
-  useEffect(() => {
-    if (!campaignId) { setAdsets(null); setAdsetId(""); return; }
-    setAdsets(null);
-    api.metaAdsets(campaignId)
-      .then((r) => { setAdsets(r.adsets); if (r.adsets.length === 1) setAdsetId(r.adsets[0].id); })
-      .catch((e) => { setAdsets([]); onError(e.message || "Falha ao listar conjuntos."); });
-  }, [campaignId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const painMap = defaults?.painMap || {};
-  const painCodeSel = pain === "_new" ? newPain.code.trim().toUpperCase() : pain;
-  const painLabelSel = pain === "_new" ? newPain.label.trim() : painMap[pain] || "";
-  const valid = !accepted && adsetId && name.trim() && message.trim() && link.trim() && file && (pain !== "_new" || (painCodeSel && painLabelSel));
-
-  async function submit() {
-    if(writing.current || !valid)return;
-    const big = tooBig(file);
-    if (big) return onError(big);
-    writing.current=true;setBusy(true); setPct(0); setStep("");
-    try {
-      const fd = new FormData();
-      fd.append("adsetId", adsetId);
-      fd.append("name", name.trim());
-      fd.append("message", message.trim());
-      if (title.trim()) fd.append("title", title.trim());
-      fd.append("link", link.trim());
-      fd.append("ctaType", cta);
-      if (painCodeSel) { fd.append("painCode", painCodeSel); fd.append("painLabel", painLabelSel); }
-      fd.append("video", file, file.name);
-      const { jobId } = await api.uploadCreative(product.id, fd, setPct);
-      setAccepted(true);setStep("a Meta está processando o vídeo");
-      const job = await waitForVideoJob(jobId, setStep);
-      avisarConclusao(1, 0);
-      onDone(`Anúncio "${job.result.name}" criado PAUSADO — revise e ative no Gerenciador.`);
-    } catch (e) {
-      avisarConclusao(0, 1);
-      onError(e.message || "Falha ao criar o criativo.");
-    }
-    writing.current=false;setBusy(false); setPct(0); setStep("");
-  }
-
-  const lbl = { display: "flex", flexDirection: "column", gap: 4 };
-  const inp = { height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
-  const activeCamps = campaigns.filter((c) => c.effectiveStatus !== "ARCHIVED" && c.effectiveStatus !== "DELETED");
-
-  return (
-    <Card title="Novo criativo" hint="o anúncio nasce pausado, com a dor no nome e as UTMs do mapeamento">
-      <fieldset disabled={busy} className="ads-creative-fields">
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
-          <label style={lbl}>
-            <span className="kicker">Campanha</span>
-            <select aria-label="Campanha" value={campaignId} onChange={(e) => setCampaignId(e.target.value)} style={inp}>
-              <option value="">Selecione…</option>
-              {activeCamps.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </label>
-          <label style={lbl}>
-            <span className="kicker">Conjunto</span>
-            <select aria-label="Conjunto" value={adsetId} onChange={(e) => setAdsetId(e.target.value)} disabled={!campaignId} style={inp}>
-              <option value="">{!campaignId ? "escolha a campanha" : adsets == null ? "carregando…" : "Selecione…"}</option>
-              {(adsets || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </label>
-          <label style={lbl}>
-            <span className="kicker">Dor (roteiro)</span>
-            <select aria-label="Dor (roteiro)" value={pain} onChange={(e) => setPain(e.target.value)} style={inp}>
-              <option value="">Sem código</option>
-              {Object.entries(painMap).map(([c, l]) => <option key={c} value={c}>[{c}] {l}</option>)}
-              <option value="_new">+ nova dor…</option>
-            </select>
-          </label>
-        </div>
-
-        {pain === "_new" && (
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <label style={lbl}>
-              <span className="kicker">Código (1-3 letras)</span>
-              <input type="text" maxLength={3} placeholder="C" value={newPain.code}
-                onChange={(e) => setNewPain({ ...newPain, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") })}
-                style={{ ...inp, width: 80, fontFamily: "var(--mono)", textTransform: "uppercase" }} />
-            </label>
-            <label style={{ ...lbl, flex: 1, minWidth: 220 }}>
-              <span className="kicker">Nome da dor</span>
-              <input type="text" placeholder="ex.: Medo de banimento da conta" value={newPain.label}
-                onChange={(e) => setNewPain({ ...newPain, label: e.target.value })} style={inp} />
-            </label>
-          </div>
-        )}
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
-          <label style={lbl}>
-            <span className="kicker">Variação (vira o nome do anúncio)</span>
-            <input type="text" placeholder="ex.: v1 depoimento cliente" value={name} onChange={(e) => setName(e.target.value)} style={inp} />
-          </label>
-          <label style={lbl}>
-            <span className="kicker">Título (headline)</span>
-            <input type="text" placeholder="opcional" value={title} onChange={(e) => setTitle(e.target.value)} style={inp} />
-          </label>
-          <label style={lbl}>
-            <span className="kicker">Botão (CTA)</span>
-            <select aria-label="Botão (CTA)" value={cta} onChange={(e) => setCta(e.target.value)} style={inp}>
-              <option value="LEARN_MORE">Saiba mais</option>
-              <option value="SIGN_UP">Cadastre-se</option>
-              <option value="GET_OFFER">Ver oferta</option>
-              <option value="CONTACT_US">Fale conosco</option>
-            </select>
-          </label>
-        </div>
-
-        <label style={lbl}>
-          <span className="kicker">Texto principal</span>
-          <textarea aria-label="Texto principal" rows={3} placeholder="Copy do anúncio (aparece acima do vídeo)" value={message} onChange={(e) => setMessage(e.target.value)}
-            style={{ ...inp, height: "auto", minHeight: 64, padding: "8px 10px", resize: "vertical", fontFamily: "var(--sans)" }} />
-        </label>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
-          <label style={lbl}>
-            <span className="kicker">Link de destino (form)</span>
-            <input type="url" placeholder="https://…" value={link} onChange={(e) => setLink(e.target.value)} style={{ ...inp, fontFamily: "var(--mono)", fontSize: 12 }} />
-          </label>
-          <label style={lbl}>
-            <span className="kicker">Vídeo</span>
-            <input type="file" accept="video/*" onChange={(e) => setFile(e.target.files?.[0] || null)}
-              style={{ ...inp, paddingTop: 4, height: 30 }} />
-          </label>
-        </div>
-
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button onClick={submit} disabled={!valid || busy}
-            style={{ height: 32, padding: "0 16px", borderRadius: 999, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 600, opacity: !valid || busy ? 0.55 : 1 }}>
-            {busy ? "Trabalhando… não feche a tela" : "Criar anúncio pausado"}
-          </button>
-          <button onClick={()=>{if(!writing.current && window.confirm("Fechar a criação do anúncio? O preenchimento será descartado."))onClose();}} disabled={busy} style={{ height: 32, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>cancelar</button>
-          {busy
-            ? <JobProgress pct={pct} step={step} />
-            : painCodeSel && name.trim() && (
-              <span className="mono dim" style={{ fontSize: 11.5 }}>nome final: [{painCodeSel}] {name.trim()}</span>
-            )}
-        </div>
-        {accepted && !busy && <p role="status" className="ads-error">O envio foi aceito. Confira o anúncio no Gerenciador antes de iniciar outra criação.</p>}
-      </fieldset>
-    </Card>
-  );
-}
 
 // Tabela campanha → conjunto → anúncio (linhas expansíveis). Conjuntos/anúncios
 // só existem depois do 1º sync nível-anúncio — sem eles, a campanha não expande.
