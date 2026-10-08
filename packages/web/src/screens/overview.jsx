@@ -870,6 +870,13 @@ const MAX_VENDAS = 14;
 // Espelho do upsellSoldAt do metrics-core (api) — a mesma ordem de fallback,
 // pra data aqui bater com a do placar.
 const upsellSoldAtOf = (i) => i?.soldAt || i?.paidAt || i?.dueDate || i?.createdAt || "";
+// Espelho do dealItemsOf (crm/won-lead.js): com mais de um item, a lista em
+// dealItems; senão o dealProduct do lead. Produtos juntos por " + ".
+const produtoFechadoOf = (l) => {
+  const itens = Array.isArray(l?.dealItems) ? l.dealItems.filter((i) => String(i?.product || "").trim()) : [];
+  const ids = itens.length > 1 ? itens.map((i) => i.product) : [l?.dealProduct];
+  return ids.map((id) => dealProductLabel(String(id || "").trim(), l?.saas)).filter(Boolean).join(" + ");
+};
 
 function VendasCard({ leads, invoices, product, customers, onNav, onOpenLead }) {
   // Nome do CLIENTE: o cadastro vence (é o nome que o time usa em Clientes e
@@ -880,8 +887,11 @@ function VendasCard({ leads, invoices, product, customers, onNav, onOpenLead }) 
     const doLead = (leads || []).filter((l) => isWonLead(product, l)).map((l) => ({
       id: `l_${l.id}`, lead: l, at: wonAtOf(l), amount: l.amount, who: l.closer || l.owner || "",
       cliente: nomeDoCadastro(l.customerId) || String(l.company || l.name || "").trim() || "cliente sem nome",
-      // O produto do fechamento; sem ele, a oferta que estava na mesa.
-      produto: dealProductLabel(l.proposalProduct, l.saas)
+      // O produto do fechamento (dealItems/dealProduct, o que o gate de Ganho
+      // grava); sem ele, a oferta que estava na mesa. Ler só a proposta
+      // deixava "produto não informado" em toda venda fechada com produto.
+      produto: produtoFechadoOf(l)
+        || dealProductLabel(l.proposalProduct, l.saas)
         || (l.proposalOffer && l.proposalOffer !== "nenhuma" ? closedPlanLabel(l.proposalOffer) || l.proposalOffer : ""),
       upsell: false,
     }));

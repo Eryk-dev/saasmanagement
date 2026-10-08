@@ -19,9 +19,12 @@ const score = {
   team: { leadsNew: 214, contacted: 176, reachedCohort: 176, callsBooked: 61, shown: 47, won: 8, contactRate: 82.2, bookingRate: 34.7, showRate: 77, closeRatePeriod: 17, classes: { semente: { leads: 46, won: 3 }, rede: { leads: 132, won: 4 }, alvo: { leads: 36, won: 1 } } },
 };
 const sales = [['Studio Kern',24000,'rafael',17],['Nutri Vitta',4800,'rafael',16],['Oficina Prado',9600,'bruno',15],['Clínica Arbo',24000,'rafael',11],['Mercado Ponto',6400,'manuela',9],['Instituto Rima',19600,'rafael',5],['Grupo Vante',9600,'bruno',4],['Padaria Dovale',14400,'manuela',2]];
+// Fechamento pelo gate de Ganho, sem proposta registrada: o produto mora em
+// dealProduct (um item) ou dealItems (mais de um) — não em proposalProduct.
+const closing = [{ dealProduct:'ads_escala', planClosed:'anual' }, { dealProduct:'oem_essencial', planClosed:'anual', dealItems:[{ product:'oem_essencial', planClosed:'anual', amount:6000 }, { product:'price_essencial', planClosed:'anual', amount:3600 }] }];
 export function setupOverviewReview(seed) {
   seed.USERS.push(...[['rafael','Rafael Moura','closer'],['bruno','Bruno Alencar','closer'],['manuela','Manuela Costa','sdr'],['vitor','Vitor Nunes','integrator']].map(([id,name,role]) => ({ id, name, roles:[role], saas:'leverads' })));
-  seed.LEADS = empty ? [] : sales.filter((_, i) => i !== 1).map(([company,amount,closer,day], i) => ({ id:`review-won-${i}`, saas:'leverads', name:company, company, amount, closer, owner:closer, stage:'Ganho', wonAt:`2026-09-${String(day).padStart(2,'0')}T12:00:00-03:00`, proposalProduct:'ads', proposalOffer:'escala_anual' }));
+  seed.LEADS = empty ? [] : sales.filter((_, i) => i !== 1).map(([company,amount,closer,day], i) => ({ id:`review-won-${i}`, saas:'leverads', name:company, company, amount, closer, owner:closer, stage:'Ganho', wonAt:`2026-09-${String(day).padStart(2,'0')}T12:00:00-03:00`, ...closing[i] || { proposalProduct:'ads', proposalOffer:'escala_anual' } }));
   if (!empty) seed.LEADS.push(...Array.from({length:14}, (_,i) => ({id:`review-open-${i}`, saas:'leverads', name:`Lead ${i+1}`, company:`Empresa ${i+1}`, stage:'Qualificação', amount:i === 0 ? 5500 : 7000, owner:'manuela'})));
   seed.CUSTOMERS = empty ? [] : Array.from({length:41}, (_,i) => ({ id:`review-customer-${i}`, saas:'leverads', name:i === 0 ? 'Nutri Vitta' : `Cliente ${i+1}`, arr: i < 2 ? 159000 : 1461600 / 39, keyAccount:i < 2, startedAt:'2026-01-01T12:00:00-03:00' }));
   localStorage.setItem('cockpit_period', 'month');

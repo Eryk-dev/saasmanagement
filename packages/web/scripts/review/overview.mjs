@@ -72,6 +72,11 @@ try {
     const text = await page.locator('.overview-screen').innerText();
     for (const removed of ['Detalhes da meta','o pace pedia','Contratado no período','Fora do resultado','Receita mensal','Base ativa','ranking por %','as 8 mais recentes']) assert.ok(!text.includes(removed), `Removed text: ${removed}`);
     assert.equal(await page.locator('.vg-page-head select').count(), 0);
+    // Venda fechada pelo gate de Ganho mostra o produto do fechamento.
+    const sales = await page.locator('.vg-sale').allInnerTexts();
+    assert.ok(sales.some(t=>t.includes('Studio Kern') && t.includes('Ads Escala')), 'dealProduct ausente na venda');
+    assert.ok(sales.some(t=>t.includes('Oficina Prado') && t.includes('Ads Essencial + OEM + Lever Price · Essencial')), 'dealItems ausente na venda');
+    assert.ok(!text.includes('produto não informado'), 'venda fechada sem produto');
     // Native disclosure supports keyboard and keeps its content in place.
     const summary = page.locator('.vg-team-details summary').first();
     await summary.focus(); await page.keyboard.press('Enter');
