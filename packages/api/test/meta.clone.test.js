@@ -43,15 +43,17 @@ test("getAdCreativeSpec: devolve object_story_spec + url_tags", async () => {
   assert.equal(spec.video_data.video_id, "v_old");
   assert.equal(urlTags, "utm_source=meta");
   assert.match(f.calls[0].url, /\/ad_copy\?/);
-  assert.match(decodeURIComponent(f.calls[0].url), /creative\{object_story_spec,asset_feed_spec,url_tags\}/);
+  assert.match(decodeURIComponent(f.calls[0].url), /creative\{object_story_spec,asset_feed_spec,degrees_of_freedom_spec,url_tags\}/);
 });
 
 test("createVideoCreativeFromSpec: troca só o vídeo/thumb e preserva o resto", async () => {
   const f = recorder(() => ({ id: "cr_new" }));
   const meta = makeMeta({ fetch: f, accessToken: "tok" });
   const sourceSpec = { page_id: "10", instagram_user_id: "20", video_data: { video_id: "v_old", image_url: "old", message: "copy mantida", call_to_action: { type: "LEARN_MORE", value: { link: "https://x" } } } };
-  const id = await meta.createVideoCreativeFromSpec("act_9", { name: "1303 [B]", sourceSpec, videoId: "v_new", imageUrl: "thumb_new", urlTags: "utm_source=meta" });
+  const freedom = { creative_features_spec: { standard_enhancements: { enroll_status: "OPT_IN" }, image_touchups: { enroll_status: "OPT_OUT" } } };
+  const id = await meta.createVideoCreativeFromSpec("act_9", { name: "1303 [B]", sourceSpec, freedom, videoId: "v_new", imageUrl: "thumb_new", urlTags: "utm_source=meta" });
   assert.equal(id, "cr_new");
+  assert.deepEqual(JSON.parse(f.calls[0].body.degrees_of_freedom_spec), { creative_features_spec: { image_touchups: { enroll_status: "OPT_OUT" } } }, "melhorias iguais às do original, sem a chave descontinuada");
   const spec = JSON.parse(f.calls[0].body.object_story_spec);
   assert.equal(spec.video_data.video_id, "v_new");   // trocou
   assert.equal(spec.video_data.image_url, "thumb_new");
@@ -278,74 +280,37 @@ test("erro que NÃO é limite falha de primeira (não fica tentando à toa)", as
 // ── Cópia recusada por posicionamento em par (08/10/2026) ─────────────────────
 // Caso real do Leo ao clonar "1436 [PRICE]": "Invalid parameter · To place ads
 // in Instagram Explore Home, please also select Instagram Explore · [código
-// 100/2490392]". O conjunto antigo roda assim, mas a cópia é recusada. Saída:
-// recriar o conjunto campo a campo com o par completo.
-const { placementPairFromError } = await import("../src/marketing/meta.js");
+// 100/2490392]". Regra dele: clone EXATO, o cockpit não ajusta nada; o erro
+// diz o que fazer no conjunto de origem.
+const { placementPairHint, freedomSpecForCopy } = await import("../src/marketing/meta.js");
 const EXPLORE_ERR = { message: "Invalid parameter", error_user_msg: "To place ads in Instagram Explore Home, please also select Instagram Explore.", code: 100, error_subcode: 2490392 };
 
-test("placementPairFromError: lê o 'please also select X' da Meta e mapeia pra posição", () => {
-  assert.deepEqual(placementPairFromError("Meta API -> 400: Invalid parameter · To place ads in Instagram Explore Home, please also select Instagram Explore. · [código 100/2490392]"), ["instagram_positions", "explore"]);
-  assert.deepEqual(placementPairFromError("please also select Facebook Reels"), ["facebook_positions", "facebook_reels"]);
-  assert.equal(placementPairFromError("please also select Marte"), null, "rótulo desconhecido não vira chute");
-  assert.equal(placementPairFromError("Invalid parameter [código 100]"), null);
+test("placementPairHint: extrai a dica da Meta; outra mensagem não é par", () => {
+  assert.equal(placementPairHint("Meta API -> 400: Invalid parameter · To place ads in Instagram Explore Home, please also select Instagram Explore. · [código 100/2490392]"), "To place ads in Instagram Explore Home, please also select Instagram Explore");
+  assert.equal(placementPairHint("Invalid parameter [código 100]"), null);
 });
 
-test("copyAdSet: recusa por par de posicionamento → recria o conjunto com o par completo e avisa", async () => {
-  const f = recorder((url, body) => {
-    if (/\/as_src\/copies$/.test(url)) return { error: EXPLORE_ERR };
-    if (/\/as_src\?fields=/.test(url)) return {
-      id: "as_src", name: "1436 [PRICE]", campaign_id: "cp_price", account_id: "123",
-      targeting: { age_min: 25, geo_locations: { countries: ["BR"] }, instagram_positions: ["stream", "explore_home"], facebook_positions: ["feed"] },
-      optimization_goal: "LEAD_GENERATION", billing_event: "IMPRESSIONS", bid_strategy: "LOWEST_COST_WITHOUT_CAP",
-      daily_budget: "2500", promoted_object: { page_id: "pg1" }, end_time: "2020-01-01T00:00:00+0000",
-      attribution_spec: [{ event_type: "CLICK_THROUGH", window_days: 7 }],
-    };
-    if (/\/act_123\/adsets$/.test(url)) return { id: "as_new" };
-    throw new Error("chamada inesperada " + url);
-  });
+test("copyAdSet: recusa por par de posicionamento NÃO recria nem altera nada; o erro diz o que ajustar na origem", async () => {
+  const f = recorder((url) => (/\/as_src\/copies$/.test(url) ? { error: EXPLORE_ERR } : { id: "nunca" }));
   const meta = makeMeta({ fetch: f, accessToken: "tok" });
-  const r = await meta.copyAdSet("as_src", { statusOption: "ACTIVE", deepCopy: false });
-  assert.deepEqual(r, { adsetId: "as_new", adIds: [], rebuilt: true, fixed: ["explore"] });
-  const create = f.calls.find((c) => /\/act_123\/adsets$/.test(c.url));
-  assert.ok(create, "POST no /adsets da conta");
-  const t = JSON.parse(create.body.targeting);
-  assert.deepEqual(t.instagram_positions, ["stream", "explore_home", "explore"], "o par entra sem perder o resto");
-  assert.deepEqual(t.geo_locations, { countries: ["BR"] });
-  assert.equal(create.body.campaign_id, "cp_price");
-  assert.equal(create.body.status, "ACTIVE");
-  assert.equal(create.body.daily_budget, "2500");
-  assert.equal(create.body.promoted_object, JSON.stringify({ page_id: "pg1" }));
-  assert.equal(create.body.end_time, undefined, "end_time no passado fica de fora");
-  assert.equal(create.body.account_id, undefined);
-  assert.equal(create.body.start_time, undefined);
-});
-
-test("copyAdSet: a recriação aprende um 2º par na recusa seguinte; outro erro qualquer sobe como está; deep copy não recria", async () => {
-  let posts = 0;
-  const f = recorder((url) => {
-    if (/\/as_src\/copies$/.test(url)) return { error: EXPLORE_ERR };
-    if (/\/as_src\?fields=/.test(url)) return { id: "as_src", account_id: "123", campaign_id: "cp", targeting: { instagram_positions: ["explore_home"], facebook_positions: ["facebook_reels"] }, optimization_goal: "LEAD_GENERATION", billing_event: "IMPRESSIONS" };
-    if (/\/act_123\/adsets$/.test(url)) {
-      posts++;
-      if (posts === 1) return { error: { message: "Invalid parameter", error_user_msg: "To place ads in Facebook Reels, please also select Facebook Feed.", code: 100, error_subcode: 2490392 } };
-      return { id: "as_new2" };
-    }
-    throw new Error("chamada inesperada " + url);
+  await assert.rejects(() => meta.copyAdSet("as_src", { deepCopy: false }), (err) => {
+    assert.match(err.message, /2490392/);
+    assert.match(err.message, /copia o conjunto exatamente como está/);
+    assert.match(err.message, /ajuste o conjunto de origem no Gerenciador \(To place ads in Instagram Explore Home, please also select Instagram Explore\)/);
+    return true;
   });
-  const meta = makeMeta({ fetch: f, accessToken: "tok" });
-  const r = await meta.copyAdSet("as_src", { deepCopy: false });
-  assert.deepEqual(r.fixed, ["explore", "feed"]);
-  assert.equal(r.adsetId, "as_new2");
-  const last = f.calls.at(-1);
-  assert.deepEqual(JSON.parse(last.body.targeting).facebook_positions, ["facebook_reels", "feed"]);
-
+  assert.equal(f.calls.length, 1, "uma chamada só: nada de ler o conjunto nem criar outro");
+  // Outro erro sobe como está.
   const f2 = recorder(() => ({ error: { message: "Invalid parameter", code: 100, error_subcode: 1815857 } }));
-  await assert.rejects(() => makeMeta({ fetch: f2, accessToken: "tok" }).copyAdSet("as_src", { deepCopy: false }), /1815857/);
-  assert.equal(f2.calls.length, 1, "erro que não é de par não tenta recriar");
+  await assert.rejects(() => makeMeta({ fetch: f2, accessToken: "tok" }).copyAdSet("as_src", { deepCopy: false }), (err) => !/Gerenciador/.test(err.message) && /1815857/.test(err.message));
+});
 
-  const f3 = recorder(() => ({ error: EXPLORE_ERR }));
-  await assert.rejects(() => makeMeta({ fetch: f3, accessToken: "tok" }).copyAdSet("as_src", { deepCopy: true }), /2490392/);
-  assert.equal(f3.calls.length, 1);
+test("freedomSpecForCopy: melhorias do original vão como estão; só standard_enhancements (descontinuada) sai", () => {
+  const src = { creative_features_spec: { standard_enhancements: { enroll_status: "OPT_IN" }, image_touchups: { enroll_status: "OPT_OUT" }, enhance_cta: { enroll_status: "OPT_OUT" }, text_optimizations: { enroll_status: "OPT_IN" } } };
+  assert.deepEqual(freedomSpecForCopy(src), { creative_features_spec: { image_touchups: { enroll_status: "OPT_OUT" }, enhance_cta: { enroll_status: "OPT_OUT" }, text_optimizations: { enroll_status: "OPT_IN" } } });
+  assert.deepEqual(src.creative_features_spec.standard_enhancements, { enroll_status: "OPT_IN" }, "origem intocada");
+  assert.equal(freedomSpecForCopy(null), null);
+  assert.equal(freedomSpecForCopy({ creative_features_spec: { standard_enhancements: { enroll_status: "OPT_OUT" } } }), null, "só a descontinuada = nada a mandar");
 });
 
 // ── Texto no asset_feed_spec (08/10/2026) ─────────────────────────────────────
@@ -364,11 +329,12 @@ const FEED = {
 };
 
 test("getAdCreativeSpec: lê também o asset_feed_spec", async () => {
-  const f = recorder(() => ({ creative: { object_story_spec: { page_id: "1", video_data: { video_id: "v_old" } }, asset_feed_spec: FEED, url_tags: "utm_source=meta" } }));
+  const f = recorder(() => ({ creative: { object_story_spec: { page_id: "1", video_data: { video_id: "v_old" } }, asset_feed_spec: FEED, degrees_of_freedom_spec: { creative_features_spec: { enhance_cta: { enroll_status: "OPT_OUT" } } }, url_tags: "utm_source=meta" } }));
   const meta = makeMeta({ fetch: f, accessToken: "tok" });
   const r = await meta.getAdCreativeSpec("ad_src");
   assert.deepEqual(r.assetFeed, FEED);
-  assert.match(f.calls[0].url, /fields=creative%7Bobject_story_spec%2Casset_feed_spec%2Curl_tags%7D/);
+  assert.deepEqual(r.freedom, { creative_features_spec: { enhance_cta: { enroll_status: "OPT_OUT" } } });
+  assert.match(decodeURIComponent(f.calls[0].url), /creative\{object_story_spec,asset_feed_spec,degrees_of_freedom_spec,url_tags\}/);
 });
 
 test("assetFeedWithVideo: mantém textos/links/CTA, troca os vídeos pelo novo com os rótulos, tira o que a escrita recusa", () => {
@@ -394,9 +360,11 @@ test("createVideoCreativeFromSpec: com texto no asset_feed_spec, cria com o feed
   const f = recorder(() => ({ id: "cr_feed" }));
   const meta = makeMeta({ fetch: f, accessToken: "tok" });
   const sourceSpec = { page_id: "10", instagram_user_id: "20", video_data: { video_id: "v_old", image_url: "old", call_to_action: { type: "LEARN_MORE", value: { link: "https://x" } } } };
-  const id = await meta.createVideoCreativeFromSpec("act_9", { name: "1491 [PRICE]", sourceSpec, assetFeed: FEED, videoId: "v_new", imageUrl: "thumb_new", urlTags: "utm_source=meta" });
+  const freedom = { creative_features_spec: { enhance_cta: { enroll_status: "OPT_OUT" } } };
+  const id = await meta.createVideoCreativeFromSpec("act_9", { name: "1491 [PRICE]", sourceSpec, assetFeed: FEED, freedom, videoId: "v_new", imageUrl: "thumb_new", urlTags: "utm_source=meta" });
   assert.equal(id, "cr_feed");
   const b = f.calls[0].body;
+  assert.deepEqual(JSON.parse(b.degrees_of_freedom_spec), freedom);
   assert.deepEqual(JSON.parse(b.object_story_spec), { page_id: "10", instagram_user_id: "20" }, "sem video_data junto do feed");
   const feed = JSON.parse(b.asset_feed_spec);
   assert.equal(feed.bodies[0].text, "Texto principal do 1436");

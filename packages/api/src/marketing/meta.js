@@ -50,33 +50,30 @@ const RETRY_WAITS_MS = [30_000, 60_000, 120_000, 240_000];
 let throttleListener = null;
 export function onMetaThrottle(fn) { throttleListener = fn; }
 
-// Posicionamentos que a Meta exige EM PAR na hora de criar/copiar um conjunto
-// ("To place ads in Instagram Explore Home, please also select Instagram
-// Explore", código 100/2490392). Conjunto antigo rodando com o par incompleto
-// passa, mas a CÓPIA dele é recusada. Mapa rótulo da mensagem → posição.
-const PLACEMENT_BY_LABEL = {
-  "instagram explore": ["instagram_positions", "explore"],
-  "instagram explore home": ["instagram_positions", "explore_home"],
-  "instagram feed": ["instagram_positions", "stream"],
-  "instagram stories": ["instagram_positions", "story"],
-  "instagram reels": ["instagram_positions", "reels"],
-  "instagram profile feed": ["instagram_positions", "profile_feed"],
-  "instagram profile reels": ["instagram_positions", "profile_reels"],
-  "instagram search": ["instagram_positions", "ig_search"],
-  "facebook feed": ["facebook_positions", "feed"],
-  "facebook stories": ["facebook_positions", "story"],
-  "facebook reels": ["facebook_positions", "facebook_reels"],
-  "facebook marketplace": ["facebook_positions", "marketplace"],
-  "facebook video feeds": ["facebook_positions", "video_feeds"],
-  "facebook right column": ["facebook_positions", "right_hand_column"],
-  "facebook search": ["facebook_positions", "search"],
-};
-const PLACEMENT_PAIR_RX = /please also select ([^.·\[]+)/i;
-// Lê "please also select X" e devolve [campo, posição] ou null.
-export function placementPairFromError(message) {
+// A Meta recusa COPIAR um conjunto cujo posicionamento está sem o par que ela
+// passou a exigir ("To place ads in Instagram Explore Home, please also select
+// Instagram Explore", código 100/2490392), mesmo o original rodando assim.
+// Regra do Leo (08/10/2026): o clone é EXATO, o cockpit não mexe em nada do
+// conjunto de origem nem aceita ajuste da Meta; a dica dela vai pro erro e o
+// time ajusta o conjunto de origem no Gerenciador.
+const PLACEMENT_PAIR_RX = /to place ads in [^.·\[]+, please also select [^.·\[]+/i;
+export function placementPairHint(message) {
   const m = PLACEMENT_PAIR_RX.exec(String(message || ""));
-  if (!m) return null;
-  return PLACEMENT_BY_LABEL[m[1].trim().toLowerCase()] || null;
+  return m ? m[0].trim() : null;
+}
+// Melhorias automáticas do criativo (Advantage+ creative): o clone leva o
+// degrees_of_freedom_spec do anúncio de origem COMO ESTÁ (ligado ou desligado,
+// recurso a recurso), em vez de deixar a Meta aplicar o padrão dela no criativo
+// novo. Só `standard_enhancements` sai: a Graph descontinuou essa chave e
+// recusa o POST com ela (100/3858504), mesmo vindo da própria leitura.
+export function freedomSpecForCopy(freedom) {
+  if (!freedom || typeof freedom !== "object") return null;
+  const out = JSON.parse(JSON.stringify(freedom));
+  if (out.creative_features_spec && typeof out.creative_features_spec === "object") {
+    delete out.creative_features_spec.standard_enhancements;
+    if (!Object.keys(out.creative_features_spec).length) delete out.creative_features_spec;
+  }
+  return Object.keys(out).length ? out : null;
 }
 // Partes do asset_feed_spec que a Graph aceita de volta na criação de um
 // criativo. Fora: images (vira vídeo), id, e campos que a leitura devolve mas
@@ -100,14 +97,6 @@ export function assetFeedWithVideo(assetFeed, { videoId, imageUrl }) {
   if (!Array.isArray(feed.ad_formats) || !feed.ad_formats.length) feed.ad_formats = ["SINGLE_VIDEO"];
   return feed;
 }
-// Campos do conjunto que a Graph aceita de volta num POST /adsets. Fora da
-// lista: account_id, campaign_attribution, learning stage etc. (só leitura).
-const ADSET_COPY_FIELDS = ["name", "campaign_id", "account_id", "targeting", "optimization_goal", "billing_event",
-  "bid_strategy", "bid_amount", "daily_budget", "lifetime_budget", "promoted_object", "attribution_spec", "end_time",
-  "destination_type", "optimization_sub_event", "pacing_type", "is_dynamic_creative", "frequency_control_specs",
-  "dsa_beneficiary", "dsa_payor"];
-const ADSET_JSON_FIELDS = new Set(["targeting", "promoted_object", "attribution_spec", "pacing_type", "frequency_control_specs"]);
-
 export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), onThrottle = (i) => throttleListener?.(i) } = {}) {
   const configured = () => !!accessToken;
   const acct = (id) => (String(id).startsWith("act_") ? String(id) : `act_${id}`);
@@ -147,47 +136,6 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ ...params, access_token: accessToken }).toString(),
     }));
-  }
-
-  async function rebuildAdSet(adsetId, { campaignId, status = "PAUSED", firstError = null } = {}) {
-    const fields = new URLSearchParams({ fields: ADSET_COPY_FIELDS.join(","), access_token: accessToken });
-    const src = await get(`${GRAPH}/${adsetId}?${fields}`);
-    if (!src.account_id) throw new Error(`Meta: não li o conjunto de origem pra recriar (${firstError?.message || "sem account_id"})`);
-    const targeting = JSON.parse(JSON.stringify(src.targeting || {}));
-    const fixed = [];
-    const apply = (pair) => {
-      const [field, pos] = pair;
-      const list = Array.isArray(targeting[field]) ? targeting[field] : [];
-      if (list.includes(pos)) return false;
-      targeting[field] = [...list, pos];
-      fixed.push(pos);
-      return true;
-    };
-    const first = placementPairFromError(firstError?.message);
-    if (first) apply(first);
-    const params = {};
-    for (const k of ADSET_COPY_FIELDS) {
-      if (k === "account_id" || src[k] == null || src[k] === "") continue;
-      // end_time no passado é recusado; start_time fica de fora (começa agora).
-      if (k === "end_time" && new Date(src[k]).getTime() <= Date.now()) continue;
-      params[k] = ADSET_JSON_FIELDS.has(k) ? JSON.stringify(k === "targeting" ? targeting : src[k]) : String(src[k]);
-    }
-    if (campaignId) params.campaign_id = String(campaignId);
-    params.status = status;
-    let lastErr = firstError;
-    for (let tentativa = 0; tentativa < 3; tentativa++) {
-      params.targeting = JSON.stringify(targeting);
-      try {
-        const created = await post(`${acct(src.account_id)}/adsets`, params);
-        if (!created.id) throw new Error("Meta: recriação do conjunto não retornou id");
-        return { adsetId: String(created.id), adIds: [], rebuilt: true, fixed };
-      } catch (err) {
-        lastErr = err;
-        const pair = placementPairFromError(err.message);
-        if (!pair || !apply(pair)) break;
-      }
-    }
-    throw new Error(`cópia recusada pela Meta e a recriação também falhou: ${String(lastErr?.message || lastErr)}`);
   }
 
   return {
@@ -683,9 +631,9 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
     // mesma campanha do original e PAUSADO. É a base do "clonar e trocar o
     // vídeo": público, orçamento, posicionamento, otimização e copy vêm de
     // brinde do conjunto de origem. Retorna { adsetId, adIds } dos cópias.
-    // Quando a Meta recusa a cópia por posicionamento em par (2490392, ver
-    // PLACEMENT_BY_LABEL), o conjunto é RECRIADO campo a campo com o par
-    // completado; `rebuilt` e `fixed` contam o que foi feito pro aviso do job.
+    // Cópia EXATA (Leo, 08/10): nada do conjunto de origem é alterado pra
+    // agradar a Meta. Recusa por posicionamento em par vira erro com a dica
+    // dela e o que fazer no Gerenciador.
     async copyAdSet(adsetId, { campaignId, statusOption = "PAUSED", deepCopy = true } = {}) {
       if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
       const params = { deep_copy: deepCopy ? "true" : "false", status_option: statusOption };
@@ -694,9 +642,9 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       try {
         body = await post(`${adsetId}/copies`, params);
       } catch (err) {
-        // Só sem anúncios dentro (deep copy é outro caminho) e só o erro de par.
-        if (deepCopy || !placementPairFromError(err.message)) throw err;
-        return rebuildAdSet(adsetId, { campaignId, status: statusOption, firstError: err });
+        const hint = placementPairHint(err.message);
+        if (hint) err.message += ` · o cockpit copia o conjunto exatamente como está e não altera o posicionamento por conta própria: ajuste o conjunto de origem no Gerenciador (${hint}) e tente de novo`;
+        throw err;
       }
       const copied = String(body.copied_adset_id || body.id || "");
       if (!copied) throw new Error("Meta: cópia do conjunto não retornou id");
@@ -706,11 +654,6 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
         .filter(Boolean);
       return { adsetId: copied, adIds };
     },
-
-    // Recria um conjunto a partir do original, completando os pares de
-    // posicionamento que a Meta pede. Tenta até 3 vezes: cada recusa nova
-    // ("please also select X") entra no targeting e o POST vai de novo.
-    async rebuildAdSet(adsetId, opts) { return rebuildAdSet(adsetId, opts); },
 
     // Anúncios de um conjunto (id + nome), pra ler o criativo do ORIGINAL antes
     // de montar o novo. Ignora os já apagados.
@@ -740,10 +683,12 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       // flexível / Advantage+). Nesses, o object_story_spec.video_data vem só
       // com o vídeo, e clonar só por ele dá anúncio SEM TEXTO (caso do Leo,
       // 08/10: "1491 [PRICE]" subiu com os campos vazios).
-      const params = new URLSearchParams({ fields: "creative{object_story_spec,asset_feed_spec,url_tags}", access_token: accessToken });
+      // degrees_of_freedom_spec: as melhorias automáticas (Advantage+ creative)
+      // do original, pra copiar como estão (ver freedomSpecForCopy).
+      const params = new URLSearchParams({ fields: "creative{object_story_spec,asset_feed_spec,degrees_of_freedom_spec,url_tags}", access_token: accessToken });
       const body = await get(`${GRAPH}/${adId}?${params}`);
       const c = body.creative || {};
-      return { spec: c.object_story_spec || null, assetFeed: c.asset_feed_spec || null, urlTags: c.url_tags || "" };
+      return { spec: c.object_story_spec || null, assetFeed: c.asset_feed_spec || null, freedom: c.degrees_of_freedom_spec || null, urlTags: c.url_tags || "" };
     },
 
     // Mídia do criativo de UM anúncio — pra pré-visualizar o vídeo/imagem na
@@ -778,9 +723,12 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
 
     // Cria um criativo NOVO a partir do object_story_spec de origem, trocando só
     // o vídeo (video_id + thumbnail) e mantendo todo o resto do spec.
-    async createVideoCreativeFromSpec(adAccountId, { name, sourceSpec, assetFeed = null, videoId, imageUrl, urlTags }) {
+    async createVideoCreativeFromSpec(adAccountId, { name, sourceSpec, assetFeed = null, freedom = null, videoId, imageUrl, urlTags }) {
       if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
       const spec = sourceSpec ? JSON.parse(JSON.stringify(sourceSpec)) : null;
+      // Melhorias automáticas iguais às do original, recurso a recurso.
+      const dof = freedomSpecForCopy(freedom);
+      const extras = { ...(urlTags ? { url_tags: urlTags } : {}), ...(dof ? { degrees_of_freedom_spec: JSON.stringify(dof) } : {}) };
       // Texto no asset_feed_spec: o criativo novo vai com o MESMO feed (textos,
       // títulos, descrições, links, CTA, formato) e só os vídeos trocados pelo
       // novo. O object_story_spec aí leva só página e Instagram (a Meta recusa
@@ -794,7 +742,7 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
           name,
           object_story_spec: JSON.stringify(story),
           asset_feed_spec: JSON.stringify(feed),
-          ...(urlTags ? { url_tags: urlTags } : {}),
+          ...extras,
         });
         return String(body.id);
       }
@@ -811,7 +759,7 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       const body = await post(`${acct(adAccountId)}/adcreatives`, {
         name,
         object_story_spec: JSON.stringify(spec),
-        ...(urlTags ? { url_tags: urlTags } : {}),
+        ...extras,
       });
       return String(body.id);
     },
