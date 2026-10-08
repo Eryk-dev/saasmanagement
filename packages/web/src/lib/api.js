@@ -361,7 +361,6 @@ export const api = {
   // toca a Meta em background (subir + processar + clonar leva minutos, e
   // requisição aberta esse tempo todo morre no proxy). O acompanhamento é o
   // adVideoJob abaixo.
-  uploadCreative: (saas, formData, onProgress) => upload(`/api/marketing/${saas}/creatives`, formData, onProgress),
   // Criar anúncio clonando um conjunto e trocando o vídeo (mesmo padrão).
   adFromVideo: (saas, formData, onProgress) => upload(`/api/marketing/${saas}/ad-from-video`, formData, onProgress),
   adVideoJob: (jobId) => req("GET", `/api/marketing/job/${jobId}`),
