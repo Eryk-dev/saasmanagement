@@ -112,6 +112,14 @@ export function registerBootstrapRoutes(app, repo, { googleClient, mpClient, met
       const hoje = new Date().toISOString().slice(0, 10);
       const agora = new Date().toISOString();
       const meuId = req.authUser?.id || "";
+      // Hermes: casos que esperam um aprovador (Validar / Aguardando resposta).
+      // Conta só pra quem aprova no produto (ticket_settings.linear.hermes).
+      const hermesPend = tickets.filter((t) => t.hermes?.needsHuman && STATUS_KIND[t.status] !== "done");
+      const ajustesSuporte = hermesPend.length ? await repo.list("ticket_settings").catch(() => []) : [];
+      const aprovaHermes = (saasId) => {
+        const h = ajustesSuporte.find((x) => x.id === saasId)?.linear?.hermes;
+        return h?.enabled === true && (!meuId || (h.approvers || []).includes(meuId));
+      };
       for (const p of products) {
         const board = normalizeBoard(boards.find((b) => b.saas === p.id) || boards.find((b) => !b.saas));
         const minhas = tarefas.filter((t) => {
@@ -133,6 +141,7 @@ export function registerBootstrapRoutes(app, repo, { googleClient, mpClient, met
           inbox: threads.filter((t) => (!t.saas || t.saas === p.id) && Number(t.unread) > 0 && t.status !== "closed").length,
           tickets: fila.length,
           ticketsBreached: fila.filter((t) => slaState(t, agora).overall === "breached").length,
+          ticketsHermes: inScope(escopoSuporte, p.id) && aprovaHermes(p.id) ? hermesPend.filter((t) => t.saas === p.id).length : 0,
         };
       }
     } catch { /* contador é enfeite: falhar aqui não pode derrubar o bootstrap */ }

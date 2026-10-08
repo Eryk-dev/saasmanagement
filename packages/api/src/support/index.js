@@ -2,6 +2,7 @@
 
 import { registerTicketRoutes } from "./routes.tickets.js";
 import { registerSupportPortalRoutes } from "./routes.support-portal.js";
+import { registerHermesRoutes } from "./routes.hermes.js";
 import { startTicketSla } from "./ticket-sla-runner.js";
 import { startLinearSync } from "./ticket-linear-runner.js";
 
@@ -10,6 +11,9 @@ export function register(app, repo, ctx) {
   // Suporte: tickets (fila, kanban, conversa, SLA), configurações de SLA por
   // produto e atendentes (routes.tickets.js).
   registerTicketRoutes(app, repo, { mailer: ctx.mailer, ...(opts.linear ? { linear: opts.linear } : {}) });
+  // Hermes (agente de correção no Linear): fase do card e ações do guia no
+  // próprio ticket (routes.hermes.js).
+  registerHermesRoutes(app, repo, opts.linear ? { linear: opts.linear } : {});
   // Portal público do cliente: /s/:token (chamado) e /s/new/:saas (abrir).
   registerSupportPortalRoutes(app, repo, opts.supportPortal);
 }

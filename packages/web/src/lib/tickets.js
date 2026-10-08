@@ -184,3 +184,37 @@ export const fold = (s) => String(s || "").normalize("NFD").replace(/\p{M}/gu, "
 // o Linear numera por time e não deixa escolher, então os dois convivem.
 export const linearKey = (t) => t?.linear?.identifier || "";
 export const linearInReview = (t) => !isDone(t) && t?.linear?.stateType === "started" && /review|revis/i.test(t?.linear?.stateName || "");
+
+// ── Hermes (agente de correção no Linear) ───────────────────────────────────
+// `ticket.hermes` é o retrato do card visto pelo espelho (api ticket-hermes.js):
+// o ticket é o mesmo de sempre, isto só diz em que fase o Hermes está com ele.
+// `step` segue os passos do guia do Hermes (relato → no ar).
+export const HERMES_PHASES = {
+  relato: { label: "Relato novo", short: "Relato", step: 1, tone: "var(--fg-3)" },
+  trabalhando: { label: "Investigando / corrigindo", short: "Corrigindo", step: 2, tone: "var(--accent)" },
+  pergunta: { label: "Aguardando resposta", short: "Pergunta", step: 2, tone: "var(--warn)", human: true },
+  revisao: { label: "Revisão da IA", short: "Revisão", step: 3, tone: "var(--accent)" },
+  validar: { label: "Validar", short: "Validar", step: 4, tone: "var(--warn)", human: true },
+  aprovado: { label: "Aprovado · aguardando publicar", short: "Aprovado", step: 5, tone: "var(--pos)" },
+  no_ar: { label: "No ar", short: "No ar", step: 6, tone: "var(--pos)" },
+  cancelado: { label: "Cancelado · não era bug", short: "Cancelado", step: 0, tone: "var(--fg-4)" },
+};
+export const HERMES_STEPS = ["Relato", "Corrige", "Revisão", "Validar", "Aprovou", "No ar"];
+export const hermesOf = (t) => {
+  const h = t?.hermes;
+  if (!h || (!h.labeled && !h.requested)) return null;
+  return { ...h, meta: HERMES_PHASES[h.phase] || null };
+};
+// Na fila: com o Hermes agora (etiqueta, sem ninguém do time, não concluído).
+export const hermesHolding = (t) => !!t?.hermes?.holding && !isDone(t);
+export const hermesNeedsHuman = (t) => !!t?.hermes?.needsHuman && !isDone(t);
+// Rótulo curto pro chip do card/lista: "Hermes · Validar v2".
+export function hermesChip(t) {
+  const h = hermesOf(t);
+  if (!h) return null;
+  if (h.requested && !h.labeled) return { text: "Hermes · entregue", tone: "info", title: "Pedido de entrega ao Hermes, esperando ele assumir" };
+  if (!h.active) return null;
+  const m = h.meta || HERMES_PHASES.relato;
+  const v = h.version && (h.phase === "validar" || h.phase === "aprovado") ? ` v${h.version}` : "";
+  return { text: `Hermes · ${m.short}${v}`, tone: m.human && !isDone(t) ? "warn" : "info", title: `Com o Hermes: ${m.label}${v}` };
+}

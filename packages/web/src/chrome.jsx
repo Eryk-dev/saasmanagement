@@ -221,7 +221,13 @@ function NavRail({ current, onNav, collapsed, onSearch }) {
     if (id === "tasks" && cont.tasks > 0) return { n: cont.tasks, texto: String(cont.tasks), tone: cont.tasksLate > 0 ? "neg" : "mut", title: `${cont.tasks} tarefas abertas${cont.tasksLate ? ` · ${cont.tasksLate} atrasadas` : ""}` };
     if (id === "whatsapp" && cont.inbox > 0) return { n: cont.inbox, texto: String(cont.inbox), tone: "neg", title: `${cont.inbox} conversas não lidas` };
     // Tickets: abertos meus ou sem dono, pela régua do servidor (escopo de suporte + SLA gravado).
-    if (id === "tickets" && cont.tickets > 0) return { n: cont.tickets, texto: String(cont.tickets), tone: cont.ticketsBreached > 0 ? "neg" : "mut", title: `${cont.tickets} tickets abertos (seus ou sem responsável)${cont.ticketsBreached ? ` · ${cont.ticketsBreached} com SLA estourado` : ""}` };
+    // Hermes esperando um aprovador (Validar / pergunta) acende o badge: nada vai
+    // pro ar sem essa decisão. Só conta pra quem aprova (servidor).
+    if (id === "tickets" && (cont.tickets > 0 || cont.ticketsHermes > 0)) {
+      const n = Math.max(cont.tickets || 0, cont.ticketsHermes || 0);
+      const hermes = cont.ticketsHermes ? ` · ${cont.ticketsHermes} do Hermes esperando sua decisão` : "";
+      return { n, texto: String(n), tone: cont.ticketsBreached > 0 || cont.ticketsHermes > 0 ? "neg" : "mut", title: `${cont.tickets || 0} tickets abertos (seus ou sem responsável)${cont.ticketsBreached ? ` · ${cont.ticketsBreached} com SLA estourado` : ""}${hermes}` };
+    }
     return null;
   };
   // Grupos recolhíveis com escolha persistida; marketing e análises começam

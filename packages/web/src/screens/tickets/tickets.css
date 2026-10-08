@@ -240,3 +240,58 @@ button.agent-metric:hover .agent-metric-go { color: var(--fg-1); transform: tran
 .support-linear-link {color:var(--accent);font-weight:600;text-decoration:none;border-radius:4px;}
 .support-linear-link:hover {text-decoration:underline;}
 .support-linear-link:focus-visible {outline:2px solid var(--accent);outline-offset:2px;}
+
+/* Hermes: fase do card do Linear na coluna lateral e o card de validação no
+   topo da aba Linear (hermes-section.jsx). Roxo é a cor do Hermes (guia dele);
+   fica escopado aqui, não vira token global do app. */
+.hermes-section, .hermes-card {
+  --hermes: #6941c6; --hermes-strong: #53389e; --hermes-soft: #f4f0fe; --hermes-line: #e3d9fb; --hermes-on: #ffffff;
+}
+body[data-theme="dark"] .hermes-section, body[data-theme="dark"] .hermes-card {
+  --hermes: #b69cf7; --hermes-strong: #cdbbff; --hermes-soft: rgba(150, 120, 240, 0.12); --hermes-line: rgba(170, 145, 250, 0.26); --hermes-on: #1b1338;
+}
+/* Card do quadro com o chip do Hermes: a linha quebra em vez de cortar o chip. */
+.support-card-meta[data-wrap] { flex-wrap: wrap; row-gap: 4px; }
+/* A coluna lateral zera o padding lateral das seções: o bloco roxo tem o seu. */
+.hermes-section { background: var(--hermes-soft); border: 1px solid var(--hermes-line); border-radius: var(--r-4); padding: 14px 14px 16px; margin: 14px -6px 2px; }
+.support-detail-side .hermes-section.support-detail-section { border-bottom: 1px solid var(--hermes-line); }
+.hermes-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.hermes-mark { width: 22px; height: 22px; border-radius: 999px; background: var(--hermes); color: var(--hermes-on); display: inline-flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 700; flex-shrink: 0; }
+.hermes-title { font-size: 13px; font-weight: 700; color: var(--hermes-strong); letter-spacing: -0.005em; }
+.hermes-link { font-size: 11.5px; font-weight: 600; color: var(--hermes); margin-top: 6px; text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--hermes-line); }
+.hermes-link:hover { text-decoration-color: currentColor; }
+.hermes-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2px; }
+.hermes-steps li { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; position: relative; }
+.hermes-steps li + li::before { content: ""; position: absolute; top: 4px; right: 50%; width: 100%; height: 2px; background: var(--hermes-line); z-index: 0; }
+.hermes-steps li[data-state="done"] + li::before, .hermes-steps li[data-state="now"]::before { background: var(--hermes); }
+.hermes-step-dot { width: 10px; height: 10px; border-radius: 999px; background: var(--bg-1); border: 2px solid var(--hermes-line); position: relative; z-index: 1; }
+.hermes-steps li[data-state="done"] .hermes-step-dot { background: var(--hermes); border-color: var(--hermes); }
+.hermes-steps li[data-state="now"] .hermes-step-dot { background: var(--bg-1); border-color: var(--hermes); box-shadow: 0 0 0 3px color-mix(in srgb, var(--hermes) 22%, transparent); }
+.hermes-section[data-human="1"] .hermes-steps li[data-state="now"] .hermes-step-dot { border-color: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 25%, transparent); }
+.hermes-step-name { font-size: 10px; letter-spacing: -0.01em; color: var(--fg-4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.hermes-steps li[data-state="now"] .hermes-step-name { color: var(--fg-1); font-weight: 600; }
+/* Ações: botões compactos em linha (quebram quando não cabem); a principal
+   (aprovar/responder) preenchida, destrutivas em vermelho. */
+.hermes-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; }
+.support-detail-side .hermes-btn { min-height: 22px; }
+.hermes-btn { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--hermes-line); background: var(--bg-1); color: var(--fg-2); font-size: 11px; font-weight: 600; line-height: 1; cursor: pointer; transition: var(--transition-ui); white-space: nowrap; }
+.hermes-btn > svg { width: 11px; height: 11px; color: var(--hermes); flex-shrink: 0; }
+.hermes-btn:hover { border-color: var(--hermes); color: var(--fg-1); }
+.hermes-btn:focus-visible { outline: 2px solid var(--hermes); outline-offset: 2px; }
+.hermes-btn[data-kind="primary"] { background: var(--hermes); border-color: var(--hermes); color: var(--hermes-on); }
+.hermes-btn[data-kind="primary"] > svg { color: currentColor; }
+.hermes-btn[data-kind="primary"]:hover { background: var(--hermes-strong); border-color: var(--hermes-strong); color: var(--hermes-on); }
+.hermes-btn[data-tone="neg"], .hermes-btn[data-tone="neg"] > svg { color: var(--neg); }
+.hermes-btn[data-tone="neg"]:hover { border-color: var(--neg); }
+/* No toque, alvo um pouco maior (sem voltar ao bloco de 44px). */
+@media (pointer: coarse) { .support-detail-side .hermes-btn { height: 30px; min-height: 30px; padding: 0 10px; } }
+.hermes-card { display: flex; flex-direction: column; gap: 10px; }
+.hermes-card-grid { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 6px 12px; margin: 0; white-space: normal; }
+.hermes-card-grid dt { font-size: 12px; color: var(--fg-3); padding-top: 1px; }
+.hermes-card-grid dd { margin: 0; min-width: 0; }
+@media (max-width: 600px) {
+  .hermes-card-grid { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .hermes-card-grid dd { margin-bottom: 6px; }
+}
+/* Resumo do card no diálogo de aprovar: o que está sendo aprovado, lido agora. */
+.hermes-approve-summary { background: var(--bg-inset); border-radius: var(--r-3); padding: 10px 12px; font-size: 12.5px; }

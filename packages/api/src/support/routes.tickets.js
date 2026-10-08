@@ -21,7 +21,8 @@ import {
 } from "./tickets-core.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "../platform/http-status.js";
 import { defaultLinear } from "./linear.js";
-import { issueKeyFromInput, linkTicketToIssue, unlinkTicket, syncTicketToLinear, linearPeople, linearIdForUser } from "./ticket-linear.js";
+import { issueKeyFromInput, linkTicketToIssue, unlinkTicket, syncTicketToLinear, linearPeople, linearIdForUser, issueLabelNames } from "./ticket-linear.js";
+import { hermesView } from "./ticket-hermes.js";
 import { enqueueTicketSync } from "./ticket-linear-runner.js";
 import { readTicketUpload, sendTicketAsset } from "./ticket-assets.js";
 
@@ -230,6 +231,14 @@ export function registerTicketRoutes(app, repo, { mailer = null, linear = defaul
     const saas = String(req.params.saas || "").toLowerCase();
     if (!inScope(scopeOf(req), saas)) return notFound(reply);
     const antes = await loadSettings(repo, saas);
+    // Aprovadores do Hermes decidem o que vai para o ar: só admin troca a lista
+    // (senão quem edita o SLA se colocaria nela).
+    const hermesBody = req.body?.linear?.hermes;
+    if (hermesBody && typeof hermesBody === "object" && "approvers" in hermesBody && !canAdmin(req)) {
+      const novos = hermesBody.approvers;
+      const mesmo = Array.isArray(novos) && [...novos.map(String)].sort().join("|") === [...(antes.linear?.hermes?.approvers || [])].sort().join("|");
+      if (!mesmo) throw httpError(403, "só admin escolhe os aprovadores do Hermes", "hermes_approvers_admin");
+    }
     const saved = await saveSettings(repo, saas, req.body || {}, { by: actorOf(req) });
     // Ligar o espelho (ou trocar de time/projeto) POVOA o projeto: entram na
     // fila os tickets ainda abertos deste produto. Ticket já concluído fica
@@ -280,16 +289,21 @@ export function registerTicketRoutes(app, repo, { mailer = null, linear = defaul
       state: { name: link.stateName || "", type: link.stateType || "" },
       project: link.projectId ? { id: link.projectId } : null,
     };
+    // Hermes: o card de validação, a pergunta e o rascunho saem do comentário
+    // lido agora (hermesView); o ticket só guarda a fase e a versão.
+    const { linear: lcfg } = await loadSettings(repo, t.saas);
+    const comHermes = (comments) => (lcfg.hermes?.enabled && (t.hermes?.labeled || t.hermes?.requested) ? hermesView(t, comments, lcfg.hermes) : null);
     if (!link.issueId) return { ...base, configured: !!linear?.configured?.(), issue: null, comments: [] };
-    if (!linear?.configured?.()) return { ...base, configured: false, stale: true, issue: null, comments: locais };
+    if (!linear?.configured?.()) return { ...base, configured: false, stale: true, issue: null, comments: locais, hermes: comHermes([]) };
     try {
       const r = await linear.issueWithComments(link.issueId);
-      if (!r) return { ...base, configured: true, stale: true, error: "issue não encontrada no Linear", issue: null, comments: locais };
+      if (!r) return { ...base, configured: true, stale: true, error: "issue não encontrada no Linear", issue: null, comments: locais, hermes: comHermes([]) };
       const postados = new Set(link.posted || []);
       return {
         ...base, configured: true, stale: false,
         identifier: r.issue.identifier || base.identifier, url: r.issue.url || base.url,
         state: r.issue.state || base.state,
+        labels: issueLabelNames(r.issue),
         issue: {
           id: r.issue.id, title: r.issue.title || "", description: r.issue.description || "",
           priority: r.issue.priority ?? 0, createdAt: r.issue.createdAt || "", updatedAt: r.issue.updatedAt || "",
@@ -297,13 +311,14 @@ export function registerTicketRoutes(app, repo, { mailer = null, linear = defaul
         },
         comments: r.comments.map((c) => ({
           id: c.id, body: c.body || "", createdAt: c.createdAt, url: c.url || "",
-          user: { name: c.user?.name || "" },
+          user: { id: c.user?.id || "", name: c.user?.name || "" },
           fromCockpit: postados.has(c.id), // saiu daqui como resposta/nota espelhada
         })),
+        hermes: comHermes(r.comments),
       };
     } catch (err) {
       app.log?.warn?.(`linear (aba do ticket ${t.id}): ${err.message}`);
-      return { ...base, configured: true, stale: true, error: err.message, issue: null, comments: locais };
+      return { ...base, configured: true, stale: true, error: err.message, issue: null, comments: locais, hermes: comHermes([]) };
     }
   }));
 

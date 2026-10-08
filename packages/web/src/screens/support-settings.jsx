@@ -11,6 +11,7 @@ import { currentUser, isAdminUser } from "../lib/users.js";
 import { TICKET_PRIORITIES, TICKET_STATUSES, supportScope, noScopeHint } from "../lib/tickets.js";
 import { SelectPopover } from "../components/select-popover.jsx";
 import { Checkbox, HoursInput, SwitchRow } from "../components/form-controls.jsx";
+import { HERMES_PHASE_KEYS, HERMES_PHASE_LABEL, phaseByName } from "../../../api/src/shared/hermes-phase.js";
 
 // Suporte · Configurações de SLA, por produto do workspace ativo:
 //   · prazos de 1ª resposta e de resolução por prioridade (em horas ÚTEIS
@@ -309,6 +310,8 @@ function LinearCard({ draft, set, disabled, saasId, version }) {
             </div>
             {l.syncAssignee !== false && <LinearPeople catalog={catalog} people={l.people || {}} disabled={!l.enabled}
               saasId={saasId} version={version} onChange={(people) => setL({ people })} />}
+            <HermesSettings catalog={catalog} team={team} hermes={l.hermes || {}} disabled={!l.enabled} saasId={saasId} version={version}
+              onChange={(patch) => setL({ hermes: { ...(l.hermes || {}), ...patch } })} />
             <InfoNota>
               Para o Linear avisar o cockpit na hora, cadastre <code className="mono">{webhookUrl}</code> em Settings → API → Webhooks, com os eventos <b>Issues</b> e <b>Comments</b>.
               {catalog.webhook ? " O segredo do webhook já está configurado no servidor." : " Falta o segredo no servidor (LINEAR_WEBHOOK_SECRET) — sem ele a rota recusa, e a volta só chega na reconciliação."}
@@ -363,6 +366,98 @@ function LinearPeople({ catalog, people, disabled, saasId, version, onChange }) 
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// Hermes: o agente que corrige bug de cliente trabalha no Linear (etiqueta
+// própria, colunas Validar / Aguardando resposta / Aprovado). Ligado aqui, o
+// ticket mostra em que fase o card está e os aprovadores decidem pelo cockpit.
+// Só admin escolhe quem aprova (a API confere); as ações saem no Linear pela
+// chave do servidor, assinadas com o nome de quem clicou.
+const WINDOW_OPTIONS = [
+  { value: "noite", label: "à noite (23h–04h) · dá pra desistir até lá" },
+  { value: "imediato", label: "na hora · aprovar já publica" },
+];
+const PHASE_OPTIONS = HERMES_PHASE_KEYS.map((k) => ({ value: k, label: HERMES_PHASE_LABEL[k] }));
+function HermesSettings({ catalog, team, hermes, disabled, saasId, version, onChange }) {
+  const [agents, setAgents] = useState(null);
+  const admin = isAdminUser();
+  useEffect(() => {
+    let vivo = true;
+    api.supportAgents().then((a) => { if (vivo) setAgents(a || []); }).catch(() => { if (vivo) setAgents([]); });
+    return () => { vivo = false; };
+  }, [version]);
+  const on = hermes.enabled === true && !disabled;
+  const pessoas = catalog?.people || [];
+  const candidatos = (agents || []).filter((a) => a.admin || (a.supportSaas || []).includes(saasId))
+    .sort((x, y) => String(x.name).localeCompare(String(y.name), "pt-BR"));
+  const aprovadores = hermes.approvers || [];
+  const alternar = (id) => onChange({ approvers: aprovadores.includes(id) ? aprovadores.filter((x) => x !== id) : [...aprovadores, id] });
+  const setFase = (stateId, fase) => {
+    const next = { ...(hermes.phases || {}) };
+    if (fase) next[stateId] = fase; else delete next[stateId];
+    onChange({ phases: next });
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid var(--line-1)", paddingTop: 12, opacity: disabled ? 0.55 : 1 }}>
+      <SwitchRow disabled={disabled} checked={hermes.enabled === true} onChange={(v) => onChange({ enabled: v })}
+        title="Acompanhar o Hermes nos tickets"
+        hint="o ticket mostra a fase do card do Hermes (Validar, Aguardando resposta, Aprovado, no ar) e avisa os aprovadores quando é a vez deles" />
+      {hermes.enabled === true && (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
+            <Field label="Etiqueta do Hermes" hint="o card com esta etiqueta e sem ninguém do time atribuído está com o Hermes">
+              <input className="inp" value={hermes.label ?? "Hermes"} disabled={!on} maxLength={40} onChange={(e) => onChange({ label: e.target.value })} />
+            </Field>
+            <Field label="Usuário do Hermes no Linear" hint="é por ele que o cockpit reconhece o card de validação, a pergunta e o “no ar às”">
+              <SelectPopover label="Usuário do Hermes no Linear" value={hermes.linearUserId || ""} disabled={!on} searchable={pessoas.length > 8}
+                options={[{ value: "", label: "pelo nome (Hermes)", color: "var(--fg-3)" }, ...pessoas.map((p) => ({ value: p.id, label: p.name }))]}
+                onChange={(v) => onChange({ linearUserId: v })} />
+            </Field>
+            <Field label="Publicação" hint="como o Hermes publica neste produto: muda o que dá pra fazer depois de aprovar">
+              <SelectPopover label="Publicação" value={hermes.publishWindow || "noite"} disabled={!on} options={WINDOW_OPTIONS}
+                onChange={(v) => onChange({ publishWindow: v })} />
+            </Field>
+          </div>
+
+          {team?.states?.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span className="kicker">Coluna do Linear → fase do Hermes<Info texto="o automático lê o nome da coluna; troque só o que estiver errado" /></span>
+              {team.states.map((st) => (
+                <div key={st.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--fg-3)" }}>
+                  <span className="support-ellipsis" style={{ width: 150, flexShrink: 0 }}>{st.name}</span>
+                  <span style={{ flex: 1, maxWidth: 260, minWidth: 0 }}>
+                    <SelectPopover size="sm" label={`Fase do Hermes na coluna ${st.name}`} disabled={!on} value={hermes.phases?.[st.id] || ""}
+                      options={[{ value: "", label: `automático · ${HERMES_PHASE_LABEL[phaseByName(st)]}` }, ...PHASE_OPTIONS]}
+                      onChange={(v) => setFase(st.id, v)} />
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span className="kicker">Aprovadores<Info texto="aprovam, pedem ajuste, recusam e revertem — o resto da equipe acompanha. Só admin muda esta lista" /></span>
+            {agents === null && <div className="mono dim" style={{ fontSize: 12 }}>carregando a equipe…</div>}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {candidatos.map((a) => (
+                <button key={a.id} type="button" className="tickets-filter" aria-pressed={aprovadores.includes(a.id)} disabled={!on || !admin}
+                  title={admin ? "Aprova as correções do Hermes neste produto" : "Só admin escolhe os aprovadores"} onClick={() => alternar(a.id)}>{a.name}</button>
+              ))}
+            </div>
+            {on && aprovadores.length === 0 && <div style={{ fontSize: 12, color: "var(--warn)" }}>Sem aprovador, ninguém recebe o aviso de “Validar” e as ações ficam só no Linear.</div>}
+          </div>
+
+          <Checkbox checked={hermes.actions === true} disabled={!on} onChange={(v) => onChange({ actions: v })}>
+            aprovar, pedir ajuste, recusar e reverter pelo cockpit
+          </Checkbox>
+          <InfoNota>
+            As ações aparecem no card do Linear como <b>{catalog?.viewer || "o dono da chave"}</b>, com o nome de quem clicou no fim do comentário (“— nome, via Cockpit”).
+            O Hermes precisa aceitar esse autor; combine com quem cuida do Hermes antes de ligar. “Entregar ao Hermes” usa o comando <code className="mono">hermes: assumir</code>.
+          </InfoNota>
+        </>
+      )}
     </div>
   );
 }
