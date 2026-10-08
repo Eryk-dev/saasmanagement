@@ -21,7 +21,7 @@ import {
 } from "./tickets-core.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "../platform/http-status.js";
 import { defaultLinear } from "./linear.js";
-import { issueKeyFromInput, linkTicketToIssue, unlinkTicket, syncTicketToLinear, linearPeople, linearIdForUser, issueLabelNames } from "./ticket-linear.js";
+import { issueKeyFromInput, linkTicketToIssue, unlinkTicket, syncTicketToLinear, linearPeople, linearIdForUser, issueLabelNames, backfillHermes } from "./ticket-linear.js";
 import { hermesView } from "./ticket-hermes.js";
 import { enqueueTicketSync } from "./ticket-linear-runner.js";
 import { readTicketUpload, sendTicketAsset } from "./ticket-assets.js";
@@ -240,6 +240,14 @@ export function registerTicketRoutes(app, repo, { mailer = null, linear = defaul
       if (!mesmo) throw httpError(403, "só admin escolhe os aprovadores do Hermes", "hermes_approvers_admin");
     }
     const saved = await saveSettings(repo, saas, req.body || {}, { by: actorOf(req) });
+    // Ligar o Hermes (ou mudar como ele é reconhecido) relê os cards abertos
+    // em segundo plano: a tela salva na hora e os chips aparecem em seguida.
+    const h = saved.linear?.hermes || {}, ha = antes.linear?.hermes || {};
+    const hermesMudou = h.enabled && saved.linear?.enabled
+      && (!ha.enabled || h.label !== ha.label || h.linearUserId !== ha.linearUserId || JSON.stringify(h.phases) !== JSON.stringify(ha.phases));
+    if (hermesMudou) {
+      backfillHermes(repo, saas, { linear, log: app.log }).catch((err) => app.log?.warn?.(`hermes: releitura de ${saas}: ${err.message}`));
+    }
     // Ligar o espelho (ou trocar de time/projeto) POVOA o projeto: entram na
     // fila os tickets ainda abertos deste produto. Ticket já concluído fica
     // fora de propósito — o arquivo do suporte não vira backlog do time.

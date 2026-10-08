@@ -27,7 +27,7 @@ import {
   ACTOR_LINEAR, STATUS_KIND, TICKET_PRIORITIES, createTicket, loadSettings, saveSettings, patchTicket,
   recordTicketEvents, ticketTitle,
 } from "./tickets-core.js";
-import { normalizeHermesSettings, applyHermesIssue, applyHermesComment, isCockpitSigned } from "./ticket-hermes.js";
+import { normalizeHermesSettings, applyHermesIssue, applyHermesComment, isCockpitSigned, isHermesAuthor, parseHermesComment } from "./ticket-hermes.js";
 
 export const OUTBOX = "linear_outbox";
 export const MIRROR_MESSAGE_MODES = ["all", "public", "none"];
@@ -575,6 +575,40 @@ export async function applyLinearComment(repo, { issueId, comment, now = nowIso(
   }
   log?.info?.(`linear: comentário ${cid} em ${ref} → aviso no ticket #${ticket.number}`);
   return { ticket: ticket.id, comment: cid, notified: avisados };
+}
+
+// Ligar o Hermes num produto (ou trocar etiqueta, usuário ou de-para) relê os
+// cards dos tickets abertos: o retrato só nasce quando o card muda, e um card
+// parado em Validar ficaria invisível até alguém mexer nele no Linear. Dos
+// comentários antigos do Hermes só contam o último card de validação e o
+// último "no ar" — a atividade não ganha o histórico inteiro de uma vez.
+export async function backfillHermes(repo, saas, { linear, log, now = nowIso() } = {}) {
+  if (!linear?.configured?.()) return { skipped: "not_configured" };
+  const { linear: cfg } = await loadSettings(repo, saas);
+  if (!cfg?.enabled || !cfg.hermes?.enabled) return { skipped: "disabled" };
+  const abertos = (await repo.listWhere("tickets", { saas })).filter((t) => t.linearIssueId && STATUS_KIND[t.status] !== "done");
+  const out = { tickets: abertos.length, hermes: 0, errors: 0 };
+  for (const t of abertos) {
+    try {
+      const r = await linear.issueWithComments(t.linearIssueId);
+      if (!r?.issue) continue;
+      await applyHermesIssue(repo, t.id, { state: r.issue.state, labels: issueLabelNames(r.issue), assignee: issueAssignee(r.issue) }, cfg.hermes, { now, log });
+      const cur = await repo.get("tickets", t.id);
+      if (!cur?.hermes?.labeled && !cur?.hermes?.requested) continue;
+      out.hermes++;
+      const doHermes = (r.comments || []).filter((c) => isHermesAuthor(c.user, cfg.hermes))
+        .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
+      const ultimo = (kind) => [...doHermes].reverse().find((c) => parseHermesComment(c.body).kind === kind);
+      for (const c of [ultimo("validation"), cur.hermes.phase === "no_ar" ? ultimo("live") : null].filter(Boolean)) {
+        await applyHermesComment(repo, await repo.get("tickets", t.id), c, cfg.hermes, { now });
+      }
+    } catch (err) {
+      out.errors++;
+      log?.warn?.(`hermes: releitura do ticket #${t.number}: ${err.message}`);
+    }
+  }
+  log?.info?.(`hermes: releitura de ${saas} · ${out.hermes} de ${out.tickets} tickets com o Hermes${out.errors ? ` · ${out.errors} falhas` : ""}`);
+  return out;
 }
 
 // Comentário que o cockpit postou por fora da fila (ações do Hermes): entra em

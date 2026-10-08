@@ -15,7 +15,7 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 import { makeFakeLinear } from "./helpers/fake-linear.js";
 import { makeAuthHook, hashPassword } from "../src/auth/auth.js";
 import { makeScreenGuardHook } from "../src/auth/screens.js";
-import { clearStateCache, clearPeopleCache } from "../src/support/ticket-linear.js";
+import { clearStateCache, clearPeopleCache, backfillHermes } from "../src/support/ticket-linear.js";
 import {
   parseHermesComment, phaseByName, stateForPhase, hermesStateOf, normalizeHermesSettings, commentFor, hermesView,
 } from "../src/support/ticket-hermes.js";
@@ -388,4 +388,31 @@ test("aprovar sem dizer a versão lida não passa quando o card tem versão", as
   const r = await call("yudi", "POST", `/api/tickets/${ticketId}/hermes`, { action: "aprovar" });
   assert.equal(r.json().code, "version_changed");
   assert.equal(linear.issues.get(issueId).stateId, "st_validar");
+});
+
+test("ligar o Hermes relê os cards que já estavam com ele (sem esperar o card mudar)", async (t) => {
+  const { app, repo, call, linear, sync } = await buildApp();
+  t.after(() => { sync.stop(); return app.close(); });
+  // Espelho ligado, Hermes ainda não: o card entra como ticket comum.
+  await call("dono", "PUT", "/api/support/settings/alpha", { linear: { enabled: true, teamId: "team_1", projectId: "proj_1" } });
+  const { issueId, ticketId } = await cardDoHermes(app, linear);
+  Object.assign(linear.issues.get(issueId), { stateId: "st_validar" });
+  linear.addComment({ issueId, body: CARD_V(1), user: HERMES });
+  linear.addComment({ issueId, body: CARD_V(2), user: HERMES });
+  const comum = await linear.createIssue({ title: "[Loja X] outro", projectId: "proj_1", labels: [], stateId: "st_doing" });
+  const comumTicket = (await postWebhook(app, { type: "Issue", action: "create", data: linear.shape(comum.id) })).json().ticket;
+  assert.equal((await repo.get("tickets", ticketId)).hermes, undefined);
+
+  await ligar(call);
+  const r = await backfillHermes(repo, "alpha", { linear });
+  assert.equal(r.hermes, 1);
+  const ticket = await repo.get("tickets", ticketId);
+  assert.equal(ticket.hermes.phase, "validar");
+  assert.equal(ticket.hermes.needsHuman, true);
+  assert.equal(ticket.hermes.version, 2, "vale o último card de validação");
+  const validacoes = (await repo.listWhere("ticket_events", { ticket: ticketId })).filter((e) => e.type === "hermes_validation");
+  assert.equal(validacoes.length, 1, "o histórico antigo não vira uma enxurrada de eventos");
+  assert.equal((await repo.get("tickets", comumTicket)).hermes, undefined, "card sem etiqueta continua comum");
+  assert.ok((await repo.list("notifications")).some((n) => n.type === "ticket_hermes" && n.user === "yudi"), "o aprovador é avisado do que espera por ele");
+  assert.deepEqual(await backfillHermes(repo, "alpha", { linear: { configured: () => false } }), { skipped: "not_configured" });
 });

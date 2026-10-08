@@ -588,7 +588,10 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   chave e o rodapé. Até lá, deixar `actions` desligado. O aceite chega pela
   etiqueta posta no card. Aviso no sino só aos aprovadores do escopo, ao entrar
   em Validar/Aguardando resposta, e `COUNTERS.ticketsHermes` acende o badge de
-  Tickets. As amostras de comentário dos testes seguem o PDF e devem ser
+  Tickets. Ligar o Hermes (ou trocar etiqueta, usuário ou de-para) relê em
+  segundo plano os cards dos tickets abertos (`backfillHermes`): o retrato só
+  nasceria quando o card mudasse. Da releitura, só o último card de validação
+  e o último "no ar" viram evento, e repetir não duplica. As amostras de comentário dos testes seguem o PDF e devem ser
   trocadas pelas reais. Testes em `ticket-hermes.test.js` (Linear falso
   compartilhado em `test/helpers/fake-linear.js`). Prévia com
   `/?shell=1&hermes#tickets` e `&hermes&linear#support_settings`.

@@ -281,6 +281,9 @@ export async function applyHermesComment(repo, ticket, comment, cfg, { now = now
     // Card que nunca foi do Hermes não ganha retrato por um comentário solto.
     if (!prev.labeled && !prev.requested) return null;
     const next = { ...prev, lastHermesAt: now };
+    // Mesmo comentário de novo (releitura, reentrega): não repete o evento.
+    if (p.kind === "validation" && prev.validationCommentId === str(comment.id, 120)) return null;
+    if (p.kind === "live" && prev.liveAt === p.liveAt) return null;
     if (p.kind === "validation") {
       if (p.version) next.version = p.version;
       next.validationCommentId = str(comment.id, 120);

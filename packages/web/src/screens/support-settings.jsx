@@ -403,7 +403,7 @@ function HermesSettings({ catalog, team, hermes, disabled, saasId, version, onCh
     <div style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid var(--line-1)", paddingTop: 12, opacity: disabled ? 0.55 : 1 }}>
       <SwitchRow disabled={disabled} checked={hermes.enabled === true} onChange={(v) => onChange({ enabled: v })}
         title="Acompanhar o Hermes nos tickets"
-        hint="o ticket mostra a fase do card do Hermes (Validar, Aguardando resposta, Aprovado, no ar) e avisa os aprovadores quando é a vez deles" />
+        hint="o ticket mostra a fase do card do Hermes (Validar, Aguardando resposta, Aprovado, no ar) e avisa os aprovadores quando é a vez deles · ao salvar ligado, os cards abertos são relidos em segundo plano" />
       {hermes.enabled === true && (
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
