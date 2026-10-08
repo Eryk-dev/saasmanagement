@@ -9,6 +9,7 @@ import crypto from "node:crypto";
 import Fastify from "fastify";
 import multipart from "@fastify/multipart";
 import { makeMemRepo } from "./helpers/mem-repo.js";
+import { makeFakeLinear as makeFakeLinearBase } from "./helpers/fake-linear.js";
 import { makeAuthHook, hashPassword } from "../src/auth/auth.js";
 import { makeScreenGuardHook } from "../src/auth/screens.js";
 import { normalizeSettings } from "../src/support/tickets-core.js";
@@ -32,71 +33,8 @@ const STATES = [
   { id: "st_cancel", name: "Canceled", type: "canceled" },
 ];
 
-// Linear de mentira: guarda issues e comentários em memória e conta as chamadas
-// (é como o teste enxerga "o que foi mandado pra lá").
-function makeFakeLinear({ configured = true } = {}) {
-  const issues = new Map();
-  const comments = [];
-  const calls = { create: 0, update: 0, comment: 0 };
-  let seq = 0;
-  const shape = (i) => ({
-    id: i.id, identifier: i.identifier, url: i.url, title: i.title, description: i.description,
-    priority: i.priority, updatedAt: i.updatedAt,
-    state: STATES.find((s) => s.id === i.stateId) || STATES[0],
-    project: i.projectId ? { id: i.projectId, name: "Suporte" } : null,
-    team: { id: "team_1", key: "ENG", name: "Engenharia" },
-    assignee: i.assigneeId ? { id: i.assigneeId, name: PEOPLE.find((p) => p.id === i.assigneeId)?.name || "?" } : null,
-  });
-  return {
-    issues, comments, calls,
-    configured: () => configured,
-    catalog: async () => [{
-      id: "team_1", key: "ENG", name: "Engenharia", states: STATES,
-      projects: [{ id: "proj_1", name: "Suporte", state: "started" }],
-    }],
-    createIssue: async (input) => {
-      calls.create++;
-      seq += 1;
-      const i = {
-        id: `iss_${seq}`, identifier: `ENG-${seq}`, url: `https://linear.app/acme/issue/ENG-${seq}`,
-        title: input.title, description: input.description, priority: input.priority ?? 0,
-        projectId: input.projectId || "", stateId: input.stateId || "st_backlog", updatedAt: new Date().toISOString(),
-        assigneeId: input.assigneeId || null,
-      };
-      issues.set(i.id, i);
-      return shape(i);
-    },
-    updateIssue: async (id, input) => {
-      calls.update++;
-      const i = issues.get(id);
-      if (!i) throw new Error("issue não existe");
-      Object.assign(i, input, { stateId: input.stateId || i.stateId, updatedAt: new Date().toISOString() });
-      return shape(i);
-    },
-    createComment: async (issueId, body) => {
-      calls.comment++;
-      const c = { id: `cmt_${comments.length + 1}`, issueId, body, createdAt: new Date().toISOString() };
-      comments.push(c);
-      return c;
-    },
-    issue: async (idOrKey) => {
-      const found = [...issues.values()].find((i) => i.id === idOrKey || i.identifier === idOrKey);
-      return found ? shape(found) : null;
-    },
-    issueWithComments: async (id) => {
-      const i = issues.get(id);
-      if (!i) return null;
-      return {
-        issue: { ...shape(i), createdAt: i.updatedAt },
-        comments: comments.filter((c) => c.issueId === id)
-          .map((c) => ({ id: c.id, body: c.body, createdAt: c.createdAt, url: "", user: { name: "Bot do Cockpit" } })),
-      };
-    },
-    issuesUpdatedSince: async () => [...issues.values()].map((i) => ({ ...shape(i), comments: { nodes: [] } })),
-    viewer: async () => ({ user: { id: "u1", name: "Bot do Cockpit" }, organization: { id: "o1", name: "Acme" } }),
-    users: async () => PEOPLE,
-  };
-}
+// Linear de mentira (helpers/fake-linear.js) com os estados e as pessoas deste time.
+const makeFakeLinear = (opts = {}) => makeFakeLinearBase({ states: STATES, people: PEOPLE, ...opts });
 
 // Pessoas do workspace do Linear de mentira. A Lia casa por e-mail (conta
 // Google dela no cockpit); o Rui casa pelo nome; o dev externo não existe aqui.

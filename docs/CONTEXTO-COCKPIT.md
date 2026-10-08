@@ -212,7 +212,7 @@ Os caminhos abaixo são relativos a `packages/`.
 | Agenda, Google e consultas | `api/src/google/routes.google.js`, `calls/routes.consultations.js`; telas `agenda.jsx`, `agenda-grid.jsx`, `consultas.jsx`. |
 | Treinamentos | `api/src/training/` (`routes.flashcards.js`, `fsrs.js`); telas `training.jsx`, `training.css`, `training-focus.jsx`; testes `api/test/routes.flashcards.test.js`. |
 | Tarefas | `api/src/tasks/routes.tasks.js`; `web/src/screens/tasks/` (quadro, lista, calendário, drawer, filtros e estado). |
-| Suporte (tickets) | `api/src/support/` (`tickets-core.js`, `tickets-sla.js`, `routes.tickets.js`, `quick-replies.js`, `ticket-sla-runner.js`, `routes.support-portal.js`, `support-page.js`) e `auth/support-scope.js`; espelho com o Linear em `support/linear.js`, `ticket-linear.js`, `ticket-linear-runner.js` e a rota `/api/webhooks/linear` (`marketing/routes.webhooks.js`); `web/src/screens/tickets/`, `support-settings.jsx`, `quick-replies.jsx`, `lib/tickets.js`, `components/customer-tickets.jsx`; testes `routes.tickets`, `routes.quick-replies`, `tickets-sla`, `ticket-sla-runner`, `routes.support-portal`, `ticket-linear`. |
+| Suporte (tickets) | `api/src/support/` (`tickets-core.js`, `tickets-sla.js`, `routes.tickets.js`, `quick-replies.js`, `ticket-sla-runner.js`, `routes.support-portal.js`, `support-page.js`) e `auth/support-scope.js`; espelho com o Linear em `support/linear.js`, `ticket-linear.js`, `ticket-linear-runner.js` e a rota `/api/webhooks/linear` (`marketing/routes.webhooks.js`); Hermes (agente de correção no Linear) em `support/ticket-hermes.js`, `hermes-actions.js`, `routes.hermes.js` e `shared/hermes-phase.js`; `web/src/screens/tickets/`, `support-settings.jsx`, `quick-replies.jsx`, `lib/tickets.js`, `components/customer-tickets.jsx`; testes `routes.tickets`, `routes.quick-replies`, `tickets-sla`, `ticket-sla-runner`, `routes.support-portal`, `ticket-linear`, `ticket-hermes`. |
 | Conteúdo e redes sociais | `api/src/blog/` (`routes.blog.js`, `routes.blog-public.js`) e `marketing/routes.social.js`; telas `blog.jsx` e `social.jsx`. |
 | Componentes e visual | `web/src/tokens.css`, `atoms.jsx`, `components/viz.jsx`, `components/lead-blocks.jsx`, `lib/ui.js`. |
 | Kanban compartilhado | `web/src/components/kanban/` (`KanbanBoard`/`KanbanColumn` + `useBoardDnd`): quadro, coluna, soltar, placeholder, corte "+N" e coluna recolhida. Tarefas, Tickets e Pipeline montam só o card e o que é do domínio em cima dela; layout `scroll` (colunas fixas que rolam sozinhas) ou `fill` (grid de colunas iguais, Pipeline). |
@@ -558,6 +558,40 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   `tickets_linear_issue_idx`) porque é por ele que o webhook acha o ticket.
   Fora desta entrega: anexo do ticket virar anexo da issue e ferramenta de MCP
   própria.
+- **Suporte — Hermes (08/10/2026):** o Hermes (repo Hermes-VPS) corrige bug de
+  cliente no Linear, seguindo o "Tutorial-Hermes" (23/09/2026): etiqueta
+  `Hermes`, colunas Validar / Aguardando resposta / Aprovado e comandos em
+  comentário. **O Linear segue como fonte da verdade e não existe "ticket do
+  Hermes":** o ticket é o mesmo, e `ticket.hermes` (MANAGED, ator `linear`) é o
+  retrato do card. Ele guarda `labeled`, `active` (etiqueta e ninguém do time
+  atribuído), `holding`, `phase`, `needsHuman` (validar/pergunta), `history`,
+  `version`, `handoff`, `requested` e `lastAction`. Ligado por produto em
+  `ticket_settings.linear.hermes` (Configurações de SLA → Linear → Hermes).
+  Invariantes: (1) a fase vem do **nome** da coluna (`shared/hermes-phase.js`,
+  a mesma régua na SPA) ou do de-para manual por id, porque o tipo do Linear
+  não distingue Validar de Aprovado; (2) o texto do Hermes **nunca** entra no
+  doc: o card de validação, a pergunta e o rascunho são lidos ao vivo em
+  `GET /api/tickets/:id/linear` (`hermesView`), e `publicTicket` não conhece
+  o campo; (3) o espelho de saída **não mudou**: atribuir o ticket a alguém
+  com par no Linear tira o caso do Hermes ("Melhor uma pessoa fazer") e
+  concluir leva o card a Done. A tela só confirma antes (`confirmHermes`);
+  (4) as ações (`POST /api/tickets/:id/hermes`: aprovar, ajuste, recusar,
+  responder, perguntar, desistir, reverter, passar_time, entregar) saem pela
+  **chave única** do Linear, com o comando na 1ª linha e o rodapé
+  "— nome, via Cockpit". O id do comentário entra em `linear.posted`. Quem
+  decide são os `approvers` do produto, **só admin edita** essa lista
+  (403 `hermes_approvers_admin`), e entregar vale para quem atende o produto.
+  Aprovar relê o card e recusa versão diferente da lida (409
+  `version_changed`). Tudo depende de `hermes.actions` ligado; (5) "Entregar ao
+  Hermes" tira o assignee da issue e comenta `hermes: assumir`. Esse comando
+  ainda precisa ser implementado no Hermes-VPS, assim como aceitar o dono da
+  chave e o rodapé. Até lá, deixar `actions` desligado. O aceite chega pela
+  etiqueta posta no card. Aviso no sino só aos aprovadores do escopo, ao entrar
+  em Validar/Aguardando resposta, e `COUNTERS.ticketsHermes` acende o badge de
+  Tickets. As amostras de comentário dos testes seguem o PDF e devem ser
+  trocadas pelas reais. Testes em `ticket-hermes.test.js` (Linear falso
+  compartilhado em `test/helpers/fake-linear.js`). Prévia com
+  `/?shell=1&hermes#tickets` e `&hermes&linear#support_settings`.
 - **Inbox (14/09/2026):** `whatsapp.jsx` + `whatsapp.css` seguem a prancha do
   handoff, com lista/chat/card responsivos. O filtro “Sem resposta” usa
   `lastDir === "in"`, como `awaiting` da API; “Aguardando cliente” guarda a

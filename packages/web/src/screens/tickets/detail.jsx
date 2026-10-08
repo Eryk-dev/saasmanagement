@@ -6,11 +6,12 @@ import { Drawer, Modal } from "../../components/overlay.jsx";
 import { SelectPopover } from "../../components/select-popover.jsx";
 import { QuickReplyList, useQuickReplies, filterQuickReplies, orderForPicker, slashTokenAt } from "./quick-reply-picker.jsx";
 import { LinearMarkdown } from "./linear-markdown.jsx";
+import { HermesSection, HermesCard } from "./hermes-section.jsx";
 import { UserPicker, UserAvatarRing } from "../../components/user-picker.jsx";
 import { isAdminUser } from "../../lib/users.js";
 import {
   TICKET_STATUSES, STATUS_BY_KEY, TICKET_PRIORITIES, PRIORITY_BY_KEY, CHANNEL_LABEL,
-  slaState, SLA_TONE, distance, agentHandles, portalUrl, linearInReview, linearKey,
+  slaState, SLA_TONE, distance, agentHandles, portalUrl, linearInReview, linearKey, hermesChip, hermesHolding, kindOf,
 } from "../../lib/tickets.js";
 
 const { useState, useEffect, useRef, useCallback } = React;
@@ -54,6 +55,20 @@ function SaveStatus({ status, onRetry }) {
   if (!status) return null;
   if (status === "error") return <button type="button" onClick={onRetry} style={{ fontSize: 11, color: "var(--neg)", fontWeight: 600, flexShrink: 0 }}>não salvou · tentar de novo</button>;
   return <span className="mono dim" style={{ fontSize: 11, flexShrink: 0 }}>{status === "saving" ? "salvando…" : "salvo"}</span>;
+}
+
+// Ticket cujo card está com o Hermes: atribuir a alguém (sobe pro Linear e o
+// Hermes para) ou concluir (o card vai pra Done) tira o caso dele. Pergunta
+// antes — é a mesma ação do guia, só que sem querer. Exportada pro quadro.
+export function confirmHermes(ticket, patch) {
+  if (!hermesHolding(ticket) || typeof window === "undefined") return true;
+  if (patch.assignee && patch.assignee !== ticket.assignee) {
+    return window.confirm("Este caso está com o Hermes. Atribuir a alguém do time tira o caso dele: o Hermes para e deixa um resumo no card. Continuar?");
+  }
+  if (patch.status && kindOf(patch.status) === "done" && kindOf(ticket.status) !== "done") {
+    return window.confirm("Este caso está com o Hermes. Concluir o ticket move o card para Done no Linear e encerra o fluxo dele (sem validar nem publicar). Continuar?");
+  }
+  return true;
 }
 
 // ── Coluna lateral ──────────────────────────────────────────────────────────
@@ -232,6 +247,21 @@ const EVENT_TEXT = {
   // O texto do comentário não é copiado pro ticket (vive na aba Linear): a
   // atividade guarda quem comentou e o começo do que disse.
   linear_comment: (d) => `${d.author || "alguém"} comentou em ${d.identifier || "Linear"}${d.excerpt ? `: ${d.excerpt}` : ""}`,
+  // Hermes: fase do card e o que os aprovadores fizeram (hermes-section.jsx).
+  hermes_phase: (d) => `· Hermes: ${HERMES_PHASE_TEXT[d.to] || d.to}${d.state ? ` (coluna ${d.state})` : ""}`,
+  hermes_validation: (d) => `· Hermes deixou a correção${d.version ? ` v${d.version}` : ""} para validar${d.risk ? ` · risco ${d.risk === "medio" ? "médio" : d.risk}` : ""}`,
+  hermes_question: (d) => `· Hermes perguntou${d.excerpt ? `: ${d.excerpt}` : ""}`,
+  hermes_live: (d) => `· Hermes: no ar${d.at ? ` às ${d.at}` : ""}`,
+  hermes_handoff: (d) => `· o caso saiu do Hermes para ${d.to || "o time"}`,
+  hermes_accepted: () => "· Hermes assumiu o caso",
+  hermes_declined: (d) => `· Hermes não assumiu${d.excerpt ? `: ${d.excerpt}` : ""}`,
+  hermes_action: (d) => `${HERMES_ACTION_TEXT[d.action] || d.action}${d.version ? ` v${d.version}` : ""}${d.excerpt ? `: ${d.excerpt}` : ""}`,
+};
+const HERMES_PHASE_TEXT = { relato: "relato novo", trabalhando: "investigando", pergunta: "aguardando resposta", revisao: "revisão da IA", validar: "pronto para validar", aprovado: "aprovado", no_ar: "no ar", cancelado: "cancelado" };
+const HERMES_ACTION_TEXT = {
+  aprovar: "aprovou a correção do Hermes", ajuste: "pediu ajuste ao Hermes", recusar: "recusou a correção do Hermes", responder: "respondeu ao Hermes",
+  perguntar: "perguntou ao Hermes", desistir: "desistiu da aprovação", reverter: "pediu ao Hermes para reverter", passar_time: "passou o caso do Hermes para o time",
+  entregar: "entregou o ticket ao Hermes",
 };
 const ACTOR_NAME = { portal: "Cliente", api: "Cockpit", linear: "Linear" };
 function Activity({ ticketId, version, agentName }) {
@@ -257,9 +287,18 @@ function Activity({ ticketId, version, agentName }) {
 
 // Responder (vai pro cliente) ou nota interna (fica no cockpit), e o status
 // que o ticket assume no mesmo envio. Avisa quem está acima se há rascunho.
-function Composer({ ticket, onSent, onDraft, onBusy }) {
+function Composer({ ticket, onSent, onDraft, onBusy, prefill }) {
   const [kind, setKind] = useState("reply");
   const [text, setText] = useState("");
+  // Rascunho de resposta do Hermes ("usar na resposta"): entra como resposta ao
+  // cliente, sem enviar. Não atropela o que a pessoa já escreveu sem perguntar.
+  const textRef = useRef(text); textRef.current = text;
+  useEffect(() => {
+    if (!prefill?.text) return;
+    if (textRef.current.trim() && !window.confirm("Trocar o que você está escrevendo pelo rascunho do Hermes?")) return;
+    setText(prefill.text);
+    setKind("reply");
+  }, [prefill?.n]); // eslint-disable-line react-hooks/exhaustive-deps
   const [after, setAfter] = useState("");
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
@@ -391,7 +430,7 @@ function Recolhivel({ children, altura = 280 }) {
   );
 }
 
-function LinearPane({ ticket }) {
+function LinearPane({ ticket, onUseDraft }) {
   const [data, setData] = useState(null);
   const [erro, setErro] = useState("");
   const [busy, setBusy] = useState(false);
@@ -432,6 +471,8 @@ function LinearPane({ ticket }) {
             : `Não consegui ler a issue agora (${data.error || "sem resposta"}) — mostrando o que já está gravado no ticket.`}
         </div>
       )}
+
+      <HermesCard hermes={data.hermes} onExpired={load} onUseDraft={onUseDraft} />
 
       {issue && (
         <>
@@ -538,6 +579,7 @@ export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobi
   const [tab, setTab] = useState("conversation");
   const [picker, setPicker] = useState(false);
   const [draft, setDraft] = useState(false);
+  const [prefill, setPrefill] = useState(null);
   const assigneeRef = useRef(null);
 
   useEffect(() => {
@@ -551,6 +593,7 @@ export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobi
   const apply = useCallback((t) => { if (!t?.id) return; setTicket(t); onChange && onChange(t); }, [onChange]);
   const save = useCallback(async (patch) => {
     const before = ticket;
+    if (!confirmHermes(ticket, patch)) return false;
     setTicket((t) => (t ? { ...t, ...patch, ...(patch.requester ? { requester: { ...(t.requester || {}), ...patch.requester } } : {}) } : t));
     try { apply(await api.ticketUpdate(ticketId, patch)); return true; }
     catch (err) { setTicket(before); toast(`Não deu pra salvar · ${err.message || "tente de novo"}`, "neg"); return false; }
@@ -576,6 +619,7 @@ export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobi
 
   const t = ticket || summary;
   const sla = ticket ? slaState(ticket) : null;
+  const hermes = hermesChip(t);
   const status = STATUS_BY_KEY[t?.status];
 
   // Abas: a do Linear só existe com issue vinculada. Desvincular no meio do
@@ -591,6 +635,7 @@ export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobi
     if ((tab === "linear" && ticket && !ticket.linear?.issueId) || (tab === "data" && !mobile)) setTab("conversation");
   }, [tab, ticket, mobile]);
 
+  const hermesSection = ticket ? <HermesSection ticket={ticket} settings={settings} onChange={apply} onOpenLinear={() => setTab("linear")} /> : null;
   const Painel = mobile ? Drawer : Modal;
   const painelProps = mobile
     ? { largura: 560, painelStyle: { position: "fixed", right: 14, top: 14, bottom: 14, height: "auto", maxWidth: "calc(100% - 28px)", overflow: "hidden" } }
@@ -614,7 +659,9 @@ export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobi
               ? <a href={t.linear.url} target="_blank" rel="noopener noreferrer" className="support-linear-link" title={`Abrir ${linearKey(t)} no Linear`}>#{linearKey(t)}</a>
               : `#${linearKey(t)}`}</>}
             {t ? ` · ${CHANNEL_LABEL[t.channel] || "equipe"} · aberto ${fmtWhen(t.createdAt)}` : ""}
-            {linearInReview(t) && <span className="chip info" style={{ fontSize: 11, minHeight: 0, marginLeft: 8, verticalAlign: "middle" }} title={`${t.linear.identifier} está em ${t.linear.stateName} no Linear`}>{t.linear.stateName} no Linear</span>}
+            {hermes
+              ? <span className={`chip ${hermes.tone}`} style={{ fontSize: 11, minHeight: 0, marginLeft: 8, verticalAlign: "middle" }} title={hermes.title}>{hermes.text}</span>
+              : linearInReview(t) && <span className="chip info" style={{ fontSize: 11, minHeight: 0, marginLeft: 8, verticalAlign: "middle" }} title={`${t.linear.identifier} está em ${t.linear.stateName} no Linear`}>{t.linear.stateName} no Linear</span>}
           </div>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 2 }}>
             <textarea value={subject.draft} rows={1} placeholder="Assunto" aria-label="Assunto" className="tk-panel-field support-detail-subject" disabled={!ticket}
@@ -653,13 +700,15 @@ export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobi
             {!mobile && tabs}
             <div className="support-detail-thread">
               {tab === "conversation" ? <Conversation ticket={ticket} agentName={agentName} description={description} />
-                : tab === "linear" ? <LinearPane ticket={ticket} />
+                : tab === "linear" ? <LinearPane ticket={ticket} onUseDraft={(text) => { setPrefill({ text, n: Date.now() }); setTab("conversation"); }} />
                   : <Activity ticketId={ticket.id} version={activityVersion} agentName={agentName} />}
             </div>
-            <Composer ticket={ticket} onSent={apply} onDraft={setDraft} onBusy={setSending} />
+            <Composer ticket={ticket} onSent={apply} onDraft={setDraft} onBusy={setSending} prefill={prefill} />
           </div>
 
           <aside className="support-detail-side" aria-label="Dados do atendimento" hidden={mobile && tab !== "data"}>
+            {/* Caso com o Hermes vem primeiro: é o que pode estar esperando você. */}
+            {ticket.hermes?.active && hermesSection}
             <Section title="Atendimento">
               <Field label="Status">
                 <SelectPopover label="Status" value={ticket.status} options={STATUS_OPTIONS} onChange={(v) => save({ status: v })} />
@@ -697,6 +746,7 @@ export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobi
 
             <Attachments ticket={ticket} onChange={apply} />
 
+            {!ticket.hermes?.active && hermesSection}
             <LinearSection ticket={ticket} settings={settings} onChange={apply} />
 
             {/* Destrutiva e rara (só admin): no pé da coluna, longe do fluxo de atendimento. */}

@@ -670,6 +670,11 @@ export const api = {
   ticketLinear: (id) => req("GET", `/api/tickets/${encodeURIComponent(id)}/linear`),
   ticketLinearSync: (id, issue = "") => req("POST", `/api/tickets/${encodeURIComponent(id)}/linear`, issue ? { issue } : {}),
   ticketLinearUnlink: (id) => req("DELETE", `/api/tickets/${encodeURIComponent(id)}/linear`),
+  // Hermes no ticket: retrato + permissões (sem chamar o Linear) e as ações do
+  // guia (aprovar, ajuste, recusar, responder, desistir, reverter, passar para
+  // o time, entregar ao Hermes).
+  ticketHermes: (id) => req("GET", `/api/tickets/${encodeURIComponent(id)}/hermes`),
+  ticketHermesAction: (id, body) => req("POST", `/api/tickets/${encodeURIComponent(id)}/hermes`, body),
   supportAgents: () => req("GET", "/api/support/agents"),
   supportAgentSave: (id, body) => req("PUT", `/api/support/agents/${encodeURIComponent(id)}`, body),
   notifications: (unread = false) => req("GET", `/api/notifications${unread ? "?unread=1" : ""}`),
