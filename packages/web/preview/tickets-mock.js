@@ -53,6 +53,38 @@ const CARD_FIELDS_MOCK = {
 };
 const cardHermes = (v) => [`**Validar · v${v}**`, "", ...Object.entries({ "O que acontecia": "problema", Prova: "prova", Tela: "tela", "Mexe no banco?": "banco", Risco: "risco", "Quando publica": "publica", "Aviso ao cliente": "aviso" })
   .map(([rotulo, k]) => `**${rotulo}:** ${CARD_FIELDS_MOCK[k]}`), `**Versão:** v${v}`].join("\n");
+// Pergunta do Hermes como ele escreve no Linear: o pedido em cima e o apêndice
+// técnico corrido num <details> (texto real do LEV-551, anonimizado).
+const perguntaHermes = [
+  "**Hermes · validação**", "",
+  "Reproduzi a cópia manual na bancada, mas sem o lote real não dá pra dizer por que a fila parou.", "",
+  "**Precisa de:**",
+  "- [Tiago] Qual empresa é esse grupo? Há duas lojas com o nome Auto Center no cadastro.", "",
+  "<details>",
+  "Fluxo develop 834800148a68: frontend/src/pages/CompatPage.tsx:589-632 → POST /api/compat/copy em app/routers/compat.py:349-519; caminho depende de perfil permanente/use_durable_queue, com fallback BackgroundTasks. Enqueue app/services/copy_queue.py:891-979 grava copy_jobs; claim dedicado :1669-1752/:1857-1883; worker app/workers/copy_worker.py:556-590 e app/workers/processor.py:4366-4582; compat_logs atualizado por app/services/compat_log_writer.py:42-124; leitura /logs app/routers/compat.py:588-613.",
+  "Hipóteses testáveis: H1 job manual fora do claim (copy_queue.py:1669-1752), não observada na bancada; H2 falha da origem deixa histórico órfão (compat.py:487-504), refutada no cenário testado por 404 + log error + zero jobs; H3 retry parece fila parada (processor.py:4534-4540), aparência demonstrada por RuntimeError interno simulado, com pending/attempts=1/scheduled_at futuro e histórico in_progress 0/2.",
+  "Teste novo tests/test_lev551_compat_flow.py: router FastAPI em ASGITransport, PostgREST e PostgreSQL reais; autenticação injetada, fronteiras ML simuladas. Não testa aplicação no ML nem worker de produção.",
+  "Reprodução executada: python -m pytest -q -s tests/test_lev551_compat_flow.py → 3 passed, 1 warning in 2.26s no original; nenhum teste falhou por bug. Sucesso: 2 jobs pending/0 → success/1, log success 2/2. Negativos: sem destinos 400 sem escrita; origem indisponível 404/log error; claim concorrente da mesma rota vazio. Regressões finais: python -m pytest -q tests/test_compat_enqueue.py tests/test_copy_queue_compat_lanes.py → 28 passed, 1 warning in 3.28s.",
+  "Prova: docs/provas/hermes-lev-551.md. Só artefatos diagnósticos; nenhuma candidata. Falta configuração/lote real para distinguir perfil permanente, caminho legado, saturação, retry ou indisponibilidade do worker.",
+  "</details>", "",
+  "Estado: `needs_context`.",
+].join("\n");
+// Descrição no formato dos cards do CS - Suporte (skill cs-suporte-card).
+const descricaoIssue = [
+  "## Relato", "",
+  "Cliente 18/09 \\~09:12: a cópia manual de compatibilidades **ficou parada em “em andamento”** e nenhum anúncio de destino recebeu as peças.", "",
+  "**Cliente:** Auto Center RP · chat `Auto Center RP | LeverAds`",
+  "**Quem:** Marcos (compras)",
+  "**Msg:** `3EB0860C1FC29CC44E7D5D`", "",
+  "## Citações", "",
+  "> mandei copiar ontem e até agora tá rodando, os anúncios novos estão sem compatibilidade", "",
+  "## Contexto", "",
+  "* Conta ML3 importada pela LeverAds; cópia de 2 anúncios de origem para 14 destinos",
+  "* Mesmo cliente já abriu o LEV-512 sobre criação de anúncios (não é o mesmo problema)", "",
+  "## Checklist", "",
+  "- [x] Conferir se o job entrou na fila",
+  "- [ ] Confirmar com o cliente qual empresa é o grupo",
+].join("\n");
 const hermesView = (t) => {
   const h = t.hermes || {};
   const card = h.version ? { commentId: "c1", at: iso(-0.3), kind: "validation", version: h.version, risk: "baixo", touchesDb: false, images: [], fields: { ...CARD_FIELDS_MOCK, versao: `v${h.version}` } } : null;
@@ -135,8 +167,9 @@ export const ticketsMock = {
     const t = achar(id);
     return { linked: true, configured: true, stale: false, identifier: t?.linear?.identifier || "", url: t?.linear?.url || "", state: { name: t?.linear?.stateName || "", type: t?.linear?.stateType || "" },
       labels: t?.hermes ? ["Hermes", "Bug"] : [],
-      issue: { id: t?.linear?.issueId, title: t?.subject, description: "Cliente reclamou no grupo do WhatsApp (áudio transcrito).", priority: 2, assignee: t?.hermes?.handoff?.to || "", project: "CS - Suporte" },
-      comments: t?.hermes?.version ? [{ id: "c1", body: cardHermes(t.hermes.version), createdAt: iso(-0.3), url: "", user: { id: "lin_hermes", name: "Hermes" }, fromCockpit: false }] : [],
+      issue: { id: t?.linear?.issueId, title: t?.subject, description: descricaoIssue, priority: 2, assignee: t?.hermes?.handoff?.to || "", project: "CS - Suporte" },
+      comments: t?.hermes?.version ? [{ id: "c1", body: cardHermes(t.hermes.version), createdAt: iso(-0.3), url: "", user: { id: "lin_hermes", name: "Hermes" }, fromCockpit: false }]
+        : t?.hermes?.phase === "pergunta" ? [{ id: "c2", body: perguntaHermes, createdAt: iso(-1), url: "", user: { id: "lin_hermes", name: "Hermes" }, fromCockpit: false }] : [],
       hermes: t?.hermes ? hermesView(t) : null };
   },
   ticketHermes: (id) => {

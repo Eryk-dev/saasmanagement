@@ -1411,6 +1411,26 @@ try {
     if (!hh.includes("<details") || hh.includes("<details open")) throw new Error("apêndice deveria entrar recolhido");
     if (!hh.includes("<b>Eryk</b>") || !hh.includes("<b>Cliente</b>")) throw new Error("destinatário do pedido deveria sair em negrito");
     if (hh.includes("\\_") || !hh.includes("_xlsx_bytes")) throw new Error("escape do Linear sobrou na tela");
+
+    // Apêndice técnico real (LEV-551): parágrafos corridos viram estrutura.
+    const tecnico = [
+      "<details>",
+      "Fluxo develop 834800148a68: frontend/src/pages/CompatPage.tsx:589-632 → POST /api/compat/copy em app/routers/compat.py:349-519; caminho depende de perfil permanente; claim dedicado :1669-1752/:1857-1883; leitura /logs app/routers/compat.py:588-613.",
+      "Hipóteses testáveis: H1 job manual fora do claim (copy_queue.py:1669-1752), não observada; H2 falha da origem deixa histórico órfão, refutada; H3 retry parece fila parada, demonstrada.",
+      "Reprodução executada: python -m pytest -q → 3 passed; nenhum teste falhou por bug. Sucesso: 2 jobs pending/0 → success/1. Negativos: sem destinos 400 sem escrita. Regressões finais: 28 passed.",
+      "</details>",
+    ].join("\n");
+    const dt = M.parseBlocks(tecnico)[0];
+    const hipoteses = dt.blocos.find((b) => b.tipo === "lista" && b.itens[0].startsWith("H1"));
+    if (!hipoteses || hipoteses.itens.length !== 3) throw new Error("H1/H2/H3 separados por ';' deveriam virar lista");
+    if (!dt.blocos.some((b) => b.tipo === "texto" && b.texto.startsWith("Negativos:"))) throw new Error("frase rotulada no meio do parágrafo deveria abrir parágrafo próprio");
+    const th = renderToString(wrap(React.createElement(M.LinearMarkdown, { text: tecnico, onExpired() {} })));
+    for (const rotulo of ["Fluxo develop 834800148a68:", "Hipóteses testáveis:", "Sucesso:", "Regressões finais:"]) {
+      if (!th.includes(`<b>${rotulo}</b>`)) throw new Error(`rótulo "${rotulo}" deveria sair em negrito`);
+    }
+    for (const ref of ["frontend/src/pages/CompatPage.tsx:589-632", "POST /api/compat/copy", "copy_queue.py:1669-1752"]) {
+      if (!th.includes(`linear-md-ref">${ref}<`)) throw new Error(`"${ref}" deveria sair como referência de código`);
+    }
     console.log("✓ linear-markdown");
   } catch (err) {
     console.error(`✗ linear-markdown: ${err.message}`);

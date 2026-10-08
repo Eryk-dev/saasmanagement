@@ -415,13 +415,13 @@ const PRIO_LINEAR = { 0: "sem prioridade", 1: "urgente", 2: "alta", 3: "média",
 
 // Relato longo (o de uma issue real passa de 19 mil caracteres) entra recolhido:
 // a aba abre mostrando o começo e quem precisa do resto pede.
-function Recolhivel({ children, altura = 280 }) {
+function Recolhivel({ children, altura = 280, fundo = "var(--bg-inset)" }) {
   const [aberto, setAberto] = useState(false);
   return (
     <div>
       <div style={{ maxHeight: aberto ? "none" : altura, overflow: "hidden", position: "relative" }}>
         {children}
-        {!aberto && <div style={{ position: "absolute", inset: "auto 0 0 0", height: 48, background: "linear-gradient(transparent, var(--bg-inset))" }} />}
+        {!aberto && <div style={{ position: "absolute", inset: "auto 0 0 0", height: 48, background: `linear-gradient(transparent, ${fundo})` }} />}
       </div>
       <button type="button" onClick={() => setAberto((v) => !v)} style={{ fontSize: 11.5, fontWeight: 600, color: "var(--accent)", marginTop: 4 }}>
         {aberto ? "recolher" : "ver tudo"}
@@ -455,15 +455,14 @@ function LinearPane({ ticket, onUseDraft }) {
   if (!data) return <div className="mono dim" style={{ fontSize: 12 }}>carregando a issue…</div>;
 
   const { issue, comments = [] } = data;
+  const h = data.hermes;
+  const temHermes = !!(h && (h.card || h.question || h.draftReply));
+  // Três seções com o mesmo cabeçalho, de cima pra baixo: o que a issue pede
+  // (descrição), o que o Hermes quer agora e a conversa. Coluna, prioridade,
+  // responsável e etiquetas já estão na lateral do ticket — não repetem aqui,
+  // nem o título da issue quando é o próprio assunto do ticket.
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <a href={data.url || "#"} target="_blank" rel="noopener noreferrer" className="chip accent" style={{ fontWeight: 600 }}>{data.identifier || "issue"} ↗</a>
-        {data.state?.name && <span className="support-status" style={{ "--dot": data.state.type === "completed" ? "var(--pos)" : data.state.type === "canceled" ? "var(--fg-4)" : "var(--accent)" }}>{data.state.name}</span>}
-        {issue && <span className="mono dim" style={{ fontSize: 11 }}>{PRIO_LINEAR[issue.priority] ?? ""}{issue.assignee ? ` · ${issue.assignee}` : ""}{issue.project ? ` · ${issue.project}` : ""}</span>}
-        <button type="button" onClick={load} disabled={busy} className="mono dim" style={{ marginLeft: "auto", fontSize: 11, textDecoration: "underline" }}>{busy ? "lendo…" : "recarregar"}</button>
-      </div>
-
+    <div className="linear-pane">
       {data.stale && (
         <div style={{ fontSize: 12, color: "var(--warn)" }}>
           {data.configured === false
@@ -472,38 +471,64 @@ function LinearPane({ ticket, onUseDraft }) {
         </div>
       )}
 
-      <HermesCard hermes={data.hermes} onExpired={load} onUseDraft={onUseDraft} />
-
-      {issue && (
-        <>
-          <span className="kicker">Descrição da issue</span>
-          <div className="support-msg" data-kind="linear-desc">
+      <section className="linear-section" aria-labelledby="linear-sec-desc">
+        <div className="linear-section-head">
+          <h3 id="linear-sec-desc">Descrição da issue</h3>
+          <a href={data.url || "#"} target="_blank" rel="noopener noreferrer" className="chip accent" style={{ fontWeight: 600 }}>{data.identifier || "issue"} ↗</a>
+          <span className="linear-section-rule" aria-hidden="true" />
+          <button type="button" onClick={load} disabled={busy} className="mono dim" style={{ fontSize: 11, textDecoration: "underline" }}>{busy ? "lendo…" : "recarregar"}</button>
+        </div>
+        {issue && (
+          <div className="linear-issue">
+            {issue.title && issue.title.trim() !== String(ticket.subject || "").trim() && <div className="linear-issue-title">{issue.title}</div>}
             {issue.description
               ? (visibleLength(issue.description) > 1200
-                ? <Recolhivel><LinearMarkdown text={issue.description} onExpired={load} /></Recolhivel>
+                ? <Recolhivel fundo="var(--bg-1)"><LinearMarkdown text={issue.description} onExpired={load} /></Recolhivel>
                 : <LinearMarkdown text={issue.description} onExpired={load} />)
               : <span className="dim">sem descrição no Linear</span>}
           </div>
-        </>
+        )}
+      </section>
+
+      {temHermes && (
+        <section className="linear-section" aria-labelledby="linear-sec-hermes">
+          <div className="linear-section-head">
+            <h3 id="linear-sec-hermes">Hermes</h3>
+            <span className="linear-section-rule" aria-hidden="true" />
+          </div>
+          <HermesCard hermes={h} onExpired={load} onUseDraft={onUseDraft} />
+        </section>
       )}
 
-      <span className="kicker">Comentários{comments.length ? ` · ${comments.length}` : ""}</span>
+      <section className="linear-section" aria-labelledby="linear-sec-coment">
+      <div className="linear-section-head">
+        <h3 id="linear-sec-coment">Comentários na issue</h3>
+        <span className="linear-comments-count">{comments.length}</span>
+        <span className="linear-section-rule" aria-hidden="true" />
+      </div>
       {comments.length === 0 && (
         <div className="mono dim" style={{ fontSize: 12 }}>
           {data.stale ? "não deu pra ler os comentários agora — abra a issue no Linear" : "nenhum comentário na issue"}
         </div>
       )}
-      {comments.map((c) => (
-        <div key={c.id} className="support-msg" data-kind="linear">
-          <div className="kicker" style={{ marginBottom: 4, display: "flex", gap: 8, alignItems: "center" }}>
-            <span>{c.user?.name || "alguém"} · {fmtWhen(c.createdAt)}</span>
-            {c.fromCockpit && <span className="chip" title="saiu daqui: resposta ou nota do ticket espelhada na issue">do cockpit</span>}
-          </div>
-          {visibleLength(c.body) > 1200
-            ? <Recolhivel altura={200}><LinearMarkdown text={c.body} onExpired={load} /></Recolhivel>
-            : <LinearMarkdown text={c.body} onExpired={load} />}
-        </div>
-      ))}
+      <ol className="linear-comments">
+        {comments.map((c) => (
+          <li key={c.id} className="linear-comment">
+            <span className="linear-comment-avatar" aria-hidden="true">{(c.user?.name || "?").trim().charAt(0).toUpperCase()}</span>
+            <div className="support-msg" data-kind="linear">
+              <div className="linear-comment-meta">
+                <b>{c.user?.name || "alguém"}</b>
+                <span>{fmtWhen(c.createdAt)}</span>
+                {c.fromCockpit && <span className="chip" title="saiu daqui: resposta ou nota do ticket espelhada na issue">do cockpit</span>}
+              </div>
+              {visibleLength(c.body) > 1200
+                ? <Recolhivel altura={200} fundo="var(--bg-1)"><LinearMarkdown text={c.body} onExpired={load} /></Recolhivel>
+                : <LinearMarkdown text={c.body} onExpired={load} />}
+            </div>
+          </li>
+        ))}
+      </ol>
+      </section>
     </div>
   );
 }

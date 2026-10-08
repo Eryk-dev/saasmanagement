@@ -57,6 +57,33 @@ function recolhivel(linhas, i) {
   return { titulo, miolo, proxima: j + 1 };
 }
 
+// O apêndice técnico do Hermes chega em parágrafos corridos: rótulo, fluxo
+// com ";" entre as etapas e frases que abrem outro assunto ("Sucesso: …",
+// "Negativos: …") no meio da linha. Dentro do recolhível isso vira estrutura:
+// cada frase rotulada ganha parágrafo próprio e uma enumeração de 3+ partes
+// separadas por ";" vira lista sob o rótulo. Linhas que já são markdown
+// (lista, título, citação, imagem) passam intactas.
+const ROTULO_RE = /^(\p{Lu}[^:\n]{0,44}?):(?:\s+(.*))?$/u;
+const rotuloOk = (r) => !/[,;.]\s|`|\*\*|→|\(/.test(r);
+const FRASE_ROTULADA_RE = /(?<=[.)])\s+(?=\p{Lu}[\p{L}\d ]{1,28}:\s)/u;
+function estruturar(linhas) {
+  const saida = [];
+  for (const linha of linhas) {
+    if (!linha.trim() || /^\s*(?:[-*+>#!<]|\d{1,3}[.)]\s|\+\+\+)/.test(linha)) { saida.push(linha); continue; }
+    for (const frase of linha.split(FRASE_ROTULADA_RE)) {
+      const r = ROTULO_RE.exec(frase);
+      const rotulo = r && rotuloOk(r[1]) ? r[1] : "";
+      const partes = (rotulo ? r[2] || "" : frase).split(/;\s+/);
+      if (partes.length >= 3) {
+        if (rotulo) saida.push(`${rotulo}:`);
+        for (const parte of partes) saida.push(`- ${parte}`);
+      } else saida.push(frase);
+      saida.push("");
+    }
+  }
+  return saida;
+}
+
 // Texto → blocos. Puro e exportado: o smoke do web testa por aqui.
 export function parseBlocks(text) {
   const linhas = String(text || "").replace(/\r\n/g, "\n").split("\n");
@@ -82,7 +109,7 @@ export function parseBlocks(text) {
     vazia = false;
     if (DETAILS_OPEN_RE.test(linha) || (FOLD_RE.test(linha) && FOLD_RE.exec(linha)[1].trim())) {
       const { titulo, miolo, proxima } = recolhivel(linhas, i);
-      blocos.push({ tipo: "detalhes", titulo, blocos: parseBlocks(miolo.join("\n")) });
+      blocos.push({ tipo: "detalhes", titulo, blocos: parseBlocks(estruturar(miolo).join("\n")) });
       i = proxima - 1;
       continue;
     }
@@ -106,21 +133,36 @@ export function parseBlocks(text) {
   return blocos;
 }
 
-// Negrito, código, link markdown e URL solta. O resto sai como texto puro.
-const INLINE_RE = /(\*\*[^*]+\*\*|__[^_]+__|`[^`]+`|\[[^\]]+\]\([^)\s]+\)|https?:\/\/\S+)/g;
+// Negrito, código, link markdown, URL solta e referência de código (arquivo
+// com linha, rota da API) — esta em fonte de código, que é o que separa
+// "compat.py:349-519" do texto em volta. O resto sai como texto puro.
+const LINHAS = String.raw`(?::\d+(?:-\d+)?)?(?:\/:\d+(?:-\d+)?)*`;
+const REF = String.raw`(?:[\w.-]+\/)+[\w.-]*\w\.\w{1,5}${LINHAS}|\b[\w-]+\.(?:py|tsx?|jsx?|mjs|cjs|md|sql|json|ya?ml|css)${LINHAS}|\b(?:GET|POST|PUT|PATCH|DELETE) \/[\w/{}:.-]*\w`;
+const REF_RE = new RegExp(`^(?:${REF})$`);
+const INLINE_RE = new RegExp(String.raw`(\*\*[^*]+\*\*|__[^_]+__|` + "`[^`]+`" + String.raw`|\[[^\]]+\]\([^)\s]+\)|https?:\/\/\S+|${REF})`, "g");
 // O Linear devolve `\_`, `\[`, `\*` escapados; na tela é só o caractere.
 const unescape = (s) => s.replace(/\\([\\`*_{}[\]()#+\-.!<>|~])/g, "$1");
 // `[Eryk] Pode anexar…`: quem precisa responder, no começo do pedido.
 const DESTINO_RE = /^\\?\[([^\]\\]{1,40})\\?\]\s+(?!\()/;
-export function Inline({ text }) {
+export function Inline({ text, rotulo = true }) {
+  // Checklist do Linear: `- [ ] item` / `- [x] item`.
+  const check = /^\[([ xX])\]\s+/.exec(String(text || ""));
+  if (check) {
+    const on = check[1] !== " ";
+    return <><span className="linear-md-check" data-on={on ? "1" : "0"} role="img" aria-label={on ? "feito" : "a fazer"}>{on ? "✓" : ""}</span><Inline text={String(text).slice(check[0].length)} /></>;
+  }
   const destino = DESTINO_RE.exec(String(text || ""));
   if (destino) return <><b>{destino[1]}</b>{" · "}<Inline text={String(text).slice(destino[0].length)} /></>;
+  // "Hipóteses testáveis: …" — o rótulo do começo da linha sai em negrito.
+  const r = rotulo && ROTULO_RE.exec(String(text || ""));
+  if (r && rotuloOk(r[1])) return <><b>{`${unescape(r[1])}:`}</b>{r[2] ? <>{" "}<Inline text={r[2]} rotulo={false} /></> : null}</>;
   const partes = String(text || "").split(INLINE_RE).filter((p) => p !== "" && p !== undefined);
   return partes.map((p, i) => {
     if (/^\*\*[^*]+\*\*$/.test(p) || /^__[^_]+__$/.test(p)) return <b key={i}>{unescape(p.slice(2, -2))}</b>;
     if (/^`[^`]+`$/.test(p)) return <code key={i} className="mono" style={{ fontSize: "0.92em", background: "var(--bg-inset)", padding: "1px 4px", borderRadius: 4 }}>{p.slice(1, -1)}</code>;
     const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(p);
     if (link && safeUrl(link[2])) return <a key={i} href={safeUrl(link[2])} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>{link[1]}</a>;
+    if (REF_RE.test(p)) return <code key={i} className="mono linear-md-ref">{p}</code>;
     if (/^https?:\/\/\S+$/.test(p)) {
       // URL solta: o rótulo é o domínio (as do Linear têm 600 caracteres de JWT).
       let rotulo = p;
@@ -177,14 +219,18 @@ function Blocos({ blocos, onExpired }) {
           );
         }
         if (b.tipo === "titulo") {
-          return <div key={i} style={{ fontWeight: 700, fontSize: b.nivel <= 2 ? 13.5 : 13, color: "var(--fg-1)", marginTop: i ? 4 : 0 }}><Inline text={b.texto} /></div>;
+          // ## vira faixa de seção; ### e abaixo, subtítulo em negrito.
+          if (b.nivel <= 2) return <div key={i} className="linear-md-h" role="heading" aria-level={b.nivel + 2}><Inline text={b.texto} rotulo={false} /></div>;
+          return <div key={i} style={{ fontWeight: 700, fontSize: 13, color: "var(--fg-1)", marginTop: i ? 4 : 0 }}><Inline text={b.texto} rotulo={false} /></div>;
         }
         if (b.tipo === "citacao") {
           return <div key={i} style={{ borderLeft: "2px solid var(--line-strong)", paddingLeft: 8, color: "var(--fg-3)", whiteSpace: "pre-wrap" }}><Inline text={b.texto} /></div>;
         }
         if (b.tipo === "lista") {
+          // Checklist (`- [ ]`): a caixinha já é o marcador, sem bolinha junto.
+          const checklist = b.itens.every((it) => /^\[[ xX]\]\s/.test(it));
           return (
-            <ul key={i} style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 2 }}>
+            <ul key={i} style={{ margin: 0, paddingLeft: checklist ? 0 : 18, listStyle: checklist ? "none" : undefined, display: "flex", flexDirection: "column", gap: 2 }}>
               {b.itens.map((it, j) => <li key={j}><Inline text={it} /></li>)}
             </ul>
           );
@@ -198,7 +244,8 @@ function Blocos({ blocos, onExpired }) {
           );
         }
         if (b.tipo === "regua") return <hr key={i} style={{ border: 0, borderTop: "1px solid var(--line-1)", margin: "2px 0" }} />;
-        return <div key={i} style={{ whiteSpace: "pre-wrap" }}><Inline text={b.texto} /></div>;
+        // Linha a linha: o rótulo em negrito vale no começo de cada uma.
+        return <div key={i} style={{ whiteSpace: "pre-wrap" }}>{b.texto.split("\n").map((l, j) => <React.Fragment key={j}>{j > 0 && "\n"}<Inline text={l} /></React.Fragment>)}</div>;
       })}
     </div>
   );
