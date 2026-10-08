@@ -6,12 +6,18 @@ import { registerReferralRoutes } from "./routes.referrals.js";
 import { registerNpsRoutes } from "./routes.nps.js";
 import { registerCustomerResultsRoutes } from "./routes.customer-results.js";
 import { registerLeverIdRoutes } from "./routes.leverid.js";
+import { registerLeveradsOrgRoutes } from "./routes.leverads-orgs.js";
+import { makeLeveradsOrgMirror, startLeveradsOrgMirror } from "./leverads-orgs.js";
 import { makeIdentityAdmin } from "../auth/identity-admin.js";
 import { startCustomerMilestones } from "./customer-milestones.js";
 import { startNpsAsks } from "./nps.js";
 import { startCustomerReports } from "./customer-reports.js";
 import { startClientPendingReminder } from "./client-pending.js";
 import { refreshResults, RESULTS_TTL_MS } from "./leverads-results.js";
+
+// Espelho das orgs do LeverAds: um por processo, dividido entre as rotas e o
+// tick (o "atualizar agora" da ficha e o intervalo não rodam juntos).
+let orgMirror = null;
 
 export function register(app, repo, ctx) {
   // Análise de integração (CS/onboarding): sentimento + pendências recorrentes.
@@ -25,7 +31,12 @@ export function register(app, repo, ctx) {
   // manual do relatório mensal.
   registerCustomerResultsRoutes(app, repo, { mailer: ctx.mailer, whatsapp: ctx.whatsapp });
   // Badge de LeverId: quem do cliente já tem conta na identidade central.
-  registerLeverIdRoutes(app, { identity: ctx.opts.identity !== undefined ? ctx.opts.identity : makeIdentityAdmin() });
+  const identity = ctx.opts.identity !== undefined ? ctx.opts.identity : makeIdentityAdmin();
+  registerLeverIdRoutes(app, { identity });
+  // Contas do LeverAds: aba Gratuitas, pagantes sem cliente e o vínculo
+  // cliente × org (manual na ficha ou automático pelo e-mail).
+  orgMirror = makeLeveradsOrgMirror(repo, { identity, ...(ctx.opts.leveradsOrgs || {}) });
+  registerLeveradsOrgRoutes(app, repo, { mirror: orgMirror });
 }
 
 export function start(repo, { clients, log, stops, jobOn }) {
@@ -43,6 +54,9 @@ export function start(repo, { clients, log, stops, jobOn }) {
   // Combinado da integração que o cliente não entregou: avisa quem cuida do
   // lead e deixa a cobrança pronta na tarefa. Nunca envia sozinho.
   if (jobOn("clientPendingReminder")) startClientPendingReminder(repo, { log });
+  // Espelho das orgs do LeverAds a cada 10 min: conta nova aparece na aba
+  // Gratuitas e o vínculo pelo e-mail é gravado quando não há dúvida.
+  if (jobOn("leveradsOrgMirror")) stops.push(startLeveradsOrgMirror(orgMirror || makeLeveradsOrgMirror(repo, { log }), { log }));
   // Aquece os resultados das propostas (incluindo o resumo do deck C) e
   // renova a cada seis horas, mesmo sem uma nova abertura para disparar o cache.
   if (jobOn("refreshResults")) {

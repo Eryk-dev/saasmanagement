@@ -27,6 +27,7 @@ const SILENT = new Set([
   "wa_media", "wa_calls", "wa_alerts",
   "training_states", "training_attempts", "training_reviews", "training_fun", "training_exams",
   "mp_payments", "mp_preapprovals", "social_stories",
+  "leverads_orgs", // espelho de 10 em 10 min; a aba Gratuitas tem load próprio e vincular bumpa `customers`
   "ticket_assets", // bytes do anexo; o ticket (QUIET) já avisa a tela
 ]);
 

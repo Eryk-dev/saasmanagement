@@ -38,7 +38,9 @@ const DEFAULT_INTERVAL_MS = 10 * 60 * 1000; // mesmo ritmo do espelho MP
 
 const NOT_CONFIGURED_MSG = "sync desligado — defina LEVERADS_SERVICE_KEY (ou LEVERADS_ADMIN_EMAIL/LEVERADS_ADMIN_PASSWORD)";
 
-function envClient() {
+// Exportado para o espelho de orgs (customers/leverads-orgs.js), que lê a
+// mesma lista com a mesma credencial.
+export function envClient() {
   return makeLeveradsClient({
     baseUrl: process.env.LEVERADS_API_URL || DEFAULT_BASE_URL,
     serviceKey: process.env.LEVERADS_SERVICE_KEY || "",

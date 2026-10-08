@@ -33,6 +33,7 @@ import { isChurned, CHURN_REASONS, churnReasonLabel } from "../lib/churn.js";
 import { fetchLeveradsOrgs } from "../lib/leverads.js";
 import { fetchLeverIdOrgs, customerOrgId } from "../lib/leverid.js";
 import { LeverIdBadge } from "../components/leverid-badge.jsx";
+import { FreeAccountsTab, CustomerOrgLink } from "../components/leverads-accounts.jsx";
 import { printContract, issueDate, byIssuedDesc } from "../lib/contracts.js";
 // Base das URLs públicas (link de indicação do cliente): no dev o proxy do
 // Vite repassa /f pra API.
@@ -150,6 +151,8 @@ function CustomersScreen({ initialTab }) {
   // do cadastro (cache de sessão em lib/leverads.js). Sem credencial
   // LEVERADS_* a busca falha (424) e a coluna mostra o id cru.
   const isLeverads = product?.id === "leverads";
+  // A aba Gratuitas só existe no LeverAds: trocar de produto nela volta pra base.
+  useEffect(() => { if (!isLeverads && tab === "gratuitas") setTab("base"); }, [isLeverads, tab]); // eslint-disable-line react-hooks/exhaustive-deps
   const [leverOrgs, setLeverOrgs] = useState(null); // Map(orgId → org) | null (não carregou)
   const leverOrgOf = (c) => (c.leveradsOrgId ? leverOrgs?.get(String(c.leveradsOrgId)) || null : null);
   useEffect(() => {
@@ -588,7 +591,7 @@ function CustomersScreen({ initialTab }) {
       <header className="customers-header">
         <h1 className="page-title">Clientes</h1>
         <div className="customers-header-actions">
-          <div className="customers-tabs" aria-label="Visualização">{[["base","Clientes"],["indicacoes","Indicações"],["cases","Cases"],["billing","Cobranças"]].map(([id,label])=><button key={id} aria-pressed={tab===id} onClick={()=>setTab(id)}>{label}</button>)}</div>
+          <div className="customers-tabs" aria-label="Visualização">{[["base","Clientes"],...(isLeverads?[["gratuitas","Gratuitas"]]:[]),["indicacoes","Indicações"],["cases","Cases"],["billing","Cobranças"]].map(([id,label])=><button key={id} aria-pressed={tab===id} onClick={()=>setTab(id)}>{label}</button>)}</div>
           <button className="customers-create" onClick={()=>openForm("customers",{saas:product.id})}>Cadastrar cliente</button>
         </div>
       </header>
@@ -596,6 +599,10 @@ function CustomersScreen({ initialTab }) {
       {tab === "billing" && <SubscriptionsScreen key={product.id} compact saasId={product.id} />}
 
       {tab === "cases" && <CasesTab key={product.id} product={product} customers={customers} />}
+
+      {tab === "gratuitas" && isLeverads && (
+        <FreeAccountsTab key={product.id} customers={customers} leads={LEADS} onOpenCustomer={(id) => { setTab("base"); setSel(id); }} />
+      )}
 
       {tab === "indicacoes" && (
         <ReferralsTab key={product.id} saasId={product.id} onRegister={newReferral} customers={CUSTOMERS}
@@ -1403,6 +1410,7 @@ function CustomerPeek(props) {
               {label:'Registrar indicação',onClick:()=>props.onNewReferral(customer)},
             ]}/></div>
           </section>
+          {product?.id==='leverads'&&<CustomerOrgLink customer={customer} lead={lead}/>}
           <section className="customer-peek-milestones">
             <div className="customer-peek-kicker"><span>{kids?'jornada de consultas':'régua de marcos'}</span>{!kids&&<b>{milestones.filter(m=>m.status==='done').length} de {milestones.length}</b>}</div>
             {kids?<button className="customer-peek-consult" onClick={()=>{onClose();window.location.hash='consultas';}}>Abrir consultas →</button>:<div className="customer-peek-checks">

@@ -122,6 +122,11 @@ export const api = {
   // (424 quando a credencial LEVERADS_* não está configurada na API).
   leveradsOrgs: () => req("GET", "/api/leverads-access/orgs"),
   // Contas do LeverId por org (badge da tela Clientes).
+  // Contas do LeverAds (espelho): aba Gratuitas e o vínculo da ficha.
+  leveradsOrgs: () => req("GET", "/api/customers/leverads-orgs"),
+  refreshLeveradsOrgs: () => req("POST", "/api/customers/leverads-orgs/refresh"),
+  linkLeveradsOrg: (customerId, orgId) => req("POST", `/api/customers/${encodeURIComponent(customerId)}/leverads-org`, { orgId }),
+  unlinkLeveradsOrg: (customerId) => req("DELETE", `/api/customers/${encodeURIComponent(customerId)}/leverads-org`),
   leveridOrgs: (orgIds) => req("GET", `/api/customers/leverid?orgs=${encodeURIComponent(orgIds.join(","))}`),
   // Auth do time: o token de sessão entra no MESMO slot da key (localStorage +
   // header x-api-key) — o resto do client não muda.

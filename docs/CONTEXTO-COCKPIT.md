@@ -296,7 +296,20 @@ a mesma regra; os testes ficam em `sdr-brain.test.js`.
    papel, último acesso, e-mail confirmado e 2FA, nunca hash ou segredo. A org é
    `customer.orgId` ou, enquanto ele não existe, `customer.leveradsOrgId` (a
    carga preserva os ids). Sem `IDENTITY_*` a rota responde `configured: false`
-   e a badge some; identidade fora do ar vira 424. `screens.js` controla permissões por
+   e a badge some; identidade fora do ar vira 424. Contas do LeverAds: o
+   cadastro no produto não vira lead nem cliente (decisão do time); a cada 10
+   min o job `leveradsOrgMirror` (`customers/leverads-orgs.js`) espelha as orgs
+   em `leverads_orgs` (PRIVATE e SILENT, com os e-mails das contas vindos do
+   LeverId quando configurado). A aba Gratuitas da tela Clientes lista as orgs
+   sem cliente (gratuitas e pagantes sem cliente); elas **não** são
+   `customers`, então não entram em KPI, churn, MRR, placar nem réguas. O
+   vínculo `customer.leveradsOrgId` vem da ficha ("Vincular conta", as mais
+   novas primeiro, para o integrador que cria a conta com o cliente na call),
+   do cadastro, ou sozinho pelo e-mail quando o e-mail do cliente ou do lead é
+   exatamente o da org ou de uma conta dela e o par é único
+   (`orgLink.via = "email"`); desfazer guarda a org em `orgLinkRejected` para o
+   automático não religar. Rotas em `/api/customers/leverads-orgs` e
+   `/api/customers/:id/leverads-org`. `screens.js` controla permissões por
    tela, exceções e acessos administrativos; `lib/users.js` espelha a UI.
    `roles` já participa de regras de acesso — não assumir que é só etiqueta.
    Credenciais e tokens não entram no CRUD/JSON público nem no guia.
