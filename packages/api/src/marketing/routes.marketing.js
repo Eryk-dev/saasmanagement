@@ -455,7 +455,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         job.step = "lendo o anúncio de origem";
         const sourceAds = await meta.adsOfAdSet(sourceAdsetId);
         if (!sourceAds.length) throw new Error("o conjunto de origem não tem anúncio pra copiar — escolha um conjunto que já tenha um anúncio de vídeo");
-        const { spec, assetFeed, urlTags } = await meta.getAdCreativeSpec(sourceAds[0].id);
+        const { spec, assetFeed, freedom, urlTags } = await meta.getAdCreativeSpec(sourceAds[0].id);
         // 2. sobe o vídeo novo + a thumbnail (a Meta exige uma).
         job.step = "subindo o vídeo pra Meta";
         const onProgress = (p) => { job.step = `subindo o vídeo pra Meta · ${Math.round(p * 100)}%`; };
@@ -469,14 +469,9 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         //    código 100/3858504). Copiamos o conjunto (público, orçamento,
         //    posicionamento, otimização) e montamos o anúncio novo por cima.
         job.step = "clonando o conjunto de origem";
+        //    Cópia EXATA (Leo, 08/10): nenhum ajuste sugerido/exigido pela Meta é
+        //    aplicado; se ela recusar, o erro diz o que ajustar na origem.
         const copy = await meta.copyAdSet(sourceAdsetId, { statusOption: statusNovo, deepCopy: false });
-        // A Meta recusou a cópia por posicionamento em par e o conjunto foi
-        // recriado com o par completo: o time precisa saber que o público
-        // ganhou um posicionamento que o original não tinha.
-        const avisoRebuild = copy.rebuilt
-          ? `a Meta recusou copiar o conjunto de origem (posicionamento em par) e ele foi recriado campo a campo${copy.fixed?.length ? `, com ${copy.fixed.join(", ")} adicionado ao posicionamento` : ""}; confira o público no Gerenciador`
-          : "";
-        if (avisoRebuild) job.warning = avisoRebuild;
         // 4. renomeia o conjunto clonado.
         await meta.renameObject(copy.adsetId, finalName);
         // 5. orçamento diário pedido (se veio). Falha aqui NÃO invalida o
@@ -493,10 +488,9 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
             // conjunto. Se era pra subir ativo, sobe PAUSADO: melhor o time
             // ativar na mão do que rodar sem o teto que ele pediu.
             statusFinal = "PAUSED";
-            job.warning = (statusNovo === "ACTIVE"
+            job.warning = statusNovo === "ACTIVE"
               ? `subiu PAUSADO por segurança: o orçamento de R$ ${dailyBudget} não colou (${String(err.message || err).slice(0, 160)}) e sem ele o anúncio gastaria pelo orçamento da campanha`
-              : `anúncio criado, mas o orçamento de R$ ${dailyBudget} não colou: ${String(err.message || err).slice(0, 200)}`)
-              + (avisoRebuild ? ` · ${avisoRebuild}` : "");
+              : `anúncio criado, mas o orçamento de R$ ${dailyBudget} não colou: ${String(err.message || err).slice(0, 200)}`;
             // try/catch, não .catch(): método ausente estoura SÍNCRONO e
             // levaria junto um anúncio que já está criado.
             if (statusNovo === "ACTIVE") {
@@ -508,7 +502,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         //    (e a thumbnail dele) mudam. Nasce PAUSADO.
         job.step = "criando o anúncio com o vídeo novo";
         const creativeId = await meta.createVideoCreativeFromSpec(product.metaAdAccount, {
-          name: finalName, sourceSpec: spec, assetFeed, videoId, imageUrl, urlTags: urlTags || CREATIVE_URL_TAGS,
+          name: finalName, sourceSpec: spec, assetFeed, freedom, videoId, imageUrl, urlTags: urlTags || CREATIVE_URL_TAGS,
         });
         const ad = await meta.createAd(product.metaAdAccount, { adsetId: copy.adsetId, creativeId, name: finalName, status: statusFinal });
         const ads = [{ id: String(ad.id), name: finalName }];
