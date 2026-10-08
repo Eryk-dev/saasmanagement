@@ -753,7 +753,7 @@ test("oferta de ontem sem resposta: cobrança de manhã com os MESMOS horários,
   assert.equal(stats.offerNudge, 1);
   assert.equal(wa.sent.length, 1);
   assert.equal(wa.sent[0].kind, "text");
-  assert.equal(wa.sent[0].text, "Bom dia Rafael! Ficou hoje às 14h ou hoje às 16h pra nossa conversa com o especialista?");
+  assert.equal(wa.sent[0].text, "Bom dia Rafael! Ficou hoje às 14h ou às 16h pra nossa conversa com o especialista?");
   const lead = await repo.get("leads", "L1");
   assert.equal(lead.sdrLog.offerNudgeFor, ISO("2026-08-19T20:00:00Z"));
   assert.equal(lead.sdrLog.offerNudgeVia, "text");
@@ -768,7 +768,7 @@ test("horário de ontem tomado por outro lead: a cobrança avisa e oferece par n
   const wa = makeWa();
   await runner(repo, wa, NUDGE_NOW).tick();
   assert.equal(wa.sent.length, 1);
-  assert.match(wa.sent[0].text, /^Bom dia Rafael! Ficou hoje às 13h ou hoje às 16h pra nossa conversa/);
+  assert.match(wa.sent[0].text, /^Bom dia Rafael! Ficou hoje às 13h ou às 16h pra nossa conversa/);
 });
 
 test("cobrança não sai: lead respondeu depois da oferta, oferta é de hoje, ou ainda não deu a hora", async () => {

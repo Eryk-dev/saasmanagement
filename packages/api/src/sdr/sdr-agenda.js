@@ -71,11 +71,32 @@ function parseClause(t, at) {
   if (!pick) return period ? { period } : null;
   // Data citada de passagem ("fechei a loja quarta") não é pedido: sobra texto
   // sem nenhum verbo de pedido. Alternativa depois de negação já é pedido.
-  const bare = t.replace(pick.text, "").replace(/(?:\bas?\b|\bde\b|\bpela\b|\bna\b|\bno\b|\bpara\b|\bpra\b|\bmanha\b|\btarde\b|\bnoite\b|\d{1,2}(?:h\d{0,2}|:\d{2})?|[\s,.!?])/g, "");
+  // Dias ligados por "ou"/"e" e "que vem" são parte do pedido, não sobra (Leo,
+  // 08/10: "terça ou quarta" e "quarta que vem" não viravam pedido e o robô
+  // ofereceu segunda).
+  let bare = t;
+  for (const m of mentions) bare = bare.replace(m.text, "");
+  bare = bare.replace(/(?:\bque vem\b|\bproxim[ao]\b|\btambem\b|\bou\b|\be\b|\bas?\b|\bde\b|\bpela\b|\bna\b|\bno\b|\bpara\b|\bpra\b|\bmanha\b|\btarde\b|\bnoite\b|\d{1,2}(?:h\d{0,2}|:\d{2})?|[\s,.!?])/g, "");
   const alternative = negIdx >= 0 && pick.idx > negIdx;
   if (bare && !alternative && !ASKED_RX.test(t)) return period ? { period } : null;
+  const first = mentionDate(pick.text, t, at);
+  if (!first) return period ? { period } : null;
+  let { date, days } = first;
+  // "terça ou quarta": a janela cobre do primeiro ao último dia citado.
+  if (candidates.length >= 2 && days === 1) {
+    const last = mentionDate(candidates[candidates.length - 1].text, t, at);
+    const span = last ? Math.round((last.date.getTime() - date.getTime()) / 86_400_000) : 0;
+    if (span > 0 && span <= 7) days = span + 1;
+  }
+  return { date, days, period };
+}
+
+// Uma menção de dia ("quarta", "amanhã", "dia 30", "15/10") → { date, days }
+// ou null. Datas numéricas e por extenso são lidas da cláusula inteira.
+function mentionDate(pickText, t, at) {
   let date;
   let days = 1;
+  const pick = { text: pickText };
   const iso = t.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
   const numeric = t.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\b/);
   const numbered = t.match(/\bdia (\d{1,2})\b/);
@@ -105,8 +126,8 @@ function parseClause(t, at) {
   else if (/amanha/.test(pick.text)) date = dayPlus(at, 1);
   else if (/\b(?:hoje|hj)\b/.test(pick.text)) date = at;
   else if (weekday >= 0) date = dayPlus(at, (weekday - at.getUTCDay() + 7) % 7 || 7);
-  if (!date || !Number.isFinite(date.getTime())) return period ? { period } : null;
-  return { date, days, period };
+  if (!date || !Number.isFinite(date.getTime())) return null;
+  return { date, days };
 }
 
 // A mensagem inteira → pedido { startDate, days, fromHour?, toHour?,

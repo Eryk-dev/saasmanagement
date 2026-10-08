@@ -25,7 +25,7 @@
 // O motor é um poller de 60s no molde do drip-runner (single-flight, no-op sem
 // produto ligado), iniciado no index.js.
 import { findThreadByPhone, listMessages, recordMessage, waMatchKey } from "../whatsapp/wa-store.js";
-import { lastRealReply, isOfferMsg, offeredSlotsIn, windowOpenAt, AUTO_REPLY_RX, GREETING_ONLY_RX } from "./sdr-signals.js";
+import { lastRealReply, isOfferMsg, offeredSlotsIn, windowOpenAt, AUTO_REPLY_RX, GREETING_ONLY_RX, collapseSameDay } from "./sdr-signals.js";
 import { upsertNotification } from "../tasks/tasks-core.js";
 import { digits } from "../whatsapp/whatsapp.js";
 import { kindOf, firstStage, isNoShowStage, isWonLead, stageByKind } from "../crm/stages.js";
@@ -445,7 +445,7 @@ export function reminderText(key, { nome, quando, link, oem = false, script = ""
 // horário"). Depois desse, o lead fica pro time — insistir mais vira chateação.
 function rescue2Text({ nome, slots = [], now }) {
   const oi = nome ? `Oi ${nome},` : "Oi,";
-  if (slots.length >= 2) return `${oi} consegui dois horários novos com nosso especialista: ${slotLabel(slots[0].at, now)} ou ${slotLabel(slots[1].at, now)}. Qual fica melhor pra você?`;
+  if (slots.length >= 2) return `${oi} consegui dois horários novos com nosso especialista: ${collapseSameDay(`${slotLabel(slots[0].at, now)} ou ${slotLabel(slots[1].at, now)}`)}. Qual fica melhor pra você?`;
   if (slots.length === 1) return `${oi} consegui um horário novo com nosso especialista, ${slotLabel(slots[0].at, now)}. Fica bom pra você?`;
   return `${oi} ainda dá tempo de remarcar nossa conversa. Me diz o melhor dia e período que eu vejo aqui na agenda.`;
 }
@@ -456,18 +456,19 @@ function rescue2Text({ nome, slots = [], now }) {
 export function offerNudgeText({ nome, pair = [], kept = false, now }) {
   const oi = `${now.getUTCHours() < 12 ? "Bom dia" : "Boa tarde"}${nome ? ` ${nome}` : ""}!`;
   const l = pair.map((s) => slotLabel(s.at, now));
+  const dupla = l.length >= 2 ? collapseSameDay(`${l[0]} ou ${l[1]}`) : ""; // "hoje às 14h ou às 16h"
   if (kept) return l.length >= 2
-    ? `${oi} Ficou ${l[0]} ou ${l[1]} pra nossa conversa com o especialista?`
+    ? `${oi} Ficou ${dupla} pra nossa conversa com o especialista?`
     : `${oi} Ficou ${l[0]} pra nossa conversa com o especialista?`;
   return l.length >= 2
-    ? `${oi} Os horários de ontem já não estão mais livres, mas consigo ${l[0]} ou ${l[1]}, qual fica melhor pra você?`
+    ? `${oi} Os horários de ontem já não estão mais livres, mas consigo ${dupla}, qual fica melhor pra você?`
     : `${oi} O horário de ontem já não está mais livre, mas consigo ${l[0]}, fica bom pra você?`;
 }
 
 function rescueText({ nome, slots = [], now }) {
   const oi = nome ? `Oi ${nome},` : "Oi,";
   const base = `${oi} passei no nosso horário marcado e não te encontrei, acontece! Quer que eu remarque?`;
-  if (slots.length >= 2) return `${base} Tenho ${slotLabel(slots[0].at, now)} ou ${slotLabel(slots[1].at, now)} livres, me diz qual fica bom que eu já reservo.`;
+  if (slots.length >= 2) return `${base} Tenho ${collapseSameDay(`${slotLabel(slots[0].at, now)} ou ${slotLabel(slots[1].at, now)}`)} livres, me diz qual fica bom que eu já reservo.`;
   if (slots.length === 1) return `${base} Consigo te encaixar ${slotLabel(slots[0].at, now)}, fica bom?`;
   return `${base} Me diz um horário que fica bom pra você que eu já reservo.`;
 }
