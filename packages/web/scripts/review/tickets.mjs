@@ -66,7 +66,7 @@ try{
  }
  // Hermes (?hermes): o ticket é o mesmo; a fase do card aparece no chip, no filtro e na seção lateral, e as ações do guia saem pelo diálogo.
  const hm=await h.open(1440,'&hermes');const hermesCard=hm.locator('.support-card').filter({hasText:'#1044'});await hermesCard.getByText('Hermes · Validar v2').waitFor();
- const filtroHermes=hm.getByRole('button',{name:/^Com o Hermes/});assert.match(await filtroHermes.textContent(),/2$/,'com o Hermes: validar e pergunta (o do time e o no ar ficam fora)');await filtroHermes.click();
+ const filtroHermes=hm.getByRole('button',{name:/^Com o Hermes/});assert.match(await filtroHermes.textContent(),/3$/,'com o Hermes: validar, pergunta e parado pela bancada (o do time e o no ar ficam fora)');await filtroHermes.click();
  assert.match(await hm.locator('.support-card .support-card-meta .mono').first().textContent(),/#1044|#1045/);await h.capture(hm,'hermes-filter');
  await hermesCard.locator('.support-card-subject').click();const hd=detail(hm);const sec=hd.locator('.hermes-section');await sec.getByRole('button',{name:'Aprovar v2'}).waitFor();assert.equal(await sec.getAttribute('data-human'),'1');
  await sec.getByRole('button',{name:'ler o card de validação'}).click();await hd.locator('.hermes-card').getByText('O que acontecia').waitFor();assert.equal(await hd.getByText('Antes de aprovar, confiram').count(),0,'sem checklist');await h.capture(hm,'hermes-detail-validar');

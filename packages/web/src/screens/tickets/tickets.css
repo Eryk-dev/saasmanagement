@@ -324,6 +324,14 @@ body[data-theme="dark"] .hermes-section, body[data-theme="dark"] .hermes-card {
 /* No toque, alvo um pouco maior (sem voltar ao bloco de 44px). */
 @media (pointer: coarse) { .support-detail-side .hermes-btn { height: 30px; min-height: 30px; padding: 0 10px; } }
 .hermes-card { display: flex; flex-direction: column; gap: 10px; }
+/* Pergunta do Hermes: só os pedidos, um por linha, com o destinatário em cima;
+   o comentário inteiro fica em Comentários. */
+.hermes-pedidos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; white-space: normal; }
+.hermes-pedidos li { display: flex; flex-direction: column; gap: 2px; }
+.hermes-pedidos li + li { padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--warn) 22%, transparent); }
+.hermes-pedido-para { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--warn); }
+.hermes-pedido-texto { font-size: 13.5px; line-height: 1.5; color: var(--fg-1); }
+.hermes-pedido-nota { font-size: 11.5px; color: var(--fg-3); margin-top: 10px; white-space: normal; }
 .hermes-card-grid { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 6px 12px; margin: 0; white-space: normal; }
 .hermes-card-grid dt { font-size: 12px; color: var(--fg-3); padding-top: 1px; }
 .hermes-card-grid dd { margin: 0; min-width: 0; }

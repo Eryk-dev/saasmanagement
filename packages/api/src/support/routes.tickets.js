@@ -227,6 +227,17 @@ export function registerTicketRoutes(app, repo, { mailer = null, linear = defaul
     if (!inScope(scopeOf(req), saas) || !(await repo.get("products", saas))) return notFound(reply);
     return loadSettings(repo, saas);
   }));
+  // Reler agora os cards abertos do Hermes (o mesmo da troca de configuração):
+  // corrige o retrato de quem ficou parado antes de o cockpit reconhecer o
+  // caso. Roda em segundo plano; os chips aparecem em seguida.
+  app.post("/api/support/settings/:saas/hermes/reread", guarded(async (req, reply) => {
+    const saas = String(req.params.saas || "").toLowerCase();
+    if (!inScope(scopeOf(req), saas)) return notFound(reply);
+    const { linear: cfg } = await loadSettings(repo, saas);
+    if (!cfg?.enabled || !cfg.hermes?.enabled) throw httpError(409, "ligue o espelho do Linear e o Hermes antes de reler", "hermes_disabled");
+    backfillHermes(repo, saas, { linear, log: app.log }).catch((err) => app.log?.warn?.(`hermes: releitura de ${saas}: ${err.message}`));
+    return reply.code(202).send({ started: true });
+  }));
   app.put("/api/support/settings/:saas", guarded(async (req, reply) => {
     const saas = String(req.params.saas || "").toLowerCase();
     if (!inScope(scopeOf(req), saas)) return notFound(reply);

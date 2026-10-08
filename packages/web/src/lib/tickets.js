@@ -215,6 +215,9 @@ export function hermesChip(t) {
   if (h.requested && !h.labeled) return { text: "Hermes · entregue", tone: "info", title: "Pedido de entrega ao Hermes, esperando ele assumir" };
   if (!h.active) return null;
   const m = h.meta || HERMES_PHASES.relato;
+  // Parado por falha da bancada: o card está em "Aguardando resposta", mas
+  // não há pergunta — dizer "Pergunta" mandava alguém procurar o que responder.
+  if (h.phase === "pergunta" && h.stalled) return { text: "Hermes · Parado", tone: isDone(t) ? "info" : "warn", title: `O Hermes parou: ${h.stalled.reason || "falha na bancada"}` };
   const v = h.version && (h.phase === "validar" || h.phase === "aprovado") ? ` v${h.version}` : "";
   return { text: `Hermes · ${m.short}${v}`, tone: m.human && !isDone(t) ? "warn" : "info", title: `Com o Hermes: ${m.label}${v}` };
 }

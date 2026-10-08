@@ -581,7 +581,8 @@ export async function applyLinearComment(repo, { issueId, comment, now = nowIso(
 // cards dos tickets abertos: o retrato só nasce quando o card muda, e um card
 // parado em Validar ficaria invisível até alguém mexer nele no Linear. Dos
 // comentários antigos do Hermes só contam o último card de validação e o
-// último "no ar" — a atividade não ganha o histórico inteiro de uma vez.
+// último "no ar" (e a parada por falha da bancada, quando é o último) — a
+// atividade não ganha o histórico inteiro de uma vez.
 export async function backfillHermes(repo, saas, { linear, log, now = nowIso() } = {}) {
   if (!linear?.configured?.()) return { skipped: "not_configured" };
   const { linear: cfg } = await loadSettings(repo, saas);
@@ -599,7 +600,11 @@ export async function backfillHermes(repo, saas, { linear, log, now = nowIso() }
       const doHermes = (r.comments || []).filter((c) => isHermesAuthor(c.user, cfg.hermes))
         .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
       const ultimo = (kind) => [...doHermes].reverse().find((c) => parseHermesComment(c.body).kind === kind);
-      for (const c of [ultimo("validation"), cur.hermes.phase === "no_ar" ? ultimo("live") : null].filter(Boolean)) {
+      // Parado em "Aguardando resposta" por falha da bancada: vale se a parada
+      // for o último comentário dele (depois dela, ele retomou).
+      const fim = doHermes[doHermes.length - 1];
+      const parado = cur.hermes.phase === "pergunta" && fim && parseHermesComment(fim.body).kind === "stalled" ? fim : null;
+      for (const c of [ultimo("validation"), cur.hermes.phase === "no_ar" ? ultimo("live") : null, parado].filter(Boolean)) {
         await applyHermesComment(repo, await repo.get("tickets", t.id), c, cfg.hermes, { now });
       }
     } catch (err) {

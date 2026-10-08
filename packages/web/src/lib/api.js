@@ -662,6 +662,7 @@ export const api = {
   ticketQuickReply: (ticketId, qrId) => req("POST", `/api/tickets/${encodeURIComponent(ticketId)}/quick-replies/${encodeURIComponent(qrId)}/render`, {}),
   supportSettings: (saas) => req("GET", `/api/support/settings/${encodeURIComponent(saas)}`),
   supportSettingsSave: (saas, body) => req("PUT", `/api/support/settings/${encodeURIComponent(saas)}`, body),
+  supportHermesReread: (saas) => req("POST", `/api/support/settings/${encodeURIComponent(saas)}/hermes/reread`),
   // Espelho com o Linear: catálogo pra tela de configuração (times, projetos e
   // colunas do fluxo) e as ações de um ticket (mandar agora, vincular a uma
   // issue que já existe, desvincular).

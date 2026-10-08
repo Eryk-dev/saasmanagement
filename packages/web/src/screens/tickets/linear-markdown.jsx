@@ -86,7 +86,9 @@ function estruturar(linhas) {
 
 // Texto → blocos. Puro e exportado: o smoke do web testa por aqui.
 export function parseBlocks(text) {
-  const linhas = String(text || "").replace(/\r\n/g, "\n").split("\n");
+  // `<!-- … -->` é nota de máquina (o Hermes marca dependências assim): o
+  // Linear não mostra, aqui também não.
+  const linhas = String(text || "").replace(/\r\n/g, "\n").replace(/<!--[\s\S]*?-->/g, "").split("\n");
   const blocos = [];
   // Linha em branco separa PARÁGRAFO, mas não quebra uma galeria: o Linear
   // escreve um print por linha com uma linha vazia entre eles, e cada print
@@ -153,6 +155,10 @@ export function Inline({ text, rotulo = true }) {
   }
   const destino = DESTINO_RE.exec(String(text || ""));
   if (destino) return <><b>{destino[1]}</b>{" · "}<Inline text={String(text).slice(destino[0].length)} /></>;
+  // `**Precisa de:** [Eryk] …`: rótulo já em negrito no markdown; o resto
+  // passa de novo por aqui pra o destinatário sair destacado.
+  const negrito = rotulo && /^\*\*([^*\n]{1,45}?):\*\*\s+(.+)$|^\*\*([^*\n]{1,45}?)\*\*:\s+(.+)$/.exec(String(text || ""));
+  if (negrito) return <><b>{`${unescape(negrito[1] || negrito[3])}:`}</b>{" "}<Inline text={negrito[2] || negrito[4]} rotulo={false} /></>;
   // "Hipóteses testáveis: …" — o rótulo do começo da linha sai em negrito.
   const r = rotulo && ROTULO_RE.exec(String(text || ""));
   if (r && rotuloOk(r[1])) return <><b>{`${unescape(r[1])}:`}</b>{r[2] ? <>{" "}<Inline text={r[2]} rotulo={false} /></> : null}</>;

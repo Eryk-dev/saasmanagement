@@ -150,6 +150,14 @@ export function parseValidationCard(body) {
   };
 }
 
+const STALLED_RE = /\bparei\b|\binterrompi\b|bancada (?:instavel|indisponivel|fora do ar|caiu|falhou)|falhas? de infraestrutura|devolvidas? por falha/;
+// O motivo é a linha que conta a parada, sem o título "Hermes · validação".
+function stalledReason(text) {
+  const linhas = String(text || "").split(/\r?\n/).map((l) => l.replace(/\*\*/g, "").replace(/^[-*>#\s]+/, "").trim()).filter(Boolean);
+  const linha = linhas.find((l) => STALLED_RE.test(fold(l))) || linhas.find((l) => !/^hermes\b/i.test(l)) || "";
+  return excerpt(linha, 240);
+}
+
 // Um comentário do Hermes, classificado. O que não se reconhece vira `note`
 // (a aba mostra cru) — formato novo do Hermes não quebra nada aqui.
 export function parseHermesComment(body) {
@@ -161,6 +169,10 @@ export function parseHermesComment(body) {
   if (live) return { kind: "live", liveAt: `${live[1].padStart(2, "0")}:${live[2]}` };
   if (/^\s*(?:\W+\s*)?(?:assumi|assumido|hermes assumiu|caso assumido)\b/.test(t)) return { kind: "accepted" };
   if (/nao (?:vou )?assumir|nao assumo|recuso assumir/.test(t)) return { kind: "declined", text };
+  // Parada por falha da bancada/infra: o Hermes deixa o card em "Aguardando
+  // resposta" sem pergunta nenhuma ("Parei após 3 rodadas: bancada instável").
+  // Vem antes da pergunta — o texto pode ter "?" e não é pra cliente.
+  if (STALLED_RE.test(t)) return { kind: "stalled", text, reason: stalledReason(text) };
   const draft = /rascunho[^\n:]*:\s*\n?\s*(?:>\s*)?["“]?([\s\S]+?)["”]?\s*$/i.exec(text);
   if (draft) return { kind: "draft", draftReply: draft[1].trim().slice(0, 2000) };
   if (text.includes("?")) return { kind: "question", text };
@@ -180,20 +192,21 @@ export function hermesView(ticket, comments = [], cfg = {}) {
   const out = {
     labeled: !!h.labeled, active: !!h.active, holding: !!h.holding, phase: h.phase || "", needsHuman: !!h.needsHuman,
     version: h.version || 0, liveAt: h.liveAt || "", handoff: h.handoff || null, requested: h.requested || null,
-    card: null, question: null, draftReply: "",
+    card: null, question: null, stalled: null, draftReply: "",
   };
   const doHermes = (comments || []).filter((c) => isHermesAuthor(c.user, cfg))
     .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
   for (const c of doHermes) {
     const p = parseHermesComment(c.body);
     if (p.kind === "validation") out.card = { commentId: c.id, at: c.createdAt, url: c.url || "", ...p };
-    else if (p.kind === "question") out.question = { commentId: c.id, at: c.createdAt, text: p.text };
+    else if (p.kind === "question") { out.question = { commentId: c.id, at: c.createdAt, text: p.text }; out.stalled = null; }
+    else if (p.kind === "stalled") { out.stalled = { commentId: c.id, at: c.createdAt, text: p.text, reason: p.reason }; out.question = null; }
     else if (p.kind === "draft") out.draftReply = p.draftReply;
     else if (p.kind === "live") out.liveAt = p.liveAt; // o mais recente vence (novo ciclo, nova publicação)
   }
   if (out.card && !out.version) out.version = out.card.version;
   // Pergunta antiga não vale depois que a fase andou.
-  if (out.phase !== "pergunta") out.question = null;
+  if (out.phase !== "pergunta") { out.question = null; out.stalled = null; }
   return out;
 }
 
@@ -246,6 +259,8 @@ export async function applyHermesIssue(repo, ticketId, issueFacts, cfg, { now = 
     evs = [];
     if (s.phase !== prev.phase) {
       next.phase = s.phase; next.phaseSince = now;
+      // A parada é da coluna "Aguardando resposta": o card andou, ela acabou.
+      if (s.phase !== "pergunta" && prev.stalled) next.stalled = null;
       next.history = [...(prev.history || []), { phase: s.phase, at: now }].slice(-HISTORY_MAX);
       if (s.labeled) evs.push({ type: "hermes_phase", data: { from: prev.phase || "", to: s.phase, state: str(issueFacts.state?.name, 120) } });
     }
@@ -284,6 +299,9 @@ export async function applyHermesComment(repo, ticket, comment, cfg, { now = now
     // Mesmo comentário de novo (releitura, reentrega): não repete o evento.
     if (p.kind === "validation" && prev.validationCommentId === str(comment.id, 120)) return null;
     if (p.kind === "live" && prev.liveAt === p.liveAt) return null;
+    if (p.kind === "stalled" && prev.stalled?.commentId === str(comment.id, 120)) return null;
+    // Qualquer outro comentário do Hermes depois da parada = ele retomou.
+    if (p.kind !== "stalled" && prev.stalled) next.stalled = null;
     if (p.kind === "validation") {
       if (p.version) next.version = p.version;
       next.validationCommentId = str(comment.id, 120);
@@ -293,6 +311,9 @@ export async function applyHermesComment(repo, ticket, comment, cfg, { now = now
       ev.push({ type: "hermes_live", data: { at: p.liveAt } });
     } else if (p.kind === "question") {
       ev.push({ type: "hermes_question", data: { excerpt: excerpt(p.text, 140) } });
+    } else if (p.kind === "stalled") {
+      next.stalled = { commentId: str(comment.id, 120), at: str(comment.createdAt, 40) || now, reason: p.reason };
+      ev.push({ type: "hermes_stalled", data: { excerpt: p.reason } });
     } else if (p.kind === "declined" && prev.requested) {
       next.requested = null;
       ev.push({ type: "hermes_declined", data: { excerpt: excerpt(p.text, 140) } });
@@ -321,6 +342,7 @@ export function commentFor(action, { text = "", name = "", version = 0 } = {}) {
     case "ajuste": return signed(`ajuste: ${t}`, name);
     case "recusar": return signed(`recusar: ${t}`, name);
     case "reverter": return signed(`reverter: ${t}`, name);
+    case "revisao": return signed(`revisão: seguir sem a resposta da pergunta${t ? `\n\n${t}` : ""}\n\nSe aparecer uma dúvida nova, devolva o card para Aguardando resposta.`, name);
     case "entregar": return signed(t ? `hermes: assumir\n\n${t}` : "hermes: assumir", name);
     case "desistir": return signed("Aprovação desfeita: o card volta para Validar antes da publicação.", name);
     case "passar_time": return signed(`Passado para ${t || "o time"} pelo Cockpit.`, name);

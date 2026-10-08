@@ -1431,6 +1431,37 @@ try {
     for (const ref of ["frontend/src/pages/CompatPage.tsx:589-632", "POST /api/compat/copy", "copy_queue.py:1669-1752"]) {
       if (!th.includes(`linear-md-ref">${ref}<`)) throw new Error(`"${ref}" deveria sair como referência de código`);
     }
+    // Pergunta do Hermes (produção, 28/09): a API manda o comentário inteiro;
+    // o bloco do Hermes mostra só os pedidos de "Precisa de:".
+    const HS = await server.ssrLoadModule("/src/screens/tickets/hermes-section.jsx");
+    const comentario = [
+      "**Hermes · validação**", "",
+      "O relato pergunta se o pacote funciona, mas não informa uma tentativa nem um erro concreto.",
+      "Executei 10 testes sintéticos na develop original: todos passaram.", "",
+      "**Precisa de:**",
+      "- \\[Cliente\\] Qual tela ou pacote está chamando de promoção automática? Pode enviar uma captura?",
+      "- [Cliente] Em qual conta e anúncio tentou usar, e o que apareceu?", "",
+      "<details>", "Base: develop 739584a. Hipótese 1: x?", "</details>", "",
+      "Estado: `needs_context`.",
+    ].join("\n");
+    const pedidos = HS.pedidosDaPergunta(comentario);
+    if (pedidos.length !== 2 || pedidos.some((p) => p.para !== "Cliente")) throw new Error(`pedidos do Hermes errados: ${JSON.stringify(pedidos)}`);
+    if (!pedidos[0].texto.startsWith("Qual tela")) throw new Error("o destinatário deveria sair do texto do pedido");
+    const semSecao = HS.pedidosDaPergunta("Olhei o caso.\nQual empresa é esse grupo?\n<details>\nTeste x?\n</details>");
+    if (semSecao.length !== 1 || !semSecao[0].texto.startsWith("Qual empresa")) throw new Error("sem 'Precisa de', as linhas com '?' fora do <details> são os pedidos");
+    const ph = renderToString(wrap(React.createElement(HS.HermesCard, { hermes: { question: { at: "2026-09-28T18:31:00Z", text: comentario } }, onExpired() {} })));
+    if (ph.includes("Executei 10 testes") || ph.includes("Estado")) throw new Error("o bloco do Hermes não deveria repetir o comentário inteiro");
+
+    // LEV-609: parado por falha da bancada, "Precisa de:" na mesma linha.
+    const parada = "**Hermes · validação**\n\nParei após 3 rodadas: bancada instável.\n\n**Precisa de:** [Eryk] resolver o motivo acima na bancada e responder neste card.";
+    const destrava = HS.pedidosDaPergunta(parada);
+    if (destrava.length !== 1 || destrava[0].para !== "Eryk" || !destrava[0].texto.startsWith("resolver")) throw new Error(`'Precisa de:' na mesma linha: ${JSON.stringify(destrava)}`);
+    const sh = renderToString(wrap(React.createElement(HS.HermesCard, { hermes: { stalled: { at: "2026-10-02T12:06:00Z", reason: "Parei após 3 rodadas: bancada instável.", text: parada } }, onExpired() {} })));
+    if (!sh.includes("O Hermes parou") || !sh.includes("Para Eryk") || sh.includes("perguntou")) throw new Error("parada da bancada deveria aparecer como parada, não como pergunta");
+    const TK = await server.ssrLoadModule("/src/lib/tickets.js");
+    const chipParado = TK.hermesChip({ status: "open", hermes: { labeled: true, active: true, phase: "pergunta", stalled: { reason: "bancada instável" } } });
+    if (chipParado?.text !== "Hermes · Parado") throw new Error(`chip do card parado: ${chipParado?.text}`);
+    if (M.parseBlocks("Texto\n<!-- sem dependencias: triagem inicial -->\nfim").some((b) => /<!--|dependencias/.test(b.texto || ""))) throw new Error("comentário HTML não deveria aparecer");
     console.log("✓ linear-markdown");
   } catch (err) {
     console.error(`✗ linear-markdown: ${err.message}`);

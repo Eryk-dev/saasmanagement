@@ -43,6 +43,9 @@ const hermesTickets = [
   { id: "tk10", number: 1046, saas: "leverads", subject: "[Casa Bela] relatório de vendas zerado", description: "", status: "open", priority: "normal", category: "Código · Bug", channel: "internal", customerId: "", requester: { name: "Casa Bela", email: "", phone: "" }, assignee: "tiago", followers: ["tiago"], createdAt: iso(-8), updatedAt: iso(-2), sla: sla(-8, 8, 48, { firstResponseAt: iso(-7) }), attachments: [], messages: [], portalToken: "demo1046",
     linear: { issueId: "iss_1001", identifier: "LEV-1001", url: "https://linear.app/leverads/issue/LEV-1001", stateName: "In Progress", stateType: "started" },
     hermes: { labeled: true, active: false, holding: false, needsHuman: false, phase: "trabalhando", phaseSince: iso(-7), handoff: { at: iso(-2), to: "Tiago" }, history: hist(["relato", -8], ["trabalhando", -7]) } },
+  { id: "tk11", number: 1047, saas: "leverads", subject: "[Virtude Modas] erro ao salvar configuração do robô", description: "", status: "open", priority: "normal", category: "Código · Bug", channel: "internal", customerId: "", requester: { name: "Virtude Modas", email: "", phone: "" }, assignee: "", followers: [], createdAt: iso(-30), updatedAt: iso(-29), sla: sla(-30, 8, 48, { firstResponseAt: iso(-29) }), attachments: [], messages: [], portalToken: "demo1047",
+    linear: { issueId: "iss_1002", identifier: "LEV-1002", url: "https://linear.app/leverads/issue/LEV-1002", stateName: "Aguardando resposta", stateType: "started" },
+    hermes: { labeled: true, active: true, holding: true, needsHuman: true, phase: "pergunta", phaseSince: iso(-29), stalled: { commentId: "c3", at: iso(-29), reason: "Parei após 3 rodadas de investigação: bancada instável; 3 rodadas foram devolvidas por falha de infraestrutura nas últimas 24h (última: Imagem de teste não foi confirmada)." }, history: hist(["relato", -30], ["trabalhando", -29.5], ["pergunta", -29]) } },
 ];
 const CARD_FIELDS_MOCK = {
   problema: "Na cópia do Mercado Livre para a Shopee, o desconto da regra era aplicado duas vezes.",
@@ -59,7 +62,8 @@ const perguntaHermes = [
   "**Hermes · validação**", "",
   "Reproduzi a cópia manual na bancada, mas sem o lote real não dá pra dizer por que a fila parou.", "",
   "**Precisa de:**",
-  "- [Tiago] Qual empresa é esse grupo? Há duas lojas com o nome Auto Center no cadastro.", "",
+  "- [Tiago] Qual empresa é esse grupo? Há duas lojas com o nome Auto Center no cadastro.",
+  "- [Cliente] Em qual conta e anúncio tentou copiar, aproximadamente quando, e o que apareceu?", "",
   "<details>",
   "Fluxo develop 834800148a68: frontend/src/pages/CompatPage.tsx:589-632 → POST /api/compat/copy em app/routers/compat.py:349-519; caminho depende de perfil permanente/use_durable_queue, com fallback BackgroundTasks. Enqueue app/services/copy_queue.py:891-979 grava copy_jobs; claim dedicado :1669-1752/:1857-1883; worker app/workers/copy_worker.py:556-590 e app/workers/processor.py:4366-4582; compat_logs atualizado por app/services/compat_log_writer.py:42-124; leitura /logs app/routers/compat.py:588-613.",
   "Hipóteses testáveis: H1 job manual fora do claim (copy_queue.py:1669-1752), não observada na bancada; H2 falha da origem deixa histórico órfão (compat.py:487-504), refutada no cenário testado por 404 + log error + zero jobs; H3 retry parece fila parada (processor.py:4534-4540), aparência demonstrada por RuntimeError interno simulado, com pending/attempts=1/scheduled_at futuro e histórico in_progress 0/2.",
@@ -85,12 +89,19 @@ const descricaoIssue = [
   "- [x] Conferir se o job entrou na fila",
   "- [ ] Confirmar com o cliente qual empresa é o grupo",
 ].join("\n");
+// Parada por falha da bancada, como o Hermes escreveu no LEV-609.
+const paradaHermes = [
+  "**Hermes · validação**", "",
+  "Parei após 3 rodadas de investigação: bancada instável; 3 rodadas foram devolvidas por falha de infraestrutura nas últimas 24h (última: Imagem de teste não foi confirmada).", "",
+  "**Precisa de:** [Eryk] resolver o motivo acima na bancada e responder neste card para o Hermes retomar.",
+].join("\n");
 const hermesView = (t) => {
   const h = t.hermes || {};
   const card = h.version ? { commentId: "c1", at: iso(-0.3), kind: "validation", version: h.version, risk: "baixo", touchesDb: false, images: [], fields: { ...CARD_FIELDS_MOCK, versao: `v${h.version}` } } : null;
-  return { ...h, card, question: h.phase === "pergunta" ? { commentId: "c2", at: iso(-1), text: "Qual empresa é esse grupo? Há duas lojas com o nome Auto Center no cadastro." } : null, draftReply: "" };
+  if (h.phase === "pergunta" && h.stalled) return { ...h, card, question: null, stalled: { ...h.stalled, text: paradaHermes }, draftReply: "" };
+  return { ...h, card, question: h.phase === "pergunta" ? { commentId: "c2", at: iso(-1), text: perguntaHermes } : null, stalled: null, draftReply: "" };
 };
-const HERMES_PERM = { aprovar: ["validar"], ajuste: ["validar"], recusar: ["validar"], responder: ["pergunta"], desistir: ["aprovado"], reverter: ["no_ar"] };
+const HERMES_PERM = { aprovar: ["validar"], ajuste: ["validar"], recusar: ["validar"], responder: ["pergunta"], revisao: ["pergunta"], desistir: ["aprovado"], reverter: ["no_ar"] };
 
 const agents = [
   { id: "leo", name: "Leonardo", photo: "", support: true, admin: true, supportSaas: ["leverads"] },
@@ -156,6 +167,7 @@ export const ticketsMock = {
   supportAgents: () => new URLSearchParams(location.search).has("empty") ? [] : agents,
   linearCatalog: () => new URLSearchParams(location.search).has("linear") ? ({configured:true,organization:"Equipe fictícia",viewer:"Bot do Cockpit",people:[{id:"lin_hermes",name:"Hermes"},{id:"lin_leo",name:"Leonardo"},{id:"lin_tiago",name:"Tiago"}],teams:[{id:"demo-team",key:"SUP",name:"Suporte",projects:[{id:"demo-project",name:"Atendimento"}],states:["Backlog","Aguardando resposta","In Progress","In Review","Validar","Aprovado","Done","Canceled"].map((name,i)=>({id:`st${i}`,name,type:name==="Done"?"completed":name==="Canceled"?"canceled":name==="Backlog"?"backlog":"started"}))}]}) : ({configured:false,teams:[]}),
   supportSettings: () => ({ ...settings, variables: variaveis }),
+  supportHermesReread: () => { window.__hermesReread = (window.__hermesReread || 0) + 1; return { started: true }; },
   supportSettingsSave: (_saas, body) => { (window.__supportSaves ||= []).push({saas:_saas,body:structuredClone(body)}); if (body.variables) variaveis = body.variables; settings = { ...settings, ...body }; return { ...settings, variables: variaveis }; },
   quickReplies: () => ({ items: (new URLSearchParams(location.search).has("empty") ? [] : quickReplies).map((q) => ({ ...q, editable: q.scope === "personal" || !new URLSearchParams(location.search).has("readonly") })), canEditShared: !new URLSearchParams(location.search).has("readonly"), variables: { builtin: BUILTIN, custom: variaveis } }),
   quickReplyCreate: (body) => { const q = { id: `qr${Date.now()}`, uses: 0, owner: body.scope === "personal" ? "leo" : "", ...body }; quickReplies = [...quickReplies, q]; return { ...q, editable: true }; },
@@ -169,6 +181,7 @@ export const ticketsMock = {
       labels: t?.hermes ? ["Hermes", "Bug"] : [],
       issue: { id: t?.linear?.issueId, title: t?.subject, description: descricaoIssue, priority: 2, assignee: t?.hermes?.handoff?.to || "", project: "CS - Suporte" },
       comments: t?.hermes?.version ? [{ id: "c1", body: cardHermes(t.hermes.version), createdAt: iso(-0.3), url: "", user: { id: "lin_hermes", name: "Hermes" }, fromCockpit: false }]
+        : t?.hermes?.stalled ? [{ id: "c3", body: paradaHermes, createdAt: iso(-29), url: "", user: { id: "lin_hermes", name: "Hermes" }, fromCockpit: false }]
         : t?.hermes?.phase === "pergunta" ? [{ id: "c2", body: perguntaHermes, createdAt: iso(-1), url: "", user: { id: "lin_hermes", name: "Hermes" }, fromCockpit: false }] : [],
       hermes: t?.hermes ? hermesView(t) : null };
   },
@@ -183,10 +196,10 @@ export const ticketsMock = {
   ticketHermesAction: (id, body) => {
     (window.__hermesActions ||= []).push({ id, body: structuredClone(body) });
     const t = achar(id); const h = t.hermes || {};
-    const fase = { aprovar: "aprovado", ajuste: "trabalhando", recusar: "cancelado", responder: "trabalhando", desistir: "validar", reverter: "validar" }[body.action];
+    const fase = { aprovar: "aprovado", ajuste: "trabalhando", recusar: "cancelado", responder: "trabalhando", revisao: "revisao", desistir: "validar", reverter: "validar" }[body.action];
     const at = new Date().toISOString();
     let hermes = { ...h, lastAction: { action: body.action, version: h.version || 0, by: "leo", at } };
-    if (fase) hermes = { ...hermes, phase: fase, phaseSince: at, needsHuman: fase === "validar", holding: fase !== "cancelado", history: [...(h.history || []), { phase: fase, at }], ...(body.action === "aprovar" ? { approvedBy: "leo", approvedVersion: h.version } : {}) };
+    if (fase) hermes = { ...hermes, stalled: null, phase: fase, phaseSince: at, needsHuman: fase === "validar", holding: fase !== "cancelado", history: [...(h.history || []), { phase: fase, at }], ...(body.action === "aprovar" ? { approvedBy: "leo", approvedVersion: h.version } : {}) };
     if (body.action === "passar_time") hermes = { ...hermes, active: false, holding: false, needsHuman: false, handoff: { at, to: "Tiago" } };
     if (body.action === "entregar") hermes = { ...hermes, requested: { at, by: "leo" } };
     return trocar(id, { hermes });

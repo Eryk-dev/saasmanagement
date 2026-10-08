@@ -576,7 +576,7 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   com par no Linear tira o caso do Hermes ("Melhor uma pessoa fazer") e
   concluir leva o card a Done. A tela só confirma antes (`confirmHermes`);
   (4) as ações (`POST /api/tickets/:id/hermes`: aprovar, ajuste, recusar,
-  responder, perguntar, desistir, reverter, passar_time, entregar) saem pela
+  responder, revisao, perguntar, desistir, reverter, passar_time, entregar) saem pela
   **chave única** do Linear, com o comando na 1ª linha e o rodapé
   "— nome, via Cockpit". O id do comentário entra em `linear.posted`. Quem
   decide são os `approvers` do produto, **só admin edita** essa lista
@@ -591,7 +591,21 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   Tickets. Ligar o Hermes (ou trocar etiqueta, usuário ou de-para) relê em
   segundo plano os cards dos tickets abertos (`backfillHermes`): o retrato só
   nasceria quando o card mudasse. Da releitura, só o último card de validação
-  e o último "no ar" viram evento, e repetir não duplica. As amostras de comentário dos testes seguem o PDF e devem ser
+  e o último "no ar" viram evento, e repetir não duplica. A mesma releitura
+  roda sob demanda (`POST /api/support/settings/:saas/hermes/reread`, link
+  "reler os cards do Hermes agora"). (6) **Parado ≠ pergunta (08/10):** o
+  Hermes também deixa o card em "Aguardando resposta" quando para por falha
+  da bancada ("Parei…", "bancada instável", "falha de infraestrutura"). Esse
+  comentário é `kind: "stalled"` e grava `hermes.stalled` (motivo e data). O
+  chip vira "Hermes · Parado" e a aba Linear mostra o motivo e quem destrava.
+  A parada some quando o card sai de "Aguardando resposta" ou quando chega
+  outro comentário do Hermes. (7) **Enviar para revisão** (`revisao`, só na
+  fase pergunta) move o card para a coluna de revisão e comenta
+  `revisão: seguir sem a resposta da pergunta`. Se o Hermes achar dúvida nova,
+  ele devolve o card para "Aguardando resposta" e a fase acompanha a coluna.
+  O Hermes-VPS precisa reconhecer esse comando, como o `hermes: assumir`.
+  A pergunta na aba Linear mostra só os pedidos de "Precisa de:" (a API manda
+  o comentário inteiro, que segue em Comentários). As amostras de comentário dos testes seguem o PDF e devem ser
   trocadas pelas reais. Testes em `ticket-hermes.test.js` (Linear falso
   compartilhado em `test/helpers/fake-linear.js`). Prévia com
   `/?shell=1&hermes#tickets` e `&hermes&linear#support_settings`.

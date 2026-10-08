@@ -416,3 +416,87 @@ test("ligar o Hermes relê os cards que já estavam com ele (sem esperar o card 
   assert.ok((await repo.list("notifications")).some((n) => n.type === "ticket_hermes" && n.user === "yudi"), "o aprovador é avisado do que espera por ele");
   assert.deepEqual(await backfillHermes(repo, "alpha", { linear: { configured: () => false } }), { skipped: "not_configured" });
 });
+
+// LEV-609 (02/10): o Hermes parou por falha da bancada e deixou o card em
+// "Aguardando resposta" sem pergunta nenhuma. Isso é "parado", não "Pergunta".
+const PARADA = `**Hermes · validação**
+
+Parei após 3 rodadas de investigação: bancada instável; 3 rodadas foram devolvidas por falha de infraestrutura nas últimas 24h (última: Imagem de teste não foi confirmada).
+
+**Precisa de:** [Eryk] resolver o motivo acima na bancada e responder neste card para o Hermes retomar.`;
+
+test("parada por falha da bancada: tipo próprio, retrato com o motivo, some quando o card anda ou o Hermes volta", async (t) => {
+  const p = parseHermesComment(PARADA);
+  assert.equal(p.kind, "stalled");
+  assert.match(p.reason, /^Parei após 3 rodadas/);
+  assert.equal(parseHermesComment("Qual empresa é esse grupo?").kind, "question", "pergunta continua pergunta");
+
+  const { app, repo, call, linear, sync } = await buildApp();
+  t.after(() => { sync.stop(); return app.close(); });
+  await ligar(call);
+  const { issueId, ticketId } = await cardDoHermes(app, linear);
+  await mover(app, linear, issueId, { stateId: "st_wait" });
+  await hermesComenta(app, linear, issueId, PARADA);
+  let ticket = await repo.get("tickets", ticketId);
+  assert.equal(ticket.hermes.phase, "pergunta");
+  assert.match(ticket.hermes.stalled.reason, /bancada instável/);
+  assert.ok((await repo.listWhere("ticket_events", { ticket: ticketId })).some((e) => e.type === "hermes_stalled"));
+
+  const aba = (await call("yudi", "GET", `/api/tickets/${ticketId}/linear`)).json();
+  assert.equal(aba.hermes.question, null, "não há pergunta");
+  assert.match(aba.hermes.stalled.reason, /Parei/);
+
+  // O Hermes voltou com uma pergunta de verdade: a parada acaba.
+  await hermesComenta(app, linear, issueId, "Qual tela o cliente usou?");
+  ticket = await repo.get("tickets", ticketId);
+  assert.equal(ticket.hermes.stalled, null);
+
+  // Parou de novo e o card andou: a parada também acaba.
+  await hermesComenta(app, linear, issueId, PARADA);
+  assert.ok((await repo.get("tickets", ticketId)).hermes.stalled);
+  await mover(app, linear, issueId, { stateId: "st_doing" });
+  assert.equal((await repo.get("tickets", ticketId)).hermes.stalled, null);
+});
+
+test("enviar para revisão sem responder: só na Pergunta, move para In Review e o Hermes pode devolver", async (t) => {
+  const { app, repo, call, linear, sync } = await buildApp();
+  t.after(() => { sync.stop(); return app.close(); });
+  await ligar(call);
+  const { issueId, ticketId } = await cardDoHermes(app, linear);
+  const url = `/api/tickets/${ticketId}/hermes`;
+  assert.equal(actionAllowed("revisao", { active: true, phase: "validar" }), false);
+  assert.equal((await call("yudi", "POST", url, { action: "revisao" })).json().code, "wrong_phase");
+
+  await mover(app, linear, issueId, { stateId: "st_wait" });
+  await hermesComenta(app, linear, issueId, PARADA);
+  assert.equal((await call("yudi", "GET", url)).json().allowed.revisao, true);
+  assert.equal((await call("lia", "POST", url, { action: "revisao" })).statusCode, 403, "só aprovador");
+
+  const r = await call("yudi", "POST", url, { action: "revisao" });
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(linear.issues.get(issueId).stateId, "st_review");
+  assert.match(linear.comments.at(-1).body, /^revisão: seguir sem a resposta da pergunta\n\nSe aparecer uma dúvida nova, devolva o card para Aguardando resposta\.\n\n— Yudi, via Cockpit$/);
+  let ticket = await repo.get("tickets", ticketId);
+  assert.equal(ticket.hermes.phase, "revisao");
+  assert.equal(ticket.hermes.stalled, null);
+
+  // Dúvida nova: o Hermes devolve o card e a fase acompanha a coluna.
+  await mover(app, linear, issueId, { stateId: "st_wait" });
+  ticket = await repo.get("tickets", ticketId);
+  assert.equal(ticket.hermes.phase, "pergunta");
+  assert.equal(commentFor("revisao", { text: "o cliente não responde há 3 dias", name: "Yudi" }).split("\n")[0], "revisão: seguir sem a resposta da pergunta");
+});
+
+test("reler os cards do Hermes agora: pega a parada de quem já estava parado", async (t) => {
+  const { app, repo, call, linear, sync } = await buildApp();
+  t.after(() => { sync.stop(); return app.close(); });
+  await ligar(call);
+  const { issueId, ticketId } = await cardDoHermes(app, linear);
+  await mover(app, linear, issueId, { stateId: "st_wait" });
+  // Comentário que chegou antes de o cockpit reconhecer paradas: só no Linear.
+  linear.addComment({ issueId, body: PARADA, user: HERMES });
+  assert.equal((await repo.get("tickets", ticketId)).hermes.stalled, undefined);
+  assert.equal((await call("lia", "POST", "/api/support/settings/alpha/hermes/reread")).statusCode, 202);
+  await backfillHermes(repo, "alpha", { linear });
+  assert.match((await repo.get("tickets", ticketId)).hermes.stalled.reason, /bancada instável/);
+});

@@ -450,11 +450,26 @@ function HermesSettings({ catalog, team, hermes, disabled, saasId, version, onCh
     if (fase) next[stateId] = fase; else delete next[stateId];
     onChange({ phases: next });
   };
+  // Releitura sob demanda: corrige o retrato de cards que ficaram parados
+  // antes de o cockpit reconhecer o caso (ex.: parada por falha da bancada).
+  const [relendo, setRelendo] = useState(false);
+  const reler = async () => {
+    if (relendo) return;
+    setRelendo(true);
+    try { await api.supportHermesReread(saasId); toast("Relendo os cards do Hermes · os chips atualizam em seguida", "pos"); }
+    catch (err) { toast(`Não deu para reler · ${err.message || "tente de novo"}`, "neg"); }
+    finally { setRelendo(false); }
+  };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, opacity: disabled ? 0.55 : 1 }}>
       <SwitchRow disabled={disabled} checked={hermes.enabled === true} onChange={(v) => onChange({ enabled: v })}
         title="Acompanhar o Hermes nos tickets"
         hint="o ticket mostra a fase do card do Hermes (Validar, Aguardando resposta, Aprovado, no ar) e avisa os aprovadores quando é a vez deles · ao salvar ligado, os cards abertos são relidos em segundo plano" />
+      {on && (
+        <button type="button" onClick={reler} disabled={relendo} className="hermes-reler" style={{ alignSelf: "flex-start", fontSize: 12, fontWeight: 600, color: "var(--accent)", textDecoration: "underline", textUnderlineOffset: 2 }}>
+          {relendo ? "relendo…" : "reler os cards do Hermes agora"}
+        </button>
+      )}
       {hermes.enabled === true && (
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>

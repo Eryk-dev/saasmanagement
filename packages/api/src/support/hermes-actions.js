@@ -1,5 +1,5 @@
 // Ações do guia do Hermes feitas pelo cockpit: aprovar, pedir ajuste, recusar,
-// responder pergunta, desistir da aprovação, reverter, passar para o time e
+// responder pergunta, mandar para revisão sem responder, desistir da aprovação, reverter, passar para o time e
 // entregar um ticket ao Hermes. Tudo vira o que o Hermes já lê no card —
 // mudança de coluna ou comentário com o comando na primeira linha — usando a
 // chave única do Linear (LINEAR_API_KEY). Quem PODE agir é decidido aqui:
@@ -16,7 +16,7 @@ import { httpError, loadSettings, recordTicketEvents, STATUS_KIND } from "./tick
 import { applyLinearIssue, rememberPosted, syncTicketToLinear, teamStates } from "./ticket-linear.js";
 import { commentFor, hermesView, stateForPhase } from "./ticket-hermes.js";
 
-export const HERMES_ACTIONS = ["aprovar", "ajuste", "recusar", "responder", "perguntar", "desistir", "reverter", "passar_time", "entregar"];
+export const HERMES_ACTIONS = ["aprovar", "ajuste", "recusar", "responder", "revisao", "perguntar", "desistir", "reverter", "passar_time", "entregar"];
 const NEEDS_TEXT = new Set(["ajuste", "recusar", "responder", "perguntar", "reverter"]);
 const nowIso = () => new Date().toISOString();
 
@@ -25,7 +25,10 @@ export function actionAllowed(action, h = {}, cfg = {}) {
   const ativo = !!h.active;
   switch (action) {
     case "aprovar": case "ajuste": case "recusar": return ativo && h.phase === "validar";
-    case "responder": return ativo && h.phase === "pergunta";
+    // Revisão: seguir sem responder (pergunta que ninguém sabe, ou parada por
+    // falha da bancada). Se o Hermes achar dúvida nova, o card volta para
+    // "Aguardando resposta" e a fase acompanha a coluna.
+    case "responder": case "revisao": return ativo && h.phase === "pergunta";
     case "perguntar": case "passar_time": return !!h.holding;
     case "desistir": return ativo && h.phase === "aprovado" && cfg.publishWindow === "noite";
     case "reverter": return ativo && (h.phase === "no_ar" || (h.phase === "aprovado" && cfg.publishWindow === "imediato"));
@@ -106,6 +109,8 @@ export async function runHermesAction(repo, ticketId, body = {}, { linear, user 
       issue = await moveTo("aprovado");
     } else if (action === "desistir") {
       issue = await moveTo("validar");
+    } else if (action === "revisao") {
+      issue = await moveTo("revisao");
     } else if (action === "passar_time") {
       const assigneeId = String(body.assignee || "").trim();
       if (!assigneeId) throw httpError(400, "escolha quem do time assume o card", "assignee_required");

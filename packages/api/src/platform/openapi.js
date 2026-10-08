@@ -57,6 +57,8 @@ const SUPPORT_PATHS = {
   "/api/support/settings/{saas}": { parameters: [idParam("saas")],
     get: { tags: ["Suporte"], summary: "Configurações de SLA do produto (políticas em minutos, expediente, pausa, aviso, categorias, portal, e-mail, espelho do Linear)", responses: { 200: { description: "OK" }, 404: { description: "Produto fora do escopo" } } },
     put: { tags: ["Suporte"], summary: "Salva as configurações (parcial; políticas mesclam por prioridade). Ligar `linear.enabled` devolve `queued` = tickets abertos mandados pra fila do espelho", security: SEC, requestBody: json({ type: "object" }), responses: { 200: { description: "Configurações" }, 400: { description: "Resolução menor que a 1ª resposta" } } } },
+  "/api/support/settings/{saas}/hermes/reread": { parameters: [idParam("saas")],
+    post: { tags: ["Suporte"], summary: "Relê agora os cards abertos do Hermes (retrato: fase, validação, parada por falha da bancada). Roda em segundo plano", security: SEC, responses: { 202: { description: "{ started: true }" }, 409: { description: "Espelho do Linear ou Hermes desligado" } } } },
   "/api/support/linear/catalog": { get: { tags: ["Suporte"], summary: "Times, colunas do fluxo e projetos do Linear (pra configurar o espelho). `configured: false` = sem LINEAR_API_KEY", responses: { 200: { description: "{ configured, webhook, teams[], viewer, organization }" } } } },
   "/api/tickets/{id}/linear": { parameters: [idParam()],
     get: { tags: ["Suporte"], summary: "Conteúdo da issue para a aba Linear do ticket: descrição e comentários como estão lá. `stale: true` = o Linear não respondeu e a resposta traz o que está gravado no ticket", responses: { 200: { description: "{ linked, identifier, url, state, issue, comments[], stale, error }" } } },

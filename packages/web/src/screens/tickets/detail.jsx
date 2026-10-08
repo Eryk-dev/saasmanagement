@@ -251,6 +251,7 @@ const EVENT_TEXT = {
   hermes_phase: (d) => `· Hermes: ${HERMES_PHASE_TEXT[d.to] || d.to}${d.state ? ` (coluna ${d.state})` : ""}`,
   hermes_validation: (d) => `· Hermes deixou a correção${d.version ? ` v${d.version}` : ""} para validar${d.risk ? ` · risco ${d.risk === "medio" ? "médio" : d.risk}` : ""}`,
   hermes_question: (d) => `· Hermes perguntou${d.excerpt ? `: ${d.excerpt}` : ""}`,
+  hermes_stalled: (d) => `· Hermes parou${d.excerpt ? `: ${d.excerpt}` : ""}`,
   hermes_live: (d) => `· Hermes: no ar${d.at ? ` às ${d.at}` : ""}`,
   hermes_handoff: (d) => `· o caso saiu do Hermes para ${d.to || "o time"}`,
   hermes_accepted: () => "· Hermes assumiu o caso",
@@ -259,7 +260,7 @@ const EVENT_TEXT = {
 };
 const HERMES_PHASE_TEXT = { relato: "relato novo", trabalhando: "investigando", pergunta: "aguardando resposta", revisao: "revisão da IA", validar: "pronto para validar", aprovado: "aprovado", no_ar: "no ar", cancelado: "cancelado" };
 const HERMES_ACTION_TEXT = {
-  aprovar: "aprovou a correção do Hermes", ajuste: "pediu ajuste ao Hermes", recusar: "recusou a correção do Hermes", responder: "respondeu ao Hermes",
+  aprovar: "aprovou a correção do Hermes", ajuste: "pediu ajuste ao Hermes", recusar: "recusou a correção do Hermes", responder: "respondeu ao Hermes", revisao: "mandou o caso do Hermes para revisão sem responder",
   perguntar: "perguntou ao Hermes", desistir: "desistiu da aprovação", reverter: "pediu ao Hermes para reverter", passar_time: "passou o caso do Hermes para o time",
   entregar: "entregou o ticket ao Hermes",
 };
@@ -456,7 +457,7 @@ function LinearPane({ ticket, onUseDraft }) {
 
   const { issue, comments = [] } = data;
   const h = data.hermes;
-  const temHermes = !!(h && (h.card || h.question || h.draftReply));
+  const temHermes = !!(h && (h.card || h.question || h.stalled || h.draftReply));
   // Três seções com o mesmo cabeçalho, de cima pra baixo: o que a issue pede
   // (descrição), o que o Hermes quer agora e a conversa. Coluna, prioridade,
   // responsável e etiquetas já estão na lateral do ticket — não repetem aqui,

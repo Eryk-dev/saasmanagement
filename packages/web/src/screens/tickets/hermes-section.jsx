@@ -4,7 +4,7 @@ import { api } from "../../lib/api.js";
 import { PrimaryButton, SecondaryButton, toast } from "../../atoms.jsx";
 import { Modal } from "../../components/overlay.jsx";
 import { SelectPopover } from "../../components/select-popover.jsx";
-import { LinearMarkdown } from "./linear-markdown.jsx";
+import { LinearMarkdown, Inline } from "./linear-markdown.jsx";
 import { HERMES_PHASES, HERMES_STEPS, hermesOf, isDone } from "../../lib/tickets.js";
 
 const { useState, useEffect, useCallback } = React;
@@ -30,6 +30,8 @@ const ACTIONS = {
     hint: () => "O card vai para Canceled e o Hermes deixa um rascunho de resposta ao cliente; vocês decidem se mandam." },
   responder: { label: "Responder", title: () => "Responder ao Hermes", text: true, primary: true, placeholder: "a resposta à pergunta do Hermes",
     hint: () => "A resposta vai no card e o caso volta sozinho para a fila do Hermes." },
+  revisao: { label: "Enviar para revisão", title: () => "Enviar para revisão sem responder", text: true, optional: true, placeholder: "recado para o Hermes (opcional): ex.: o cliente não respondeu, siga com o que tem",
+    hint: () => "O card vai para a revisão sem a resposta da pergunta. Se o Hermes achar uma dúvida nova, ele devolve o card para Aguardando resposta." },
   perguntar: { label: "Perguntar", title: () => "Perguntar ao Hermes", text: true, placeholder: "sua dúvida sobre o caso",
     hint: () => "O Hermes responde no próprio card." },
   desistir: { label: "Desistir da aprovação", title: () => "Desistir da aprovação",
@@ -46,6 +48,7 @@ const ICON_PATHS = {
   ajuste: "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z",
   recusar: "M18 6 6 18M6 6l12 12",
   responder: "M9 17 4 12l5-5M20 18v-2a4 4 0 0 0-4-4H4",
+  revisao: "M5 12h14M13 6l6 6-6 6",
   perguntar: "M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z",
   desistir: "M3 7v6h6M21 17a9 9 0 0 0-15-6.7L3 13",
   reverter: "M1 4v6h6M3.5 15a9 9 0 1 0 2.1-9.4L1 10",
@@ -58,7 +61,7 @@ const ActionIcon = ({ action }) => (
   </svg>
 );
 
-const ORDER = ["aprovar", "responder", "ajuste", "recusar", "desistir", "reverter", "perguntar", "passar_time", "entregar"];
+const ORDER = ["aprovar", "responder", "revisao", "ajuste", "recusar", "desistir", "reverter", "perguntar", "passar_time", "entregar"];
 
 function ActionDialog({ action, ticket, info, onClose, onDone }) {
   const cfg = ACTIONS[action];
@@ -141,7 +144,7 @@ function Steps({ h }) {
         return (
           <li key={nome} data-state={estado} title={quando[n] ? `${nome} · ${fmtWhen(quando[n])}` : nome}>
             <span className="hermes-step-dot" />
-            <span className="hermes-step-name">{n === atual && h.phase === "pergunta" ? "Pergunta" : nome}</span>
+            <span className="hermes-step-name">{n === atual && h.phase === "pergunta" ? (h.stalled ? "Parado" : "Pergunta") : nome}</span>
           </li>
         );
       })}
@@ -169,13 +172,19 @@ export function HermesSection({ ticket, settings, onChange, onOpenLinear }) {
   if (h?.requested && !h.labeled) linha = <>Entregue {fmtWhen(h.requested.at)} · aguardando o Hermes assumir</>;
   else if (h?.labeled && !h.active) linha = <>Com {h.handoff?.to || "o time"} desde {fmtWhen(h.handoff?.at)} · o Hermes parou e deixou o resumo no card</>;
   else if (h?.phase === "validar") linha = <b style={{ color: "var(--warn)" }}>Correção{h.version ? ` v${h.version}` : ""} pronta · esperando um aprovador</b>;
+  else if (h?.phase === "pergunta" && h.stalled) {
+    // Na lateral só o resumo; o motivo inteiro está na aba Linear.
+    const r = String(h.stalled.reason || "");
+    const curto = !r || /bancada|infraestrutura/i.test(r) ? "falha na bancada" : r.length > 60 ? `${r.slice(0, 60)}…` : r;
+    linha = <><b style={{ color: "var(--warn)" }} title={r}>O Hermes parou · {curto}</b><br />Resolva e responda no card para ele retomar, ou envie para revisão.</>;
+  }
   else if (h?.phase === "pergunta") linha = <b style={{ color: "var(--warn)" }}>O Hermes perguntou algo · responda pelo card</b>;
   else if (h?.phase === "aprovado") linha = <>Aprovado{h.approvedVersion ? ` v${h.approvedVersion}` : ""} · {WINDOW_TEXT[info?.publishWindow || hcfg?.publishWindow] || ""}</>;
   else if (h?.phase === "no_ar") linha = <>No ar{h.liveAt ? ` às ${/^\d{2}:\d{2}$/.test(h.liveAt) ? h.liveAt : fmtWhen(h.liveAt)}` : ""} · o Hermes avisa o cliente se o grupo estiver liberado</>;
   else if (h?.phase === "cancelado") linha = <>Não era bug · a explicação e o rascunho de resposta estão no card</>;
   else if (m) linha = <>{m.label}{h.phaseSince ? ` desde ${fmtWhen(h.phaseSince)}` : ""}</>;
 
-  const chip = h?.active && m ? <span className={`chip ${m.human && !isDone(ticket) ? "warn" : "info"}`} style={{ fontSize: 11, minHeight: 0 }}>{m.short}{h.version && (h.phase === "validar" || h.phase === "aprovado") ? ` v${h.version}` : ""}</span> : null;
+  const chip = h?.active && m ? <span className={`chip ${m.human && !isDone(ticket) ? "warn" : "info"}`} style={{ fontSize: 11, minHeight: 0 }}>{h.phase === "pergunta" && h.stalled ? "Parado" : m.short}{h.version && (h.phase === "validar" || h.phase === "aprovado") ? ` v${h.version}` : ""}</span> : null;
   return (
     <section className="support-detail-section hermes-section" data-human={h?.needsHuman ? "1" : undefined}>
       <div className="hermes-head">
@@ -222,15 +231,82 @@ const CARD_ROWS = [
   ["risco", "Risco"], ["publica", "Quando publica"], ["aviso", "Aviso ao cliente"], ["versao", "Versão"],
 ];
 const RISK_TONE = { alto: "neg", medio: "warn", baixo: "pos" };
+
+// A pergunta que a API manda é o comentário INTEIRO do Hermes (título, resumo
+// do que ele testou, "Precisa de:" e o <details> técnico) — e ele já aparece
+// em Comentários logo abaixo. Aqui só entram os pedidos: os itens de
+// "Precisa de:" e, sem essa seção, as linhas que terminam em "?". Cada um com
+// o destinatário (`[Eryk] …`) separado. Puro e exportado: o smoke testa.
+const ITEM_RE = /^\s*(?:[-*+]|\d{1,3}[.)])\s+(.*)$/;
+// Destinatário: `[Eryk] …` (markdown do Hermes) ou `Eryk · …`.
+const DESTINO_RE = /^(?:\\?\[([^\]\\]{1,40})\\?\]\s*[·:-]?\s*|(\p{Lu}[\p{L}]{1,20}(?: \p{Lu}[\p{L}]{1,20})?) · )/u;
+const PRECISA_RE = /^\s*(?:\*\*)?\s*precisa(?:mos)? de\s*:?\s*(?:\*\*)?\s*:?\s*$/i;
+// "**Precisa de:** [Eryk] resolver …" na mesma linha do rótulo.
+const PRECISA_INLINE_RE = /^\s*(?:\*\*)?\s*precisa(?:mos)? de\s*:?\s*(?:\*\*)?\s*:?\s+(\S.*)$/i;
+const ROTULO_RE = /^\s*(?:\*\*)?\p{Lu}[\p{L}\d ]{0,30}:(?:\*\*)?\s/u;
+export function pedidosDaPergunta(text) {
+  const linhas = String(text || "").replace(/\r\n/g, "\n").split("\n");
+  const fim = linhas.findIndex((l) => /^\s*<details/i.test(l) || /^\s*\+\+\+\s*\S/.test(l));
+  const corpo = fim >= 0 ? linhas.slice(0, fim) : linhas;
+  const pedido = (s) => {
+    const t = String(s).replace(/\*\*/g, "").trim();
+    const d = DESTINO_RE.exec(t);
+    return d ? { para: (d[1] || d[2]).trim(), texto: t.slice(d[0].length).trim() } : { para: "", texto: t };
+  };
+  const inline = corpo.map((l) => PRECISA_INLINE_RE.exec(l)).find(Boolean);
+  if (inline) return [pedido(inline[1])];
+  const i = corpo.findIndex((l) => PRECISA_RE.test(l));
+  if (i >= 0) {
+    const itens = [];
+    for (const l of corpo.slice(i + 1)) {
+      if (!l.trim()) { if (itens.length) break; continue; }
+      const item = ITEM_RE.exec(l);
+      if (!item && ROTULO_RE.test(l) && !DESTINO_RE.test(l.trim())) break; // "Estado: …" já é outro assunto
+      itens.push(pedido(item ? item[1] : l));
+    }
+    if (itens.length) return itens;
+  }
+  return corpo.map((l) => (ITEM_RE.exec(l)?.[1] ?? l).trim()).filter((l) => /\?\s*$/.test(l) && !/^#/.test(l)).map(pedido);
+}
+
+function Pedidos({ pedidos }) {
+  return (
+    <ul className="hermes-pedidos">
+      {pedidos.map((p, i) => (
+        <li key={i}>
+          {p.para && <span className="hermes-pedido-para">{`Para ${p.para}`}</span>}
+          <span className="hermes-pedido-texto"><Inline text={p.texto} rotulo={false} /></span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function HermesCard({ hermes, onExpired, onUseDraft }) {
-  if (!hermes || (!hermes.card && !hermes.question && !hermes.draftReply)) return null;
-  const { card, question, draftReply } = hermes;
+  if (!hermes || (!hermes.card && !hermes.question && !hermes.stalled && !hermes.draftReply)) return null;
+  const { card, question, stalled, draftReply } = hermes;
+  const pedidos = question ? pedidosDaPergunta(question.text) : [];
+  // Parado por falha da bancada: o motivo e o que destrava, sem fingir pergunta.
+  const destrava = stalled ? pedidosDaPergunta(stalled.text).filter((p) => !/\?\s*$/.test(p.texto) || p.para) : [];
   return (
     <div className="hermes-card">
+      {stalled && (
+        <div className="support-msg hermes-pergunta" data-kind="note">
+          <span className="kicker" style={{ display: "block", marginBottom: 6 }}>O Hermes parou · {fmtWhen(stalled.at)}</span>
+          <div className="hermes-pedido-texto">{stalled.reason || "falha na bancada"}</div>
+          {destrava.length > 0 && <div style={{ marginTop: 10 }}><Pedidos pedidos={destrava} /></div>}
+          <div className="hermes-pedido-nota">Não há pergunta para o cliente. Resolva e responda no card para o Hermes retomar, ou envie para revisão.</div>
+        </div>
+      )}
       {question && (
-        <div className="support-msg" data-kind="note">
-          <span className="kicker" style={{ display: "block", marginBottom: 4 }}>O Hermes perguntou · {fmtWhen(question.at)}</span>
-          <LinearMarkdown text={question.text} onExpired={onExpired} />
+        <div className="support-msg hermes-pergunta" data-kind="note">
+          <span className="kicker" style={{ display: "block", marginBottom: 6 }}>O Hermes perguntou · {fmtWhen(question.at)}</span>
+          {pedidos.length ? (
+            <>
+              <Pedidos pedidos={pedidos} />
+              <div className="hermes-pedido-nota">O que o Hermes já testou está no comentário completo, em Comentários na issue.</div>
+            </>
+          ) : <LinearMarkdown text={question.text} onExpired={onExpired} />}
         </div>
       )}
       {card && (
