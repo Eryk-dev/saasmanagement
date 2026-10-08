@@ -78,6 +78,28 @@ export function placementPairFromError(message) {
   if (!m) return null;
   return PLACEMENT_BY_LABEL[m[1].trim().toLowerCase()] || null;
 }
+// Partes do asset_feed_spec que a Graph aceita de volta na criação de um
+// criativo. Fora: images (vira vídeo), id, e campos que a leitura devolve mas
+// a escrita recusa (additional_data, reasons_to_shop, autotranslate…).
+const ASSET_FEED_FIELDS = ["ad_formats", "bodies", "titles", "descriptions", "link_urls", "call_to_action_types",
+  "call_to_actions", "optimization_type", "asset_customization_rules", "groups", "captions"];
+const hasFeedText = (afs) => !!afs && ["bodies", "titles", "descriptions"].some((k) => Array.isArray(afs[k]) && afs[k].length);
+// Feed de origem com os vídeos trocados pelo novo (que herda os rótulos de
+// todos os vídeos antigos, pra regra de personalização por posicionamento
+// continuar apontando pra um vídeo que existe). null = origem sem texto no
+// feed, segue pelo object_story_spec.video_data.
+export function assetFeedWithVideo(assetFeed, { videoId, imageUrl }) {
+  if (!hasFeedText(assetFeed)) return null;
+  const feed = {};
+  for (const k of ASSET_FEED_FIELDS) if (assetFeed[k] != null) feed[k] = JSON.parse(JSON.stringify(assetFeed[k]));
+  const labels = [];
+  for (const v of Array.isArray(assetFeed.videos) ? assetFeed.videos : []) {
+    for (const l of v.adlabels || []) if (!labels.some((x) => x.name === l.name)) labels.push(l);
+  }
+  feed.videos = [{ video_id: String(videoId), ...(imageUrl ? { thumbnail_url: imageUrl } : {}), ...(labels.length ? { adlabels: labels } : {}) }];
+  if (!Array.isArray(feed.ad_formats) || !feed.ad_formats.length) feed.ad_formats = ["SINGLE_VIDEO"];
+  return feed;
+}
 // Campos do conjunto que a Graph aceita de volta num POST /adsets. Fora da
 // lista: account_id, campaign_attribution, learning stage etc. (só leitura).
 const ADSET_COPY_FIELDS = ["name", "campaign_id", "account_id", "targeting", "optimization_goal", "billing_event",
@@ -713,10 +735,15 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
     // e as UTMs de atribuição).
     async getAdCreativeSpec(adId) {
       if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
-      const params = new URLSearchParams({ fields: "creative{object_story_spec,url_tags}", access_token: accessToken });
+      // asset_feed_spec: é onde o Gerenciador guarda texto principal, título,
+      // descrição, link e CTA dos anúncios criados por ele hoje (formato
+      // flexível / Advantage+). Nesses, o object_story_spec.video_data vem só
+      // com o vídeo, e clonar só por ele dá anúncio SEM TEXTO (caso do Leo,
+      // 08/10: "1491 [PRICE]" subiu com os campos vazios).
+      const params = new URLSearchParams({ fields: "creative{object_story_spec,asset_feed_spec,url_tags}", access_token: accessToken });
       const body = await get(`${GRAPH}/${adId}?${params}`);
       const c = body.creative || {};
-      return { spec: c.object_story_spec || null, urlTags: c.url_tags || "" };
+      return { spec: c.object_story_spec || null, assetFeed: c.asset_feed_spec || null, urlTags: c.url_tags || "" };
     },
 
     // Mídia do criativo de UM anúncio — pra pré-visualizar o vídeo/imagem na
@@ -751,9 +778,26 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
 
     // Cria um criativo NOVO a partir do object_story_spec de origem, trocando só
     // o vídeo (video_id + thumbnail) e mantendo todo o resto do spec.
-    async createVideoCreativeFromSpec(adAccountId, { name, sourceSpec, videoId, imageUrl, urlTags }) {
+    async createVideoCreativeFromSpec(adAccountId, { name, sourceSpec, assetFeed = null, videoId, imageUrl, urlTags }) {
       if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
       const spec = sourceSpec ? JSON.parse(JSON.stringify(sourceSpec)) : null;
+      // Texto no asset_feed_spec: o criativo novo vai com o MESMO feed (textos,
+      // títulos, descrições, links, CTA, formato) e só os vídeos trocados pelo
+      // novo. O object_story_spec aí leva só página e Instagram (a Meta recusa
+      // video_data junto com asset_feed_spec).
+      const feed = assetFeedWithVideo(assetFeed, { videoId, imageUrl });
+      if (feed) {
+        if (!spec?.page_id) throw new Error("o anúncio de origem não tem página no object_story_spec — não dá pra montar o criativo");
+        const story = { page_id: spec.page_id };
+        for (const k of ["instagram_user_id", "instagram_actor_id"]) if (spec[k]) story[k] = spec[k];
+        const body = await post(`${acct(adAccountId)}/adcreatives`, {
+          name,
+          object_story_spec: JSON.stringify(story),
+          asset_feed_spec: JSON.stringify(feed),
+          ...(urlTags ? { url_tags: urlTags } : {}),
+        });
+        return String(body.id);
+      }
       if (!spec || !spec.video_data) {
         throw new Error("o anúncio de origem não é um anúncio de vídeo simples (sem object_story_spec.video_data) — troca de vídeo não se aplica");
       }

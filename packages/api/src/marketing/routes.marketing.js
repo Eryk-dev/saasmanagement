@@ -455,7 +455,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         job.step = "lendo o anúncio de origem";
         const sourceAds = await meta.adsOfAdSet(sourceAdsetId);
         if (!sourceAds.length) throw new Error("o conjunto de origem não tem anúncio pra copiar — escolha um conjunto que já tenha um anúncio de vídeo");
-        const { spec, urlTags } = await meta.getAdCreativeSpec(sourceAds[0].id);
+        const { spec, assetFeed, urlTags } = await meta.getAdCreativeSpec(sourceAds[0].id);
         // 2. sobe o vídeo novo + a thumbnail (a Meta exige uma).
         job.step = "subindo o vídeo pra Meta";
         const onProgress = (p) => { job.step = `subindo o vídeo pra Meta · ${Math.round(p * 100)}%`; };
@@ -508,7 +508,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         //    (e a thumbnail dele) mudam. Nasce PAUSADO.
         job.step = "criando o anúncio com o vídeo novo";
         const creativeId = await meta.createVideoCreativeFromSpec(product.metaAdAccount, {
-          name: finalName, sourceSpec: spec, videoId, imageUrl, urlTags: urlTags || CREATIVE_URL_TAGS,
+          name: finalName, sourceSpec: spec, assetFeed, videoId, imageUrl, urlTags: urlTags || CREATIVE_URL_TAGS,
         });
         const ad = await meta.createAd(product.metaAdAccount, { adsetId: copy.adsetId, creativeId, name: finalName, status: statusFinal });
         const ads = [{ id: String(ad.id), name: finalName }];

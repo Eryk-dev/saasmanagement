@@ -43,7 +43,7 @@ test("getAdCreativeSpec: devolve object_story_spec + url_tags", async () => {
   assert.equal(spec.video_data.video_id, "v_old");
   assert.equal(urlTags, "utm_source=meta");
   assert.match(f.calls[0].url, /\/ad_copy\?/);
-  assert.match(decodeURIComponent(f.calls[0].url), /creative\{object_story_spec,url_tags\}/);
+  assert.match(decodeURIComponent(f.calls[0].url), /creative\{object_story_spec,asset_feed_spec,url_tags\}/);
 });
 
 test("createVideoCreativeFromSpec: troca só o vídeo/thumb e preserva o resto", async () => {
@@ -346,4 +346,64 @@ test("copyAdSet: a recriação aprende um 2º par na recusa seguinte; outro erro
   const f3 = recorder(() => ({ error: EXPLORE_ERR }));
   await assert.rejects(() => makeMeta({ fetch: f3, accessToken: "tok" }).copyAdSet("as_src", { deepCopy: true }), /2490392/);
   assert.equal(f3.calls.length, 1);
+});
+
+// ── Texto no asset_feed_spec (08/10/2026) ─────────────────────────────────────
+// O "1491 [PRICE]" subiu sem texto principal, título e descrição: o anúncio de
+// origem guardava tudo no asset_feed_spec e o clone só olhava o video_data.
+const { assetFeedWithVideo } = await import("../src/marketing/meta.js");
+const FEED = {
+  ad_formats: ["SINGLE_VIDEO"],
+  bodies: [{ text: "Texto principal do 1436", adlabels: [{ id: "l1", name: "body_a" }] }],
+  titles: [{ text: "Headline do 1436" }],
+  descriptions: [{ text: "Descrição" }],
+  link_urls: [{ website_url: "https://leverads.com.br/diagnostico", display_url: "leverads.com.br" }],
+  call_to_action_types: ["LEARN_MORE"],
+  videos: [{ video_id: "v_old", thumbnail_url: "old", adlabels: [{ id: "l9", name: "video_a" }] }, { video_id: "v_old2", adlabels: [{ id: "l9", name: "video_a" }, { id: "l8", name: "video_b" }] }],
+  additional_data: { x: 1 }, autotranslate: ["pt"], id: "afs1",
+};
+
+test("getAdCreativeSpec: lê também o asset_feed_spec", async () => {
+  const f = recorder(() => ({ creative: { object_story_spec: { page_id: "1", video_data: { video_id: "v_old" } }, asset_feed_spec: FEED, url_tags: "utm_source=meta" } }));
+  const meta = makeMeta({ fetch: f, accessToken: "tok" });
+  const r = await meta.getAdCreativeSpec("ad_src");
+  assert.deepEqual(r.assetFeed, FEED);
+  assert.match(f.calls[0].url, /fields=creative%7Bobject_story_spec%2Casset_feed_spec%2Curl_tags%7D/);
+});
+
+test("assetFeedWithVideo: mantém textos/links/CTA, troca os vídeos pelo novo com os rótulos, tira o que a escrita recusa", () => {
+  const feed = assetFeedWithVideo(FEED, { videoId: "v_new", imageUrl: "thumb_new" });
+  assert.deepEqual(feed.bodies, FEED.bodies);
+  assert.deepEqual(feed.titles, FEED.titles);
+  assert.deepEqual(feed.descriptions, FEED.descriptions);
+  assert.deepEqual(feed.link_urls, FEED.link_urls);
+  assert.deepEqual(feed.call_to_action_types, ["LEARN_MORE"]);
+  assert.deepEqual(feed.videos, [{ video_id: "v_new", thumbnail_url: "thumb_new", adlabels: [{ id: "l9", name: "video_a" }, { id: "l8", name: "video_b" }] }]);
+  assert.equal(feed.additional_data, undefined);
+  assert.equal(feed.autotranslate, undefined);
+  assert.equal(feed.id, undefined);
+  assert.equal(FEED.videos.length, 2, "origem intocada");
+  // Sem texto no feed (ou sem feed), segue pelo video_data.
+  assert.equal(assetFeedWithVideo(null, { videoId: "v" }), null);
+  assert.equal(assetFeedWithVideo({ videos: [{ video_id: "v_old" }] }, { videoId: "v" }), null);
+  // Feed sem ad_formats ganha SINGLE_VIDEO.
+  assert.deepEqual(assetFeedWithVideo({ bodies: [{ text: "x" }] }, { videoId: "v" }).ad_formats, ["SINGLE_VIDEO"]);
+});
+
+test("createVideoCreativeFromSpec: com texto no asset_feed_spec, cria com o feed e o object_story_spec só de página/Instagram", async () => {
+  const f = recorder(() => ({ id: "cr_feed" }));
+  const meta = makeMeta({ fetch: f, accessToken: "tok" });
+  const sourceSpec = { page_id: "10", instagram_user_id: "20", video_data: { video_id: "v_old", image_url: "old", call_to_action: { type: "LEARN_MORE", value: { link: "https://x" } } } };
+  const id = await meta.createVideoCreativeFromSpec("act_9", { name: "1491 [PRICE]", sourceSpec, assetFeed: FEED, videoId: "v_new", imageUrl: "thumb_new", urlTags: "utm_source=meta" });
+  assert.equal(id, "cr_feed");
+  const b = f.calls[0].body;
+  assert.deepEqual(JSON.parse(b.object_story_spec), { page_id: "10", instagram_user_id: "20" }, "sem video_data junto do feed");
+  const feed = JSON.parse(b.asset_feed_spec);
+  assert.equal(feed.bodies[0].text, "Texto principal do 1436");
+  assert.equal(feed.titles[0].text, "Headline do 1436");
+  assert.equal(feed.videos[0].video_id, "v_new");
+  assert.equal(b.url_tags, "utm_source=meta");
+  assert.equal(b.name, "1491 [PRICE]");
+  // Origem sem página: erro claro.
+  await assert.rejects(() => meta.createVideoCreativeFromSpec("act_9", { name: "x", sourceSpec: { video_data: {} }, assetFeed: FEED, videoId: "v", imageUrl: "t" }), /não tem página/);
 });
