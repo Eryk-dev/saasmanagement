@@ -455,7 +455,7 @@ Hoje ninguém tem duas orgs, mas o modelo já aceita.
 1. ~~**Staff do Cockpit:** migração no login ou convite de redefinição.~~ **Fechada (revisão 2):** migração no login, com convite só para quem não logar na janela.
 2. ~~**TOTP:** importar os fatores ou pedir recadastro.~~ **Fechada e validada (27/09):** o GoTrue v2.186 aceita o fator importado (SHA1, 6 dígitos, 30 s); o mesmo autenticador chega a `aal2` no teste da carga, com segredo cifrado em Fernet ou em texto puro legado.
 3. **Postgres da identidade:** ~~subir para a 17 ou manter a 15.8.~~ **Adotada a 17 no repo local** (25/09), a mesma imagem da VPS1 e do dev; o serviço do Coolify (15.8, vazio) é recriado na substituição.
-4. **Onde roda a reconciliação:** job no Coolify da VPS2 (perto do banco da identidade) ou no worker do LeverAds.
+4. ~~**Onde roda a reconciliação:** job no Coolify da VPS2 (perto do banco da identidade) ou no worker do LeverAds.~~ **Fechada (08/10):** serviço `sync` no compose do LeverId no Coolify da VPS2, porque o Postgres da identidade não tem porta pública (seção 7.7).
 5. **`core.org_products` agora ou só com o LeverPrice:** tabela criada na primeira migration (25/09), sem claim no JWT; `create_org_with_owner` aceita o produto.
 6. **Papéis de org:** `owner`/`admin`/`member` no `core`, com `operator` = `member` no LeverAds. Alternativa: manter os nomes do LeverAds no `core`.
 7. ~~**Super admin do LeverAds:** manter a membership na org do cliente de origem ou deixá-lo só na org "Lever".~~ **Fechada (revisão 3):** mantém a membership e a org ativa na org de origem, porque o LeverAds confere o `org_id` contra `public.users.org_id`. O Cockpit deixou de exigir a org "Lever" no token (seção 2.1, "Org ativa e produtos sem tenant").
@@ -509,7 +509,7 @@ Este plano entrega a identidade (login, org, papel, staff). O **RLS** está nas 
 A cópia local do LeverAds conferida estava em v2.31.0, atrás da `origin/develop` (v2.34.1): reconferir os itens do LeverAds contra a `origin` antes de começar.
 
 ### 7.3 Pré-requisitos fora do código (bloqueiam a Fase 0)
-- **DNS** de `auth.leverads.com.br` (e `dev.auth.leverads.com.br` se a decisão 8 for pelo dev).
+- ~~**DNS** de `auth.leverads.com.br`~~ **feito (08/10):** resolve para a VPS2, com certificado Let's Encrypt pelo Coolify. Falta `dev.auth.leverads.com.br` se a decisão 8 for pelo dev.
 - **SMTP** da identidade: credenciais do provedor que o LeverAds já usa.
 - **Backup externo** do LeverId com restore testado (LEV-499). Sem ele, nenhum usuário real é carregado.
 - **Cofre** para a chave ES256, a senha do Postgres, as chaves de serviço por produto e a `TOKEN_ENCRYPTION_KEY`.
@@ -526,10 +526,11 @@ A cópia local do LeverAds conferida estava em v2.31.0, atrás da `origin/develo
 - [x] pgTAP (29 testes) e smoke de ponta a ponta verdes.
 - [x] Fator TOTP importado validado (27/09): entra por `private.sync_upsert_totp` (não há endpoint de importação) e chega a `aal2` com o mesmo autenticador.
 - [x] Admin API aceita `id` escolhido e importa hash bcrypt `$2b$` na **criação**; na **atualização ignora** `password_hash` (responde 200 e não muda a senha) — a troca de senha do LeverAds entra por `private.sync_set_password_hash`. Troca de e-mail pela admin API funciona.
-- [ ] Compose de produção com Kong e substituição do serviço manual do Coolify.
+- [x] Compose de produção com Kong no lugar do serviço manual (08/10): recurso `leverid` no Coolify da VPS2 (`LeverId/docker-compose.prod.yml`, repo `yudi-leverads/LeverId`, deploy key só leitura); `lever-identity` removido. `https://auth.leverads.com.br` responde com JWKS ES256, `apikey` exigida, `svc_*` só no `/rest/v1` e migrations aplicadas; sem usuários. SMTP opcional e ainda vazio.
 - [x] Carga e reconciliação (27/09, `LeverId/scripts/sync-leverads.mjs`): idempotente, dry-run por padrão, `--watch` para a reconciliação; papel `leverid_sync` sem acesso direto a `auth` (funções estreitas) e com policy própria no `core`; pendências no relatório, sem hash nem segredo. Teste de ponta a ponta (`sync-test.mjs`, 28 verificações) contra uma origem sintética com o schema real do LeverAds: carga, idempotência, login com a senha de sempre, owner pelo e-mail da org, org suspensa, super admin, TOTP em `aal2`, e reconciliação de senha, e-mail, papel, lápide, super admin, TOTP e troca de org.
-- [ ] Onde a reconciliação roda em produção (decisão 4) e o levantamento real das pendências (Fase 0) antes da carga.
-- [ ] Produção: DNS, TLS, SMTP, templates PT-BR, captcha, rate limit por IP real, backup.
+- [x] Onde a reconciliação roda em produção (decisão 4): serviço `sync` no compose (08/10, `SYNC_MODE` off/dry-run/apply), validado localmente com origem sintética (dry-run, carga, login com a senha do LeverAds, troca de senha reconciliada).
+- [ ] Levantamento real das pendências (Fase 0) pelo `dry-run` em produção, antes da carga (seção 7.7).
+- [ ] Produção: ~~DNS, TLS, chaves ES256~~ (08/10), SMTP, templates PT-BR, captcha, rate limit por IP real (pronto no compose; conferir atrás do Traefik), backup.
 
 **B. Cockpit (este repo)**
 - [x] Contenção (25/09, branch `feat/auth`): `DEFAULT_ADMINS`/`1234` substituído por `BOOTSTRAP_ADMIN_USER`/`PASSWORD`; API fechada sem `COCKPIT_API_KEY`; CORS restrito fora das rotas abertas (`cors-policy.js`); `APP_ENV` com trava de destino de prod (`app-env.js`); `JOBS_ENABLED`/`JOBS=`; senha nova com 8+ caracteres em criar, resetar e trocar.
@@ -578,3 +579,38 @@ O plano da plataforma valida o JWT no banco pelo PostgREST com o JWKS da identid
 3. Fases 1 a 3 deste plano: carga, backends em modo dual (dormente), piloto no Cockpit.
 4. Fase 4 (virada do LeverAds) e Fase 5 (desligamento do legado).
 5. RLS: Cockpit, depois LeverAds, pelo mecanismo da decisão 9.
+
+### 7.7 Migração dos usuários do LeverAds (plano de 08/10)
+
+**Base:** relatório `correlacao-orgs.csv` (08/10, LeverAds × Cockpit): 170 orgs, 238 usuários (131 orgs com um usuário só; 112 com login nos últimos 30 dias; 41 com usuário que nunca logou). Volume pequeno: a carga é uma rodada do `sync`, sem janela.
+
+**O que não vai para a identidade:** o acesso pago (`paga`, `cortesia`, `sem_acesso`, `contrato_vencido`) é paywall e fica no LeverAds. A org só fica `suspended` no LeverId quando `orgs.active=false`.
+
+**Duas frentes separadas:**
+- **A. Usuários (LeverAds → LeverId).** A origem é o banco do LeverAds, pelo serviço `sync`.
+- **B. Clientes do Cockpit × orgs** (`leveradsOrgId` → `orgId`, Fase 3). É o que o relatório correlaciona.
+
+**Frente A, em ordem:**
+1. **Bloqueio:** backup externo do LeverId com restore testado (LEV-499). Serviço `backup` no ar desde 08/10 (desligado): dump diário de `auth` e `core` criptografado com age (privada no cofre), S3 de outro provedor, retenção de 30 dias; restore validado localmente de ponta a ponta. **Ligado em 08/10 com destino provisório na mesma VPS** (`backup-store`, volume `backup-data`): protege contra exclusão e corrupção, não contra a perda da VPS. Basta até o LeverId virar fonte da verdade, porque até lá ele se recarrega inteiro do LeverAds pelo `sync`; antes do piloto do Cockpit e da virada do LeverAds, o destino passa a um provedor externo. Falta restaurar um backup real depois da carga.
+2. **Acesso:** papel `leverid_reader` só leitura no banco do LeverAds (SQL no README do LeverId), `LEVERADS_DB_URL` e `LEVERADS_TOKEN_ENCRYPTION_KEY` no Coolify; `SYNC_DB_PASSWORD` já está no `.env.production`.
+3. **Limpeza antes da carga** (decisão no LeverAds): 3 orgs `provavel_teste` (2 marcadas como pagas), "laura" e "Conta excluida" (`inativa`, sem usuário), "Autozen" em duas orgs.
+4. **Levantamento (Fase 0):** `SYNC_MODE=dry-run`; o log traz o plano e as pendências por id (sem e-mail, e-mail repetido, hash fora do bcrypt, TOTP que não decifra, org sem owner). Revisão manual.
+   - **Feito em 08/10 (produção, só leitura):** a origem tem 171 orgs e 247 usuários ativos. Entrariam 245 contas, 171 orgs, 245 memberships, 7 staff (super admins) e **131 fatores TOTP, todos decifrados**. Pendências: **2**, ambas `hash_desconhecido` de contas inativas com a senha marcada `!del…` (Audit Probe e Besser Store), que já não logam hoje. Nenhuma conta sem e-mail, e-mail repetido ou org sem owner.
+   - **Leitura provisória com o `cockpit_reader`** (decisão do usuário, 08/10): não há credencial de admin do levercopy na VPS para criar o `leverid_reader`. Trocar quando ele existir.
+   - **Achado:** o `cockpit_reader` ignora o RLS e lê `password_hash`, `totp_secret` e `totp_recovery_codes` de `public.users`; o Cockpit não precisa dessas colunas. Restringir.
+5. **Carga:** `SYNC_MODE=apply`. Conferir contagens (170 orgs e 238 usuários menos o excluído) e login de contas internas com a senha de sempre e os claims iguais a `public.users`.
+   - **Feita em 08/10:** 243 contas, 171 orgs, 243 memberships, 7 staff e 130 fatores TOTP no LeverId; a rodada seguinte veio sem mudança (reconciliação a cada 300 s). A primeira tentativa parou num e-mail que o GoTrue recusa; o `sync` passou a tratar isso como pendência (`email_invalido`, `gotrue_recusou`).
+   - **Pendências (4):** 2 contas inativas com senha `!del…` (sem efeito) e **2 contas ativas com letra acentuada no e-mail** (`ú` numa conta da Lever Money e `ç` no admin da Espaço Renault, que usa 2FA). O GoTrue não aceita; **trocar o e-mail por um sem acento antes da Fase 4**, combinando com cada pessoa.
+   - **Falta:** login de contas internas com a senha de sempre e o restore de um backup com esses dados.
+6. **Reconciliação:** `apply` fica ligado a cada 300 s; pronto com 48 h sem diferença. Antes da Fase 4 ninguém loga pelo LeverId, então a reconciliação basta; o dual-write no LeverAds é pré-requisito só da virada.
+7. **Equipe do Cockpit:** a org interna (Lever Money, 6 usuários) já chega com conta; o vínculo em Ajustes → Equipe → LeverId reaproveita a conta (uma pessoa, uma conta).
+
+**Frente B:**
+1. 43 orgs já ligadas (`cliente_vinculado`).
+2. 50 com cliente candidato (36 `cliente_pista`, 14 `cliente_prova`): CS confirma antes de gravar o vínculo, sempre pelo id (os nomes de cliente são primeiros nomes e se repetem entre orgs).
+3. 34 só batem com lead.
+4. 39 sem correspondência, 26 delas pagas (17 com login nos últimos 30 dias): cliente pagante fora do Cockpit. Não trava a migração; é pendência de CS e financeiro.
+5. Com os vínculos limpos, `leveradsOrgId` → `orgId`.
+
+**Para o cliente nada muda até a Fase 4**, e mesmo nela a senha e o autenticador são os mesmos.
+
