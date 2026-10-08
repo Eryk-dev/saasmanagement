@@ -31,6 +31,27 @@ export const OFFER_CUE_RX = /consigo|tenho .*(?:livre|dispon)|tenho agenda|qual 
 export const NOT_OFFER_RX = /nossa conversa|agendad|remarcad|confirmando|est[áa] tudo certo|te espero|come[çc]a em|separou|marcad[oa] (?:ent[ãa]o )?pra/i;
 export const isOfferMsg = (t) => SLOTS_RX.test(t || "") && OFFER_CUE_RX.test(t || "") && !NOT_OFFER_RX.test(t || "");
 
+// MESMO DIA, DIA UMA VEZ (Leo, 08/10): "segunda às 9h ou segunda às 13h"
+// repete o dia à toa; a oferta sai "segunda às 9h ou às 13h". Dias diferentes
+// seguem com o dia em cada hora ("terça às 17h ou quarta às 17h").
+// `expandSameDay` é o inverso, pra quem LÊ a oferta de volta (offeredSlotsIn
+// e a validação do motor): "amanhã às 9h ou às 11h" vira "amanhã às 9h ou
+// amanhã às 11h" antes de virar slot.
+const DAY_LABEL_SRC = "(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo)((?: \\d{2}\\/\\d{2})?)";
+const SAME_DAY_PAIR_RX = new RegExp(`\\b${DAY_LABEL_SRC} [àa]s (\\d{1,2}h\\d{0,2})(,| ou| e) \\1\\2 [àa]s (\\d{1,2}h\\d{0,2})`, "gi");
+const BARE_SECOND_RX = new RegExp(`\\b${DAY_LABEL_SRC} [àa]s (\\d{1,2}h\\d{0,2})(,| ou| e) [àa]s (\\d{1,2}h\\d{0,2})`, "gi");
+const rewriteUntilStable = (text, rx, fn) => {
+  let t = String(text || "");
+  for (let i = 0; i < 3; i++) {
+    const next = t.replace(rx, fn);
+    if (next === t) break;
+    t = next;
+  }
+  return t;
+};
+export const collapseSameDay = (text) => rewriteUntilStable(text, SAME_DAY_PAIR_RX, (_, day, dm, h1, sep, h2) => `${day}${dm} às ${h1}${sep} às ${h2}`);
+export const expandSameDay = (text) => rewriteUntilStable(text, BARE_SECOND_RX, (_, day, dm, h1, sep, h2) => `${day}${dm} às ${h1}${sep} ${day}${dm} às ${h2}`);
+
 // ACEITE curto do lead ("pode", "certo", "sim", "fechado"), no texto já
 // normalizado (sem acento, minúsculo).
 export const ACCEPT_RX = /(^|\s)(sim|pode|pode ser|pode sim|certo|ok|okay|beleza|blz|fechado|combinado|perfeito|bora|vamos|isso|confirmo|topo|top|show|claro|serve|otimo|maravilha)(\s|[!.,)]|$)/;
@@ -51,7 +72,7 @@ export function offeredSlotsIn(msgs = [], botAuthor = "sdr-bot") {
   if (!Number.isFinite(sentAt)) return [];
   const base = new Date(sentAt - BRT_MS); // relógio de parede BRT na hora da oferta (campos UTC)
   const out = [];
-  for (const m of String(last.text || "").matchAll(OFFER_LABEL_RX)) {
+  for (const m of expandSameDay(last.text).matchAll(OFFER_LABEL_RX)) {
     const word = m[1].normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
     let d = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate()));
     if (m[2]) d = new Date(Date.UTC(base.getUTCFullYear(), Number(m[3]) - 1, Number(m[2])));
@@ -66,16 +87,27 @@ export function offeredSlotsIn(msgs = [], botAuthor = "sdr-bot") {
   return out;
 }
 
-// Qual dos horários ofertados o lead ACEITOU: hora citada ("14h", "as 9") casa
-// com um deles; sem hora, um único ofertado é o aceito; dois sem hora = ambíguo.
+// Qual dos horários ofertados o lead ACEITOU: hora citada ("14h", "as 9", ou o
+// NÚMERO SOLTO "18" em resposta à oferta, Leo 08/10) casa com um deles; sem
+// hora, um único ofertado é o aceito; dois sem hora = ambíguo. A mesma hora em
+// dois dias oferecidos ("terça às 17h ou quarta às 17h" + "17") só casa se o
+// lead disse o dia; senão é ambíguo e fica pra pergunta.
+export const BARE_HOUR_RX = /^\s*(?:[àa]s\s*)?(\d{1,2})\s*(?:h|hrs|horas)?\s*[.!?]*$/i;
 export function acceptedSlot(text, offered = []) {
   const t = String(text || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-  const hm = t.match(/\b(\d{1,2})(?:\s?h\s?(\d{2})?|:(\d{2}))\b|\b(?:as|às)\s+(\d{1,2})\b/);
+  const hm = t.match(/\b(\d{1,2})(?:\s?h\s?(\d{2})?|:(\d{2}))\b|\b(?:as|às)\s+(\d{1,2})\b/) || t.match(BARE_HOUR_RX);
   if (hm) {
     const h = Number(hm[1] || hm[4]), mm = hm[2] || hm[3] || "00";
-    const hit = offered.find((s) => s.at.slice(11, 13) === pad2(h) && s.at.slice(14, 16) === mm)
-      || offered.find((s) => s.at.slice(11, 13) === pad2(h));
-    if (hit) return hit;
+    const exact = offered.filter((s) => s.at.slice(11, 13) === pad2(h) && s.at.slice(14, 16) === mm);
+    const byHour = exact.length ? exact : offered.filter((s) => s.at.slice(11, 13) === pad2(h));
+    if (byHour.length === 1) return byHour[0];
+    if (byHour.length > 1) {
+      const named = byHour.find((s) => {
+        const day = String(s.label || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().split(" ")[0];
+        return day && new RegExp(`\\b${day}\\b`).test(t);
+      });
+      return named || null;
+    }
   }
   if (offered.length === 1 && ACCEPT_RX.test(t)) return offered[0];
   if (offered.length >= 2 && /\b(?:o )?primeir[oa]\b/.test(t)) return offered[0];
