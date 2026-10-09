@@ -378,6 +378,7 @@ export const api = {
   // adVideoJob abaixo.
   // Criar anúncio clonando um conjunto e trocando o vídeo (mesmo padrão).
   adFromVideo: (saas, formData, onProgress) => upload(`/api/marketing/${saas}/ad-from-video`, formData, onProgress),
+  metaAdsetAddPlacement: (saas, adsetId, hint) => req("POST", `/api/marketing/${saas}/adsets/${adsetId}/placement`, { hint }),
   adVideoJob: (jobId) => req("GET", `/api/marketing/job/${jobId}`),
   // Gasto com IA (OpenRouter/OpenAI/Anthropic), agregado em USD.
   aiCosts: (days) => req("GET", `/api/ai-costs${days ? `?days=${days}` : ""}`),

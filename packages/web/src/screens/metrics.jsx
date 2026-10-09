@@ -60,7 +60,11 @@ async function waitForVideoJob(jobId, onStep) {
       throw e;
     }
     if (job.status === "done") return job;
-    if (job.status === "error") throw new Error(job.error || "o servidor não conseguiu terminar");
+    if (job.status === "error") {
+      const e = new Error(job.error || "o servidor não conseguiu terminar");
+      if (job.fix) e.fix = job.fix; // ajuste explícito que a tela pode oferecer
+      throw e;
+    }
     onStep(job.step || "processando");
     if (Date.now() > deadline) throw new Error("passou de 25 minutos sem terminar — confira no Gerenciador da Meta antes de subir de novo");
   }
@@ -1480,7 +1484,7 @@ function JobProgress({ pct, step }) {
 // A fila da leva: uma linha por vídeo, com o estado de cada um. Numa leva de
 // cinco, o que importa é enxergar qual está subindo, quais já nasceram e qual
 // falhou — sem isso, um erro no meio some no meio dos outros.
-function FilaDeVideos({ itens, pain }) {
+function FilaDeVideos({ itens, pain, onFix = null }) {
   const cor = { fila: "var(--fg-4)", enviando: "var(--fg-2)", servidor: "var(--fg-2)", ok: "var(--pos)", erro: "var(--neg)" };
   const marca = { fila: "•", enviando: "↑", servidor: "◍", ok: "✓", erro: "✕" };
   return (
@@ -1496,6 +1500,12 @@ function FilaDeVideos({ itens, pain }) {
             {it.estado === "ok" && (it.passo ? `criado, mas ATENÇÃO: ${it.passo}` : "criado pausado")}
             {it.estado === "erro" && it.erro}
           </span>
+          {it.estado === "erro" && it.fix && onFix && (
+            <button onClick={() => onFix(i)} title={`${it.fix.hint}. Acrescenta "${it.fix.label}" ao posicionamento do conjunto de origem (nada mais muda) e sobe este vídeo de novo.`}
+              style={{ height: 26, padding: "0 10px", borderRadius: 999, fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)" }}>
+              Adicionar {it.fix.label} ao conjunto de origem e subir de novo
+            </button>
+          )}
           {it.estado === "enviando" && (
             <span style={{ width: 60, height: 3, borderRadius: 2, background: "var(--line-2)", overflow: "hidden" }}>
               <span style={{ display: "block", height: "100%", width: `${Math.round(it.pct * 100)}%`, background: "var(--accent)", transition: "width .2s" }} />
@@ -1587,15 +1597,38 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
   // dois uploads juntos só se atrapalham), mas o trabalho na Meta segue no
   // servidor: enquanto o 2º vídeo sobe, o 1º já está sendo processado lá.
   async function submit() {
-    if(writing.current || !valid)return;writing.current=true;
-    setBusy(true);
-    const inicial = comArquivo.map((l) => ({ file: l.file, nome: l.file.name, numero: l.numero.trim(), estado: "fila", pct: 0, passo: "", erro: "", resultado: null }));
+    if(writing.current || !valid)return;
+    const inicial = comArquivo.map((l) => ({ file: l.file, nome: l.file.name, numero: l.numero.trim(), estado: "fila", pct: 0, passo: "", erro: "", fix: null, resultado: null }));
     setQueue(inicial);
+    await enviar(inicial, (i) => i);
+  }
+  // Cópia recusada por posicionamento em par: ajusta o conjunto de ORIGEM
+  // (uma posição a mais, a que a Meta pediu) e sobe o mesmo vídeo de novo.
+  // Explícito: só acontece no clique, e a fila mostra o que foi feito.
+  async function ajustarESubir(i) {
+    const item = queue[i];
+    if (writing.current || !item?.fix || !item.file) return;
+    setQueue((prev) => prev.map((it, k) => (k === i ? { ...it, estado: "servidor", passo: `adicionando ${item.fix.label} ao conjunto de origem…`, erro: "", fix: null } : it)));
+    try {
+      const r = await api.metaAdsetAddPlacement(product.id, item.fix.sourceAdsetId, item.fix.hint);
+      onError(`${r.name || "conjunto de origem"}: ${r.changed ? `${r.label} adicionado ao posicionamento` : `${r.label} já estava no posicionamento`}; subindo o vídeo de novo.`);
+    } catch (e) {
+      setQueue((prev) => prev.map((it, k) => (k === i ? { ...it, estado: "erro", erro: `ajuste do conjunto de origem falhou: ${e.message}`, fix: item.fix } : it)));
+      return;
+    }
+    const reenvio = { ...item, estado: "fila", pct: 0, passo: "", erro: "", fix: null, resultado: null };
+    setQueue((prev) => prev.map((it, k) => (k === i ? reenvio : it)));
+    await enviar([reenvio], () => i);
+  }
+  async function enviar(inicial, indice) {
+    writing.current=true;
+    setBusy(true);
     const patch = (i, p) => setQueue((prev) => prev.map((it, k) => (k === i ? { ...it, ...p } : it)));
 
     const acompanhando = [];
-    for (let i = 0; i < inicial.length; i++) {
-      const item = inicial[i];
+    for (let n = 0; n < inicial.length; n++) {
+      const item = inicial[n];
+      const i = indice(n);
       try {
         patch(i, { estado: "enviando" });
         const fd = new FormData();
@@ -1612,7 +1645,7 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
         acompanhando.push(
           waitForVideoJob(jobId, (passo) => patch(i, { passo }))
             .then((job) => { patch(i, { estado: "ok", resultado: job.result, passo: job.warning || "" }); return { ok: true, job }; })
-            .catch((e) => { patch(i, { estado: "erro", erro: e.message }); return { ok: false, nome: item.nome, erro: e.message }; }),
+            .catch((e) => { patch(i, { estado: "erro", erro: e.message, fix: e.fix || null }); return { ok: false, nome: item.nome, erro: e.message, fix: e.fix || null }; }),
         );
       } catch (e) {
         patch(i, { estado: "erro", erro: e.message });
@@ -1627,7 +1660,8 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
     const avisos = feitos.filter((x) => x.job.warning).map((x) => x.job.warning);
     avisarConclusao(feitos.length, falhas.length);
     if (falhas.length) {
-      onError(`${feitos.length} de ${r.length} anúncios criados. Falharam: ${falhas.map((f) => `${f.nome} (${f.erro})`).join(" · ")}`);
+      const comAjuste = falhas.filter((f) => f.fix).length;
+      onError(`${feitos.length} de ${r.length} anúncios criados. Falharam: ${falhas.map((f) => `${f.nome} (${f.erro})`).join(" · ")}${comAjuste ? " · A Meta recusou copiar o conjunto de origem por posicionamento em par: na fila abaixo tem o botão pra ajustar o conjunto de origem e subir de novo." : ""}`);
       return; // painel fica aberto com a fila, pra ver o que caiu e repetir só isso
     }
     const nomes = feitos.map((x) => x.job.result.adsetName).join(", ");
@@ -1751,7 +1785,7 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
         </div>
 
         {accepted && !busy && <p role="status" className="ads-error">Confira os resultados da leva antes de iniciar outra criação. O envio já foi aceito.</p>}
-        {queue.length > 0 && <FilaDeVideos itens={queue} pain={painCodeSel} />}
+        {queue.length > 0 && <FilaDeVideos itens={queue} pain={painCodeSel} onFix={busy ? null : ajustarESubir} />}
 
         <div className="mono dim" style={{ fontSize: 10.5, lineHeight: 1.5 }}>
           cada vídeo vira um anúncio: clona o conjunto escolhido (mantém público, posicionamento, copy, título, CTA, link e UTMs do anúncio de origem), troca só o vídeo, nomeia conjunto e anúncio como «número [dor]» (a dor vem do nome da campanha) e aplica o orçamento diário acima. Os vídeos sobem um de cada vez, pra Meta não recusar por excesso de chamadas. O teto de R$ {MAX_BUDGET} por conjunto é travado também no servidor, e se a campanha usar orçamento de CAMPANHA (CBO) o anúncio sobe pausado, porque ali o teto não pode ser garantido.

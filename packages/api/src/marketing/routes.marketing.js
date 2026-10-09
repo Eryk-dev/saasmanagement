@@ -22,6 +22,7 @@ import { kindOf } from "../crm/stages.js";
 import { isRealLead, isSaleLead, winsIn, customerStartMap, leadOrigin, LEAD_ORIGINS, callOutcome, upsellSalesIn, upsellContractedOf, leadGrade } from "../metrics/metrics-core.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "../platform/http-status.js";
 import { painCode } from "./attribution.js";
+import { placementFromHint } from "./meta.js";
 import { metaAdAccounts } from "./meta-accounts.js";
 import { makeTtlCache } from "../platform/ttl-cache.js";
 import { DAY_MS, dayStr, lastSyncAt, syncProductInsights, videoJobs } from "./meta-sync.js";
@@ -519,6 +520,10 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         // O passo em que morreu é metade do diagnóstico: "Invalid parameter"
         // sozinho não diz se foi o clone, o orçamento ou a troca do vídeo.
         job.error = `falhou em «${job.step}»: ${String(err.message || err).slice(0, 400)}`;
+        // Cópia recusada por posicionamento em par: a tela oferece o ajuste
+        // do conjunto de ORIGEM (um clique, explícito) e o reenvio do vídeo.
+        const fix = err.placementHint ? placementFromHint(err.placementHint) : null;
+        if (fix) job.fix = { kind: "placement", sourceAdsetId, hint: err.placementHint, label: fix.label, position: fix.position };
       } finally {
         await spool.cleanup();
       }
@@ -526,6 +531,24 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     // Sem await: a resposta sai agora e o trabalho entra na fila do produto.
     enqueueVideoJob(product.id, job, run);
     return reply.code(202).send({ ok: true, jobId: job.id, name: finalName, queued: job.queued });
+  });
+
+  // Ajuste EXPLÍCITO do conjunto de origem quando a Meta recusa a cópia por
+  // posicionamento em par (ver job.fix acima): acrescenta ao targeting do
+  // conjunto a posição que a dica dela pede, e nada mais. O Gerenciador novo
+  // não expõe mais essa lista pra marcar na mão (Leo, 09/10).
+  app.post("/api/marketing/:saas/adsets/:id/placement", async (req, reply) => {
+    if (!meta.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "Not found" });
+    const fix = placementFromHint(req.body?.hint);
+    if (!fix) return reply.code(400).send({ error: "não reconheci o posicionamento pedido pela Meta nessa dica — ajuste no Gerenciador" });
+    try {
+      const r = await meta.addAdSetPlacement(req.params.id, fix);
+      return { ok: true, ...r, label: fix.label, position: fix.position };
+    } catch (err) {
+      return reply.code(UPSTREAM_FAILED).send({ error: err.message });
+    }
   });
 
   // Acompanhamento do trabalho de vídeo (polling do front). Some depois de 1h.
