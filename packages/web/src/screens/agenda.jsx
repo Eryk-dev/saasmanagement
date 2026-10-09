@@ -4,12 +4,16 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { usersByRole, currentUser, displayName, userColor } from "../lib/users.js";
 import { Segmented } from "../components/viz.jsx";
-import { PrimaryButton } from "../atoms.jsx";
+import { PrimaryButton, SecondaryButton } from "../atoms.jsx";
 import { AgendaView } from "./agenda-grid.jsx";
 import { stageKind } from "../lib/funnel.js";
 import { isNoShowStage } from "../lib/scripts.js";
 import { Drawer } from "../components/overlay.jsx";
+import { Popover } from "../components/popover.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
+import { callBusyKeys, integBusyKeys, occupySlots, slotVal } from "./today.jsx";
+import { moveErrorText } from "../components/stage-move.jsx";
+import { bizWall, bizNow } from "../lib/format.js";
 import "./agenda.css";
 
 // Tela Agenda — a agenda DE VERDADE do time, tudo num calendário só:
@@ -19,7 +23,8 @@ import "./agenda.css";
 //     pontual ou recorrente — aparecem na cor da pessoa;
 //   · BLOQUEIOS (kind "block"): mesmo registro, tracejado vermelho.
 // Clique num horário vazio abre o modal de criar; clique num compromisso ou
-// bloqueio abre pra editar/excluir. Ambos entram na "agenda ocupada" (busyView
+// bloqueio abre pra editar/excluir. Arrastar call, integração ou compromisso
+// muda o horário e, pela coluna, a pessoa (moveCheck/moveApply). Ambos entram na "agenda ocupada" (busyView
 // em today.jsx) que a SlotGrid consulta em todo lugar que marca call/integração.
 // Conflito: só compromisso PRÓPRIO e VIVO da pessoa (call dela como closer fora
 // de follow-up/fechado; integração dela como integrador) impede salvar por cima.
@@ -93,9 +98,26 @@ export function AgendaScreen({ onOpenLead }) {
   const [view, setViewState] = useS(() => { try { return localStorage.getItem("cockpit_agenda_view") || "day"; } catch { return "day"; } });
   const setView = (v) => { setViewState(v); try { localStorage.setItem("cockpit_agenda_view", v); } catch { /* ignore */ } };
 
-  // Filtro por pessoa: mostra só os eventos/itens dela ("" = time inteiro).
-  const [person, setPersonState] = useS(() => { try { return localStorage.getItem("cockpit_agenda_person") || ""; } catch { return ""; } });
-  const setPerson = (id) => { setPersonState(id); try { localStorage.setItem("cockpit_agenda_person", id); } catch { /* ignore */ } };
+  // Filtro de pessoas: quem da equipe aparece na grade ([] = time inteiro).
+  // Fica no navegador POR PESSOA E PRODUTO (mesma régua das preferências de
+  // Tarefas, tasks/prefs.js): dois operadores no mesmo computador e os dois
+  // workspaces não dividem a escolha. Era uma pessoa só e global
+  // (cockpit_agenda_person); a escolha antiga vira a lista na primeira
+  // abertura. Id fora da equipe do produto (pessoa que saiu) é ignorado em vez
+  // de esvaziar a grade.
+  const selKey = `cockpit_agenda_people:${meId || "anon"}:${saasId || "all"}`;
+  const readSel = () => {
+    try {
+      const raw = localStorage.getItem(selKey);
+      if (raw) { const v = JSON.parse(raw); if (Array.isArray(v)) return v.filter((x) => typeof x === "string"); }
+      const old = localStorage.getItem("cockpit_agenda_person");
+      return old ? [old] : [];
+    } catch { return []; }
+  };
+  const [savedSel, setSavedSel] = useS(readSel);
+  useE(() => { setSavedSel(readSel()); }, [selKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const setPeopleSel = (ids) => { setSavedSel(ids); try { localStorage.setItem(selKey, JSON.stringify(ids)); } catch { /* ignore */ } };
+  const peopleSel = useM(() => savedSel.filter((id) => people.some((p) => p.id === id)), [savedSel, people]);
 
   // ── Os avisos da semana (protótipo, 14/09) ──────────────────────────────
   // A tela abria direto na grade: quem furou, quem não confirmou e quem passou
@@ -106,23 +128,26 @@ export function AgendaScreen({ onOpenLead }) {
   // Cada número sai dos MESMOS leads que a grade desenha, não de literal.
   const avisos = useM(() => {
     const saasCfg = (window.SEED?.SAAS || []).find((x) => x.id === saasId) || null;
-    const agora = Date.now();
-    const hoje0 = new Date(); hoje0.setHours(0, 0, 0, 0);
-    const fimHoje = new Date(); fimHoje.setHours(23, 59, 59, 999);
+    // Relógio de Brasília (bizWall/bizNow, lib/format.js): "hoje" e "passou"
+    // são os do negócio, mesmo com o navegador em outro fuso.
+    const wallMs = (v) => { const d = v ? bizWall(v) : null; return d ? d.getTime() : NaN; };
+    const agora = bizNow().getTime();
+    const hoje0 = bizNow(); hoje0.setHours(0, 0, 0, 0);
+    const fimHoje = bizNow(); fimHoje.setHours(23, 59, 59, 999);
     const semana0 = new Date(hoje0); semana0.setDate(semana0.getDate() - ((semana0.getDay() + 6) % 7));
 
     const furaram = [];      // call marcada que passou e o lead caiu em no-show
     const semConfirmar = []; // call de HOJE que o lead ainda não confirmou
     const semRemarcar = [];  // passou do horário e não há novo compromisso
     for (const l of leads) {
-      const t = l.callAt ? new Date(l.callAt).getTime() : NaN;
+      const t = wallMs(l.callAt);
       if (!Number.isFinite(t)) continue;
       const kind = stageKind(saasCfg, l.stage);
       if (isNoShowStage(saasCfg, l.stage) && t >= semana0.getTime() && t <= agora) { furaram.push(l); continue; }
       if (DEAD_CALL_KINDS.has(kind)) continue;
       if (t >= hoje0.getTime() && t <= fimHoje.getTime() && t > agora && !l.callConfirmed) { semConfirmar.push(l); continue; }
       if (t < agora) {
-        const prox = l.nextActionAt ? new Date(l.nextActionAt).getTime() : NaN;
+        const prox = wallMs(l.nextActionAt);
         if (!Number.isFinite(prox) || prox < agora) semRemarcar.push(l);
       }
     }
@@ -151,7 +176,7 @@ export function AgendaScreen({ onOpenLead }) {
     return blocks
       .filter(ofSaas) // produto ativo (bloqueio legado sem saas aparece em todos)
       .filter((b) => (b.recur === "weekly" ? Number(b.weekday) === wd : b.date === ds))
-      .filter((b) => !person || participantsOf(b).includes(person))
+      .filter((b) => !peopleSel.length || participantsOf(b).some((id) => peopleSel.includes(id)))
       .map(decorate);
   };
 
@@ -161,8 +186,8 @@ export function AgendaScreen({ onOpenLead }) {
     const m = new Map(); // `${user}|${date}|${hour}` -> descrição
     const saasCfgOf = (l) => (window.SEED?.SAAS || []).find((x) => x.id === l.saas);
     const put = (user, at, what) => {
-      const d = new Date(at);
-      if (Number.isFinite(d.getTime())) m.set(`${user}|${ymd(d)}|${d.getHours()}`, what);
+      const d = bizWall(at); // dia e hora de Brasília, como o bloqueio guarda
+      if (d) m.set(`${user}|${ymd(d)}|${d.getHours()}`, what);
     };
     for (const l of leads) {
       if (l.closer && l.callAt && !DEAD_CALL_KINDS.has(stageKind(saasCfgOf(l), l.stage))) put(l.closer, l.callAt, `call com ${l.name || "lead"}`);
@@ -255,6 +280,138 @@ export function AgendaScreen({ onOpenLead }) {
     return null;
   }
 
+  // ── Arrastar na grade (09/10/2026) ──────────────────────────────────────
+  // A grade diz onde o item caiu ({ day, hour, person }; person undefined = a
+  // visão não tem faixas e a pessoa fica). `moveCheck` responde por que NÃO
+  // pode (string) e pinta o destino de vermelho durante o arrasto; o
+  // `moveApply` confere de novo e grava pelo mesmo caminho dos outros fluxos.
+  const firstName = (id) => displayName(id).split(" ")[0];
+  const leadMovePlan = (item, { day, hour, person }) => {
+    const l = leads.find((x) => x.id === item.l.id);
+    if (!l) return { error: "Card não encontrado" };
+    const isCall = item.kind === "call";
+    const who = person === undefined ? item.who : person;
+    if (!who) return { error: "Solte na coluna de uma pessoa" };
+    // Trocar de pessoa exige o papel da agenda (Ajustes → Equipe): call vai
+    // pra closer, integração pra integrador.
+    if (who !== item.who && !usersByRole(isCall ? "closer" : "integrator").some((u) => u.id === who)) {
+      return { error: `${firstName(who)} não é ${isCall ? "closer" : "integrador"}` };
+    }
+    const start = new Date(day); start.setHours(Math.floor(hour), Math.round((hour % 1) * 60), 0, 0);
+    // Soltar no mesmo lugar (com o arredondamento de 30 min) não é remarcar.
+    if (who === item.who && Math.abs(start.getTime() - item.t.getTime()) < 15 * 60000) return { same: true };
+    // `day` e `item.t` são relógio de Brasília (a grade); o agora também.
+    if (start.getTime() < bizNow().getTime()) return { error: "Esse horário já passou" };
+    // Mesma régua da SlotGrid: calls e integrações da pessoa (fora este card),
+    // bloqueios, compromissos, consultas e o horário de atendimento.
+    const busy = [callBusyKeys(leads, who, l.id), integBusyKeys(leads, who, l.id)];
+    for (const k of occupySlots(start)) {
+      const hit = busy.find((b) => b.has(k));
+      if (hit) {
+        const info = hit.info ? hit.info(k) : null;
+        return { error: `${firstName(who)}: ${info?.kind === "block" && info.reason ? info.reason : "agenda ocupada"}` };
+      }
+    }
+    const when = slotVal(start, start.getHours(), start.getMinutes());
+    const patch = isCall
+      ? { callAt: when, callConfirmed: false, ...(who !== item.who ? { closer: who } : {}) }
+      : { integrationAt: when, integrationConfirmed: false, ...(who !== item.who ? { integrator: who } : {}) };
+    return { l, who, start, patch, isCall };
+  };
+  const blockMovePlan = (item, { day, hour, person }) => {
+    const b = blocks.find((x) => x.id === item.b.id);
+    if (!b) return { error: "Item não encontrado" };
+    const parts = participantsOf(b);
+    // Só troca de pessoa quando o item estava na faixa de alguém e caiu na de
+    // OUTRA que ainda não participa; cair na faixa de outra participante só
+    // muda o horário.
+    let users = parts;
+    if (person !== undefined && item.fromPerson && person !== item.fromPerson) {
+      if (!person) return { error: "Solte na coluna de uma pessoa" };
+      if (!parts.includes(person)) users = parts.map((u) => (u === item.fromPerson ? person : u));
+    }
+    const dur = Number(b.toHour) - Number(b.fromHour);
+    const from = hour, to = hour + dur;
+    const weekly = b.recur === "weekly";
+    const date = ymd(day);
+    const sameUsers = users.length === parts.length && users.every((u, i) => u === parts[i]);
+    if (sameUsers && from === Number(b.fromHour) && (weekly ? Number(b.weekday) === day.getDay() : b.date === date)) return { same: true };
+    // A mesma conferência do salvar do modal (só item pontual).
+    if (!weekly) {
+      for (const u of users) {
+        const hit = liveConflict(u, date, from, to);
+        if (hit) return { error: `${firstName(u)} já tem ${hit}` };
+      }
+    }
+    const patch = { fromHour: from, toHour: to, user: users[0], users, ...(weekly ? { weekday: day.getDay() } : { date }) };
+    return { b, patch, weekly };
+  };
+  const moveCheck = (item, target) => {
+    const plan = item.type === "lead" ? leadMovePlan(item, target) : blockMovePlan(item, target);
+    return plan.error || null;
+  };
+  // Balão de confirmação do arrasto, ancorado no destino (no lugar do
+  // window.confirm): { target, title, body, action, run }.
+  const [moveAsk, setMoveAsk] = useS(null);
+  const commitLead = async ({ l, patch, isCall }) => {
+    const before = l;
+    setLeads((prev) => prev.map((x) => (x.id === l.id ? { ...x, ...patch } : x)));
+    try {
+      await api.update("leads", l.id, patch);
+      flash(isCall ? "Call remarcada." : "Integração remarcada.");
+    } catch (err) {
+      setLeads((prev) => prev.map((x) => (x.id === l.id ? before : x)));
+      flash(moveErrorText(err));
+    }
+  };
+  const commitBlock = async ({ b, patch }) => {
+    const before = b;
+    setBlocks((prev) => prev.map((x) => (x.id === b.id ? { ...x, ...patch } : x)));
+    try {
+      await api.update("agenda_blocks", b.id, patch);
+      flash("Compromisso movido.");
+    } catch {
+      setBlocks((prev) => prev.map((x) => (x.id === b.id ? before : x)));
+      flash("Não foi possível mover. O item voltou pro horário anterior.");
+    }
+  };
+  function moveApply(item, target) {
+    if (item.type === "lead") {
+      const plan = leadMovePlan(item, target);
+      if (plan.same) return;
+      if (plan.error) { flash(`${plan.error}.`); return; }
+      const { l, who, start, isCall } = plan;
+      const quando = start.toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(/\./g, "");
+      // O Meet acompanha no servidor e o convidado recebe o e-mail de
+      // atualização do Google: arrastar sem querer não pode virar aviso pro
+      // cliente sem a pessoa confirmar.
+      setMoveAsk({
+        target,
+        title: `Remarcar a ${isCall ? "call" : "integração"} de ${l.name || "lead"}?`,
+        when: `${quando}${who !== item.who ? ` · com ${displayName(who)}` : ""}`,
+        body: `O convite do Meet acompanha e o ${isCall ? "lead" : "cliente"} recebe o e-mail de atualização. A confirmação volta a ficar pendente.`,
+        action: "Remarcar",
+        run: () => commitLead(plan),
+      });
+      return;
+    }
+    const plan = blockMovePlan(item, target);
+    if (plan.same) return;
+    if (plan.error) { flash(`${plan.error}.`); return; }
+    const { b, patch, weekly } = plan;
+    // Compromisso pontual é interno: move direto. O recorrente muda TODAS as
+    // semanas, então pergunta antes.
+    if (!weekly) { commitBlock(plan); return; }
+    setMoveAsk({
+      target,
+      title: `Mover "${b.title || b.reason || (b.kind === "event" ? "compromisso" : "bloqueio")}" em todas as semanas?`,
+      when: `toda ${WD_LABEL[patch.weekday]} · ${fmtH(patch.fromHour)} às ${fmtH(patch.toHour)}`,
+      body: "Este item repete toda semana; a mudança vale pra todas elas.",
+      action: "Mover",
+      run: () => commitBlock(plan),
+    });
+  }
+
   return (
     <div className="agenda-page">
       <header className="agenda-head"><h1>Agenda</h1>
@@ -265,7 +422,7 @@ export function AgendaScreen({ onOpenLead }) {
           {/* A visão desceu pro topo da GRADE (prancha, 14/09): ela manda no
               mesmo eixo que a navegação de período, e as duas ficavam em
               barras diferentes. */}
-          <button className="agenda-primary" onClick={() => setEditor({ block: null, date: ymd(new Date()), fromHour: 9 })}>Criar compromisso</button>
+          <button className="agenda-primary" onClick={() => setEditor({ block: null, date: ymd(bizNow()), fromHour: 9 })}>Criar compromisso</button>
         </span>
       </header>
       <div className="agenda-content">
@@ -305,10 +462,25 @@ export function AgendaScreen({ onOpenLead }) {
         </div>
         </section>}
         <AgendaView leads={leads} consultations={consultas} onOpenLead={onOpenLead}
-          person={person || null} people={people} onPerson={setPerson}
+          personIds={peopleSel} people={people} onPersons={setPeopleSel}
           view={view} onView={setView}
-          blocking={{ blocksFor, onSlot, onBlock }} />
+          blocking={{ blocksFor, onSlot, onBlock }}
+          move={{ check: moveCheck, apply: moveApply, pending: moveAsk?.target || null }} />
       </div>
+
+      {moveAsk && (
+        <Popover anchor={moveAsk.target.anchor} onClose={() => setMoveAsk(null)} width={300} label="Confirmar remarcação">
+          <div className="agenda-move-ask">
+            <strong>{moveAsk.title}</strong>
+            <span className="mono" style={{ fontSize: 12, fontWeight: 650, color: "var(--accent)" }}>{moveAsk.when}</span>
+            <p>{moveAsk.body}</p>
+            <div className="agenda-move-ask-actions">
+              <SecondaryButton onClick={() => setMoveAsk(null)}>Cancelar</SecondaryButton>
+              <PrimaryButton onClick={() => { const { run } = moveAsk; setMoveAsk(null); run(); }}>{moveAsk.action}</PrimaryButton>
+            </div>
+          </div>
+        </Popover>
+      )}
 
       {editor && (
         <AgendaItemModal
@@ -343,7 +515,7 @@ const WD_SHORT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 // bug de perder dado: abrir um compromisso de quinta numa quarta mostrava "toda
 // quarta" e salvar MOVIA o compromisso pro dia em que a pessoa mexeu nele.
 // Agora a referência sai do weekday GRAVADO: a próxima data que cai nesse dia.
-export function formDateFor(init, now = new Date()) {
+export function formDateFor(init, now = bizNow()) {
   if (init?.date) return ymd(init.date instanceof Date ? init.date : new Date(`${init.date}T12:00:00`));
   const b = init?.block;
   const d = new Date(now); d.setHours(12, 0, 0, 0);

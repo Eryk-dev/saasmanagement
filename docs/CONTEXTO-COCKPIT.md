@@ -61,7 +61,12 @@ Para reproduzir Visão geral com dados fixos e testes no navegador, usar
 `npm run test:review:offers -w packages/web`; para Contratos,
 `npm run test:review:contracts -w packages/web`; para Formulário de Integração,
 `npm run test:review:intform -w packages/web`; para Agenda,
-`npm run test:review:agenda -w packages/web`; para Inbox,
+`npm run test:review:agenda -w packages/web` e
+`npm run test:review:agenda-drag -w packages/web` (arrastar) e
+`npm run test:review:agenda-people -w packages/web` (filtro de pessoas),
+`npm run test:review:agenda-timezone -w packages/web` (relógio de Brasília em
+outros fusos) e `npm run test:review:agenda-lead-phone -w packages/web`
+(telefone no card); para Inbox,
 `npm run test:review:whatsapp -w packages/web`; para Tickets,
 `npm run test:review:tickets -w packages/web`; para Respostas rápidas,
 `npm run test:review:quick-replies -w packages/web`; para Configurações de SLA,
@@ -762,6 +767,70 @@ por campo, apenas informações explícitas da transcrição. Resumos antigos us
 registrados. Abrir o cartão só consulta a REST, sem gerar resumo nem enviar
 mensagem. Validação de navegador: `node scripts/review/followup-summary.mjs`
 em `packages/web`.
+
+### Agenda no relógio de Brasília — 09/10/2026
+
+A Agenda desenha, compara e grava em hora de Brasília qualquer que seja o fuso
+do navegador. `lib/format.js` tem `brtMs` (valor sem fuso = Brasília, offset
+fixo -03:00 como o `brtToIso` do servidor) e `bizWall`/`bizNow`, que devolvem
+uma Date cujos campos locais são os de Brasília. A grade converte cada
+compromisso, o "hoje", a linha do agora e o padrão do "Criar compromisso" por
+eles; a tela usa o mesmo relógio nos avisos, na conferência de conflito e no
+"já passou" do arrasto, e o `slotVal` grava a hora de Brasília. A régua de
+ocupado de `today.jsx` (`callBusyKeys`, `integBusyKeys`, consultas do
+`busyView`, `useGoogleBusy`) passou a ler os horários por `bizWall`; no
+navegador em Brasília o resultado é o mesmo de antes. Comparar "já aconteceu"
+continua por instante real (`Date.now()`). Outras telas (Minhas atividades,
+SlotGrid, campos de data do card) ainda usam o relógio do navegador.
+
+### Telefone no topo do card — 09/10/2026
+
+O card do lead no layout padrão (o que a Agenda e as demais telas abrem; o
+painel compacto do Pipeline não mudou) mostra o telefone ao lado do nome, sem
+borda, centrado opticamente no nome (meio dos dígitos na altura do meio das
+letras, com ou sem selo de nota; desce pra linha de baixo só quando não cabe), com cursor de link, formatado por `phoneLabel` (`lib/ui.js`, mesmo desenho da Inbox). Um clique
+copia o número formatado (`LeadPhoneCopy` em `deal.jsx`), com "copiado" no
+botão e aviso; se o navegador bloquear, o aviso diz isso sem diálogo nativo.
+Lead sem telefone não mostra o botão.
+
+### Filtro de pessoas na Agenda — 09/10/2026
+
+"Agenda de" escolhe VÁRIAS pessoas da equipe (closers e integradores do
+produto ativo); lista vazia = todos. É sempre um seletor (botão no formato
+pílula que abre o `UserPicker` de seleção múltipla, com "todos" na primeira
+linha via `allLabel`), pra caber na barra com qualquer tamanho de equipe; o
+tipo de evento ao lado usa o `SelectPopover`, sem `<select>` nativo. A grade
+(`personIds`) mostra só
+as faixas, eventos e bloqueios dessas pessoas; compromisso de várias pessoas
+aparece se alguma participante estiver no filtro, mas só abre faixa das
+filtradas. Com uma pessoa só, o fato do período continua falando dos buracos
+da agenda dela. A escolha fica no navegador, por pessoa e produto, em
+`cockpit_agenda_people:<usuário>:<produto>` (JSON, mesma régua de
+`tasks/prefs.js`); não vai para o servidor, então não acompanha a pessoa em
+outro computador. O valor antigo de uma pessoa (`cockpit_agenda_person`) vira
+a lista na primeira abertura, e id fora da equipe do produto é ignorado.
+
+### Arrastar na Agenda — 09/10/2026
+
+Na grade da Agenda (Dia, Semana e Equipe; o Mês não tem horas) dá pra
+arrastar call e integração futuras e compromisso/bloqueio com horário. O
+destino anda em passos de 30 min; no Dia e na Equipe a coluna em que o item
+cai troca a pessoa (call → `closer`, exige papel closer; integração →
+`integrator`, exige papel integrador; compromisso troca só a participante
+daquela faixa). Na Semana a pessoa fica. `agenda-grid.jsx` só informa o
+destino (`move.check`/`move.apply`); `agenda.jsx` confere com a régua da
+SlotGrid (`callBusyKeys`/`integBusyKeys`: agenda ocupada, bloqueios, consultas
+e horário de atendimento), recusa horário passado e mostra o motivo em
+vermelho durante o arrasto. Call/integração pedem confirmação num balão
+ancorado no destino (`Popover`, nunca o `window.confirm`; o Meet move e o
+convidado recebe o e-mail do Google) e gravam pelo PATCH de leads
+(`callAt`/`integrationAt`, confirmação zerada, `closer`/`integrator` quando
+troca); bloqueio pontual vai direto para `agenda_blocks`, o recorrente pede
+confirmação no mesmo balão e muda todas as semanas. O que arrasta mostra o
+cursor de mão (`grab`/`grabbing`). Call passada, consulta 1:1, follow-up e toque não
+arrastam. O hook `useBoardDnd` do Kanban mede índice em lista e não serve à
+grade de horas; o arrasto segue só as convenções dele (HTML5 nativo, `setData`,
+`.is-dragging`).
 
 ### Horário de atendimento — 07/10/2026
 

@@ -11,7 +11,7 @@ import { ActivityComposer } from "../components/timeline.jsx";
 import { waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
 import { meetingInviteText } from "../lib/wa-copy.js";
 import { api } from "../lib/api.js";
-import { bizDay } from "../lib/format.js";
+import { bizDay, bizWall } from "../lib/format.js";
 import { businessDaysBetween } from "../components/period-picker.jsx";
 import { scaledGoal } from "../components/team-cards.jsx";
 import { useData } from "../data.jsx";
@@ -2120,8 +2120,8 @@ export function busyView(concreteKeys, userId) {
   const consultKeys = new Set();
   for (const c of (typeof window !== "undefined" && window.SEED?.CONSULTATION_SLOTS) || []) {
     if (c.user !== userId) continue;
-    const d = new Date(c.at);
-    if (Number.isFinite(d.getTime())) for (const k of occupySlots(d, c.minutes)) consultKeys.add(k);
+    const d = bizWall(c.at); // relógio de Brasília (lib/format.js), igual às chaves da grade
+    if (d) for (const k of occupySlots(d, c.minutes)) consultKeys.add(k);
   }
   const workHours = userById(userId)?.workHours || [];
   return {
@@ -2149,8 +2149,8 @@ export function callBusyKeys(leads, closerId, selfId) {
     if (!closerId || o.id === selfId || o.closer !== closerId || !o.callAt) continue;
     const cfg = saasList.find((s) => s.id === o.saas);
     if (stageKind(cfg, o.stage) === "followup") continue; // follow-up não ocupa a agenda
-    const d = new Date(o.callAt);
-    if (Number.isFinite(d.getTime())) for (const k of occupySlots(d)) busy.add(k);
+    const d = bizWall(o.callAt);
+    if (d) for (const k of occupySlots(d)) busy.add(k);
   }
   return busyView(busy, closerId);
 }
@@ -2162,8 +2162,8 @@ export function integBusyKeys(leads, integratorId, selfId) {
   const busy = new Set();
   for (const o of leads || []) {
     if (!integratorId || o.id === selfId || o.integrator !== integratorId || !o.integrationAt) continue;
-    const d = new Date(o.integrationAt);
-    if (Number.isFinite(d.getTime())) for (const k of occupySlots(d)) busy.add(k);
+    const d = bizWall(o.integrationAt);
+    if (d) for (const k of occupySlots(d)) busy.add(k);
   }
   return busyView(busy, integratorId);
 }
@@ -2187,8 +2187,9 @@ export function useGoogleBusy(userId, day, excludeLeadId = "", until = null) {
       if (!alive) return;
       const keys = new Set();
       for (const b of r?.busy || []) {
-        const s = new Date(b.start), e = new Date(b.end);
-        if (!Number.isFinite(s.getTime()) || !Number.isFinite(e.getTime())) continue;
+        // Intervalo do Google é instante (ISO): a chave sai no relógio de Brasília.
+        const s = bizWall(b.start), e = bizWall(b.end);
+        if (!s || !e) continue;
         for (const k of occupySlots(s, Math.max(SLOT_MIN, Math.round((e - s) / 60000)))) keys.add(k);
       }
       setState({ key, keys, connected: !!r?.connected });

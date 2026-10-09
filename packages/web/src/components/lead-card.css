@@ -17,8 +17,24 @@
 .lead-panel-header { padding: 20px 24px; background: var(--bg-1); border-bottom: 1px solid var(--line-1); }
 .lead-panel-title-row { display: flex; align-items: flex-start; gap: 12px; }
 .lead-panel-title-row > div { flex: 1; min-width: 0; }
-.lead-panel-title { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -.015em; overflow-wrap: anywhere; }
+.lead-panel-title { display: flex; align-items: baseline; gap: 8px; margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -.015em; overflow-wrap: anywhere; }
+/* O selo de nota fica centrado no nome; o TEXTO do nome é quem dá a linha de
+   base do título (com o selo em baseline, o telefone ao lado alinhava pela
+   letra do selo e subia ~5px). */
+.lead-panel-title > .lead-grade { align-self: center; }
 .lead-panel-subtitle { margin-top: 3px; font-size: 13px; line-height: 1.5; color: var(--fg-3); overflow-wrap: anywhere; }
+/* Telefone ao lado do nome, sem borda: clique copia (LeadPhoneCopy em
+   deal.jsx). CENTRO ÓPTICO: o meio dos dígitos na altura do meio das letras
+   do nome. Centrar só as caixas deixava os dígitos ~1,3px acima (Outfit 20px
+   e a sans de 13px têm folgas diferentes) e a linha de base os jogava pra
+   baixo; o `top: .1em` do botão compensa a folga. Quebra pra baixo do nome só
+   quando não cabe. */
+.lead-panel-name-row { display: flex; align-items: center; flex-wrap: wrap; column-gap: 12px; row-gap: 2px; min-width: 0; }
+.lead-panel-phone { display: inline-flex; align-items: center; gap: 5px; padding: 2px 4px; margin: 0 -4px; border: 0; border-radius: 6px; background: transparent; color: var(--fg-2); font-size: 13px; font-weight: 600; white-space: nowrap; line-height: 1.2; position: relative; top: .1em; cursor: pointer; }
+@media (hover: hover) { .lead-panel-phone:hover { color: var(--accent); background: var(--accent-soft); } .lead-panel-phone:hover .lead-panel-phone-hint { color: inherit; } }
+.lead-panel-phone:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.lead-panel-phone-hint { display: inline-flex; align-items: center; font-size: 11px; font-weight: 600; color: var(--fg-4); }
+.lead-panel-phone[data-copied], .lead-panel-phone[data-copied] .lead-panel-phone-hint { color: var(--pos); }
 .lead-panel-close { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px; border: 1px solid var(--line-1); border-radius: var(--r-2); background: var(--bg-1); color: var(--fg-3); }
 .lead-panel-facts { display: flex; flex-wrap: wrap; gap: 16px 22px; margin: 16px 0 0; }
 .lead-panel-facts > div { min-width: 0; }

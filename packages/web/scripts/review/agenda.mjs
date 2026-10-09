@@ -47,7 +47,7 @@ try{
  page.once('dialog',d=>d.accept());await page.keyboard.press('Escape');await dialog(page).waitFor({state:'hidden'});
  await selectView(page,'Mês');await page.locator('.agenda-month-day').nth(15).focus();await page.keyboard.press('Enter');assert.equal(await page.locator('.agenda-month').count(),0);
  await page.getByRole('button',{name:'Hoje',exact:true}).click();await selectView(page,'Equipe');await page.getByRole('button',{name:/\+ livre das/}).first().click();await dialog(page).waitFor();await dialog(page).getByRole('button',{name:'Cancelar',exact:true}).focus();await page.keyboard.press('Escape');
- await page.getByLabel('Tipo de evento',{exact:true}).selectOption('call');assert.equal(await page.locator('.agenda-block').count(),0);
+ await page.getByRole('button',{name:/^Tipo de evento:/}).click();await page.getByRole('option',{name:/^calls/}).click();assert.equal(await page.locator('.agenda-block').count(),0);
  await page.locator('.agenda-hidden').click();await page.locator('.agenda-block').first().waitFor();
  await page.close();
  for(const method of ['create','update','remove']){

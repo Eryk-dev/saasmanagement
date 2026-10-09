@@ -338,15 +338,16 @@ try {
     const props = {
       leads, consultations: [], onOpenLead() {},
       people: [{ id: "leonardo", name: "Leonardo" }, { id: "jonathan", name: "Jonathan" }],
-      person: null, onPerson() {}, view: "day", onView() {},
+      personIds: [], onPersons() {}, view: "day", onView() {},
       blocking: { blocksFor: () => [], onSlot() {}, onBlock() {} },
     };
     const html = renderToString(wrap(React.createElement(A.AgendaView, props))).replace(/<!--.*?-->/g, "");
     const has = (must) => { if (!html.includes(must)) throw new Error(`a grade não contém "${must}"`); };
-    // O filtro de pessoa é PÍLULA quando o time cabe na linha (prancha, 14/09)
-    // e vira select a partir de seis, pra não comer a barra inteira.
+    // O filtro de pessoas é um seletor múltiplo (cabe na barra com qualquer
+    // tamanho de equipe) e o de tipo é o SelectPopover, nunca o <select> nativo.
     has("Agenda de");
     has("todos");
+    if (/<select[^>]*aria-label="(Agenda de|Tipo de evento)"/.test(html)) throw new Error("a barra da agenda voltou a usar <select> nativo");
     has("legenda ⓘ");            // os onze itens viraram um title
     has("call agendada");        // a legenda de tipos ficou, no topo da grade
     has("compromisso no dia");   // o fato do período
@@ -388,7 +389,7 @@ try {
         ...props,
         leads: [...leads, { id: "l2", name: "Integração oculta", integrator: "jonathan", integrationAt: iso(hoje), saas: "leverads" }],
       }))).replace(/<!--.*?-->/g, "");
-      if (!filtered.includes('value="call" selected=""') || !filtered.includes("evento escondido pelo filtro · ver tudo")) {
+      if (!filtered.includes('aria-label="Tipo de evento: calls · 1"') || !filtered.includes("evento escondido pelo filtro · ver tudo")) {
         throw new Error("o filtro recolhido esconde a seleção ativa ou a ação de recuperar os eventos");
       }
       if (filtered.includes("Integração oculta")) throw new Error("o filtro calls deixou outro tipo na grade");

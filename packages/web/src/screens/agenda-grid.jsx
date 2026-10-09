@@ -4,10 +4,13 @@ import { usersByRole, userColor, displayName, userById } from "../lib/users.js";
 import { Avatar, SecondaryButton } from "../atoms.jsx";
 import { Popover } from "../components/popover.jsx";
 import { InfoLink } from "../components/story.jsx";
+import { UserPicker } from "../components/user-picker.jsx";
+import { SelectPopover } from "../components/select-popover.jsx";
 import "./agenda.css";
 import { stageKind } from "../lib/funnel.js";
 import { isNoShowStage } from "../lib/scripts.js";
 import { followupDueDay, followupBadge, localDayStart } from "../lib/followup.js";
+import { bizWall, bizNow } from "../lib/format.js";
 
 // A GRADE da agenda. Morava em screens/pipeline.jsx desde que a aba Agenda era
 // do pipeline; a aba saiu de lá (VIEWS = kanban | list) e o código ficou, com
@@ -22,7 +25,15 @@ import { followupDueDay, followupBadge, localDayStart } from "../lib/followup.js
 // da esquerda = responsável. Clique abre o lead.
 // `blocking` (opcional, tela Agenda): { blocksFor(d), onSlot(d, hora), onBlock(b) }
 // desenha os bloqueios/compromissos e liga o clique em horário vazio.
-// `person` (opcional): mostra só os eventos daquele responsável.
+// `personIds` (opcional): ids da equipe escolhidos no filtro "Agenda de"; vazio =
+// todo mundo. A grade mostra só os eventos, bloqueios e faixas dessas pessoas.
+// `onPersons(ids)` liga o filtro na barra (seletor múltiplo do UserPicker).
+// `move` (opcional, tela Agenda): { check(item, alvo), apply(item, alvo), pending }
+// liga o ARRASTAR: call e integração futuras e compromisso/bloqueio com horário
+// mudam de hora (passos de 30 min) e, no Dia e na Equipe, de pessoa pela
+// coluna em que caem. A grade só diz onde o item caiu (com `anchor`, o retângulo
+// do destino na tela, pro balão de confirmação); a tela confere e grava.
+// `pending` = o alvo que espera confirmação: a grade mantém o destino desenhado.
 
 const { useState: useStP } = React;
 
@@ -41,6 +52,13 @@ const atMs = (value) => {
   const withZone = /[Zz]|[+-]\d{2}:\d{2}$/.test(v) ? v : `${v.length === 16 ? `${v}:00` : v}-03:00`;
   return new Date(withZone).getTime();
 };
+// A GRADE É RELÓGIO DE BRASÍLIA (09/10/2026): cada instante vira a Date de
+// "parede" do bizWall (campos locais = Brasília), e o "hoje", a linha do agora
+// e as horas das pílulas saem dela. Antes a posição e o rótulo usavam o fuso
+// do navegador: num computador fora de Brasília a call das 14h aparecia em
+// outra hora, ao lado do bloqueio que guarda hora de Brasília, e o "hoje"
+// virava outro dia. Instante inválido vira Date inválida (o filtro descarta).
+const wallAt = (value) => bizWall(value) || new Date(NaN);
 // Distribui itens em faixas por CLUSTER de sobreposição: cada item recebe `lane`
 // (posição) e `lanes` (nº de faixas do SEU cluster). A largura vem do cluster,
 // não do dia — assim um horário lotado não espreme os itens dos outros horários.
@@ -111,8 +129,35 @@ function PlayLink({ href }) {
   );
 }
 
-function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, people = [], onPerson, view: viewProp, onView }) {
+// Seta do seletor de pessoas: mesma do SelectPopover, pros dois gatilhos da
+// barra lerem como o mesmo controle.
+function Chevron({ open }) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+      style={{ flexShrink: 0, color: "var(--fg-4)", transform: open ? "rotate(180deg)" : "none", transition: "transform .12s" }}>
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+function AgendaView({ leads, consultations = [], onOpenLead, blocking, move, personIds, people = [], onPersons, view: viewProp, onView }) {
   const [filtersOpen, setFiltersOpen] = useStP(false);
+  // FILTRO DE PESSOAS (09/10/2026): era UMA pessoa ou todos; agora o operador
+  // escolhe quem quer ver (ex.: só os dois closers da tarde). `only` = null é a
+  // equipe inteira; com uma pessoa só, a grade fala de buracos da agenda dela.
+  const sel = Array.isArray(personIds) ? personIds : [];
+  const only = sel.length ? new Set(sel) : null;
+  const person = sel.length === 1 ? sel[0] : null;
+  const [pickerOpen, setPickerOpen] = useStP(false);
+  const pickerAnchor = React.useRef(null);
+  // ARRASTAR (09/10/2026): HTML5 nativo, nas mesmas convenções do Kanban
+  // (components/kanban/dnd.js: setData pro Firefox começar o arrasto,
+  // effectAllowed "move", `.is-dragging` no card de origem). O useBoardDnd não
+  // serve aqui porque mede posição numa LISTA (índice entre cards); a grade
+  // mede HORA pela altura e PESSOA pela faixa. `dragRef` guarda o item e onde o
+  // ponteiro pegou o card, pra soltar o topo do card (e não o ponteiro) na hora.
+  const dragRef = React.useRef(null); // { item, dur, grabY }
+  const [dropHint, setDropHint] = useStP(null); // { dayIdx, dur, hour, lane, lanes, person, error }
   const filtersAnchor = React.useRef(null);
   const [dayOff, setDayOff] = useStP(0); // offset em DIAS a partir de hoje
   const [showTouches, setShowTouchesState] = useStP(() => {
@@ -164,7 +209,9 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
   // fim de semana incluso; na SEMANA mostram os 7 dias de segunda a domingo e
   // as setas pulam de semana em semana. "hoje" volta pra data atual nos dois.
   // O offset continua em DIAS — trocar de visão preserva o ponto da navegação.
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const today = bizNow(); today.setHours(0, 0, 0, 0);
+  const todayKey = today.toDateString();
+  const nowWall = bizNow();
   const anchor = new Date(today); anchor.setDate(today.getDate() + dayOff);
   const weekStart = new Date(anchor); weekStart.setDate(anchor.getDate() - ((anchor.getDay() + 6) % 7));
   // A grade do mês começa na segunda da semana do dia 1 e vai até fechar a
@@ -195,7 +242,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
     .filter((c) => c.at && c.status !== "canceled")
     .map((c) => ({
       kind: "consulta",
-      t: new Date(c.at),
+      t: wallAt(c.at),
       who: c.owner || "",
       l: {
         id: `consulta-${c.id}`,
@@ -223,14 +270,14 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
       // FEITA (✓, cor lavada, do closer) mesmo que o card tenha ido pra
       // follow-up/no show/ganho.
       const callMs = atMs(l.callAt);
-      const callT = Number.isFinite(callMs) ? new Date(callMs) : null;
+      const callT = Number.isFinite(callMs) ? wallAt(callMs) : null;
       const callDone = !!(callT && callMs < Date.now());
       if (k === "followup") {
         const dayT = localDayStart(followupDueDay(l));
         if (Number.isFinite(dayT)) out.push({ l, t: new Date(dayT), kind: "follow-up", allDay: true, who: l.closer || l.owner });
       } else {
         const naMs = atMs(l.nextActionAt);
-        if (Number.isFinite(naMs) && showTouches) out.push({ l, t: new Date(naMs), kind: "toque", who: l.owner || l.closer });
+        if (Number.isFinite(naMs) && showTouches) out.push({ l, t: wallAt(naMs), kind: "toque", who: l.owner || l.closer });
       }
       // Call marcada: futura só fora do follow-up (lá ela não vai acontecer —
       // o servidor já limpa a rival); passada entra SEMPRE, como histórico.
@@ -239,20 +286,20 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
       }
       const intMs = atMs(l.integrationAt);
       if (l.integrationAt) {
-        out.push({ l, t: new Date(intMs), kind: "integração", who: l.integrator || l.closer, done: Number.isFinite(intMs) && intMs < Date.now() });
+        out.push({ l, t: wallAt(intMs), kind: "integração", who: l.integrator || l.closer, done: Number.isFinite(intMs) && intMs < Date.now() });
       }
       // HISTÓRICO de calls remarcadas por cima (lead.callHistory, arquivado
       // pelo PATCH da API quando um callAt passado é sobrescrito): cada
       // entrada vira uma call FEITA no dia em que aconteceu.
       for (const h of (Array.isArray(l.callHistory) ? l.callHistory : [])) {
         const hMs = atMs(h?.at);
-        if (Number.isFinite(hMs)) out.push({ l, t: new Date(hMs), kind: "call", who: h?.closer || l.closer, done: true });
+        if (Number.isFinite(hMs)) out.push({ l, t: wallAt(hMs), kind: "call", who: h?.closer || l.closer, done: true });
       }
       return out;
     })
     .concat(consultEvents)
     .filter(e => e && Number.isFinite(e.t.getTime()) && e.t >= start && e.t < end)
-    .filter(e => !person || e.who === person);
+    .filter(e => !only || only.has(e.who || ""));
   // Contagem por tipo (já na semana/pessoa filtradas) alimenta as abas; a grade
   // desenha só o tipo escolhido.
   const callCount = events.filter((e) => e.kind === "call").length;
@@ -327,9 +374,9 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
     const us = Array.isArray(b.users) && b.users.length ? b.users : (b.user ? [b.user] : []);
     return [...new Set(us.filter((id) => id && userById(id)))];
   };
-  // Faixas fixas: filtrado por pessoa, só a coluna dela; senão, todos os
-  // closers do workspace — mesmo sem nada marcado no dia.
-  const baseLanes = person ? [person]
+  // Faixas fixas: filtrado, só as colunas das pessoas escolhidas (mesmo sem
+  // nada marcado); senão, todos os closers do workspace.
+  const baseLanes = only ? sel
     : isTeam ? [...new Set([...usersByRole("closer"), ...usersByRole("integrator")].map((u) => u.id))]
     : usersByRole("closer").map((u) => u.id);
   const layoutDay = (d) => {
@@ -352,7 +399,8 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
       ...baseLanes,
       ...dayEvents.map(e => e.who || ""),
       ...allDayOf(d).map(e => e.who || ""),
-      ...rawBlocks.flatMap(x => blockPersons(x.b)),
+      // Compromisso de várias pessoas só abre faixa das que estão no filtro.
+      ...rawBlocks.flatMap(x => blockPersons(x.b).filter((id) => !only || only.has(id))),
     ])].sort((a, b) => personRank(a) - personRank(b) || String(a).localeCompare(String(b)));
     const laneOf = new Map(persons.map((p, i) => [p, i]));
     const placed = persons.flatMap((p) => laneByCluster(
@@ -372,6 +420,64 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
   // (com oito pessoas a coluna ficaria com 90px e o card vira tarja). Abaixo
   // disso a grade rola de lado dentro do tbl-x, em vez de espremer os cards.
   const gradeMin = isWeek ? 960 : isTeam ? Math.max(600, 52 + (dayLayouts[0]?.persons?.length || 1) * 150) : undefined;
+
+  // ── Arrastar ──────────────────────────────────────────────────────────
+  // Só o que ainda vai acontecer e tem hora: call e integração futuras (a
+  // passada é história; consulta e follow-up têm fluxo próprio) e
+  // compromisso/bloqueio fora do dia inteiro. O mês não tem grade de horas.
+  const canMove = !!move && !isMonth;
+  const leadDraggable = (kind, done) => canMove && !done && (kind === "call" || kind === "integração");
+  const dragProps = (item, dur) => ({
+    draggable: true,
+    onDragStart: (e) => {
+      const r = e.currentTarget.getBoundingClientRect();
+      try { e.dataTransfer.setData("text/plain", item.key); } catch { /* sem suporte */ }
+      e.dataTransfer.effectAllowed = "move";
+      dragRef.current = { item, dur, grabY: e.clientY - r.top };
+      const el = e.currentTarget;
+      setTimeout(() => el.classList.add("is-dragging"), 0);
+    },
+    onDragEnd: (e) => { e.currentTarget.classList.remove("is-dragging"); dragRef.current = null; setDropHint(null); },
+  });
+  // Onde o card cairia: topo do card (não o ponteiro) em passos de 30 min,
+  // sem passar do fim da grade; a faixa da pessoa pelo X dentro do dia. Na
+  // Semana não há faixas, então a pessoa fica como está (person undefined).
+  const dropTarget = (e, dayIdx) => {
+    const it = dragRef.current;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const raw = (e.clientY - it.grabY - rect.top) / hourH;
+    const hour = H0 + Math.min(H1 - H0 - it.dur, Math.max(0, Math.round(raw * 2) / 2));
+    const persons = dayLayouts[dayIdx]?.persons || [];
+    const lanes = persons.length;
+    const lane = lanes ? Math.min(lanes - 1, Math.max(0, Math.floor(((e.clientX - rect.left) / rect.width) * lanes))) : null;
+    return { day: days[dayIdx], hour, lane, lanes, person: lanes ? persons[lane] : undefined };
+  };
+  const columnDropProps = (dayIdx) => (!canMove ? {} : {
+    onDragOver: (e) => {
+      if (!dragRef.current) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      const tg = dropTarget(e, dayIdx);
+      setDropHint((h) => (h && h.dayIdx === dayIdx && h.hour === tg.hour && h.lane === tg.lane ? h
+        : { dayIdx, dur: dragRef.current.dur, ...tg, error: move.check ? move.check(dragRef.current.item, tg) : null }));
+    },
+    onDragLeave: (e) => {
+      if (e.currentTarget.contains(e.relatedTarget)) return;
+      setDropHint((h) => (h && h.dayIdx === dayIdx ? null : h));
+    },
+    onDrop: (e) => {
+      if (!dragRef.current) return;
+      e.preventDefault();
+      const { item, dur } = dragRef.current;
+      const tg = dropTarget(e, dayIdx);
+      const rect = e.currentTarget.getBoundingClientRect();
+      const lw = rect.width / (tg.lanes || 1);
+      const left = rect.left + (tg.lane || 0) * lw;
+      const top = rect.top + (tg.hour - H0) * hourH;
+      dragRef.current = null; setDropHint(null);
+      move.apply(item, { ...tg, dur, anchor: { left, top, right: left + lw, bottom: top + dur * hourH } });
+    },
+  });
 
   // ── Vãos livres (12/09) ───────────────────────────────────────────────
   // Ninguém faz essa conta olhando a grade: "onde cabe mais uma call?". Marca
@@ -494,43 +600,43 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
           {`${callCount} ${callCount === 1 ? "call" : "calls"} · ${events.length} ${events.length === 1 ? "item" : "itens"} na grade`}
         </span>
 
-        {/* Pessoa: pílulas quando o time cabe na linha (é o desenho da
-            prancha) e select a partir de seis, pra não comer a barra. */}
-        {(people.length > 0 && onPerson) && (
-          people.length <= 5 ? (
-            <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        {/* Pessoas: um seletor só, de seleção múltipla (UserPicker), qualquer
+            que seja o tamanho da equipe. As pílulas por pessoa não cabiam na
+            barra com o time crescendo. "todos" é a primeira linha da lista. */}
+        {(people.length > 0 && onPersons) && (() => {
+          const nomes = sel.map((id) => displayName(id).split(" ")[0]);
+          const todos = !only || people.every((p) => only.has(p.id));
+          const rotulo = todos ? "todos" : nomes.length <= 2 ? nomes.join(", ") : `${nomes.length} pessoas`;
+          return (
+            <span className="agenda-people" style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
               <span className="kicker">Agenda de</span>
-              {[{ id: "", name: "todos" }, ...people].map((p) => {
-                const on = (person || "") === p.id;
-                return (
-                  <button key={p.id || "todos"} aria-pressed={on} onClick={() => onPerson(p.id)}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 11px", borderRadius: 999, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
-                      border: 0, boxShadow: on ? "inset 0 0 0 1px var(--accent-line)" : "none",
-                      background: on ? "var(--accent-soft)" : "var(--bg-2)", color: on ? "var(--accent)" : "var(--fg-3)" }}>
-                    {p.id && <span style={{ width: 7, height: 10, borderRadius: 2, background: toneOf(p.id) }} />}
-                    {(p.name || displayName(p.id)).split(" ")[0]}
-                  </button>
-                );
-              })}
+              <button ref={pickerAnchor} type="button" className="agenda-select" data-on={only ? "true" : undefined}
+                aria-haspopup="dialog" aria-expanded={pickerOpen} aria-label={`Agenda de: ${rotulo}`}
+                title={only ? sel.map((id) => displayName(id)).join(", ") : "toda a equipe"}
+                onClick={() => setPickerOpen((o) => !o)}>
+                <span className="agenda-select-label">{rotulo}</span>
+                <Chevron open={pickerOpen} />
+              </button>
+              {pickerOpen && (
+                <UserPicker anchor={pickerAnchor} users={people} value={sel} multi title="Agenda de" allLabel="todos"
+                  onChange={onPersons} onClose={() => setPickerOpen(false)} />
+              )}
             </span>
-          ) : (
-            <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 4px 0 10px", borderRadius: 999, border: "1px solid " + (person ? "var(--accent-line)" : "var(--line-2)"), background: person ? "var(--accent-soft)" : "var(--bg-1)" }}>
-              {person && <span style={{ width: 8, height: 11, borderRadius: 2, background: toneOf(person) }} />}
-              <select value={person || ""} onChange={(e) => onPerson(e.target.value)} aria-label="Agenda de"
-                style={{ height: 26, border: 0, background: "transparent", color: person ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
-                <option value="">agenda de: todos</option>
-                {people.map((p) => <option key={p.id} value={p.id}>{p.name || displayName(p.id)}</option>)}
-              </select>
-            </span>
-          )
-        )}
+          );
+        })()}
 
-        <select className="agenda-type" aria-label="Tipo de evento" value={evKind} onChange={(e) => setEvKind(e.target.value)}>
-          <option value="all">todos os tipos · {events.length}</option>
-          <option value="call">calls · {callCount}</option>
-          <option value="follow-up">follow-ups · {fupCount}</option>
-          <option value="integração">integrações · {intCount}</option>
-        </select>
+        {/* Tipo de evento: SelectPopover do cockpit (o <select> nativo abria a
+            lista do sistema operacional no meio da barra). */}
+        <span className="agenda-type">
+          <SelectPopover label="Tipo de evento" size="sm" width={200} value={evKind} onChange={setEvKind}
+            style={{ borderRadius: 999, height: 30, width: "auto", fontWeight: 600 }}
+            options={[
+              { value: "all", label: `todos os tipos · ${events.length}` },
+              { value: "call", label: `calls · ${callCount}`, tone: AGENDA_TYPE_COLORS.call.line },
+              { value: "follow-up", label: `follow-ups · ${fupCount}`, tone: AGENDA_TYPE_COLORS["follow-up"].line },
+              { value: "integração", label: `integrações · ${intCount}`, tone: AGENDA_TYPE_COLORS["integração"].line },
+            ]} />
+        </span>
         {filtersOpen && <Popover anchor={filtersAnchor} onClose={() => setFiltersOpen(false)} width={300} align="end" title="Filtros da agenda">
           <div className="agenda-filter-panel">
             {evKind === "all" && <label className="agenda-touch-toggle">
@@ -575,7 +681,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}>
               {days.map((d, i) => {
                 const doMes = d.getMonth() === monthStart.getMonth();
-                const isToday = d.toDateString() === new Date().toDateString();
+                const isToday = d.toDateString() === todayKey;
                 const isWeekend = d.getDay() === 0 || d.getDay() === 6;
                 const doDia = shown
                   .filter((e) => e.t.toDateString() === d.toDateString())
@@ -632,7 +738,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
         <div style={{ display: "grid", gridTemplateColumns: colTemplate, minWidth: gradeMin, borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
           <span />
           {days.map((d, i) => {
-            const isToday = d.toDateString() === new Date().toDateString();
+            const isToday = d.toDateString() === todayKey;
             const isWeekend = d.getDay() === 0 || d.getDay() === 6;
             // HOJE ganha cara de calendário: número no círculo cheio do accent
             // (+ kicker "hoje"); fim de semana fica acinzentado (Leo, 23/08).
@@ -695,7 +801,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
               const persons = dayLayouts[i].persons;
               const pill = ({ l, who }) => {
                 const tc = AGENDA_TYPE_COLORS["follow-up"];
-                const late = localDayStart(followupDueDay(l)) < new Date().setHours(0, 0, 0, 0);
+                const late = localDayStart(followupDueDay(l)) < today.getTime();
                 return (
                   <button key={l.id} type="button" onClick={(e) => { e.stopPropagation(); onOpenLead && onOpenLead(l); }}
                     title={`follow-up · ${followupBadge(l)}${late ? " · atrasado" : ""} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"} · dia inteiro, sem horário`}
@@ -739,10 +845,10 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
           </div>
           {days.map((d, i) => {
             const { placed, blocks: dayBlocks, persons } = dayLayouts[i];
-            const isToday = d.toDateString() === new Date().toDateString();
+            const isToday = d.toDateString() === todayKey;
             const isWeekend = d.getDay() === 0 || d.getDay() === 6;
             return (
-              <div key={i}
+              <div key={i} className="agenda-day-col" {...columnDropProps(i)}
                 onClick={blocking?.onSlot ? (e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   const hour = H0 + Math.floor((e.clientY - rect.top) / hourH);
@@ -768,12 +874,34 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
                 ))}
                 {/* Linha do AGORA: só na coluna de hoje, na altura da hora atual. */}
                 {isToday && (() => {
-                  const now = new Date();
-                  const nh = now.getHours() + now.getMinutes() / 60;
+                  const nh = nowWall.getHours() + nowWall.getMinutes() / 60;
                   if (nh < H0 || nh > H1) return null;
                   return (
                     <div style={{ position: "absolute", left: 0, right: 0, top: (nh - H0) * hourH, borderTop: "2px solid var(--accent)", zIndex: 3, pointerEvents: "none" }}>
                       <span style={{ position: "absolute", left: -1, top: -4, width: 8, height: 8, borderRadius: 999, background: "var(--accent)" }} />
+                    </div>
+                  );
+                })()}
+                {/* Onde o card arrastado vai cair: hora de início e, com
+                    faixas, a pessoa. Vermelho com o motivo quando a tela não
+                    deixa (horário passado, agenda ocupada, papel errado). */}
+                {(() => {
+                  // O alvo esperando o balão de confirmação continua desenhado
+                  // até a pessoa decidir.
+                  const pend = move?.pending && move.pending.day?.toDateString() === d.toDateString() ? move.pending : null;
+                  const hnt = dropHint && dropHint.dayIdx === i ? dropHint : pend;
+                  if (!hnt) return null;
+                  const pw = hnt.lanes ? 100 / hnt.lanes : 100;
+                  const left = hnt.lane != null ? hnt.lane * pw : 0;
+                  const bad = !!hnt.error;
+                  return (
+                    <div className="agenda-drop-hint" data-invalid={bad ? "true" : undefined} data-pending={hnt === pend ? "true" : undefined}
+                      style={{
+                        position: "absolute", zIndex: 4, pointerEvents: "none",
+                        top: (hnt.hour - H0) * hourH + 1, height: hnt.dur * hourH - 3,
+                        left: `calc(${left}% + 2px)`, width: `calc(${pw}% - 4px)`,
+                      }}>
+                      <span>{bad ? hnt.error : `${fmtHora(hnt.hour)}${hnt.person ? ` · ${displayName(hnt.person).split(" ")[0]}` : ""}`}</span>
                     </div>
                   );
                 })()}
@@ -814,10 +942,17 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
                     const bw = personLane != null ? pw : 100;
                     const tone = b._tone || null; // com tom = compromisso; sem = bloqueio vermelho
                     const label = b._label || `bloqueado${b.recur === "weekly" ? " ↻" : ""}${b.reason ? ` · ${b.reason}` : ""}`;
+                    // Arrasta da faixa em que está: soltar na faixa de outra
+                    // pessoa troca ESTA participante pela nova. É div e não
+                    // button porque o Firefox não arrasta <button>.
+                    const movable = canMove && !b.allDay;
+                    const fromPerson = personLane != null ? persons[personLane] : undefined;
                     return (
-                      <button type="button" className="agenda-block" key={`blk-${b.id}-${personLane ?? "all"}`}
+                      <div role="button" tabIndex={0} className="agenda-block" key={`blk-${b.id}-${personLane ?? "all"}`}
+                        {...(movable ? dragProps({ type: "block", key: `blk-${b.id}`, b, fromPerson }, to - from) : {})}
+                        onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); e.currentTarget.click(); } }}
                         onClick={(e) => { e.stopPropagation(); blocking.onBlock && blocking.onBlock(b); }}
-                        title={`${b._who ? b._who + " · " : ""}${label}${b.recur === "weekly" ? " · toda semana" : ""}${blocking.onBlock ? " · clique pra editar" : ""}`}
+                        title={`${b._who ? b._who + " · " : ""}${label}${b.recur === "weekly" ? " · toda semana" : ""}${blocking.onBlock ? " · clique pra editar" : ""}${movable ? " · arraste pra mudar o horário" : ""}`}
                         style={{
                           position: "absolute", top: (from - H0) * hourH + 1,
                           left: `calc(${left}% + 2px)`, width: `calc(${bw}% - 4px)`,
@@ -825,12 +960,12 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
                           background: tone ? `color-mix(in srgb, ${tone} 14%, var(--bg-1))` : "color-mix(in srgb, var(--neg) 8%, var(--bg-1))",
                           border: tone ? `1px solid color-mix(in srgb, ${tone} 45%, var(--line-1))` : "1px dashed color-mix(in srgb, var(--neg) 45%, var(--line-1))",
                           borderLeft: `3px solid ${tone || "var(--neg)"}`,
-                          borderRadius: 10, padding: "2px 6px", cursor: blocking.onBlock ? "pointer" : "default", overflow: "hidden",
+                          borderRadius: 10, padding: "2px 6px", cursor: movable ? "grab" : blocking.onBlock ? "pointer" : "default", overflow: "hidden",
                         }}>
                         <div className="mono" style={{ fontSize: 9.5, fontWeight: 600, color: tone ? "var(--fg-2)" : "var(--neg)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                           {label}
                         </div>
-                      </button>
+                      </div>
                     );
                   });
                 })()}
@@ -849,7 +984,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
                   // call FUTURA é remarcação em pé, e pintar de vermelho fazia
                   // parecer furo que ainda nem aconteceu (Leo, 25/08).
                   const noShow = kind === "call" && done && !!l.callAt
-                    && new Date(l.callAt).getTime() === t.getTime()
+                    && wallAt(l.callAt).getTime() === t.getTime()
                     && (isNoShowStage(l.stage) || l.lostReason === "nao_compareceu");
                   // A COR DE FUNDO diz o TIPO (paleta clara + letra preta,
                   // AGENDA_TYPE_COLORS); follow-up reforça com contorno
@@ -869,16 +1004,19 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
                   // grade mostrava as duas iguais. Consulta 1:1 não tem valor,
                   // mostra a posição no pacote (3/8).
                   const valor = l._pack || valorCurto(l.amount);
+                  const movable = leadDraggable(kind, done);
                   return (
                     <div key={l.id + kind + t.getTime()} role="button" tabIndex={0}
+                      {...(movable ? dragProps({ type: "lead", key: `${l.id}-${kind}`, l, kind, who: who || "", t }, 1) : {})}
                       onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); e.currentTarget.click(); } }}
                       onClick={(e) => { e.stopPropagation(); const target = kind === "consulta" ? l._leadRef : l; if (target && onOpenLead) onOpenLead(target); }}
-                      title={`${timeStr} · ${isFollowup ? "follow-up" : kind}${noShow ? " · NO-SHOW, o lead não compareceu" : done ? (isFollowup ? " · já passou" : " · realizada · histórico") : ""}${confirmed ? " · CONFIRMADA pelo lead" : ""} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"}`}
+                      title={`${timeStr} · ${isFollowup ? "follow-up" : kind}${noShow ? " · NO-SHOW, o lead não compareceu" : done ? (isFollowup ? " · já passou" : " · realizada · histórico") : ""}${confirmed ? " · CONFIRMADA pelo lead" : ""} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"}${movable ? " · arraste pra remarcar" : ""}`}
                       style={{
                         position: "absolute", top: (hour - H0) * hourH + 2,
                         left: `calc(${personLane * pw + sub * w}% + 3px)`, width: `calc(${w}% - 6px)`,
                         height: isTouch ? 22 : isFollowup ? Math.max(19, Math.round(hourH * 20 / 60)) : hourH - 5, // follow-up = 20 min
-                        overflow: "hidden", cursor: "pointer",
+                        // Mãozinha de arrastar no que remarca; o clique segue abrindo o card.
+                        overflow: "hidden", cursor: movable ? "grab" : "pointer",
                         background: isTouch ? "transparent" : tc.bg,
                         border: isTouch ? `1px dashed color-mix(in srgb, ${tone} 55%, var(--line-2))`
                           : `1px ${isFollowup ? "dashed" : "solid"} ${tc.line}`,

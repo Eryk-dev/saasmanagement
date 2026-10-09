@@ -11,8 +11,10 @@ export async function reviewHarness(screen, heading, prototypeNavigation, {nativ
   const base=server.resolvedUrls.local[0];
   const browser=await chromium.launch();
   const errors=[];
-  async function open(width, query='', reference=false) {
-    const page=await browser.newPage({viewport:{width,height:width===390?844:1000},reducedMotion:'reduce',timezoneId:'America/Sao_Paulo',permissions:['clipboard-read','clipboard-write']});
+  // `timezoneId`: fuso do navegador da prévia (padrão Brasília); o teste de
+  // fuso da Agenda abre em outro pra provar que a tela segue Brasília.
+  async function open(width, query='', reference=false, {timezoneId='America/Sao_Paulo'}={}) {
+    const page=await browser.newPage({viewport:{width,height:width===390?844:1000},reducedMotion:'reduce',timezoneId,permissions:['clipboard-read','clipboard-write']});
     page.setDefaultTimeout(10000);
     page.on('pageerror',error=>errors.push(error.message));
     const time = new Date('2026-09-18T15:00:00-03:00');

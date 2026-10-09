@@ -16,6 +16,34 @@ export function bizDay(value) {
   return BIZ_DAY_FMT.format(d); // en-CA = YYYY-MM-DD
 }
 
+// Relógio de BRASÍLIA independente do navegador (09/10/2026). Compromisso é
+// gravado em hora de Brasília sem fuso ("2026-09-18T14:00", callAt,
+// integrationAt, consultations.at) ou em ISO com fuso; bloqueio guarda data +
+// hora de Brasília. A Agenda e a régua de ocupado comparam e desenham tudo como
+// "relógio de parede": `bizWall` devolve uma Date cujos campos LOCAIS
+// (getHours, getDate, getDay) são os de Brasília, então a grade, o "hoje" e o
+// slotVal batem com o que o servidor grava mesmo num navegador em outro fuso.
+// Offset fixo de -03:00, o mesmo do brtToIso do servidor (sem horário de verão
+// desde 2019). Valor sem fuso continua lido como Brasília.
+const BRT_MS = 3 * 3600_000;
+export function brtMs(value) {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number") return value;
+  const v = String(value || "").trim();
+  if (!v) return NaN;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return new Date(`${v}T00:00:00-03:00`).getTime();
+  const withZone = /[Zz]|[+-]\d{2}:?\d{2}$/.test(v) ? v : `${v.length === 16 ? `${v}:00` : v}-03:00`;
+  return new Date(withZone).getTime();
+}
+export function bizWall(value) {
+  const ms = brtMs(value);
+  if (!Number.isFinite(ms)) return null;
+  const u = new Date(ms - BRT_MS);
+  return new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate(), u.getUTCHours(), u.getUTCMinutes(), u.getUTCSeconds(), u.getUTCMilliseconds());
+}
+// "Agora" no relógio de Brasília (mesma representação do bizWall).
+export const bizNow = () => bizWall(Date.now());
+
 // Data e hora no fuso do NEGÓCIO ("10/09/2026 22:52"): carimbo de entrada do
 // lead, último toque etc. Mesma âncora do bizDay — a máquina (ou o servidor do
 // SSR) pode estar em UTC e jogaria o lead das 22h pro dia seguinte.

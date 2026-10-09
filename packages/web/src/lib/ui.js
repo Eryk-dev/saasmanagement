@@ -85,3 +85,12 @@ export function waDigits(phone) {
   if (d && d.length <= 11 && !d.startsWith("55")) d = "55" + d;
   return d;
 }
+
+// Telefone pra LER e COPIAR (topo do card do lead): "+55 (11) 98765-4321",
+// no mesmo desenho da Inbox. Número que não é BR (ou fora do padrão) sai com
+// "+" e os dígitos, sem inventar máscara.
+export function phoneLabel(phone) {
+  const d = waDigits(phone);
+  const m = d.match(/^55(\d{2})(\d{4,5})(\d{4})$/);
+  return m ? `+55 (${m[1]}) ${m[2]}-${m[3]}` : (d ? `+${d}` : "");
+}

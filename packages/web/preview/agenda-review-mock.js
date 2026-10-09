@@ -1,6 +1,10 @@
 const params = new URLSearchParams(location.search);
 export const agendaReview = params.get('review') === 'agenda';
-const at = (day, hour) => { const d = new Date(); d.setDate(d.getDate() + day); d.setHours(Math.floor(hour), Math.round(hour % 1 * 60), 0, 0); return d.toISOString(); };
+// Horários em hora de BRASÍLIA, qualquer que seja o fuso do navegador da
+// prévia (o teste de fuso abre a Agenda em Tóquio e em Los Angeles).
+const pad2 = (n) => String(n).padStart(2, '0');
+const brtYmd = (day) => new Date(Date.now() - 3 * 3600e3 + day * 86400e3).toISOString().slice(0, 10);
+const at = (day, hour) => new Date(`${brtYmd(day)}T${pad2(Math.floor(hour))}:${pad2(Math.round(hour % 1 * 60))}:00-03:00`).toISOString();
 let blocks = [], calls = 0, attempts = 0;
 export function setupAgendaReview(seed) {
   seed.USERS = [
@@ -9,6 +13,11 @@ export function setupAgendaReview(seed) {
     {id:'vn',name:'Vitor Nunes',roles:['integrator'],saas:'leverads'},
     {...seed.ME, saas:''},
   ];
+  // &bigTeam: equipe com mais de cinco pessoas, onde o filtro vira lista.
+  if (params.has('bigTeam')) seed.USERS.splice(3, 0,
+    {id:'ls',name:'Lucas Souza',roles:['closer'],saas:'leverads'},
+    {id:'pm',name:'Paula Meireles',roles:['closer'],saas:'leverads'},
+    {id:'jt',name:'João Tavares',roles:['integrator'],saas:'leverads'});
   seed.SAAS[0].funnel.push({stage:'No show',kind:'noshow'}, {stage:'Follow-up',kind:'followup'}, {stage:'Integração',kind:'integracao'});
   const examples = [
     ['Helena Vitta','Nutri Vitta','rm',9,'call','Ganho'],
@@ -23,12 +32,17 @@ export function setupAgendaReview(seed) {
   seed.LEADS = params.has('empty') ? [] : examples.map(([name,company,who,h,kind,stage,day=0],i)=>({
     id:`agenda-lead-${i}`, saas:'leverads', name,company,stage,amount:9600,owner:'leo',
     ...(kind==='call'?{closer:who,callAt:at(day,h)}:{integrator:who,integrationAt:at(day,h)}),
+    // Telefone pro topo do card (copiar); a Helena fica sem, pra conferir que some.
+    phone:name==='Caio Menezes'?'(11) 98765-4321':name==='Helena Vitta'?'':'11 3456-7890',
+    // Nota no card (o selo antes do nome): Caio C por pedidos × ticket, Marina
+    // B legada (com "L"); os outros sem nota.
+    ...(name==='Caio Menezes'?{orders:'500-1000',ticket:'150-300'}:name==='Marina Kern'?{accounts:'4-6',listings:'1000-5000'}:{}),
     callConfirmed:name==='Camila Reis',nextActionAt:name==='Camila Reis'?null:at(3,9),createdAt:at(-5,9),
   }));
   // &followup: follow-ups por DIA (sem horário) na faixa do topo — um de hoje,
   // um atrasado de ontem e um com call já feita (a call segue como histórico).
   if (params.has('followup')) {
-    const ymd = (day) => { const d = new Date(); d.setDate(d.getDate() + day); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+    const ymd = brtYmd;
     seed.LEADS.push(
       {id:'fup-hoje',saas:'leverads',name:'Paula Serra',company:'Serra Têxtil',stage:'Follow-up',owner:'leo',closer:'rm',followupAt:ymd(0),followupStep:1,amount:7200,createdAt:at(-9,9)},
       {id:'fup-ontem',saas:'leverads',name:'Jorge Lins',company:'Lins Pneus',stage:'Follow-up',owner:'leo',closer:'ba',followupAt:ymd(-1),followupStep:2,amount:5100,createdAt:at(-9,9)},
@@ -37,12 +51,15 @@ export function setupAgendaReview(seed) {
     // &fupOutro: follow-up de hoje de OUTRO closer, pra conferir a faixa por operador.
     if (params.has('fupOutro')) seed.LEADS.push({id:'fup-outro',saas:'leverads',name:'Rita Moura',company:'Moura Café',stage:'Follow-up',owner:'leo',closer:'ba',followupAt:ymd(0),followupStep:1,amount:3900,createdAt:at(-9,9)});
   }
-  blocks = params.has('empty') ? [] : [{id:'lunch',saas:'leverads',kind:'block',user:'vn',users:['vn'],date:at(0,12).slice(0,10),recur:'once',fromHour:12,toHour:13,reason:'almoço'},
+  blocks = params.has('empty') ? [] : [{id:'lunch',saas:'leverads',kind:'block',user:'vn',users:['vn'],date:brtYmd(0),recur:'once',fromHour:12,toHour:13,reason:'almoço'},
     {id:'meli',saas:'leverads',kind:'event',user:'rm',users:['rm'],weekday:5,recur:'weekly',fromHour:13,toHour:14,title:'MELI · reunião semanal'}];
   seed.AGENDA_BLOCKS = blocks;
   window.__reviewMutations = [];
   localStorage.setItem('cockpit_agenda_view','day');
-  localStorage.setItem('cockpit_agenda_person','');
+  // &legacyPerson: a escolha antiga de UMA pessoa, antes do filtro múltiplo.
+  localStorage.setItem('cockpit_agenda_person', params.has('legacyPerson') ? 'ba' : '');
+  // A escolha nova é por pessoa e produto (cockpit_agenda_people:<user>:<saas>).
+  Object.keys(localStorage).filter((k) => k.startsWith('cockpit_agenda_people')).forEach((k) => localStorage.removeItem(k));
   localStorage.setItem('cockpit_agenda_kind','all');
 }
 async function hold(method) {
@@ -56,6 +73,6 @@ export const agendaReviewMock = {
     const row={...data,id:`saved-${Date.now()}-${calls++}`}; blocks.push(row);
     window.__reviewMutations.push({method:'create',col,data});return row;
   },
-  update:async(col,id,data)=>{await hold('update');const row=blocks.find(b=>b.id===id);Object.assign(row,data);window.__reviewMutations.push({method:'update',col,id,data});return row;},
+  update:async(col,id,data)=>{await hold('update');const row=col==='leads'?window.SEED.LEADS.find(l=>l.id===id):blocks.find(b=>b.id===id);Object.assign(row,data);window.__reviewMutations.push({method:'update',col,id,data});return row;},
   remove:async(col,id)=>{await hold('remove');blocks=blocks.filter(b=>b.id!==id);window.__reviewMutations.push({method:'remove',col,id});return {ok:true};},
 };
