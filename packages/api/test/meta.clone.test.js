@@ -282,7 +282,7 @@ test("erro que NÃO é limite falha de primeira (não fica tentando à toa)", as
 // in Instagram Explore Home, please also select Instagram Explore · [código
 // 100/2490392]". Regra dele: clone EXATO, o cockpit não ajusta nada; o erro
 // diz o que fazer no conjunto de origem.
-const { placementPairHint, freedomSpecForCopy } = await import("../src/marketing/meta.js");
+const { placementPairHint, placementFromHint, freedomSpecForCopy } = await import("../src/marketing/meta.js");
 const EXPLORE_ERR = { message: "Invalid parameter", error_user_msg: "To place ads in Instagram Explore Home, please also select Instagram Explore.", code: 100, error_subcode: 2490392 };
 
 test("placementPairHint: extrai a dica da Meta; outra mensagem não é par", () => {
@@ -296,10 +296,11 @@ test("copyAdSet: recusa por par de posicionamento NÃO recria nem altera nada; o
   await assert.rejects(() => meta.copyAdSet("as_src", { deepCopy: false }), (err) => {
     assert.match(err.message, /2490392/);
     assert.match(err.message, /copia o conjunto exatamente como está/);
-    assert.match(err.message, /ajuste o conjunto de origem no Gerenciador \(To place ads in Instagram Explore Home, please also select Instagram Explore\)/);
+    assert.match(err.message, /ajuste o conjunto de origem \(To place ads in Instagram Explore Home, please also select Instagram Explore\)/);
     return true;
   });
   assert.equal(f.calls.length, 1, "uma chamada só: nada de ler o conjunto nem criar outro");
+  await assert.rejects(() => meta.copyAdSet("as_src", { deepCopy: false }), (err) => err.placementHint === "To place ads in Instagram Explore Home, please also select Instagram Explore");
   // Outro erro sobe como está.
   const f2 = recorder(() => ({ error: { message: "Invalid parameter", code: 100, error_subcode: 1815857 } }));
   await assert.rejects(() => makeMeta({ fetch: f2, accessToken: "tok" }).copyAdSet("as_src", { deepCopy: false }), (err) => !/Gerenciador/.test(err.message) && /1815857/.test(err.message));
@@ -374,4 +375,25 @@ test("createVideoCreativeFromSpec: com texto no asset_feed_spec, cria com o feed
   assert.equal(b.name, "1491 [PRICE]");
   // Origem sem página: erro claro.
   await assert.rejects(() => meta.createVideoCreativeFromSpec("act_9", { name: "x", sourceSpec: { video_data: {} }, assetFeed: FEED, videoId: "v", imageUrl: "t" }), /não tem página/);
+});
+
+test("placementFromHint + addAdSetPlacement: a dica vira a posição da Graph e entra no targeting do conjunto de origem, só ela", async () => {
+  assert.deepEqual(placementFromHint("To place ads in Instagram Explore Home, please also select Instagram Explore"), { label: "Instagram Explore", field: "instagram_positions", position: "explore" });
+  assert.deepEqual(placementFromHint("To place ads in X, please also select Facebook Reels"), { label: "Facebook Reels", field: "facebook_positions", position: "facebook_reels" });
+  assert.equal(placementFromHint("To place ads in X, please also select Marte"), null);
+  assert.equal(placementFromHint(""), null);
+  const f = recorder((url) => (/\/as_src\?fields=/.test(url)
+    ? { id: "as_src", name: "1436 [PRICE]", targeting: { age_min: 25, geo_locations: { countries: ["BR"] }, instagram_positions: ["stream", "explore_home"], facebook_positions: ["feed"] } }
+    : { success: true }));
+  const meta = makeMeta({ fetch: f, accessToken: "tok" });
+  const r = await meta.addAdSetPlacement("as_src", { field: "instagram_positions", position: "explore" });
+  assert.deepEqual(r, { id: "as_src", name: "1436 [PRICE]", changed: true, positions: ["stream", "explore_home", "explore"] });
+  const postCall = f.calls.find((c) => c.method === "POST");
+  assert.match(postCall.url, /\/as_src$/);
+  assert.deepEqual(JSON.parse(postCall.body.targeting), { age_min: 25, geo_locations: { countries: ["BR"] }, instagram_positions: ["stream", "explore_home", "explore"], facebook_positions: ["feed"] }, "targeting inteiro de volta, só com a posição a mais");
+  // Já tinha: não grava.
+  const f2 = recorder(() => ({ id: "as_src", name: "x", targeting: { instagram_positions: ["explore", "explore_home"] } }));
+  const r2 = await makeMeta({ fetch: f2, accessToken: "tok" }).addAdSetPlacement("as_src", { field: "instagram_positions", position: "explore" });
+  assert.equal(r2.changed, false);
+  assert.equal(f2.calls.filter((c) => c.method === "POST").length, 0);
 });

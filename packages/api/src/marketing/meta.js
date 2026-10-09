@@ -56,10 +56,39 @@ export function onMetaThrottle(fn) { throttleListener = fn; }
 // Regra do Leo (08/10/2026): o clone é EXATO, o cockpit não mexe em nada do
 // conjunto de origem nem aceita ajuste da Meta; a dica dela vai pro erro e o
 // time ajusta o conjunto de origem no Gerenciador.
-const PLACEMENT_PAIR_RX = /to place ads in [^.·\[]+, please also select [^.·\[]+/i;
+const PLACEMENT_PAIR_RX = /to place ads in [^.·\[]+, please also select ([^.·\[]+)/i;
 export function placementPairHint(message) {
   const m = PLACEMENT_PAIR_RX.exec(String(message || ""));
   return m ? m[0].trim() : null;
+}
+// O posicionamento que a Meta pede na dica ("please also select X"), já no
+// nome que a Graph usa no targeting. Serve pro ajuste EXPLÍCITO do conjunto
+// de origem (botão na tela, 09/10): o Gerenciador novo não mostra mais a
+// lista de posicionamentos pra marcar na mão, então o cockpit faz o POST que
+// o Leo faria, só quando ele clica. Rótulo fora do mapa = sem ajuste.
+const PLACEMENT_BY_LABEL = {
+  "instagram explore": ["instagram_positions", "explore"],
+  "instagram explore home": ["instagram_positions", "explore_home"],
+  "instagram feed": ["instagram_positions", "stream"],
+  "instagram stories": ["instagram_positions", "story"],
+  "instagram reels": ["instagram_positions", "reels"],
+  "instagram profile feed": ["instagram_positions", "profile_feed"],
+  "instagram profile reels": ["instagram_positions", "profile_reels"],
+  "instagram search": ["instagram_positions", "ig_search"],
+  "facebook feed": ["facebook_positions", "feed"],
+  "facebook stories": ["facebook_positions", "story"],
+  "facebook reels": ["facebook_positions", "facebook_reels"],
+  "facebook marketplace": ["facebook_positions", "marketplace"],
+  "facebook video feeds": ["facebook_positions", "video_feeds"],
+  "facebook right column": ["facebook_positions", "right_hand_column"],
+  "facebook search": ["facebook_positions", "search"],
+};
+export function placementFromHint(hint) {
+  const m = PLACEMENT_PAIR_RX.exec(String(hint || ""));
+  if (!m) return null;
+  const label = m[1].trim();
+  const pair = PLACEMENT_BY_LABEL[label.toLowerCase()];
+  return pair ? { label, field: pair[0], position: pair[1] } : null;
 }
 // Melhorias automáticas do criativo (Advantage+ creative): o clone leva o
 // degrees_of_freedom_spec do anúncio de origem COMO ESTÁ (ligado ou desligado,
@@ -643,7 +672,10 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
         body = await post(`${adsetId}/copies`, params);
       } catch (err) {
         const hint = placementPairHint(err.message);
-        if (hint) err.message += ` · o cockpit copia o conjunto exatamente como está e não altera o posicionamento por conta própria: ajuste o conjunto de origem no Gerenciador (${hint}) e tente de novo`;
+        if (hint) {
+          err.message += ` · o cockpit copia o conjunto exatamente como está e não altera o posicionamento por conta própria: ajuste o conjunto de origem (${hint}) e tente de novo`;
+          err.placementHint = hint;
+        }
         throw err;
       }
       const copied = String(body.copied_adset_id || body.id || "");
@@ -653,6 +685,22 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
         .map((x) => String(x.copied_id))
         .filter(Boolean);
       return { adsetId: copied, adIds };
+    },
+
+    // Acrescenta UM posicionamento ao targeting de um conjunto (o par que a
+    // Meta exige pra aceitar a cópia), a pedido explícito do time. Lê o
+    // targeting atual e devolve ele inteiro com a posição a mais; nada além
+    // disso muda. Já tinha = não grava.
+    async addAdSetPlacement(adsetId, { field, position }) {
+      if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
+      const params = new URLSearchParams({ fields: "name,targeting", access_token: accessToken });
+      const src = await get(`${GRAPH}/${adsetId}?${params}`);
+      const targeting = JSON.parse(JSON.stringify(src.targeting || {}));
+      const list = Array.isArray(targeting[field]) ? targeting[field] : [];
+      if (list.includes(position)) return { id: String(adsetId), name: src.name || "", changed: false, positions: list };
+      targeting[field] = [...list, position];
+      await post(String(adsetId), { targeting: JSON.stringify(targeting) });
+      return { id: String(adsetId), name: src.name || "", changed: true, positions: targeting[field] };
     },
 
     // Anúncios de um conjunto (id + nome), pra ler o criativo do ORIGINAL antes

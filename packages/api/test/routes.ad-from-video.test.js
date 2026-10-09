@@ -297,3 +297,33 @@ test("anúncio ativo SEM orçamento é recusado (herdaria o do conjunto de orige
   assert.match(res.json().error, /precisa de orçamento diário/);
   assert.equal(meta.calls.length, 0);
 });
+
+// Cópia recusada por posicionamento em par: o job carrega `fix` pra tela
+// oferecer o ajuste explícito do conjunto de origem; a rota do ajuste chama
+// addAdSetPlacement com a posição da dica.
+test("cópia recusada por par: job.fix aponta o conjunto de origem e a posição; a rota de ajuste acrescenta só ela", async () => {
+  const meta = fakeMeta({
+    async copyAdSet(id, o) {
+      meta.calls.push(["copyAdSet", id, o]);
+      const err = new Error("Meta API -> 400: Invalid parameter · To place ads in Instagram Explore Home, please also select Instagram Explore. · [código 100/2490392]");
+      err.placementHint = "To place ads in Instagram Explore Home, please also select Instagram Explore";
+      throw err;
+    },
+    async addAdSetPlacement(id, fix) { meta.calls.push(["addAdSetPlacement", id, fix]); return { id, name: "1436 [PRICE]", changed: true, positions: ["stream", "explore_home", "explore"] }; },
+  });
+  const { app } = await buildApp(meta);
+  const { job } = await submit(app, { painCode: "PRICE", sourceAdsetId: "as_src", number: "1491", activate: "0" }, { name: "UK 1491 [PRICE].mp4" });
+  assert.equal(job.status, "error");
+  assert.match(job.error, /clonando o conjunto de origem/);
+  assert.deepEqual(job.fix, { kind: "placement", sourceAdsetId: "as_src", hint: "To place ads in Instagram Explore Home, please also select Instagram Explore", label: "Instagram Explore", position: "explore" });
+  assert.ok(!meta.calls.some((c) => c[0] === "createAd"), "nada criado");
+
+  const res = await app.inject({ method: "POST", url: "/api/marketing/leverads/adsets/as_src/placement", payload: { hint: job.fix.hint } });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.json().position, "explore");
+  assert.equal(res.json().changed, true);
+  assert.deepEqual(meta.calls.at(-1), ["addAdSetPlacement", "as_src", { label: "Instagram Explore", field: "instagram_positions", position: "explore" }]);
+  // Dica desconhecida: 400, sem mexer na Meta.
+  const bad = await app.inject({ method: "POST", url: "/api/marketing/leverads/adsets/as_src/placement", payload: { hint: "To place ads in X, please also select Marte" } });
+  assert.equal(bad.statusCode, 400);
+});
