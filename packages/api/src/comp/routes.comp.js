@@ -3,6 +3,7 @@
 // Remuneração.
 
 import { stampCompMonth } from "./comp-months.js";
+import { computePayroll, generatePayroll } from "./payroll.js";
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -32,6 +33,23 @@ export function registerCompRoutes(app, repo) {
       };
     });
     return { saas, months };
+  });
+
+  // FOLHA do mês: o cálculo (fixo + pernas + time por pessoa) e o que já
+  // existe em A pagar. `generate` cria/atualiza as contas (revisar antes de pagar).
+  app.get("/api/comp/payroll/:saas/:month", async (req, reply) => {
+    const month = String(req.params.month || "");
+    if (!MONTH_RE.test(month)) return reply.code(400).send({ error: "Mês inválido (use AAAA-MM)." });
+    const product = await repo.get("products", String(req.params.saas || ""));
+    if (!product) return reply.code(404).send({ error: "Produto não encontrado." });
+    return computePayroll(repo, product, month);
+  });
+  app.post("/api/comp/payroll/:saas/:month/generate", async (req, reply) => {
+    const month = String(req.params.month || "");
+    if (!MONTH_RE.test(month)) return reply.code(400).send({ error: "Mês inválido (use AAAA-MM)." });
+    const product = await repo.get("products", String(req.params.saas || ""));
+    if (!product) return reply.code(404).send({ error: "Produto não encontrado." });
+    return reply.code(201).send(await generatePayroll(repo, product, month, { by: req.authUser?.id || "api" }));
   });
 
   app.post("/api/comp/months/:saas/:month/close", async (req, reply) => {

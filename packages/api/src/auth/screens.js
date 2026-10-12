@@ -106,6 +106,7 @@ const ROUTE_SCREENS = [
   ["/api/fin/", ["expenses"]],           // financeiro completo: leitura do mês (contas a pagar, fluxo, DRE, conciliação)
   ["/api/payables", ["expenses"]],       // CRUD genérico das contas a pagar
   ["/api/fin_rules", ["expenses"]],      // regras de conciliação aprendidas
+  ["/api/payroll_", ["expenses"]],       // folha salarial: ficha por pessoa e ajustes do mês
   ["/api/mp_movements", ["expenses"]],   // saídas da conta MP (settlement report)
   ["/api/plans", ["customers", "plans"]],
   ["/api/plan-changes", ["customers"]], // histórico de mudanças de plano (a coleção é PRIVATE no CRUD genérico)
@@ -218,6 +219,12 @@ const EXTRA_READ_SCREENS = [
 const ACTION_SCREENS = [
   [/^\/api\/customers\/[^/]+\/charge$/, ["customers", "offers"]],
   [/^\/api\/leads\/[^/]+\/mp\/link$/, ["pipeline", "today", "offers"]],
+  // Dar baixa (com prova), desfazer e confirmar a presumida: quem gere a
+  // base (Clientes) e quem fecha o caixa (Financeiro). O closer dá baixa no
+  // link pela rota do link (/api/payment-links/:id/pay, tela universal), que
+  // baixa a fatura por dentro — `offers` NÃO entra aqui porque é universal e
+  // abriria a baixa de fatura pra qualquer sessão.
+  [/^\/api\/invoices\/[^/]+\/(pay|unpay|confirm)$/, ["customers", "expenses"]],
 ];
 
 export function screenForRequest(method, path) {

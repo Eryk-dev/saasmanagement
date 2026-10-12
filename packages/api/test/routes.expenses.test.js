@@ -154,11 +154,13 @@ test("custo percentual com base: checkout sobre o dinheiro de cartão que entrou
   await repo.create("mp_payments", { id: "mpp_4", saas: "leverads", status: "rejected", methodType: "credit_card", amount: 900, dateApproved: nowIso });
   await repo.create("mp_payments", { id: "mpp_5", saas: "outro", status: "approved", methodType: "credit_card", amount: 800, dateApproved: nowIso });
   // Recebidos do mês: 599 + 401 pagos; aberta, paga em mês antigo e outro saas ficam fora.
-  await repo.create("invoices", { id: "i1", saas: "leverads", amount: 599, status: "paid", paidAt: nowIso });
-  await repo.create("invoices", { id: "i2", saas: "leverads", amount: 401, status: "paid", paidAt: nowIso });
-  await repo.create("invoices", { id: "i3", saas: "leverads", amount: 999, status: "open", dueDate: nowIso });
-  await repo.create("invoices", { id: "i4", saas: "leverads", amount: 888, status: "paid", paidAt: "2020-02-10T00:00:00Z" });
-  await repo.create("invoices", { id: "i5", saas: "outro", amount: 777, status: "paid", paidAt: nowIso });
+  // (régua única cashIn: o recebido é POR CLIENTE — fatura sem cliente não é caixa)
+  await repo.create("customers", { id: "c1", saas: "leverads", name: "Cliente" });
+  await repo.create("invoices", { id: "i1", saas: "leverads", customer: "c1", amount: 599, status: "paid", paidAt: nowIso });
+  await repo.create("invoices", { id: "i2", saas: "leverads", customer: "c1", amount: 401, status: "paid", paidAt: nowIso });
+  await repo.create("invoices", { id: "i3", saas: "leverads", customer: "c1", amount: 999, status: "open", dueDate: nowIso });
+  await repo.create("invoices", { id: "i4", saas: "leverads", customer: "c1", amount: 888, status: "paid", paidAt: "2020-02-10T00:00:00Z" });
+  await repo.create("invoices", { id: "i5", saas: "outro", customer: "c1", amount: 777, status: "paid", paidAt: nowIso });
 
   await repo.create("expenses", { id: "e1", saas: "leverads", month: "2020-01", category: "taxas", name: "Checkout", pct: 12, base: "cartao12x", recurring: true });
   await repo.create("expenses", { id: "e2", saas: "leverads", month: "2020-01", category: "taxas", name: "Imposto", pct: 20, base: "received", recurring: true });

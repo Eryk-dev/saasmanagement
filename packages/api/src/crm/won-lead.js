@@ -1,5 +1,5 @@
 import { customerPlanState, planFieldsFromDeal, recordPlanChange, stampSubscriptionPlan, syncCustomerPlanFromSub } from "../billing/plan-history.js";
-import { closedInstallments, closedSubscriptionSpec, createClosedSubscription, createInstallmentSchedule, syncClosedInstallments, syncCustomerArr } from "../billing/billing.js";
+import { closedInstallments, closedSubscriptionSpec, createClosedSubscription, createInstallmentSchedule, syncClosedInstallments, syncCustomerArr, ensureOneOffInvoice } from "../billing/billing.js";
 import { CLOSED_PLAN_ANNUAL_FACTOR, CLOSED_PLAN_LABEL } from "../shared/plan-cycles.js";
 import { DEAL_PRODUCT_LABEL } from "../proposals/proposal-catalog.js";
 import { MENTORIA_LABEL } from "../customers/mentoria.js";
@@ -47,7 +47,10 @@ const planLabelOf = (lead) => dealItemsOf(lead).map(itemLabelOf).filter(Boolean)
 
 // ARR do fechamento: cada item anualizado pelo próprio plano (com um item só,
 // é o amount × fator de sempre).
-const closedArrOf = (lead) => Math.round(dealItemsOf(lead).reduce((sum, it) => sum + it.amount * (CLOSED_PLAN_ANNUAL_FACTOR[it.planClosed] || 1), 0));
+// (serviço único tem fator 0: compra única não vira ARR; fechamento legado sem
+// plano segue anualizando ×1, como sempre)
+const closedArrOf = (lead) => Math.round(dealItemsOf(lead).reduce((sum, it) => sum + it.amount * (CLOSED_PLAN_ANNUAL_FACTOR[it.planClosed] ?? 1), 0));
+const oneOffAmountOf = (lead) => Math.round(dealItemsOf(lead).reduce((sum, it) => sum + (it.planClosed === "unico" ? it.amount : 0), 0) * 100) / 100;
 
 export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } = {}) {
   if (!lead || !lead.saas) return null;
@@ -126,9 +129,24 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
         paymentInstallments: lead.paymentInstallments, planFields: itemFields?.subscription,
       });
       if (sub) { created.push(sub); if (subProduct) subProducts.add(subProduct); }
-      // Serviço único faturado em Nx: não há recorrência (spec null, arr manual),
-      // mas o cronograma de parcelas existe do mesmo jeito, preso só ao cliente.
-      if (!sub && closedInstallments(lead) && it.amount > 0) {
+      // Serviço único: não há recorrência (spec null, arr 0). Faturado em Nx
+      // vira o cronograma de parcelas preso ao cliente; à vista vira UMA
+      // fatura avulsa (presumida no à vista, aberta no resto) — é assim que o
+      // dinheiro existe no caixa em vez de virar ARR fantasma.
+      if (!sub && it.amount > 0 && it.planClosed === "unico") {
+        if (closedInstallments(lead)) {
+          await createInstallmentSchedule(repo, {
+            customerId: customer.id, saas: lead.saas, total: it.amount,
+            installments: closedInstallments(lead), startAt: customer.startedAt,
+            method: lead.paymentMethod,
+          });
+        } else {
+          await ensureOneOffInvoice(repo, {
+            customerId: customer.id, saas: lead.saas, amount: it.amount, paymentMethod: lead.paymentMethod,
+            startAt: customer.startedAt, title: itemLabelOf(it) || "Serviço único",
+          });
+        }
+      } else if (!sub && closedInstallments(lead) && it.amount > 0) {
         await createInstallmentSchedule(repo, {
           customerId: customer.id, saas: lead.saas, total: it.amount,
           installments: closedInstallments(lead), startAt: customer.startedAt,
@@ -268,13 +286,17 @@ export async function syncWonLeadDeal(repo, lead) {
       }
     } else if (lead.planClosed === "unico") {
       // Virou serviço único DE PROPÓSITO: encerra a recorrência nascida do
-      // fechamento e o valor do negócio vira o arr direto (cliente sem
-      // assinatura = arr manual). Lead SEM planClosed (fechamento legado,
-      // pré-gate de plano) cai fora deste ramo: cancelar a assinatura de um
-      // cliente real por falta de campo seria chute — não se mexe.
+      // fechamento; o valor NÃO vira ARR (fator 0) — vira a fatura avulsa.
+      // Lead SEM planClosed (fechamento legado, pré-gate de plano) cai fora
+      // deste ramo: cancelar a assinatura de um cliente real por falta de
+      // campo seria chute — não se mexe.
       await repo.update("subscriptions", subs[0].id, { status: "canceled", canceledAt: new Date().toISOString() });
       await syncCustomerArr(repo, customer.id);
       patch.arr = manualArr();
+      patch.oneOffAmount = oneOffAmountOf(lead);
+      if (!closedInstallments(lead) && Number(lead.amount) > 0) {
+        await ensureOneOffInvoice(repo, { customerId: customer.id, saas: lead.saas, amount: Number(lead.amount), paymentMethod: lead.paymentMethod, startAt: lead.wonAt || customer.startedAt, title: planLabelOf(lead) || "Serviço único" });
+      }
     }
   } else if (subs.length === 0) {
     if (spec) {
@@ -286,6 +308,12 @@ export async function syncWonLeadDeal(repo, lead) {
       });
     } else if (Number(lead.amount) > 0) {
       patch.arr = manualArr();
+      if (lead.planClosed === "unico") {
+        patch.oneOffAmount = oneOffAmountOf(lead);
+        if (!closedInstallments(lead)) {
+          await ensureOneOffInvoice(repo, { customerId: customer.id, saas: lead.saas, amount: Number(lead.amount), paymentMethod: lead.paymentMethod, startAt: lead.wonAt || customer.startedAt, title: planLabelOf(lead) || "Serviço único" });
+        }
+      }
     }
   }
   // Cronograma do faturado acompanha a edição: parcela PAGA fica (dinheiro que

@@ -22,6 +22,8 @@ import { leadGradeInfo, LEGACY_ACCOUNTS, LEGACY_LISTINGS, LEGACY_VOLUME } from "
 
 import { kindOf, isLoss, isNoShowStage, isWonLead, wonAtOf, TOUCH_TYPES, TERMINAL_KINDS } from "../crm/stages.js";
 import { isMentoriaLead, mentoriaFit } from "../customers/mentoria.js";
+import { isMpSale } from "../payments/mp-classify.js";
+export { isMpSale };
 
 export { isWonLead, wonAtOf }; // a régua oficial de ganho, num import só
 
@@ -32,12 +34,35 @@ export { isWonLead, wonAtOf }; // a régua oficial de ganho, num import só
 // incide INTEIRA no mês em que o dinheiro CAI — nunca sobre a marcação
 // "cartão 12x" do fechamento (contrato marcado que ainda não passou no cartão
 // não paga taxa; foi isso que inflou a base pra 172k com ~100 recebidos).
+// Bases do lançamento percentual (expenses.pct): o que o % multiplica.
+// taxa_real = taxa cobrada pelo MP lida do espelho (mpFeesIn), não um %.
+export const PCT_BASES = new Set(["won", "cartao12x", "received", "taxa_real"]);
+
+// Só dinheiro de CLIENTE (isMpSale): reserva interna, saída e ruído do espelho
+// não pagam taxa de checkout, e pagamento desconsiderado também não.
 export function card12xBaseIn(mpPayments, month) {
   let sum = 0;
   for (const p of mpPayments || []) {
-    if (p.status !== "approved" || p.methodType !== "credit_card") continue;
+    if (!isMpSale(p) || p.methodType !== "credit_card") continue;
     if (monthKey(p.dateApproved || p.dateCreated) !== month) continue;
     sum += Number(p.amount) || 0;
+  }
+  return Math.round(sum * 100) / 100;
+}
+
+// Taxa REAL cobrada pelo Mercado Pago no mês (bruto − líquido recebido, por
+// pagamento de cliente aprovado, por dateApproved). Substitui a estimativa
+// "Checkout 12%": o número já vem no espelho (feeAmount). Pagamento sem
+// líquido informado (espelho antigo) cai no fallback percentual do lançamento.
+export function mpFeesIn(mpPayments, month, { fallbackPct = 0 } = {}) {
+  let sum = 0;
+  for (const p of mpPayments || []) {
+    if (!isMpSale(p)) continue;
+    if (monthKey(p.dateApproved || p.dateCreated) !== month) continue;
+    const fee = Number(p.feeAmount);
+    if (fee > 0) sum += fee;
+    else if (Number(p.netAmount) > 0) sum += Math.max(0, (Number(p.amount) || 0) - Number(p.netAmount));
+    else if (fallbackPct > 0 && p.methodType === "credit_card") sum += (Number(p.amount) || 0) * (fallbackPct / 100);
   }
   return Math.round(sum * 100) / 100;
 }
@@ -323,7 +348,7 @@ export function cashReceivedByCustomer({ invoices = [], mpPayments = [], custome
   const add = (cid, v) => { if (cid && ids.has(cid) && v > 0) cash.set(cid, round2((cash.get(cid) || 0) + v)); };
   const countedMp = new Set();
   for (const p of mpPayments) {
-    if (p.status !== "approved") continue;
+    if (!isMpSale(p)) continue;
     const cid = (ids.has(p.customer) ? p.customer : "") || byLead.get(p.lead) || "";
     if (!cid) continue;
     // Marca ANTES da janela: a fatura baixada por este pagamento não pode
@@ -344,39 +369,112 @@ export function cashReceivedByCustomer({ invoices = [], mpPayments = [], custome
   return cash;
 }
 
+// ── A régua ÚNICA do caixa (12/10/2026) ──────────────────────────────────────
+// Por que a fatura está paga — `paidProof.kind` (migrations-fin carimba o
+// estoque; o código novo grava ao pagar):
+//   mp            baixada por pagamento aprovado do Mercado Pago → FATO
+//   manual        baixa à mão com data/meio/autor (POST /invoices/:id/pay)
+//   manual_legacy baixa à mão de antes da prova obrigatória
+//   closing       nasceu paga no fechamento à vista → PRESUMIDO (sai do caixa
+//                 até alguém confirmar ou o MP casar). Fatura sem carimbo cai na
+//                 mesma leitura pela convenção antiga (paidAt === periodStart).
+export const PROOF_KINDS = new Set(["mp", "manual", "manual_legacy", "closing"]);
+export function paidProofKindOf(inv) {
+  const k = inv?.paidProof?.kind;
+  if (PROOF_KINDS.has(k)) return k;
+  if (inv?.mpPaymentId) return "mp";
+  if (inv?.periodStart && inv?.paidAt === inv.periodStart) return "closing";
+  return "manual_legacy";
+}
+
+// Dinheiro que ENTROU numa janela, pra toda tela que fala em "recebido":
+// Financeiro (Resumo/fluxo/DRE), Clientes (Status pgto. e caixa do período),
+// Planos, base do imposto. Uma conta só:
+//   · pagamento de cliente aprovado no espelho (isMpSale), pela data da
+//     APROVAÇÃO; com cliente, pelo lead de origem ou pela fatura que ele baixou;
+//   · fatura paga sem pagamento do MP, pela data da baixa — só com prova
+//     (manual/manual_legacy); a presumida (closing) vai pro balde `presumido`;
+//   · uma fatura baixada por um pagamento do espelho conta UMA vez (pelo
+//     pagamento); estorno/cancelamento no MP prevalece sobre a baixa.
+export function cashIn({ customers = [], invoices = [], mpPayments = [], saas, inWin = () => true, paymentDateOf = (p) => p.dateApproved } = {}) {
+  const base = saas ? customers.filter((c) => c.saas === saas) : customers;
+  const ids = new Set(base.map((c) => c.id));
+  const byLead = new Map(base.filter((c) => c.leadId).map((c) => [c.leadId, c.id]));
+  const scopedInvoices = invoices.filter((i) => ids.has(i.customer) && (!saas || !i.saas || i.saas === saas));
+  const scopedMp = mpPayments.filter((p) => !saas || !p.saas || p.saas === saas);
+  // O espelho INTEIRO decide se a fatura baixada por um pagamento ainda vale
+  // (pagamento de outro produto, estornado ou interno derruba a baixa).
+  const byMp = new Map(mpPayments.filter((p) => p.mpId).map((p) => [String(p.mpId), p]));
+  const invoiceByMp = new Map(scopedInvoices.filter((i) => i.mpPaymentId).map((i) => [String(i.mpPaymentId), i]));
+
+  const byCustomer = new Map();
+  const byKind = {};
+  const items = [];
+  let total = 0;
+  const add = (cid, v, kind, item) => {
+    if (!cid || !ids.has(cid) || !(v > 0)) return;
+    byCustomer.set(cid, round2((byCustomer.get(cid) || 0) + v));
+    byKind[kind] = round2((byKind[kind] || 0) + v);
+    total += v;
+    items.push(item);
+  };
+
+  const countedMp = new Set();
+  for (const p of scopedMp) {
+    if (!isMpSale(p)) continue;
+    const inv = invoiceByMp.get(String(p.mpId)) || null;
+    const cid = (ids.has(p.customer) ? p.customer : "") || byLead.get(p.lead) || inv?.customer || "";
+    if (!cid) continue;
+    countedMp.add(String(p.mpId)); // antes da janela: a fatura dele nunca entra por outra data
+    if (!inWin(paymentDateOf(p))) continue;
+    add(cid, Number(p.amount) || 0, inv?.kind || "mp", { kind: inv?.kind || "mp", at: paymentDateOf(p), amount: Number(p.amount) || 0, customer: cid, mpId: String(p.mpId), invoice: inv?.id || "" });
+  }
+
+  const presumido = { n: 0, total: 0, items: [] };
+  for (const i of scopedInvoices) {
+    if (i.status !== "paid" || !i.paidAt) continue;
+    if (i.mpPaymentId) {
+      if (countedMp.has(String(i.mpPaymentId))) continue;
+      const payment = byMp.get(String(i.mpPaymentId));
+      if (payment) continue; // está no espelho e NÃO é venda aprovada: estorno/cancelado/interno prevalece
+      if (!inWin(i.paidAt)) continue;
+      add(i.customer, Number(i.amount) || 0, i.kind || "manual", { kind: i.kind || "manual", at: i.paidAt, amount: Number(i.amount) || 0, customer: i.customer, invoice: i.id, mpId: String(i.mpPaymentId) });
+      continue;
+    }
+    const proof = paidProofKindOf(i);
+    if (proof === "closing") {
+      if (!inWin(i.paidAt)) continue;
+      presumido.n++; presumido.total = round2(presumido.total + (Number(i.amount) || 0));
+      presumido.items.push({ id: i.id, customer: i.customer, amount: Number(i.amount) || 0, paidAt: i.paidAt, kind: i.kind || "renewal" });
+      continue;
+    }
+    if (!inWin(i.paidAt)) continue;
+    add(i.customer, Number(i.amount) || 0, i.kind || "manual", { kind: i.kind || "manual", at: i.paidAt, amount: Number(i.amount) || 0, customer: i.customer, invoice: i.id, proof });
+  }
+  return { total: round2(total), byCustomer, byKind, presumido, items };
+}
+
 // Caixa da tela Clientes: toda a base do produto, por dia de recebimento em
 // São Paulo. Sem data de aprovação não se presume que o MP caiu na criação.
 // Em aberto é cobrança CADASTRADA com vencimento na janela; não inclui ARR
 // projetado nem renovações que ainda não geraram fatura.
 export function customerCashIn({ customers = [], invoices = [], mpPayments = [], saas, since, until }) {
-  const base = customers.filter((c) => c.saas === saas);
-  const ids = new Set(base.map((c) => c.id));
-  const scopedInvoices = invoices.filter((i) => ids.has(i.customer) && (!i.saas || i.saas === saas));
-  const byMp = new Map(mpPayments.filter((p) => p.mpId).map((p) => [String(p.mpId), p]));
-  const invoiceCustomer = new Map(scopedInvoices.filter((i) => i.mpPaymentId).map((i) => [String(i.mpPaymentId), i.customer]));
   const inWin = (iso) => {
     const day = dayKey(iso);
     return !!day && day >= since && day <= until;
   };
-  const cash = cashReceivedByCustomer({
-    customers: base, inWin, paymentDateOf: (p) => p.dateApproved,
-    mpPayments: mpPayments.filter((p) => !p.saas || p.saas === saas).map((p) => ({
-      ...p, customer: p.customer || invoiceCustomer.get(String(p.mpId)) || "",
-    })),
-    invoices: scopedInvoices.filter((i) => {
-      const payment = i.mpPaymentId && byMp.get(String(i.mpPaymentId));
-      // O estado atual do MP prevalece sobre uma fatura que ficou marcada
-      // paga depois de estorno/cancelamento. Sem espelho, vale a baixa datada.
-      return !payment || (payment.status === "approved" && (!payment.saas || payment.saas === saas));
-    }),
-  });
-  const open = scopedInvoices.filter((i) => {
+  const cash = cashIn({ customers, invoices, mpPayments, saas, inWin });
+  const ids = new Set(customers.filter((c) => c.saas === saas).map((c) => c.id));
+  const byMp = new Map(mpPayments.filter((p) => p.mpId).map((p) => [String(p.mpId), p]));
+  const open = invoices.filter((i) => {
+    if (!ids.has(i.customer) || (i.saas && i.saas !== saas)) return false;
     if ((i.status !== "open" && i.status !== "overdue") || !inWin(i.dueDate)) return false;
-    return !i.mpPaymentId || byMp.get(String(i.mpPaymentId))?.status !== "approved";
+    return !i.mpPaymentId || !isMpSale(byMp.get(String(i.mpPaymentId)));
   });
   return {
     saas, since, until,
-    received: round2([...cash.values()].reduce((sum, amount) => sum + amount, 0)),
+    received: cash.total,
+    presumed: cash.presumido.total,
     receivable: round2(open.reduce((sum, i) => sum + (Number(i.amount) || 0), 0)),
     openCount: open.length,
   };

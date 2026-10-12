@@ -2,110 +2,109 @@ import React from "react";
 import "./expenses.css";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { PageHead, StatTile, Card, Pill, FilterTab, Segmented } from "../components/viz.jsx";
+import { PageHead, StatTile, Card, Pill } from "../components/viz.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { EmptyState } from "../atoms.jsx";
-import { FinanceTab } from "./finance.jsx";
 import { ResumoTab, ConciliacaoTab, PagarTab, FolhaTab } from "./finance-hub.jsx";
-// Financeiro — o dinheiro do produto num lugar só (modelo Conta Azul):
-//   Resumo (fluxo de caixa + DRE) · Conciliação (espelho MP sem dono) ·
-//   A pagar (contas com vencimento e recorrência) · Folha (por colaborador)
-//   moram em finance-hub.jsx. Pagamentos: o espelho dos pagamentos REAIS do
-//   Mercado Pago casado com clientes e faturas (finance.jsx). Custos: regras e
-//   automáticos por competência — Publicidade (ad_insights) e IA entram
-//   sozinhos, percentuais calculados no servidor; o total alimenta o
-//   "Resultado do mês" da Visão geral.
+import { SECTOR_CATS, catLabel, money, moneyFull, mesLongo, mesCurto, monthKeyOf, shiftMonth } from "../lib/fin-cats.js";
+// Financeiro — o dinheiro do produto num lugar só, em QUATRO abas (12/10/2026):
+//   Resumo      — a foto do mês: pendências com prazo, recebido (régua única
+//                 de caixa) × presumido, fluxo de 6 meses, gastos e DRE.
+//   Conciliação — o espelho do Mercado Pago inteiro, classificado (venda,
+//                 maquininha, interna, saída, ruído), a fila do que precisa de
+//                 dono e as regras aprendidas. A antiga aba "Pagamentos" vive
+//                 aqui como filtro: era o mesmo espelho em dois lugares.
+//   A pagar     — contas com vencimento, situação, setor e recorrência.
+//   Folha       — folha salarial gerada pela Remuneração: por pessoa, fixo +
+//                 variável + bônus de time + VR/VT + acordos da ficha ± ajustes
+//                 do mês; gerar e revisar antes de pagar.
+//   Custos      — regras e automáticos por competência (mídia, IA, WhatsApp,
+//                 percentuais e taxa real do MP) no MESMO plano de contas.
+// UM seletor de mês, obedecido por todas as abas (o filtro global de período
+// do topo não aparece nesta tela).
 
 const { useState, useEffect } = React;
 
-const CATEGORIES = [
-  ["fixo", "Custo fixo"],
-  ["ferramenta", "Ferramentas"],
-  ["pessoal", "Pessoal"],
-  ["taxas", "Taxas & impostos"],
-  ["outros", "Outros"],
-];
-const CAT_LABEL = Object.fromEntries(CATEGORIES);
-
 // Base do custo percentual — o servidor calcula o R$ mês a mês (e devolve o
-// valor da base usada no resumo): ganhos do pipeline, só os ganhos fechados no
-// cartão de crédito 12x (checkout da adquirente) ou os recebidos do mês
-// (faturas pagas · imposto por regime de caixa).
+// valor da base usada no resumo).
 const PCT_BASES = [
-  { id: "won", option: "% dos ganhos do mês", pill: "dos ganhos", title: "sobre os ganhos do mês no pipeline", key: "wonBase" },
-  { id: "cartao12x", option: "% dos recebidos no cartão", pill: "do cartão", title: "sobre o dinheiro de cartão de crédito que entrou no mês (espelho do Mercado Pago). Com antecipação D+0 a taxa incide inteira no mês em que o dinheiro cai; contrato marcado como 12x que ainda não passou no cartão não gera taxa.", key: "cardBase" },
-  { id: "received", option: "% dos recebidos no mês", pill: "dos recebidos", title: "sobre os recebidos do mês (faturas pagas)", key: "receivedBase" },
+  { id: "won", option: "% dos ganhos do mês", pill: "dos ganhos", title: "sobre os ganhos do mês no pipeline (contratado, inclusive upsell)", key: "wonBase" },
+  { id: "cartao12x", option: "% dos recebidos no cartão", pill: "do cartão", title: "sobre o dinheiro de cartão de crédito de CLIENTE que entrou no mês (espelho do Mercado Pago, D+0).", key: "cardBase" },
+  { id: "received", option: "% dos recebidos no mês", pill: "dos recebidos", title: "sobre o recebido do mês (a mesma régua de caixa do Resumo e de Clientes)", key: "receivedBase" },
+  // taxa_real: o valor da linha É a taxa que o Mercado Pago descontou no mês
+  // (bruto − líquido de cada pagamento de cliente); o % só cobre pagamento
+  // antigo sem líquido informado. Substitui a estimativa "Checkout 12%".
+  { id: "taxa_real", option: "taxa real do Mercado Pago (% só de reserva)", pill: "taxa real do MP", title: "soma da taxa que o Mercado Pago descontou de cada pagamento de cliente no mês (bruto − líquido). O % é usado só em pagamento antigo sem líquido informado.", key: "feeBase" },
 ];
 const pctBaseInfo = (id) => PCT_BASES.find((b) => b.id === id) || PCT_BASES[0];
 
-const monthKey = (d) => d.toISOString().slice(0, 7);
-const monthLabel = (mk) => {
-  const [y, m] = String(mk).split("-");
-  const names = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
-  return `${names[Number(m) - 1] || m} de ${y}`;
-};
-const lastMonths = (n) => {
-  const out = [];
-  const now = new Date();
-  for (let i = 0; i < n; i++) out.push(monthKey(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1))));
-  return out;
-};
-const brl = (n) => `R$ ${(Number(n) || 0).toFixed(2).replace(".", ",")}`;
+// Seletor de mês do Financeiro: ‹ mês › + o mês digitável (qualquer mês, não
+// só os 4 últimos — o fluxo mostra 6 e o histórico vai até julho/2026).
+function MonthPicker({ month, onChange }) {
+  const max = monthKeyOf(new Date());
+  return (
+    <div className="finance-month" aria-label="Mês de competência">
+      <button type="button" onClick={() => onChange(shiftMonth(month, -1))} aria-label="Mês anterior">‹</button>
+      <label>
+        <span>{mesLongo(month).replace(/^./, (c) => c.toUpperCase())}</span>
+        <input type="month" value={month} max={max} onChange={(e) => { if (/^\d{4}-\d{2}$/.test(e.target.value)) onChange(e.target.value); }} aria-label="Escolher o mês" />
+      </label>
+      <button type="button" onClick={() => onChange(shiftMonth(month, 1))} disabled={month >= max} aria-label="Mês seguinte">›</button>
+    </div>
+  );
+}
 
 function ExpensesScreen() {
   const [product] = useActiveSaas();
-  const [tab, setTabState] = useState(() => { try { return localStorage.getItem("cockpit_financeiro_tab") || "resumo"; } catch { return "resumo"; } }); // persiste
+  const [tab, setTabState] = useState(() => {
+    try {
+      const t = localStorage.getItem("cockpit_financeiro_tab") || "resumo";
+      // Aba que virou filtro: Pagamentos → Conciliação.
+      return { pagamentos: "conciliacao" }[t] || t;
+    } catch { return "resumo"; }
+  });
   const setTab = (t) => { setTabState(t); try { localStorage.setItem("cockpit_financeiro_tab", t); } catch { /* ignore */ } };
-  const [month, setMonth] = useState(monthKey(new Date()));
+  const [month, setMonth] = useState(monthKeyOf(new Date()));
 
   if (!product) return <EmptyState title="Nenhum produto cadastrado" hint="Crie o produto em Ajustes." />;
-
-  const shortMonth = (mk) => new Date(`${mk}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
 
   return (
     <div className="finance-page">
       <PageHead title="Financeiro"
         sub={{
-          resumo: `${monthLabel(month)} · a foto do mês: fluxo de caixa, DRE e pendências`,
-          conciliacao: "todo pagamento aprovado precisa de dono: cliente vinculado ou motivo",
-          pagar: `${monthLabel(month)} · contas com vencimento, situação e recorrência`,
-          folha: `${monthLabel(month)} · o que foi pago a cada colaborador`,
-          pagamentos: "pagamentos da conta Mercado Pago, casados com clientes e faturas",
-          custos: `${monthLabel(month)} · o total alimenta o “Resultado do mês” da Visão geral`,
+          resumo: `${mesLongo(month)} · a foto do mês: pendências, recebido × presumido, fluxo, gastos e DRE`,
+          conciliacao: `${mesLongo(month)} · o espelho do Mercado Pago inteiro: todo pagamento aprovado precisa de dono ou motivo`,
+          pagar: `${mesLongo(month)} · contas com vencimento, situação e recorrência`,
+          folha: `${mesLongo(month)} · folha salarial pela Remuneração: fixo, variável, bônus, VR/VT, acordos e ajustes por pessoa`,
+          custos: `${mesLongo(month)} · automáticos (mídia, IA, WhatsApp, taxa do MP) e lançamentos por competência`,
         }[tab] || ""}>
         <nav className="finance-tabs" aria-label="Abas do financeiro">{[
           { value: "resumo", label: "Resumo" },
           { value: "conciliacao", label: "Conciliação" },
           { value: "pagar", label: "A pagar" },
           { value: "folha", label: "Folha" },
-          { value: "pagamentos", label: "Pagamentos" },
           { value: "custos", label: "Custos" },
         ].map(o => <button key={o.value} aria-current={tab === o.value ? "page" : undefined} onClick={()=>setTab(o.value)}>{o.label}</button>)}</nav>
-        {tab !== "pagamentos" && (
-          <div className="finance-months" aria-label="Mês de competência">
-            {[...lastMonths(4)].reverse().map((mk) => <FilterTab key={mk} active={month === mk} onClick={() => setMonth(mk)}>{shortMonth(mk)}</FilterTab>)}
-          </div>
-        )}
+        <MonthPicker month={month} onChange={setMonth} />
       </PageHead>
 
-      {/* key={`${product.id}:${month}`}: trocar de produto remonta a aba — rascunho de custo
-          e vínculo em andamento nunca vazam pro SaaS errado. */}
-      {tab === "resumo" && <ResumoTab key={`${product.id}:${month}`} product={product} month={month} onTab={setTab} />}
+      {/* key={`${product.id}:${month}`}: trocar de produto/mês remonta a aba — rascunho
+          de custo e vínculo em andamento nunca vazam pro SaaS errado. */}
+      {tab === "resumo" && <ResumoTab key={`${product.id}:${month}`} product={product} month={month} onTab={setTab} onMonth={setMonth} />}
       {tab === "conciliacao" && <ConciliacaoTab key={`${product.id}:${month}`} product={product} month={month} />}
       {tab === "pagar" && <PagarTab key={`${product.id}:${month}`} product={product} month={month} />}
       {tab === "folha" && <FolhaTab key={`${product.id}:${month}`} product={product} month={month} />}
-      {tab === "pagamentos" && <FinanceTab key={`${product.id}:${month}`} product={product} />}
-      {tab === "custos" && <CostsTab key={`${product.id}:${month}`} product={product} month={month} />}
+      {tab === "custos" && <CostsTab key={`${product.id}:${month}`} product={product} month={month} onTab={setTab} />}
     </div>
   );
 }
 
-function CostsTab({ product, month }) {
+function CostsTab({ product, month, onTab }) {
   const { version } = useData();
   const [data, setData] = useState(null);
   // unit "brl" = valor fixo em R$; "pct" = percentual sobre a base escolhida
-  // (ganhos, cartão 12x ou recebidos) — o servidor calcula o R$ mês a mês.
-  const [form, setForm] = useState({ category: "fixo", name: "", amount: "", unit: "brl", base: "won", recurring: false });
+  // (ganhos, cartão, recebidos ou a taxa real do MP) — o servidor calcula o R$.
+  const [form, setForm] = useState({ category: "escritorio", name: "", amount: "", unit: "brl", base: "won", recurring: false });
   const [note, setNote] = useState(null);
   const [busy,setBusy] = useState(false);
   const action = React.useRef(false), request = React.useRef(0);
@@ -139,8 +138,8 @@ function CostsTab({ product, month }) {
 
   async function removeExpense(e) {
     const msg = e.recurring
-      ? `Remover "${e.name}" (${brl(e.amount)}) de TODOS os meses? Pra parar só daqui em diante, use "encerrar".`
-      : `Remover "${e.name}" (${brl(e.amount)})?`;
+      ? `Remover "${e.name}" (${moneyFull(e.amount)}) de TODOS os meses? Pra parar só daqui em diante, use "encerrar".`
+      : `Remover "${e.name}" (${moneyFull(e.amount)})?`;
     if (!window.confirm(msg)) return;
     await run(async()=>{try { await api.remove("expenses", e.id); await load(); }
     catch (err) { setNote({ ok: false, text: err.message || "Falha ao remover." }); }});
@@ -149,12 +148,13 @@ function CostsTab({ product, month }) {
   // Encerra a recorrência NO MÊS EXIBIDO (inclusive): continua no histórico,
   // some dos meses seguintes.
   async function endRecurring(e) {
-    if (!window.confirm(`Encerrar "${e.name}" em ${monthLabel(month)}? Ele continua contando até este mês e some dos próximos.`)) return;
+    if (!window.confirm(`Encerrar "${e.name}" em ${mesLongo(month)}? Ele continua contando até este mês e some dos próximos.`)) return;
     await run(async()=>{try { await api.update("expenses", e.id, { endMonth: month }); await load(); }
     catch (err) { setNote({ ok: false, text: err.message || "Falha ao encerrar." }); }});
   }
 
   const inputStyle = { height: 38, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
+  const v = (f) => (data && !data.error ? money(f(data)) : "…");
 
   return (
     <fieldset disabled={busy} className="finance-content finance-costs">
@@ -162,26 +162,27 @@ function CostsTab({ product, month }) {
         {data?.error && <div role="alert" className="finance-notice">Falha ao carregar os custos: {data.error} <button onClick={load}>Tentar novamente</button></div>}
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
-          <StatTile label="Total do mês" value={data && !data.error ? brl(data.total) : "…"} delta="publicidade + IA + WhatsApp + manuais + contas a pagar"
-            title="Inclui as contas a pagar do mês (aba A pagar): folha, fornecedores e demais lançamentos por competência. É o mesmo total que o Resumo do Financeiro e o Resultado do mês usam." />
-          <StatTile label="Publicidade" value={data && !data.error ? brl(data.ads) : "…"} delta="automático · Meta e entradas manuais de anúncio" />
-          <StatTile label="IA" value={data && !data.error ? (data.ai != null ? brl(data.ai) : "sem dado no mês") : "…"}
+          <StatTile label="Total do mês" value={v((d) => d.total)} delta="mídia + IA + WhatsApp + lançamentos + contas a pagar"
+            title="Tudo que custou no mês por competência: automáticos, lançamentos desta aba e as contas a pagar do mês. É o mesmo total das despesas do Resumo." />
+          <StatTile label="Publicidade" value={v((d) => d.ads)} delta="automático · Meta e entradas manuais de anúncio" />
+          <StatTile label="IA" value={data && !data.error ? (data.ai != null ? money(data.ai) : "sem dado no mês") : "…"}
             delta={data?.aiUSD != null ? `US$ ${data.aiUSD.toFixed(2).replace(".", ",")} · automático` : "automático via APIs dos provedores"} />
-          {/* Conversas cobradas pela Meta (conversation_analytics, BRL). */}
-          <StatTile label="WhatsApp" value={data && !data.error ? (data.wa != null ? brl(data.wa) : "sem dado no mês") : "…"}
+          <StatTile label="WhatsApp" value={data && !data.error ? (data.wa != null ? money(data.wa) : "sem dado no mês") : "…"}
             delta={data?.waConversations != null ? `${data.waConversations} conversas cobradas · automático` : "automático via Meta"} />
-          <StatTile label="Lançados à mão" value={data && !data.error ? brl(data.manualTotal) : "…"} delta={`${data?.manual?.length ?? 0} ${(data?.manual?.length ?? 0) === 1 ? "lançamento" : "lançamentos"}`} />
-          <StatTile label="Contas a pagar do mês" value={data && !data.error ? brl(data.payablesTotal || 0) : "…"}
-            delta={`${data?.payablesCount ?? 0} ${(data?.payablesCount ?? 0) === 1 ? "conta" : "contas"} · gerencie na aba A pagar`}
-            title="Folha e fornecedores lançados em A pagar, por competência. Este cartão é só leitura: a gestão (baixa, recorrência) mora na aba A pagar." />
+          <StatTile label="Lançados aqui" value={v((d) => d.manualTotal)} delta={`${data?.manual?.length ?? 0} ${(data?.manual?.length ?? 0) === 1 ? "lançamento" : "lançamentos"}`} />
+          <StatTile label="Contas a pagar do mês" value={v((d) => d.payablesTotal || 0)}
+            delta={<button onClick={() => onTab?.("pagar")} style={{ color: "var(--accent)", fontWeight: 600 }}>{`${data?.payablesCount ?? 0} ${(data?.payablesCount ?? 0) === 1 ? "conta" : "contas"} · abrir A pagar`}</button>}
+            title="Folha e fornecedores lançados em A pagar, por competência. Gasto COM favorecido (salário, fornecedor) mora lá; regra, automático e percentual moram aqui." />
         </div>
 
-        <Card title="Lançamentos do mês" hint="custos fixos, ferramentas, pessoal e outros">
+        <Card title="Lançamentos do mês" hint="regra ou automático (sem favorecido) · a categoria decide o setor no DRE, o mesmo plano de contas do A pagar">
           <div style={{ display: "flex", gap: 10, alignItems: "flex-end", padding: "14px 24px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)", flexWrap: "wrap" }}>
             <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
               <span className="kicker" style={{ fontWeight: 600 }}>Categoria</span>
-              <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} style={{ ...inputStyle, width: 140 }}>
-                {CATEGORIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} style={{ ...inputStyle, width: 190 }} title="A categoria decide o setor no DRE (deduções, COGS, Vendas & Marketing, Produto, Administrativo).">
+                {SECTOR_CATS.map(([sk, sl, cats]) => (
+                  <optgroup key={sk} label={sl}>{cats.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</optgroup>
+                ))}
               </select>
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 5, flex: 1, minWidth: 180 }}>
@@ -199,7 +200,7 @@ function CostsTab({ product, month }) {
                   onKeyDown={(e) => { if (e.key === "Enter") addExpense(); }}
                   style={{ ...inputStyle, width: 110, fontFamily: "var(--mono)", textAlign: "right" }} />
                 <select aria-label="Unidade do custo" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                  title="R$ = valor fixo · % = percentual sobre a base ao lado (ganhos, cartão 12x ou recebidos)"
+                  title="R$ = valor fixo · % = percentual sobre a base ao lado"
                   style={{ ...inputStyle, width: 58, fontFamily: "var(--mono)", padding: "0 4px" }}>
                   <option value="brl">R$</option>
                   <option value="pct">%</option>
@@ -210,8 +211,8 @@ function CostsTab({ product, month }) {
               <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                 <span className="kicker" style={{ fontWeight: 600 }}>Sobre o quê</span>
                 <select value={form.base} onChange={(e) => setForm({ ...form, base: e.target.value })}
-                  title="ganhos = tudo que fechou no mês · cartão 12x = só vendas no cartão de crédito em 12x (checkout) · recebidos = faturas pagas no mês (imposto por caixa)"
-                  style={{ ...inputStyle, width: 210 }}>
+                  title="ganhos = tudo que fechou no mês · cartão = dinheiro de cliente no cartão · recebidos = o caixa do mês · taxa real = o que o MP descontou"
+                  style={{ ...inputStyle, width: 230 }}>
                   {PCT_BASES.map((b) => <option key={b.id} value={b.id}>{b.option}</option>)}
                 </select>
               </label>
@@ -228,26 +229,26 @@ function CostsTab({ product, month }) {
 
           {data && !data.error && data.manual.length === 0 && (
             <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", fontSize: 12.5, color: "var(--fg-4)" }}>
-              Nenhum lançamento manual em {monthLabel(month)}. Publicidade e IA já entram sozinhos no total.
+              Nenhum lançamento em {mesLongo(month)}. Publicidade, IA e WhatsApp já entram sozinhos no total.
             </div>
           )}
           {data && !data.error && data.manual.length > 0 && (
             <div>
               {data.manual.map((e) => (
                 <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px var(--inset-x)", borderTop: "1px solid var(--line-faint)", flexWrap: "wrap" }}>
-                  <Pill tone="mut">{CAT_LABEL[e.category] || e.category}</Pill>
+                  <Pill tone="mut">{catLabel(e.category)}</Pill>
                   <span style={{ flex: 1, fontSize: 13, fontWeight: 500, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
                   {Number(e.pct) > 0 && (
-                    <Pill tone="warn" title={`${e.pct}% ${pctBaseInfo(e.base).title}${data?.[pctBaseInfo(e.base).key] != null ? ` (${brl(data[pctBaseInfo(e.base).key])} em ${monthLabel(month)})` : ""}`}>
-                      {String(e.pct).replace(".", ",")}% {pctBaseInfo(e.base).pill}
+                    <Pill tone="warn" title={`${e.pct}% ${pctBaseInfo(e.base).title}${data?.[pctBaseInfo(e.base).key] != null ? ` (${moneyFull(data[pctBaseInfo(e.base).key])} em ${mesLongo(month)})` : ""}`}>
+                      {e.base === "taxa_real" ? pctBaseInfo(e.base).pill : `${String(e.pct).replace(".", ",")}% ${pctBaseInfo(e.base).pill}`}
                     </Pill>
                   )}
                   {e.recurring && (
                     <Pill tone="accent" title={`recorrente desde ${e.month}${e.endMonth ? `, encerrado em ${e.endMonth}` : ""}`}>
-                      {e.endMonth ? `recorrente até ${e.endMonth}` : `recorrente · desde ${e.month}`}
+                      {e.endMonth ? `recorrente até ${mesCurto(e.endMonth)}` : `recorrente · desde ${mesCurto(e.month)}`}
                     </Pill>
                   )}
-                  <span className="tnum" style={{ fontSize: 13.5, fontWeight: 600 }}>{brl(e.amount)}</span>
+                  <span className="tnum" style={{ fontSize: 13.5, fontWeight: 600 }}>{money(e.amount)}</span>
                   {e.recurring && !e.endMonth && (
                     <button onClick={() => endRecurring(e)} title="Parar de contar a partir do mês seguinte"
                       style={{ fontSize: 12.5, fontWeight: 600, color: "var(--accent)", padding: "2px 4px" }}>

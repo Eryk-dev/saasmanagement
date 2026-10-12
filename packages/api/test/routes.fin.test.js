@@ -17,6 +17,8 @@ async function build() {
 }
 
 const fin = (app, month) => app.inject({ url: `/api/fin/leverads?month=${month}` }).then((r) => r.json());
+// O GET não cria nada (12/10/2026): a materialização das recorrentes é o POST.
+const materialize = (app, month) => app.inject({ method: "POST", url: `/api/fin/leverads/materialize?month=${month}` }).then((r) => r.json());
 
 test("recorrência materializa UMA instância por mês (idempotente) e clampa o dia do vencimento", async () => {
   const { app, repo } = await build();
@@ -27,7 +29,12 @@ test("recorrência materializa UMA instância por mês (idempotente) e clampa o 
     month: "2026-06", dueDate: "2026-06-31", status: "aberta", recurring: true,
   } });
 
+  const semMaterializar = await fin(app, "2026-08");
+  assert.equal(semMaterializar.payables.filter((p) => p.month === "2026-08").length, 0, "o GET não materializa");
+  assert.equal(semMaterializar.payablesMissing, 1, "mas avisa que falta instância do mês");
+  assert.equal((await materialize(app, "2026-08")).created, 2, "junho é o template; julho e agosto nascem");
   const r1 = await fin(app, "2026-08");
+  assert.equal(r1.payablesMissing, 0);
   const ago = r1.payables.filter((p) => p.month === "2026-08");
   assert.equal(ago.length, 1, "uma instância de agosto");
   assert.ok(ago[0].templateId, "instância aponta pro template");
@@ -38,13 +45,15 @@ test("recorrência materializa UMA instância por mês (idempotente) e clampa o 
   // fevereiro hipotético não existe (template começa em junho)
   assert.equal(all.filter((p) => p.month === "2026-05").length, 0);
 
-  await fin(app, "2026-08"); // 2ª chamada não duplica
+  assert.equal((await materialize(app, "2026-08")).created, 0, "2ª chamada não duplica");
   const depois = (await repo.list("payables")).filter((p) => p.saas === "leverads");
   assert.equal(depois.length, all.length, "idempotente");
+  assert.equal(ago[0].id, `pay_${ago[0].templateId}_2026-08`, "id determinístico: duas passadas colidem em vez de duplicar");
 
   // Encerrar a recorrência: setar endMonth no template para de gerar meses novos.
   const template = depois.find((p) => p.recurring && !p.templateId);
   await app.inject({ method: "PATCH", url: `/api/payables/${template.id}`, payload: { endMonth: "2026-08" } });
+  await materialize(app, "2026-09");
   const r2 = await fin(app, "2026-09");
   assert.equal(r2.payables.filter((p) => p.month === "2026-09").length, 0, "setembro não nasce");
   await app.close();
@@ -93,7 +102,7 @@ test("fluxo e DRE: fatura recebida + conta paga + custo manual + mídia fecham a
   assert.equal(r.dre.despesasMes, 3300);
   assert.equal(r.dre.resultado, 1700);
   const ago = r.fluxo.find((f) => f.month === "2026-08");
-  assert.deepEqual(ago, { month: "2026-08", entrada: 5000, saida: 3300 });
+  assert.deepEqual(ago, { month: "2026-08", entrada: 5000, saida: 3300, saidasSemDono: 0 });
   // previsto: fatura aberta do mês entra; a conta paga não (só abertas + custos)
   assert.equal(r.previsto.entrada, 2000);
   assert.equal(r.previsto.saida, 300);
@@ -110,7 +119,7 @@ test("conciliação: aprovado sem cliente é pendência; desconsiderado sai; esp
   const r = await fin(app, "2026-08");
   assert.deepEqual(r.conciliacao.pendentes, { n: 1, total: 900 });
   assert.equal(r.conciliacao.ignoradas, 1);
-  assert.equal(r.conciliacao.espelhoMes, 1450, "aprovados do mês, inclusive vinculados e ignorados");
+  assert.equal(r.conciliacao.espelhoMes, 1300, "aprovados do mês, inclusive vinculados — o desconsiderado NÃO soma (não é dinheiro de cliente)");
   await app.close();
 });
 
@@ -121,13 +130,15 @@ test("regra aprendida vincula sozinha, baixa a fatura de valor exato e some das 
   await repo.create("customers", { id: "c1", saas: "leverads", name: "Loja do Zé", arr: 12000 });
   await repo.create("invoices", { id: "i1", saas: "leverads", customer: "c1", amount: 990, status: "open", dueDate: "2026-08-10T12:00:00.000Z" });
   await repo.create("mp_payments", { id: "mpp_9", saas: "leverads", mpId: "9", status: "approved", amount: 990, payerEmail: "ZE@Loja.com ", payerDoc: "", dateApproved: "2026-08-05T12:00:00.000Z" });
-  await app.inject({ method: "POST", url: "/api/fin_rules", payload: {
+  // Nascendo, a regra já vale pras pendências (o GET só lê).
+  const created = (await app.inject({ method: "POST", url: "/api/fin_rules", payload: {
     saas: "leverads", matchField: "payerEmail", matchValue: "ze@loja.com", action: "vincular", customer: "c1",
-  } });
+  } })).json();
+  assert.equal(created.applied, 1);
 
   const r = await fin(app, "2026-08");
   assert.equal(r.conciliacao.pendentes.n, 0, "a regra resolveu a pendência");
-  assert.equal(r.conciliacao.autoAplicadas, 1);
+  assert.equal(r.conciliacao.regrasPendentes, 0);
   const pmt = await repo.get("mp_payments", "mpp_9");
   assert.equal(pmt.customer, "c1");
   assert.equal(pmt.matchedBy, "rule");
@@ -148,6 +159,10 @@ test("regra de desconsiderar limpa a pendência com motivo; sem regra, sai a sug
   await app.inject({ method: "POST", url: "/api/fin_rules", payload: {
     saas: "leverads", matchField: "payerDoc", matchValue: "11122233344", action: "desconsiderar", reason: "estorno",
   } });
+  // Regra que casaria a conta inteira não nasce.
+  const ruim = await app.inject({ method: "POST", url: "/api/fin_rules", payload: { saas: "leverads", matchField: "payerDoc", matchValue: "10.573.521/0001-91", action: "desconsiderar" } });
+  assert.equal(ruim.statusCode, 400);
+  assert.match(ruim.json().error, /Mercado Pago/);
 
   const r = await fin(app, "2026-08");
   assert.equal(r.conciliacao.pendentes.n, 1, "só o sem regra sobra");
@@ -170,7 +185,7 @@ test("DRE setoriza percentuais pela base: imposto vira dedução, checkout vira 
   await app.close();
 });
 
-test("parseSettlementCsv: só WITHDRAWAL/PAYOUT viram movimento, com valor pt-BR e tarifa", async () => {
+test("parseSettlementCsv: liquidação positiva (entrada) fica fora; saída = líquido negativo ou tipo de saída, valor pt-BR e tarifa", async () => {
   const { parseSettlementCsv } = await import("../src/payments/mp-outflow.js");
   const csv = [
     "TRANSACTION_TYPE;TRANSACTION_DATE;SOURCE_ID;SETTLEMENT_NET_AMOUNT;FEE_AMOUNT",
@@ -178,11 +193,14 @@ test("parseSettlementCsv: só WITHDRAWAL/PAYOUT viram movimento, com valor pt-BR
     "WITHDRAWAL;2026-08-02T10:00:00Z;222;-3.000,50;0,00",
     "PAYOUT;2026-08-03T10:00:00Z;333;900,00;-3,50",
     "REFUND;2026-08-04T10:00:00Z;444;-100,00;0,00",
+    "SETTLEMENT;2026-08-05T10:00:00Z;555;-20,00;0,00",
   ].join("\n");
   const rows = parseSettlementCsv(csv);
-  assert.equal(rows.length, 2);
-  assert.deepEqual(rows[0], { sourceId: "222", type: "WITHDRAWAL", date: "2026-08-02", amount: 3000.5, fee: 0 });
-  assert.deepEqual(rows[1], { sourceId: "333", type: "PAYOUT", date: "2026-08-03", amount: 900, fee: 3.5 });
+  assert.equal(rows.length, 4, "a liquidação positiva (venda já no espelho) não é saída");
+  assert.deepEqual(rows[0], { sourceId: "222", type: "WITHDRAWAL", date: "2026-08-02", amount: 3000.5, fee: 0, direction: "out" });
+  assert.deepEqual(rows[1], { sourceId: "333", type: "PAYOUT", date: "2026-08-03", amount: 900, fee: 3.5, direction: "out" });
+  assert.deepEqual(rows[2].type, "REFUND");
+  assert.deepEqual([rows[3].type, rows[3].amount], ["SETTLEMENT", 20], "liquidação NEGATIVA (ajuste/estorno) é saída");
   await Promise.resolve();
 });
 

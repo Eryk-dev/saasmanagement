@@ -73,7 +73,7 @@ const { useState: useStA, useEffect: useEA, useCallback: useCbA } = React;
 // não janela de análise).
 const PERIOD_SCREENS = new Set([
   "overview", "funcionarios", "desempenho",
-  "metrics", "forms", "expenses", "customers", "social",
+  "metrics", "forms", "customers", "social",
   "eloapp", "landingpages", "offers",
 ]);
 

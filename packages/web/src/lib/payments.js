@@ -35,8 +35,20 @@ export const PAYMENT_METHODS_ACTIVE = PAYMENT_METHODS.filter((p) => !p.legacy);
 // upfront = false (conta na meta só o que ENTROU na janela, como faturado e
 // recorrente; isPayOnReceipt na API acompanha) e fica fora do cronograma de
 // parcelas do faturado (a condição não é N parcelas iguais).
-export const paymentCustom = (id) => !!id && !PAYMENT_METHODS.some((p) => p.id === id);
-export const paymentLabel = (id) => PAYMENT_METHODS.find((p) => p.id === id)?.label || String(id || "");
+// Desde 12/10/2026 o id gravado é `custom` e o texto vai em `paymentTerms`
+// (lead e cliente); id solto fora da lista é o legado e segue valendo igual.
+export const PAYMENT_CUSTOM = "custom";
+export const paymentCustom = (id) => id === PAYMENT_CUSTOM || (!!id && !PAYMENT_METHODS.some((p) => p.id === id));
+// `terms` = o texto da condição (doc.paymentTerms) quando o id é `custom`.
+export const paymentLabel = (id, terms) => id === PAYMENT_CUSTOM
+  ? (String(terms || "").trim() || "Personalizado")
+  : (PAYMENT_METHODS.find((p) => p.id === id)?.label || String(id || ""));
+// O que o PICKER mostra (texto livre) a partir do doc, e o que se GRAVA a
+// partir do picker: { paymentMethod, paymentTerms }.
+export const paymentPickerValue = (doc) => (doc?.paymentMethod === PAYMENT_CUSTOM ? String(doc.paymentTerms || "") : String(doc?.paymentMethod || ""));
+export const paymentPatchOf = (picked) => (paymentCustom(picked) && picked !== PAYMENT_CUSTOM
+  ? { paymentMethod: PAYMENT_CUSTOM, paymentTerms: String(picked || "").trim() }
+  : { paymentMethod: String(picked || ""), ...(picked ? {} : { paymentTerms: "" }) });
 // Sem meio de pagamento registrado, assume à vista (comportamento antigo: tudo caixa).
 export const paymentUpfront = (id) =>
   !id ? true : paymentCustom(id) ? false : PAYMENT_METHODS.find((p) => p.id === id)?.upfront !== false;

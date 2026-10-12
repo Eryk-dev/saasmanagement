@@ -27,6 +27,7 @@ import { BLOG_DEFAULT_RULES, BLOG_DEFAULT_STATE, blogCfgId } from "../blog/blog-
 import { STATUS_KIND, loadSettings } from "../support/tickets-core.js";
 import { repairDoneSla } from "../support/tickets-sla.js";
 import { followupDayOf, dayStartIso, FOLLOWUP_STEPS } from "../shared/followup-contacts.js";
+import { runFinMigrations } from "./migrations-fin.js";
 
 // Garante o estágio "Integração" no funil do produto `leverads`, posicionado
 // entre "Negociação" e "Ganho". Integração é pós-venda: negócio já fechado,
@@ -2640,6 +2641,8 @@ export async function runStartupMigrations(repo) {
   } catch (err) {
     console.error("[migration] migrateFollowupDays falhou:", err?.message || err);
   }
+  // Higiene do Financeiro (12/10/2026): cada migração loga e falha isolada.
+  await runFinMigrations(repo);
 }
 
 // ── Follow-up por DIA, em 4 contatos (05/10/2026) ───────────────────────────

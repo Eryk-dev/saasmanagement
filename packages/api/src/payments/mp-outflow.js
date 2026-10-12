@@ -1,11 +1,17 @@
 // SAÍDAS da conta Mercado Pago (settlement report): saques e transferências
 // viram movimentos do financeiro. A rota (botão) e o poller usam syncMpOutflows.
 
+import { autoMatchOutflows } from "./outflow-match.js";
+
 export const round2 = (n) => Math.round(n * 100) / 100;
 
 // ── Settlement report CSV → movimentos de saída ──────────────────────────────
-// Header em qualquer ordem, delimitador ; ou , — só WITHDRAWAL/PAYOUT viram
-// movimento (o dinheiro que SAIU: saque pra conta bancária ou pix enviado).
+// Header em qualquer ordem, delimitador ; ou ,. O relatório real da conta
+// (12/10/2026) traz TRANSACTION_TYPE=SETTLEMENT nas liquidações das vendas
+// (dinheiro que ENTROU, já no espelho) e tipos de saída com valor NEGATIVO.
+// Vira movimento de SAÍDA o que tem líquido negativo ou tipo de saída
+// conhecido; liquidação positiva é entrada e fica fora (o espelho cobre).
+const OUT_TYPES = new Set(["WITHDRAWAL", "PAYOUT", "TRANSFER", "MONEY_TRANSFER", "REFUND", "CHARGEBACK", "DISPUTE", "PAYMENT", "BILL_PAYMENT", "RESERVE"]);
 export function parseSettlementCsv(text) {
   const lines = String(text || "").split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) return [];
@@ -19,22 +25,24 @@ export function parseSettlementCsv(text) {
   const iNet = col("SETTLEMENT_NET_AMOUNT", "NET_DEBIT_AMOUNT", "TRANSACTION_AMOUNT", "GROSS_AMOUNT", "REAL_AMOUNT");
   const iFee = col("FEE_AMOUNT");
   if (iType < 0 || iNet < 0) return [];
-  // "1.234,56" (pt-BR) e "1234.56" viram número; sinal não importa (saída).
+  // "1.234,56" (pt-BR) e "1234.56" viram número COM sinal (negativo = saiu).
   const num = (v) => {
     const s = String(v || "").trim();
     const br = s.includes(",");
-    return Math.abs(Number(br ? s.replace(/\./g, "").replace(",", ".") : s)) || 0;
+    return Number(br ? s.replace(/\./g, "").replace(",", ".") : s) || 0;
   };
   const out = [];
   for (const line of lines.slice(1)) {
     const cells = split(line);
     const type = String(cells[iType] || "").toUpperCase();
-    if (type !== "WITHDRAWAL" && type !== "PAYOUT") continue;
-    const amount = num(cells[iNet]);
+    const signed = num(cells[iNet]);
+    const isOut = signed < 0 || (OUT_TYPES.has(type) && signed !== 0);
+    if (!isOut) continue;
+    const amount = Math.abs(signed);
     if (!(amount > 0)) continue;
     const date = String(iDate >= 0 ? cells[iDate] : "").slice(0, 10);
     const sourceId = String(iId >= 0 ? cells[iId] : "").trim() || `${type}_${date}_${amount}`;
-    out.push({ sourceId, type, date, amount: round2(amount), fee: iFee >= 0 ? round2(num(cells[iFee])) : 0 });
+    out.push({ sourceId, type, date, amount: round2(amount), fee: iFee >= 0 ? round2(Math.abs(num(cells[iFee]))) : 0, direction: "out" });
   }
   return out;
 }
@@ -43,16 +51,21 @@ export function parseSettlementCsv(text) {
 // sem relatório fresco (24h), pede um ao MP. Usada pela rota (botão) e pelo
 // poller (startMpOutflowSync) — antes só o botão existia e o fluxo assíncrono
 // do MP exigia o Leo clicar duas vezes com minutos de espera no meio.
-export async function syncMpOutflows(repo, mp, { log } = {}) {
+export async function syncMpOutflows(repo, mp, { log, maxFiles = 50 } = {}) {
   const listRaw = await mp.settlementReportList();
   const files = (Array.isArray(listRaw) ? listRaw : listRaw?.files || listRaw?.results || [])
     .map((x) => ({ name: x.file_name || x.fileName || x.name || "", createdAt: x.date_created || x.created_at || x.createdAt || "" }))
     .filter((x) => x.name);
   files.sort((a, b) => String(b.createdAt || b.name).localeCompare(String(a.createdAt || a.name)));
   const byId = new Set((await repo.list("mp_movements")).map((m) => m.id));
+  // Todo arquivo ainda não lido entra (antes só os 3 mais novos: os que
+  // tinham saída de verdade ficavam pra sempre fora). `filesDone` no carimbo.
+  const prevStamp = await repo.get("app_config", "mp_out_sync").catch(() => null);
+  const done = new Set(Array.isArray(prevStamp?.filesDone) ? prevStamp.filesDone : []);
+  const types = new Set(Array.isArray(prevStamp?.typesSeen) ? prevStamp.typesSeen : []);
   let imported = 0, filesRead = 0, downloadErrors = 0, rowsSeen = 0;
   let sample = ""; // cabeçalho + primeiras linhas do 1º arquivo — o diagnóstico do formato real
-  for (const f of files.slice(0, 3)) {
+  for (const f of files.filter((x) => !done.has(x.name)).slice(0, maxFiles)) {
     const text = await mp.settlementReportDownload(f.name).catch((err) => {
       downloadErrors++;
       log?.warn?.({ file: f.name, err: String(err?.message || err).slice(0, 200) }, "MP settlement: download falhou");
@@ -60,6 +73,8 @@ export async function syncMpOutflows(repo, mp, { log } = {}) {
     });
     if (!text) continue;
     filesRead++;
+    done.add(f.name);
+    for (const line of String(text).split(/\r?\n/).slice(1, 400)) { const t = line.split(/[;,]/)[0]?.replace(/"/g, "").trim().toUpperCase(); if (t) types.add(t); }
     // Zero linha importada com arquivo baixado = formato diferente do esperado.
     // A amostra vai no carimbo pra ler o CSV real sem acesso ao container.
     if (!sample) sample = `${f.name}\n` + String(text).split(/\r?\n/).slice(0, 4).join("\n").slice(0, 900);
@@ -69,7 +84,7 @@ export async function syncMpOutflows(repo, mp, { log } = {}) {
       if (byId.has(id)) continue;
       byId.add(id);
       await repo.create("mp_movements", {
-        id, saas: "", type: row.type, date: row.date, amount: row.amount, fee: row.fee,
+        id, saas: "", type: row.type, direction: "out", date: row.date, amount: row.amount, fee: row.fee,
         fileName: f.name, payableId: "", finIgnored: false, createdAt: new Date().toISOString(),
       });
       imported++;
@@ -116,8 +131,14 @@ export async function syncMpOutflows(repo, mp, { log } = {}) {
       }
     }
   }
+  // Saída nova: tenta casar sozinha com a conta a pagar (valor + data, única).
+  let autoMatched = 0;
+  if (imported > 0) {
+    try { autoMatched = (await autoMatchOutflows(repo, { log })).matched; }
+    catch (err) { log?.warn?.({ err: err.message }, "MP saídas: casamento automático falhou"); }
+  }
   const result = {
-    ok: true, filesRead, filesTotal: files.length, imported, requested,
+    ok: true, filesRead, filesTotal: files.length, imported, requested, ...(autoMatched ? { autoMatched } : {}),
     ...(rowsSeen ? { rowsSeen } : {}), ...(downloadErrors ? { downloadErrors } : {}),
     ...(requestError ? { requestError } : {}),
     ...(sample && !imported ? { sample } : {}), // só quando nada entrou: é o caso a diagnosticar
@@ -126,7 +147,7 @@ export async function syncMpOutflows(repo, mp, { log } = {}) {
   // ninguém olhando, então o resultado de cada passada — inclusive a recusa
   // do MP — fica legível no banco em vez de sumir no log do container.
   try {
-    const stamp = { id: "mp_out_sync", lastAt: new Date().toISOString(), ...result };
+    const stamp = { id: "mp_out_sync", lastAt: new Date().toISOString(), ...result, filesDone: [...done].slice(-500), typesSeen: [...types].slice(0, 40) };
     delete stamp.ok;
     const cur = await repo.get("app_config", "mp_out_sync");
     if (cur) await repo.update("app_config", "mp_out_sync", stamp, { silent: true });

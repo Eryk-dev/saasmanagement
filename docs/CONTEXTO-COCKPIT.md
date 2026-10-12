@@ -257,15 +257,63 @@ a mesma regra; os testes ficam em `sdr-brain.test.js`.
    atuais de pagamentos faturados, PIX parcelado e cartão recorrente passam por
    `metrics-core.js`; não somar `lead.amount` indiscriminadamente nas metas.
    Referências: `revenue-on-receipt.test.js` e `metrics-consistency.test.js`.
-   Em Clientes, `GET /api/billing/cash/:saas?since=&until=` soma recebimentos
-   confirmados de toda a base por `dateApproved` do MP ou `paidAt` da baixa,
-   no dia de São Paulo. Reutiliza `cashReceivedByCustomer`, sem presumir a
-   data pela criação do pagamento. Deduplica MP/fatura e exclui faturas
-   nascidas pagas e pagamentos estornados. O a receber considera cobranças
-   abertas/vencidas com vencimento na janela. Esses totais não compõem o
-   contratado anualizado; o card não usa ARR para estimar caixa ou renovações.
-   Referência: `customer-cash.test.js`. O endpoint `billing/received` continua
-   sendo o acumulado por cliente usado na ficha e no status de pagamento.
+   **Caixa tem UMA régua (12/10/2026): `cashIn` em `metrics/metrics-core.js`.**
+   Recebido = pagamento de CLIENTE aprovado no espelho do MP (`isMpSale`:
+   `kind` venda/maquininha, não ignorado) pela data da aprovação + fatura paga
+   com prova (`paidProof.kind` mp/manual/manual_legacy) pela data da baixa.
+   Uma fatura baixada por um pagamento do espelho conta uma vez; estorno no MP
+   prevalece sobre a baixa. A fatura que NASCE paga no fechamento à vista
+   (`paidProof.kind: "closing"`) é PRESUMIDA: fica em balde próprio até o MP
+   casar (`settleTarget` aceita presumida de valor exato) ou alguém confirmar
+   (`POST /api/invoices/:id/confirm`). Consomem a mesma função: `GET /api/fin`
+   (recebido, fluxo, DRE), `/api/billing/received` (acumulado por cliente),
+   `/api/billing/cash` (janela), `/api/plans/stats` e a base `received` do
+   `/api/expenses/summary`. Referências: `cash-in.test.js`,
+   `fin-rulers-agree.test.js` (confronta os endpoints), `customer-cash.test.js`.
+   Metas e placar (`saleValuer`, `cashBucketsIn`) NÃO mudaram.
+   - **Espelho do MP classificado** (`payments/mp-classify.js`): todo doc tem
+     `kind` venda | maquininha | interna | saida | ruido e `direction`, pela
+     `operation_type` + `collector_id` + `payer.id` da API (id da conta via
+     `GET /users/me`, carimbado em `app_config.mp_account`; env
+     `MERCADOPAGO_COLLECTOR_ID` sobrescreve). Só venda/maquininha casa, baixa
+     fatura e soma. O CNPJ do próprio MP nunca é documento de pagador
+     (`payerDocMp`). Regra de conciliação por documento/e-mail da casa ou do
+     MP não nasce (`fin-rules.js`). Referência: `mp-classify.test.js`.
+   - **Baixa manual exige prova:** `POST /api/invoices/:id/pay` com
+     `{ at, method, note }`, carimba `paidProof.manual` com o autor. Link com
+     fatura delega a baixa pra fatura; link de cliente sem fatura cria a fatura
+     avulsa paga (`routes.offers.js`). Referência: `invoice-pay-proof.test.js`.
+   - **`GET /api/fin` não escreve nada.** Recorrentes materializam no tick do
+     billing e no `POST /api/fin/:saas/materialize` (id determinístico
+     `pay_<template>_<mês>`, `payments/payables.js`); regras aplicam no ingest,
+     na criação da regra e no `POST /api/fin/:saas/rules/apply`; sync único em
+     `POST /api/fin/:saas/sync`. Referência: `fin-readonly.test.js`.
+   - **Serviço único não é ARR** (`unico` com fator 0 em `plan-cycles.js`): o
+     valor vira fatura avulsa (`ensureOneOffInvoice`), presumida no à vista.
+     Condição personalizada = `paymentMethod: "custom"` + `paymentTerms`.
+     Referências: `one-off-not-arr.test.js`, `payment-method-custom.test.js`.
+   - **Folha pela Remuneração** (`comp/payroll.js`, 12/10/2026): botão "gerar
+     folha" em A pagar → Folha calcula por pessoa fixo (nível/regime do plano
+     ou `payrollFixed`) + duas pernas pelo carimbo `comp_months` + bônus de
+     time + VR/VT (padrão da casa R$ 30 e R$ 12 POR DIA ÚTIL seg–sex,
+     `PAYROLL_DEFAULTS` × `businessDaysIn(mês)`) e acordos recorrentes da FICHA
+     (`payroll_profiles`, id = uid: regime, fixo da pessoa, benefits on/off,
+     vrDay/vtDay, vr/vt mensal fechado, extras benefício/acordo/desconto) ± ajustes
+     do mês (`payroll_adjustments`), e cria/atualiza a conta
+     `pay_folha_<saas>_<mês>_<uid>` (vence dia 1 do mês seguinte); paga não
+     muda, `amountManual` é respeitado. Papel e nível ficam no usuário
+     (`payrollRole` sdr|closer|cs|social|manual|none, `compLevel`; seed
+     confirmado pelo Leo em `migrations-fin.js`). A aba Folha do Financeiro é a
+     folha salarial: ficha por pessoa, ajustes do mês, retiradas dos sócios. Plano numa fonte só: `shared/comp-plan-defaults.js`
+     (a tela Remuneração importa de lá). Saída do MP com o mesmo valor até 5
+     dias do vencimento e candidata única dá baixa sozinha
+     (`payments/outflow-match.js`, no sync). Referências: `payroll.test.js`,
+     `outflow-match.test.js`.
+   - **Custo de checkout = taxa real do MP** (base `taxa_real`, `mpFeesIn`:
+     bruto − líquido por pagamento de cliente); saídas da conta (settlement
+     report com sinal + `kind: saida` do espelho) entram no fluxo
+     (`fin-outflow-in-flow.test.js`). Migrações de higiene (idempotentes) em
+     `platform/migrations-fin.js`.
 3. **Estágio é semântico:** usar `funnel[].kind` e os helpers de `stages.js` /
    `web/src/lib/funnel.js`, em vez de comparar nomes visíveis. Reusar
    `applyStageMove` para preservar histórico, `stageSince`, cadência e efeitos

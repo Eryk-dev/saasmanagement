@@ -50,6 +50,8 @@ export const COLLECTIONS = {
   ad_insights: [],
   expenses: [],
   payables: [],
+  payroll_profiles: [],    // ficha de FOLHA por pessoa (id = uid): regime, fixo da pessoa, VR, VT, acordos recorrentes (comp/payroll.js)
+  payroll_adjustments: [], // ajustes de UM mês na folha de uma pessoa (bônus/desconto/acordo pontual)
   fin_rules: [],    // conciliação com aprendizado: pagador (doc/e-mail/nome) → ação (vincular cliente / desconsiderar) — aplicadas sozinhas a cada leitura do Financeiro (routes.fin.js)
   mp_movements: [], // SAÍDAS da conta Mercado Pago (saques/transferências) importadas do settlement report CSV — conciliadas com contas a pagar por valor+data (routes.fin.js) // contas a pagar do Financeiro (modelo Conta Azul): competência, vencimento, situação, favorecido colaborador/fornecedor; recorrente materializa instância por mês (routes.fin.js)
   tasks: [],

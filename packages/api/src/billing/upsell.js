@@ -97,7 +97,8 @@ export async function recordUpsell(repo, customer, input, { author = "system", c
       customer: customer.id, saas: customer.saas || "", amount: input.amount, kind: "upsell",
       status: paid ? "paid" : "open",
       dueDate: paid ? input.at : input.dueAt,
-      ...(paid ? { paidAt: input.at } : {}),
+      // Upsell "já pago": a prova é quem registrou e a data informada.
+      ...(paid ? { paidAt: input.at, paidProof: { kind: "manual", at: input.at, method: "outro", note: "upsell registrado como pago", by: author || "api", markedAt: nowIso } } : {}),
       createdAt: nowIso, ...stamp,
     });
   }

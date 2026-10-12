@@ -35,7 +35,7 @@ import { inboxMock } from "./inbox-mock.js";
 const inboxPreview = typeof location !== "undefined" && new URLSearchParams(location.search).has("inbox");
 import { trainingMock } from "./training-mock.js";
 import { ticketsMock } from "./tickets-mock.js";
-import { financeMock } from "./finance-mock.js";
+import { financeMock, financeMpPayments, financeRules } from "./finance-mock.js";
 const financePreview = typeof location !== "undefined" && new URLSearchParams(location.search).has("finance");
 import { teamPreviewScore } from "./team-mock.js";
 const teamPreview = typeof location !== "undefined" && new URLSearchParams(location.search).has("team");
@@ -181,7 +181,24 @@ const mockApi = new Proxy({}, {
     if (todayReview && Object.hasOwn(todayMock, nome)) return todayMock[nome];
     if (overviewReview && Object.hasOwn(overviewMock, nome)) return overviewMock[nome];
     if (financePreview && nome === "fin") return (...args) => Promise.resolve(financeMock(...args));
-    if (financePreview && nome === "expensesSummary") return () => Promise.resolve({ ai: 0, wa: 0 });
+    if (financePreview && nome === "expensesSummary") return (saas, month) => Promise.resolve({ month, ai: 420, aiUSD: 78.5, wa: 96.4, waConversations: 112, ads: 23500, manual: [
+      { id: "e1", saas, month: "2026-07", category: "taxas", name: "Checkout", pct: 12, base: "taxa_real", recurring: true, amount: 15100 },
+      { id: "e2", saas, month: "2026-07", category: "imposto", name: "Imposto", pct: 20, base: "received", recurring: true, amount: 39200 },
+      { id: "e3", saas, month: "2026-09", category: "dev", name: "Claude + Codex", amount: 6600, recurring: true },
+    ], manualTotal: 60900, payablesTotal: 5900, payablesCount: 2, total: 90816.4, wonBase: 318989, receivedBase: 195900, feeBase: 15100 });
+    if (financePreview && nome === "mpPayments") return ({ saas } = {}) => Promise.resolve(financeMpPayments(saas || "leverads"));
+    if (financePreview && nome === "list") return (col) => Promise.resolve(col === "fin_rules" ? financeRules("leverads")
+      : col === "payroll_profiles" ? [{ id: "us_mrqkn2tm03", uid: "us_mrqkn2tm03", saas: "leverads", regime: "clt", fixed: null, vr: 400, vt: 160, extras: [{ label: "ajuda de custo", amount: 300, kind: "acordo" }, { label: "adiantamento", amount: 600, kind: "desconto" }], notes: "combinado em 10/10" }]
+      : col === "payroll_adjustments" ? [{ id: "adj1", saas: "leverads", month: new Date().toISOString().slice(0, 7), uid: "us_mrqkn2tm03", label: "hora extra", amount: 200, kind: "acordo" }] : []);
+    if (financePreview && (nome === "finMaterialize" || nome === "finRulesApply")) return () => Promise.resolve({ ok: true, created: 0, applied: 1, settled: 1 });
+    if (financePreview && nome === "payrollPreview") return (saas, month) => Promise.resolve({ saas, month, dueDate: "2026-11-01", stamped: true, total: 3800 + 4700 + 5260, rows: [
+      { uid: "sdr", name: "Manuela", role: "sdr", level: 1, regime: "clt", fixed: 2200, fixedFrom: "plano nível 1", variable: 1300, legs: { contracts: 550, revenue: 750 }, teamBonus: 300, vr: 660, vt: 264, vrDay: 30, vtDay: 12, businessDays: 22, benefitsOn: true, benefits: 924, extras: [], extrasTotal: 0, adjustments: [], adjustmentsTotal: 0, total: 4724, stamped: true, month, notes: "fixo R$ 2200 (plano nível 1) · contratos 20/20 (100%) → R$ 550 · receita R$ 108000/R$ 90000 (120%) → R$ 750 · bônus de time R$ 300", payable: { id: "pay_t1", amount: 5000, status: "paga", amountManual: false } },
+      { uid: "igor", name: "Igor", role: "social", level: 1, regime: "clt", fixed: 4500, fixedFrom: "pessoa", variable: 0, legs: { contracts: 0, revenue: 0 }, teamBonus: 200, vr: 660, vt: 264, vrDay: 30, vtDay: 12, businessDays: 22, benefitsOn: true, benefits: 924, extras: [], extrasTotal: 0, adjustments: [], adjustmentsTotal: 0, total: 5624, stamped: true, month, notes: "fixo R$ 4500 (fixo da pessoa) · bônus de time R$ 200", payable: null },
+      { uid: "us_mrqkn2tm03", name: "Vitor", role: "closer", level: 1, regime: "clt", fixed: 3000, fixedFrom: "plano nível 1 CLT", variable: 1600, legs: { contracts: 600, revenue: 1000 }, teamBonus: 400, vr: 400, vt: 160, vrDay: 30, vtDay: 12, businessDays: 22, benefitsOn: true, benefits: 560, extras: [{ label: "ajuda de custo", amount: 300, kind: "acordo", signed: 300 }, { label: "adiantamento", amount: 600, kind: "desconto", signed: -600 }], extrasTotal: -300, adjustments: [{ id: "adj1", label: "hora extra", amount: 200, kind: "acordo" }], adjustmentsTotal: 200, total: 5460, stamped: true, month, notes: "", payable: null },
+    ] });
+    if (financePreview && nome === "payrollGenerate") return () => Promise.resolve({ ok: true, created: 2, updated: 0, kept: 1, total: 13960, stamped: true });
+    if (financePreview && nome === "finSyncAll") return () => Promise.resolve({ ok: true, in: { seen: 12, settled: 1, reclassified: 4 }, out: { imported: 2, filesRead: 3 }, rules: { applied: 0, settled: 0 } });
+    if (financePreview && (nome === "mpLinkPayment" || nome === "confirmInvoice" || nome === "payInvoice" || nome === "update" || nome === "create" || nome === "remove")) return () => Promise.resolve({ ok: true });
     if (teamPreview && nome === "scoreboard") return () => Promise.resolve({ ...RESPOSTAS.scoreboard(), ...teamPreviewScore });
     if (inboxPreview && Object.hasOwn(inboxMock, nome)) return (...args) => Promise.resolve().then(() => inboxMock[nome](...args));
     if (inboxPreview && nome === "update") return (col, id, patch) => Promise.resolve().then(() => { const row = (window.SEED[col.toUpperCase()] || []).find((r) => r.id === id); if (row) Object.assign(row, patch); return row; });

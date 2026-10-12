@@ -13,6 +13,7 @@ import { mp as defaultMp, parseWebhookPayload } from "./mp.js";
 import { syncCustomerArr } from "../billing/billing.js";
 import { CLOSED_PLAN_TITLE as PLAN_LABEL } from "../shared/plan-cycles.js";
 import { ingestMpPayment, runMpSync, settleInvoice } from "./mp-payments.js";
+import { SALE_KINDS } from "./mp-classify.js";
 import { recordPaymentLink } from "./payment-links.js";
 import { attachPreapprovalToSub, linkableSubs, runPreapprovalSync } from "./mp-subscriptions.js";
 import { applyMpCancellationChurn, applyMpReactivationRescue } from "../billing/churn.js";
@@ -28,6 +29,7 @@ import { createCustomerCharge, createPreferenceWith, mpUrls, payerEmailOrNone } 
 // espelhado e cobrado pelos webhooks e pelo poller de mp-subscriptions.js.
 const GONE = 410;
 const KIND_LABEL = { renewal: "renovação", prorata: "pró-rata", upsell: "upsell", manual: "cobrança", installment: "parcela" };
+const KIND_WORD = { interna: "movimentação interna", saida: "saída", ruido: "lançamento sem cliente" };
 
 // Baixa automática de uma cobrança do MP: paga a fatura aberta/vencida mais
 // antiga da assinatura (ou registra uma paga, se não houver) e recupera o
@@ -42,14 +44,15 @@ export async function applyMpPayment(repo, sub, { mpPaymentId, amount }, now = n
     .sort((a, b) => String(a.dueDate || "").localeCompare(String(b.dueDate || "")))[0];
   const nowIso = now.toISOString();
   let invoice;
+  const paidProof = { kind: "mp", at: nowIso, mpPaymentId: String(mpPaymentId || "") };
   if (open) {
-    invoice = await repo.update("invoices", open.id, { status: "paid", paidAt: nowIso, mpPaymentId });
+    invoice = await repo.update("invoices", open.id, { status: "paid", paidAt: nowIso, mpPaymentId, paidProof });
   } else {
     invoice = await repo.create("invoices", {
       subscription: sub.id, customer: sub.customer, saas: sub.saas,
       amount: Number(amount) || Number(sub.price) || 0,
       kind: "renewal", status: "paid", dueDate: nowIso, paidAt: nowIso,
-      createdAt: nowIso, mpPaymentId,
+      createdAt: nowIso, mpPaymentId, paidProof,
     });
   }
   const stillOverdue = (await repo.list("invoices"))
@@ -143,6 +146,10 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
     let items = await repo.list("mp_payments");
     if (q.saas) items = items.filter((p) => !p.saas || p.saas === q.saas);
     if (q.status) items = items.filter((p) => p.status === q.status);
+    // kind=venda|maquininha|interna|saida|ruido (mp-classify.js); `sale` = as
+    // duas portas de dinheiro de cliente. Sem filtro vem tudo, como sempre.
+    if (q.kind === "sale") items = items.filter((p) => !p.kind || SALE_KINDS.has(p.kind));
+    else if (q.kind) items = items.filter((p) => p.kind === q.kind);
     if (q.customer) items = items.filter((p) => p.customer === q.customer);
     if (q.from) items = items.filter((p) => String(p.dateCreated || "") >= q.from);
     if (q.to) items = items.filter((p) => String(p.dateCreated || "") <= q.to);
@@ -159,7 +166,10 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
   app.post("/api/mp/sync", async (req, reply) => {
     if (!mp.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Mercado Pago não configurado (MERCADOPAGO_ACCESS_TOKEN)" });
     try {
-      return await runMpSync(repo, mp, { discord, log: req.log });
+      // ?reclassify=1: uma passada cheia de GET por id pra carimbar a
+      // classificação (venda/interna/saída) no espelho inteiro de uma vez.
+      const full = String(req.query?.reclassify || "") === "1";
+      return await runMpSync(repo, mp, { discord, log: req.log, ...(full ? { enrichLimit: 1000 } : {}) });
     } catch (err) {
       req.log.warn({ err: err.message }, "MP: sync manual falhou");
       return reply.code(UPSTREAM_FAILED).send({ error: "MP não respondeu a busca de pagamentos", detail: String(err.message || err).slice(0, 300) });
@@ -181,6 +191,11 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
     }
     const customer = await repo.get("customers", customerId);
     if (!customer) return reply.code(400).send({ error: "cliente não encontrado" });
+    // Reserva interna, pagamento feito com o saldo ou ruído não é dinheiro de
+    // cliente: vincular inflaria o recebido dele (e a meta) com dinheiro da casa.
+    if (p.kind && !SALE_KINDS.has(p.kind)) {
+      return reply.code(400).send({ error: `esse lançamento é ${KIND_WORD[p.kind] || p.kind} da conta, não pagamento de cliente — não dá pra vincular` });
+    }
     const patch = { customer: customer.id, saas: customer.saas || p.saas || "", lead: "", matchedBy: "manual" };
     let settledInv = null;
     if (p.status === "approved" && !settled) {

@@ -14,7 +14,7 @@ export function register(app, repo, ctx) {
   registerMpRoutes(app, repo, { mp: ctx.mp, discord: ctx.discord });
   // Links de pagamento das ofertas (ferramenta).
   registerOfferRoutes(app, repo);
-  registerFinRoutes(app, repo, { mp: ctx.mp });
+  registerFinRoutes(app, repo, { mp: ctx.mp, discord: ctx.discord });
 }
 
 export function start(repo, { log, jobOn }) {

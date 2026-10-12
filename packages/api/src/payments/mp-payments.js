@@ -22,6 +22,28 @@ import { mp as defaultMp } from "./mp.js";
 import { discord as defaultDiscord } from "../integrations/discord.js";
 import { syncCustomerArr } from "../billing/billing.js";
 import { logActivity } from "../crm/lead-flow.js";
+import { classifyMpPayment, scrubMpOwnDoc, MP_CLASS_V, SALE_KINDS } from "./mp-classify.js";
+import { ruleMatches, rulesFor } from "./fin-rules.js";
+import { paidProofKindOf } from "../metrics/metrics-core.js";
+
+// Id da conta (collector_id) — GET /users/me uma vez, carimbado em app_config
+// "mp_account"; env MERCADOPAGO_COLLECTOR_ID vale como fallback/override.
+export async function resolveCollectorId(repo, mp) {
+  const env = String(process.env.MERCADOPAGO_COLLECTOR_ID || "").trim();
+  if (env) return env;
+  const cfg = await repo.get("app_config", "mp_account").catch(() => null);
+  if (cfg?.collectorId) return String(cfg.collectorId);
+  if (!mp?.me) return "";
+  try {
+    const me = await mp.me();
+    const id = me?.id != null ? String(me.id) : "";
+    if (!id) return "";
+    const stamp = { id: "mp_account", collectorId: id, nickname: me.nickname || "", email: me.email || "", at: new Date().toISOString() };
+    if (cfg) await repo.update("app_config", "mp_account", stamp, { silent: true });
+    else await repo.create("app_config", stamp);
+    return id;
+  } catch { return ""; }
+}
 
 // O /v1/payments/search devolve o pagador MASCARADO (e-mail "xxxxxxxxxx",
 // nome/CPF vazios ou só x's) — máscara não é dado: vira "" pra UI não mostrar
@@ -61,6 +83,15 @@ export function normalizeMpPayment(pmt) {
     externalReference: String(pmt.external_reference || ""),
     dateCreated: pmt.date_created || "",
     dateApproved: pmt.date_approved || "",
+    // Quem paga / quem recebe / que operação — a matéria-prima da classificação
+    // (mp-classify.js). Taxa REAL do MP = bruto − líquido recebido.
+    operationType: pmt.operation_type || "",
+    collectorId: pmt.collector_id != null ? String(pmt.collector_id) : "",
+    payerId: pmt.payer?.id != null ? String(pmt.payer.id) : "",
+    posId: pmt.pos_id != null ? String(pmt.pos_id) : "",
+    feeAmount: Number(pmt.transaction_details?.net_received_amount) > 0
+      ? Math.round(((Number(pmt.transaction_amount) || 0) - Number(pmt.transaction_details.net_received_amount)) * 100) / 100
+      : 0,
   };
 }
 
@@ -74,6 +105,9 @@ export async function settleInvoice(repo, invoice, pmt, { discord, log } = {}) {
     paidMethod: pmt.payment_method_id || "",
     paidMethodType: pmt.payment_type_id || "",
     paidInstallments: Number(pmt.installments) || 1,
+    // A prova do recebimento: pagamento aprovado do MP. Fatura que nasceu paga
+    // no fechamento (presumida) vira FATO aqui.
+    paidProof: { kind: "mp", at: paidAt, mpPaymentId: String(pmt.id), ...(invoice.paidProof?.kind === "closing" ? { confirmedFrom: "closing" } : {}) },
   });
   if (invoice.subscription) {
     const sub = await repo.get("subscriptions", invoice.subscription);
@@ -96,19 +130,29 @@ export async function settleInvoice(repo, invoice, pmt, { discord, log } = {}) {
 // Qual fatura um pagamento aprovado baixa, dado o vínculo encontrado?
 export function settleTarget(invoices, link, base) {
   const open = (i) => i.status === "open" || i.status === "overdue";
+  // Fatura que NASCEU paga no fechamento à vista (presumida, sem mpPaymentId):
+  // o pagamento do MP de valor exato é a prova que faltava — ela vira fato em
+  // vez de ficar presumida pra sempre ao lado de um pagamento "sem fatura".
+  const presumed = (i) => i.status === "paid" && !i.mpPaymentId && paidProofKindOf(i) === "closing";
+  const exact = (i) => Math.abs(Number(i.amount) - base.amount) < 0.01;
   if (link.invoice) {
     const inv = invoices.find((i) => i.id === link.invoice);
-    return inv && open(inv) ? inv : null;
+    return inv && (open(inv) || (presumed(inv) && exact(inv))) ? inv : null;
   }
   if (link.subscription) {
-    return invoices
+    const abertas = invoices
       .filter((i) => i.subscription === link.subscription && open(i))
-      .sort((a, b) => String(a.dueDate || "").localeCompare(String(b.dueDate || "")))[0] || null;
+      .sort((a, b) => String(a.dueDate || "").localeCompare(String(b.dueDate || "")));
+    if (abertas.length) return abertas[0];
+    const pres = invoices.filter((i) => i.subscription === link.subscription && presumed(i) && exact(i));
+    return pres.length === 1 ? pres[0] : null;
   }
   if (link.customer) {
-    const cand = invoices.filter((i) =>
-      i.customer === link.customer && open(i) && Math.abs(Number(i.amount) - base.amount) < 0.01);
-    return cand.length === 1 ? cand[0] : null;
+    const cand = invoices.filter((i) => i.customer === link.customer && open(i) && exact(i));
+    if (cand.length === 1) return cand[0];
+    if (cand.length) return null;
+    const pres = invoices.filter((i) => i.customer === link.customer && presumed(i) && exact(i));
+    return pres.length === 1 ? pres[0] : null;
   }
   return null;
 }
@@ -117,11 +161,24 @@ const sameDoc = (a, b, keys) => a && keys.every((k) => JSON.stringify(a[k] ?? nu
 
 // Upsert do espelho + casamento + baixa. Idempotente e barata quando nada mudou
 // (o poller repassa a mesma janela a cada tick — sem escrita não há SSE/refresh).
-export async function ingestMpPayment(repo, pmt, { discord, log, extra } = {}) {
+export async function ingestMpPayment(repo, pmt, { discord, log, extra, collectorId } = {}) {
   const mpId = String(pmt.id);
   const mirrorId = `mpp_${mpId}`;
   const prev = await repo.get("mp_payments", mirrorId);
   const base = normalizeMpPayment(pmt);
+
+  // Classificação: a API (collector/payer) manda; sem ela, heurística — e a
+  // classificação forte já gravada nunca regride pra heurística (o search
+  // pode vir sem payer.id). Doc classificado pela API vira classV atual.
+  const cls = classifyMpPayment(pmt, { collectorId });
+  if (cls.kindSource === "heuristic" && prev?.kindSource === "api") {
+    Object.assign(base, { kind: prev.kind, direction: prev.direction, kindSource: "api", classV: prev.classV || MP_CLASS_V });
+  } else {
+    Object.assign(base, cls, { classV: cls.kindSource === "api" ? MP_CLASS_V : (prev?.classV || 0) });
+  }
+  const scrub = scrubMpOwnDoc(base);
+  if (scrub) Object.assign(base, scrub);
+  const isSale = SALE_KINDS.has(base.kind);
 
   // O poller re-varre a janela com o doc MAGRO do search — pagador já
   // enriquecido (webhook/GET por id/consulta de CNPJ) não pode regredir pra
@@ -167,7 +224,10 @@ export async function ingestMpPayment(repo, pmt, { discord, log, extra } = {}) {
     link.matchedBy = link.matchedBy || "reference";
   }
 
-  if (!link.customer && !link.invoice && !link.lead) {
+  // Só dinheiro de CLIENTE casa e baixa fatura: reserva interna, compra ou
+  // despesa paga com o saldo nunca viram vínculo (o e-mail da conta bateria
+  // com um cliente cadastrado com o mesmo e-mail, por exemplo).
+  if (isSale && !link.customer && !link.invoice && !link.lead) {
     const ref = base.externalReference;
     const refInvoice = ref ? invoices.find((i) => i.id === ref) : null;
     const refSub = !refInvoice && ref ? await repo.get("subscriptions", ref) : null;
@@ -229,8 +289,31 @@ export async function ingestMpPayment(repo, pmt, { discord, log, extra } = {}) {
     }
   }
 
+  // Regra aprendida (fin_rules): o mesmo pagador não pergunta 2x. Só pra
+  // venda aprovada que NÃO casou sozinha — vincular entra na MESMA baixa do
+  // vínculo manual (settleTarget abaixo); desconsiderar carimba finIgnored.
+  let ruleApplied = null;
+  if (isSale && base.status === "approved" && !link.customer && !link.invoice && !link.lead && !prev?.finIgnored) {
+    const rules = rulesFor(await repo.list("fin_rules").catch(() => []), link.saas || "");
+    const rule = rules.find((r) => ruleMatches(r, base));
+    if (rule?.action === "desconsiderar") {
+      Object.assign(base, { finIgnored: true, finIgnoredReason: rule.reason || "regra", finRuleId: rule.id });
+      ruleApplied = rule;
+    } else if (rule?.action === "vincular" && rule.customer) {
+      const c = await repo.get("customers", rule.customer).catch(() => null);
+      if (c) {
+        Object.assign(link, { customer: c.id, saas: link.saas || c.saas || "", matchedBy: "rule" });
+        base.finRuleId = rule.id;
+        ruleApplied = rule;
+      }
+    }
+    if (ruleApplied) {
+      await repo.update("fin_rules", ruleApplied.id, { autoCount: (Number(ruleApplied.autoCount) || 0) + 1, lastAppliedAt: new Date().toISOString() }, { silent: true }).catch(() => {});
+    }
+  }
+
   let settledNow = null;
-  if (base.status === "approved" && !alreadySettled) {
+  if (isSale && base.status === "approved" && !alreadySettled && !base.finIgnored) {
     const target = settleTarget(invoices, link, base);
     if (target) {
       settledNow = await settleInvoice(repo, target, pmt, { discord, log });
@@ -284,6 +367,46 @@ export async function ingestMpPayment(repo, pmt, { discord, log, extra } = {}) {
   };
 }
 
+// Aplica as regras aprendidas nas PENDÊNCIAS que já estão no espelho (botão
+// "aplicar regras" do Financeiro e o momento em que uma regra nasce). Mesma
+// baixa do vínculo manual; idempotente pelo mpPaymentId na fatura.
+export async function applyFinRulesToPending(repo, { saas, discord, log } = {}) {
+  const [mps, allRules, invoices] = await Promise.all([repo.list("mp_payments"), repo.list("fin_rules"), repo.list("invoices")]);
+  const rules = rulesFor(allRules, saas);
+  let applied = 0, settled = 0;
+  if (!rules.length) return { applied, settled };
+  for (const p of mps) {
+    if (saas && p.saas && p.saas !== saas) continue;
+    if (p.status !== "approved" || p.customer || p.finIgnored || (p.kind && !SALE_KINDS.has(p.kind))) continue;
+    const rule = rules.find((r) => ruleMatches(r, p));
+    if (!rule) continue;
+    if (rule.action === "desconsiderar") {
+      await repo.update("mp_payments", p.id, { finIgnored: true, finIgnoredReason: rule.reason || "regra", finRuleId: rule.id }, { silent: true });
+    } else {
+      const customer = await repo.get("customers", rule.customer).catch(() => null);
+      if (!customer) continue;
+      const patch = { customer: customer.id, saas: p.saas || customer.saas || "", matchedBy: "rule", finRuleId: rule.id };
+      if (p.mpId && !invoices.some((i) => i.mpPaymentId === p.mpId)) {
+        const alvo = settleTarget(invoices, { customer: customer.id }, p);
+        if (alvo) {
+          // settleInvoice fala o dialeto CRU da API do MP — traduz do espelho.
+          const paid = await settleInvoice(repo, alvo, {
+            id: p.mpId, date_approved: p.dateApproved, date_created: p.dateCreated,
+            payment_method_id: p.method, payment_type_id: p.methodType, installments: p.installments,
+          }, { discord, log });
+          Object.assign(alvo, paid);
+          patch.invoice = alvo.id;
+          settled++;
+        }
+      }
+      await repo.update("mp_payments", p.id, patch, { silent: true });
+    }
+    await repo.update("fin_rules", rule.id, { autoCount: (Number(rule.autoCount) || 0) + 1, lastAppliedAt: new Date().toISOString() }, { silent: true });
+    applied++;
+  }
+  return { applied, settled };
+}
+
 // Uma passada de reconciliação: busca paginada dos pagamentos da conta desde o
 // último sync (com folga de 2 dias; 1º run varre 400 dias = backfill sozinho) e
 // ingere um a um. Carimbo em app_config "mp_sync" — a UI mostra o último sync.
@@ -305,6 +428,7 @@ async function lookupCnpjName(cnpj, f = globalThis.fetch) {
 
 export async function runMpSync(repo, mp, { discord, log, now = new Date(), backfillDays = 400, overlapDays = 2, maxPages = 40, enrichLimit = 40, cnpjLimit = 10, cnpjFetch = globalThis.fetch } = {}) {
   if (!mp?.configured?.()) return { ok: false, error: "not_configured" };
+  const collectorId = await resolveCollectorId(repo, mp);
   const cfg = await repo.get("app_config", "mp_sync");
   const since = cfg?.lastAt
     ? new Date(new Date(cfg.lastAt).getTime() - overlapDays * 86_400_000)
@@ -326,7 +450,7 @@ export async function runMpSync(repo, mp, { discord, log, now = new Date(), back
           catch { /* segue com o resumo; tenta de novo no próximo tick */ }
         }
       }
-      const r = await ingestMpPayment(repo, full, { discord, log, extra });
+      const r = await ingestMpPayment(repo, full, { discord, log, extra, collectorId });
       seen++;
       if (r.matched) matched++;
       if (r.settledNow) settled++;
@@ -338,16 +462,20 @@ export async function runMpSync(repo, mp, { discord, log, now = new Date(), back
 
   // Retro-enriquecimento: docs do espelho de versão antiga (sem nome, ou sem o
   // banco separado do nome) ganham o GET por id na mesma cota — cada um tenta
-  // uma vez por versão (payerDetail = PAYER_DETAIL_V).
+  // uma vez por versão (payerDetail = PAYER_DETAIL_V). O mesmo GET reclassifica
+  // o doc (classV) — com o id da conta em mãos, o espelho inteiro sai da
+  // heurística em poucos ticks.
+  let reclassified = 0;
   if (enriched < enrichLimit) {
     const stale = (await repo.list("mp_payments"))
-      .filter((d) => d.payerDetail !== PAYER_DETAIL_V && (!d.payerName || !d.payerBank));
+      .filter((d) => (d.payerDetail !== PAYER_DETAIL_V && (!d.payerName || !d.payerBank)) || (collectorId && d.classV !== MP_CLASS_V));
     for (const d of stale) {
       if (enriched >= enrichLimit) break;
       try {
         const full = await mp.getPayment(d.mpId);
         enriched++;
-        await ingestMpPayment(repo, full, { discord, log, extra: { payerDetail: PAYER_DETAIL_V } });
+        const r = await ingestMpPayment(repo, full, { discord, log, extra: { payerDetail: PAYER_DETAIL_V }, collectorId });
+        if (d.classV !== MP_CLASS_V && r.payment?.classV === MP_CLASS_V) reclassified++;
       } catch { /* tenta no próximo tick */ }
     }
   }
@@ -357,7 +485,7 @@ export async function runMpSync(repo, mp, { discord, log, now = new Date(), back
   let cnpjSeen = 0;
   const noName = (await repo.list("mp_payments")).filter((d) => {
     const digits = String(d.payerDoc || "").replace(/\D/g, "");
-    return !d.payerName && !d.cnpjLookup && digits.length === 14;
+    return !d.payerName && !d.cnpjLookup && digits.length === 14 && !d.payerDocMp;
   });
   for (const d of noName) {
     if (cnpjSeen >= cnpjLimit) break;
@@ -369,10 +497,10 @@ export async function runMpSync(repo, mp, { discord, log, now = new Date(), back
     } catch { /* BrasilAPI fora do ar: tenta no próximo tick */ }
   }
 
-  const stamp = { id: "mp_sync", lastAt: now.toISOString(), lastSeen: seen, updatedAt: now.toISOString() };
+  const stamp = { id: "mp_sync", lastAt: now.toISOString(), lastSeen: seen, updatedAt: now.toISOString(), collectorId: collectorId || "" };
   if (cfg) await repo.update("app_config", "mp_sync", stamp);
   else await repo.create("app_config", stamp);
-  return { ok: true, seen, matched, settled, since: since.toISOString() };
+  return { ok: true, seen, matched, settled, reclassified, collectorId: collectorId || "", since: since.toISOString() };
 }
 
 // Poller de reconciliação (modelo do startShopifySync): rede de segurança pro

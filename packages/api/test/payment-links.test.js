@@ -248,9 +248,13 @@ test("POST /pay grava a baixa, devolve o link pago e conta na timeline; 400/404/
 
   assert.equal((await app.inject({ method: "POST", url: "/api/payment-links/nada/pay", payload: { method: "pix" } })).statusCode, 404);
   assert.equal((await app.inject({ method: "POST", url: "/api/payment-links/pl_1/pay", payload: {} })).statusCode, 400);
-  const comFatura = await app.inject({ method: "POST", url: "/api/payment-links/pl_fat/pay", payload: { method: "pix" } });
-  assert.equal(comFatura.statusCode, 409);
-  assert.match(comFatura.json().error, /fatura/);
+  // Link COM fatura: a baixa é da fatura, com a mesma prova (uma porta só).
+  await repo.create("invoices", { id: "in_1", saas: "leverads", customer: "cu_1", amount: 1000, status: "open", dueDate: "2026-08-20" });
+  const comFatura = await app.inject({ method: "POST", url: "/api/payment-links/pl_fat/pay", payload: { method: "pix", at: "2026-08-12" } });
+  assert.equal(comFatura.statusCode, 200);
+  const in1 = await repo.get("invoices", "in_1");
+  assert.equal(in1.status, "paid");
+  assert.deepEqual([in1.paidProof.kind, in1.paidProof.method, in1.paidProof.link], ["manual", "pix", "pl_fat"]);
   const jaPago = await app.inject({ method: "POST", url: "/api/payment-links/pl_mp/pay", payload: { method: "pix" } });
   assert.equal(jaPago.statusCode, 409);
   assert.match(jaPago.json().error, /Mercado Pago/);
@@ -267,10 +271,19 @@ test("POST /pay grava a baixa, devolve o link pago e conta na timeline; 400/404/
   const act = (await repo.list("activities")).find((a) => a.lead === "le_1" && a.meta?.event === "link_manual_paid");
   assert.match(act.text, /R\$ 1\.000,00 \(boleto\) · pagou no banco/);
 
-  // Link do cliente sem fatura: a timeline vai pro lead de origem do cliente.
+  // Link do cliente sem fatura: nasce a fatura avulsa já paga (é assim que o
+  // dinheiro entra no caixa) e a timeline vai pro lead de origem do cliente.
   const cli = await app.inject({ method: "POST", url: "/api/payment-links/pl_cli/pay", payload: { method: "dinheiro" } });
   assert.equal(cli.statusCode, 200);
   assert.ok((await repo.list("activities")).some((a) => a.lead === "le_9" && a.meta?.event === "link_manual_paid"));
+  const avulsa = (await repo.list("invoices")).find((i) => i.paymentLink === "pl_cli");
+  assert.ok(avulsa, "fatura avulsa criada");
+  assert.deepEqual([avulsa.status, avulsa.kind, avulsa.customer, avulsa.amount, avulsa.paidProof.kind], ["paid", "manual", "cu_1", 1000, "manual"]);
+  assert.equal((await repo.get("payment_links", "pl_cli")).invoice, avulsa.id);
+  // Desfazer a baixa do link de cliente apaga a fatura avulsa que ela criou.
+  assert.equal((await app.inject({ method: "POST", url: "/api/payment-links/pl_cli/unpay", payload: {} })).statusCode, 200);
+  assert.equal(await repo.get("invoices", avulsa.id), null);
+  assert.equal((await repo.get("payment_links", "pl_cli")).invoice, "");
 
   const undo = await app.inject({ method: "POST", url: "/api/payment-links/pl_1/unpay", payload: {} });
   assert.equal(undo.statusCode, 200);

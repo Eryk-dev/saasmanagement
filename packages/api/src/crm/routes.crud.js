@@ -27,6 +27,8 @@ import { completeMilestoneTasks } from "../customers/customer-milestones.js";
 import { CLOSED_PLAN_ANNUAL_FACTOR } from "../shared/plan-cycles.js";
 import { syncPersonalCalendar } from "../google/google-user.js";
 import { mirrorSubscriptionToMp } from "../payments/mp-charges.js";
+import { badRuleReason, normalizeRuleValue } from "../payments/fin-rules.js";
+import { applyFinRulesToPending } from "../payments/mp-payments.js";
 import { mergeLeadQuestions } from "../forms/forms.js";
 import { toNaiveBrt } from "./agenda-slots.js";
 import { COLLECTION_NAMES } from "../platform/db.js";
@@ -227,6 +229,15 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
     }
     if (collection === "app_config" && catalogConfigSaas(req.body.id) !== null && !isAdminSession(req.authUser)) {
       return reply.code(403).send({ error: "Configuração do catálogo de planos exige etiqueta admin" });
+    }
+    // Regra de conciliação: não nasce regra que casaria a conta inteira (CNPJ
+    // do próprio MP, identidade da casa). Nascendo, já vale pras pendências.
+    if (collection === "fin_rules") {
+      const reason = badRuleReason(req.body);
+      if (reason) return reply.code(400).send({ error: reason });
+      const rule = await repo.create("fin_rules", { ...CREATE_DEFAULTS.fin_rules, ...req.body, matchValue: normalizeRuleValue(req.body.matchField, req.body.matchValue), createdAt: new Date().toISOString() });
+      const applied = await applyFinRulesToPending(repo, { saas: rule.saas || "" }).catch(() => null);
+      return reply.code(201).send({ ...rule, ...(applied ? { applied: applied.applied, settled: applied.settled } : {}) });
     }
     // Mensagens e prazos do follow-up: escrita da tela Configurações (o PATCH e
     // o DELETE pelo id já caem no prefixo de escrita de settings, screens.js).
@@ -727,8 +738,10 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
       try {
         const lead = await repo.get("leads", updated.leadId);
         if (lead && lead.customerId === updated.id) {
-          const amount = Math.round((Number(updated.arr) || 0) / (CLOSED_PLAN_ANNUAL_FACTOR[lead.planClosed] || 1));
-          if (amount !== (Number(lead.amount) || 0)) {
+          const factor = CLOSED_PLAN_ANNUAL_FACTOR[lead.planClosed] ?? 1;
+          const amount = Math.round((Number(updated.arr) || 0) / (factor || 1));
+          // Serviço único (fator 0) não tem ARR: editar o arr não reescreve o valor da venda.
+          if (factor > 0 && amount !== (Number(lead.amount) || 0)) {
             const fresh = await repo.update("leads", lead.id, { amount });
             // Serviço único/fechamento legado não têm spec de assinatura: só o
             // amount espelha (cancelar/mexer em assinatura a partir de uma

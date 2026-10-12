@@ -8,6 +8,7 @@ import { useData } from "../data.jsx";
 import { PageHead, Card, Pill, Segmented, FilterTab } from "../components/viz.jsx";
 import { AvisoTopo, BarraFiltros } from "../components/story.jsx";
 import { Modal, Drawer } from "../components/overlay.jsx";
+import { ManualPaidModal } from "../components/manual-paid-modal.jsx";
 import { EmptyState, PrimaryButton, MoreMenu } from "../atoms.jsx";
 import { Icon } from "./tasks/icons.jsx";
 import { milestonesFor, nextMilestone, tenureLabel, dueLabel } from "../lib/milestones.js";
@@ -116,17 +117,18 @@ function CustomersScreen({ initialTab }) {
   }
   // Baixa da cobrança direto da fila de ações (a MESMA ação do "marcar paga"
   // da ficha do cliente). Otimista na lista local; o SSE recarrega depois.
+  // Dar baixa pede a PROVA (quando/como entrou) — o modal grava; sem prova o
+  // servidor recusa (12/10/2026). Otimista na lista local; o SSE recarrega.
   const [payingId, setPayingId] = useState("");
-  async function payFromQueue(inv) {
+  const [payingInv, setPayingInv] = useState(null);
+  function payFromQueue(inv) {
     if (payingId) return;
-    setPayingId(inv.id);
-    try {
-      await api.payInvoice(inv.id);
-      setInvoices((rows) => rows.map((i) => (i.id === inv.id ? { ...i, status: "paid", paidAt: new Date().toISOString() } : i)));
-      window.toast && window.toast("cobrança baixada", "pos");
-    } catch (e) {
-      window.toast && window.toast(e?.message || "não deu pra baixar a cobrança", "neg");
-    } finally { setPayingId(""); }
+    setPayingInv(inv);
+  }
+  async function paidFromQueue(inv) {
+    setPayingInv(null);
+    setInvoices((rows) => rows.map((i) => (i.id === inv.id ? { ...i, status: "paid", paidAt: new Date().toISOString() } : i)));
+    window.toast && window.toast("cobrança baixada", "pos");
   }
   // Edição inline do popup (mesmo padrão otimista do concluir marco).
   function patchCustomer(customer, p) {
@@ -414,7 +416,7 @@ function CustomersScreen({ initialTab }) {
     nivel: (c) => { const g = gradeOf(c).grade; return g in GRADE_RANK ? GRADE_RANK[g] : null; },
     plano: (c) => String(isMentoria(c) ? consultPackageLabel(journeyOf(c).total) : contractPlan(c)).toLowerCase() || null,
     mrr: (c) => (c.arr || 0),
-    pagamento: (c) => { const pm = c.paymentMethod || leadById.get(c.leadId)?.paymentMethod; return pm ? paymentLabel(pm).toLowerCase() : null; },
+    pagamento: (c) => { const pm = c.paymentMethod || leadById.get(c.leadId)?.paymentMethod; return pm ? paymentLabel(pm, c.paymentTerms || leadById.get(c.leadId)?.paymentTerms).toLowerCase() : null; },
     recebido: (c) => trazidoOf(c) || null,
     pgto: (c) => payStatus(c).rank,
     entrada: (c) => entradaDate(c)?.getTime() ?? null,
@@ -588,6 +590,8 @@ function CustomersScreen({ initialTab }) {
 
   return (
     <div className="customers-page">
+      {payingInv && createPortal(<ManualPaidModal target={{ kind: "invoice", id: payingInv.id, amount: payingInv.amount, title: payingInv.title || (payingInv.kind === "installment" ? `parcela ${payingInv.installmentN || 1}/${payingInv.installmentOf || 1}` : "fatura"), targetName: (customers.find((c) => c.id === payingInv.customer) || {}).name }}
+        onClose={() => setPayingInv(null)} onDone={() => paidFromQueue(payingInv)} />, document.body)}
       <header className="customers-header">
         <h1 className="page-title">Clientes</h1>
         <div className="customers-header-actions">
@@ -1023,7 +1027,7 @@ function CustomerFacts({ customer, lead, product, leverOrg, onPatch, cicloAte = 
           ? `${window.fmt.money(lead.amount)}/mês · acumulado ${window.fmt.money(accruedAmountOf(lead, { endAt: customer.endedAt }))}`
           : window.fmt.money(lead.amount))
         : null],
-      ["Pagamento", (customer.paymentMethod || lead?.paymentMethod) ? paymentLabel(customer.paymentMethod || lead?.paymentMethod) : null],
+      ["Pagamento", (customer.paymentMethod || lead?.paymentMethod) ? paymentLabel(customer.paymentMethod || lead?.paymentMethod, customer.paymentTerms || lead?.paymentTerms) : null],
       ["Status pgto.", PAY_STATUS[customer.paymentStatus] ? `${PAY_STATUS[customer.paymentStatus].label} (manual)` : null],
       ["Ciclo atual até", cicloAte],
       ["Upsells", Number(customer.upsellCount) > 0
@@ -1566,6 +1570,7 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
   // recarrega a lista de verdade logo depois (deps [product, version]).
   const [invOverride, setInvOverride] = useState({});
   const [invBusy, setInvBusy] = useState("");
+  const [invPaying, setInvPaying] = useState(null);
   const invStatus = (i) => invOverride[i.id] || i.status;
   async function toggleParcela(i) {
     if (invBusy) return;
@@ -1575,8 +1580,8 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
         const r = await api.unpayInvoice(i.id);
         setInvOverride((o) => ({ ...o, [i.id]: r?.status || "open" }));
       } else {
-        await api.payInvoice(i.id);
-        setInvOverride((o) => ({ ...o, [i.id]: "paid" }));
+        // Marcar paga pede a prova (quando/como entrou): abre o modal.
+        setInvPaying(i);
       }
     } catch (e) {
       window.toast && window.toast(e?.message || "não deu pra atualizar a fatura", "neg");
@@ -1969,6 +1974,8 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
         {!isKids && <CustomerPlanPanel customer={customer} subs={subs} />}
         {changing && createPortal(<ChangeModal sub={changing.sub} plans={changing.plans} customerName={customer.name} onClose={() => setChanging(null)}
           onDone={async (msg) => { setChanging(null); window.toast?.(msg, "pos"); await refresh(); }} />, document.body)}
+        {invPaying && createPortal(<ManualPaidModal target={{ kind: "invoice", id: invPaying.id, amount: invPaying.amount, title: invPaying.title || (invPaying.kind === "installment" ? `parcela ${invPaying.installmentN || 1}/${invPaying.installmentOf || 1}` : "fatura"), targetName: customer.name }}
+          onClose={() => setInvPaying(null)} onDone={async () => { setInvPaying(null); setInvOverride((o) => ({ ...o, [invPaying.id]: "paid" })); window.toast?.("fatura baixada", "pos"); await refresh(); }} />, document.body)}
         {parcelas.length > 0 && (() => {
           const pagas = parcelas.filter((i) => invStatus(i) === "paid");
           const recebido = pagas.reduce((a, i) => a + (Number(i.amount) || 0), 0);

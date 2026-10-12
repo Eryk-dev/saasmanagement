@@ -14,6 +14,7 @@
 // o saldo pago × em aberto de cada um sai daqui, nunca do cliente.
 
 import { dayKey } from "../metrics/metrics-core.js";
+import { SALE_KINDS } from "./mp-classify.js";
 
 const ORIGINS = new Set(["card", "tela", "cliente", "fatura"]);
 const KINDS = new Set(["lead", "customer", "invoice"]);
@@ -74,6 +75,8 @@ const sameAmount = (a, b) => Math.abs((Number(a) || 0) - (Number(b) || 0)) < 0.0
 // Nos dois casos o pagamento tem que ser POSTERIOR ao link (1 min de folga pra
 // relógio) — link gerado hoje não é pago por dinheiro de ontem.
 function matchesLink(link, p) {
+  // Reserva interna, saída ou ruído do espelho nunca "pagam" um link.
+  if (p.kind && !SALE_KINDS.has(p.kind)) return false;
   const refOk = !!link.reference && String(p.externalReference || "") === link.reference;
   const entOk = (!!link.lead && p.lead === link.lead) || (!!link.customer && p.customer === link.customer);
   if (!refOk && !entOk) return false;
