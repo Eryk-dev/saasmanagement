@@ -7,14 +7,17 @@
 // 10/09/2026: todo link agora nasce no nome de alguém, senão o pagamento não
 // casa. A collection `offers` fica no banco como histórico, sem rota.
 //
-// O status do dinheiro vem do espelho do Mercado Pago (payment-links.js);
-// a baixa manual só muda o status do LINK e os tiles da tela: não cria
-// fatura, não mexe no arr nem no status de pagamento do cliente (esses têm
-// as portas deles: ficha do cliente e Financeiro).
+// O status do dinheiro vem do espelho do Mercado Pago (payment-links.js).
+// A baixa manual (12/10/2026) é dinheiro de verdade com prova (data, meio,
+// autor): link COM fatura dá baixa na fatura com essa prova; link de CLIENTE
+// sem fatura cria a fatura avulsa já paga (senão o dinheiro sumia do caixa —
+// o Financeiro só lia faturas); link de LEAD ainda sem cliente só marca o
+// link (a fatura é do cliente, pós-Ganho).
 
 import { enrichPaymentLinks, filterPaymentLinks, groupPaymentLinks, validateManualPaid, GROUP_TABS } from "./payment-links.js";
 import { logActivity } from "../crm/lead-flow.js";
 import { isAdmin } from "../auth/roles.js";
+import { syncCustomerArr } from "../billing/billing.js";
 
 // Quem vê o quê (Leo, 10/09/2026): closer vê SÓ os links que ele mesmo gerou;
 // admin vê todos e filtra por closer. Sessão sem usuário (key mestre: MCP,
@@ -94,12 +97,37 @@ export function registerOfferRoutes(app, repo) {
     if (!ownsLink(req, link)) return reply.code(403).send({ error: "esse link foi gerado por outra pessoa: só quem gerou (ou um admin) dá baixa" });
     const { error, value } = validateManualPaid(req.body || {});
     if (error) return reply.code(400).send({ error });
-    if (link.invoice) return reply.code(409).send({ error: "esse link tem fatura: dê baixa na fatura pela ficha do cliente" });
     const cur = await enrichOne(link);
     if (cur.paidBy === "mp") return reply.code(409).send({ error: "esse link já foi pago pelo Mercado Pago" });
     const author = req.authUser?.id || "";
+    const markedAt = new Date().toISOString();
+    const paidProof = { kind: "manual", at: value.at, method: value.method, note: value.note, by: author || "api", markedAt, link: link.id };
+    let invoiceId = link.invoice || "";
+    if (link.invoice) {
+      // Link COM fatura: a baixa é da fatura, com a mesma prova (uma porta só).
+      const inv = await repo.get("invoices", link.invoice);
+      if (inv && inv.status === "paid" && inv.mpPaymentId) return reply.code(409).send({ error: "a fatura desse link já foi paga pelo Mercado Pago" });
+      if (inv && inv.status !== "paid") {
+        await repo.update("invoices", inv.id, { status: "paid", paidAt: value.at, paidMethod: value.method, paidProof });
+        if (inv.subscription) {
+          const stillOverdue = (await repo.list("invoices")).some((i) => i.subscription === inv.subscription && i.id !== inv.id && i.status === "overdue");
+          const sub = await repo.get("subscriptions", inv.subscription);
+          if (sub?.status === "past_due" && !stillOverdue) { await repo.update("subscriptions", sub.id, { status: "active" }); await syncCustomerArr(repo, sub.customer); }
+        }
+      }
+    } else if (link.customer) {
+      // Link de CLIENTE sem fatura: o dinheiro vira fatura avulsa já paga —
+      // é assim que entra no caixa (cashIn) e na ficha do cliente.
+      const inv = await repo.create("invoices", {
+        customer: link.customer, saas: link.saas || "", amount: Number(link.amount) || 0, kind: "manual",
+        title: link.title || "Link de pagamento", status: "paid", dueDate: value.at, paidAt: value.at,
+        paidMethod: value.method, paidProof, paymentLink: link.id, createdAt: markedAt,
+      });
+      invoiceId = inv.id;
+    }
     const updated = await repo.update("payment_links", link.id, {
-      manualPaid: { ...value, by: author, markedAt: new Date().toISOString() },
+      manualPaid: { ...value, by: author, markedAt },
+      ...(invoiceId && !link.invoice ? { invoice: invoiceId } : {}),
     });
     await note(updated, `Link de pagamento marcado como pago à mão: ${brl(link.amount)} (${MANUAL_LABEL[value.method] || value.method})${value.note ? ` · ${value.note}` : ""}`,
       { event: "link_manual_paid", linkId: link.id, amount: link.amount, method: value.method, at: value.at }, author || "api");
@@ -112,7 +140,14 @@ export function registerOfferRoutes(app, repo) {
     if (!ownsLink(req, link)) return reply.code(403).send({ error: "esse link foi gerado por outra pessoa: só quem gerou (ou um admin) desfaz" });
     if (!link.manualPaid) return { ok: true, link: await enrichOne(link) };
     const author = req.authUser?.id || "";
-    const updated = await repo.update("payment_links", link.id, { manualPaid: null });
+    // Desfaz também a fatura que essa baixa pagou/criou (nunca a baixada pelo MP).
+    if (link.invoice) {
+      const inv = await repo.get("invoices", link.invoice);
+      if (inv?.mpPaymentId) return reply.code(409).send({ error: "a fatura desse link foi paga pelo Mercado Pago — não dá pra desfazer" });
+      if (inv?.paymentLink === link.id) await repo.remove("invoices", inv.id);
+      else if (inv?.paidProof?.link === link.id) await repo.update("invoices", inv.id, { status: "open", paidAt: "", paidMethod: "", paidProof: null });
+    }
+    const updated = await repo.update("payment_links", link.id, { manualPaid: null, ...(link.invoice && (await repo.get("invoices", link.invoice)) == null ? { invoice: "" } : {}) });
     await note(updated, `Baixa manual desfeita no link de pagamento: ${brl(link.amount)}`,
       { event: "link_manual_unpaid", linkId: link.id, amount: link.amount }, author || "api");
     return { ok: true, link: await enrichOne(updated) };

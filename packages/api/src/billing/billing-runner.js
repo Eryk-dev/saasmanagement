@@ -7,6 +7,7 @@
 
 import { runBilling } from "./billing.js";
 import { discord as defaultDiscord } from "../integrations/discord.js";
+import { materializeUpcomingPayables } from "../payments/payables.js";
 
 const DEFAULT_INTERVAL_MS = 60 * 60 * 1000; // 1h — rollover/dunning é diário por natureza
 
@@ -19,6 +20,12 @@ function graceOpts() {
 
 export async function billingTick(repo, { log, discordClient = defaultDiscord } = {}) {
   const report = await runBilling(repo, graceOpts());
+  // Contas a pagar recorrentes do mês atual e do próximo nascem aqui (saiu do
+  // GET /api/fin: leitura não cria nada). Falha isolada: não derruba o tick.
+  try {
+    const created = await materializeUpcomingPayables(repo);
+    if (created) { report.payables = created; log?.info?.({ created }, "billing: contas a pagar recorrentes materializadas"); }
+  } catch (err) { log?.warn?.({ err: err.message }, "billing: materializar contas a pagar falhou"); }
   const moved = report.applied || report.renewed || report.overdue || report.pastDue || report.recovered;
   if (moved) log?.info({ report }, "billing: tick moveu registros");
   if ((report.overdue > 0 || report.pastDue > 0) && discordClient?.configured()) {

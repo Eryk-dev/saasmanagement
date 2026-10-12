@@ -44,14 +44,15 @@ export async function applyMpPayment(repo, sub, { mpPaymentId, amount }, now = n
     .sort((a, b) => String(a.dueDate || "").localeCompare(String(b.dueDate || "")))[0];
   const nowIso = now.toISOString();
   let invoice;
+  const paidProof = { kind: "mp", at: nowIso, mpPaymentId: String(mpPaymentId || "") };
   if (open) {
-    invoice = await repo.update("invoices", open.id, { status: "paid", paidAt: nowIso, mpPaymentId });
+    invoice = await repo.update("invoices", open.id, { status: "paid", paidAt: nowIso, mpPaymentId, paidProof });
   } else {
     invoice = await repo.create("invoices", {
       subscription: sub.id, customer: sub.customer, saas: sub.saas,
       amount: Number(amount) || Number(sub.price) || 0,
       kind: "renewal", status: "paid", dueDate: nowIso, paidAt: nowIso,
-      createdAt: nowIso, mpPaymentId,
+      createdAt: nowIso, mpPaymentId, paidProof,
     });
   }
   const stillOverdue = (await repo.list("invoices"))

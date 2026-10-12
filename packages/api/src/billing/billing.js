@@ -212,7 +212,10 @@ export async function createClosedSubscription(repo, { customerId, saas, planClo
       subscription: sub.id, customer: customerId, saas: saas || "",
       amount: price, kind: "renewal", status: naVista ? "paid" : "open",
       dueDate: periodStart, periodStart, periodEnd,
-      ...(naVista ? { paidAt: periodStart } : {}), createdAt: now.toISOString(),
+      // PRESUMIDA: nasce paga porque o fechamento à vista É o recebimento, mas
+      // sem prova (pagamento do MP ou baixa com data/meio) o caixa a mostra
+      // em "presumido", não em "recebido" (metrics-core.cashIn).
+      ...(naVista ? { paidAt: periodStart, paidProof: { kind: "closing", at: periodStart } } : {}), createdAt: now.toISOString(),
     });
   }
   await syncCustomerArr(repo, customerId);

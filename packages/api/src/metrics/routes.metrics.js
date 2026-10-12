@@ -15,7 +15,7 @@ import { aiCosts as defaultAiCosts } from "./ai-costs.js";
 import { NOT_CONFIGURED } from "../platform/http-status.js";
 import {
   DAY_MS, round2, dayKey, monthKey, isRealLead, isSaleLead,
-  winsIn, customerStartMap, tcvOf, cashCollectedIn, card12xBaseIn, mpFeesIn, PCT_BASES, paymentMethodOf, upsellSalesIn, upsellContractedOf,
+  winsIn, customerStartMap, tcvOf, cashIn, card12xBaseIn, mpFeesIn, PCT_BASES, upsellSalesIn, upsellContractedOf,
 } from "./metrics-core.js";
 
 const monthOf = monthKey; // mês do dia do NEGÓCIO (metrics-core), não UTC
@@ -108,10 +108,12 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhats
     if (basesNeeded.has("taxa_real")) bases.taxa_real = mpFeesIn(await mirror(), month);
     if (basesNeeded.has("received")) {
       const [allInv, allCust] = await Promise.all([repo.list("invoices"), repo.list("customers")]);
-      const invoices = allInv.filter((i) => i.saas === product.id);
-      // O meio de pagamento do cliente decide se a fatura que nasce paga no
-      // fechamento é recebimento de verdade (isRealReceipt do metrics-core).
-      bases.received = cashCollectedIn(invoices, month, paymentMethodOf(allCust.filter((c) => c.saas === product.id)));
+      // Recebido do mês pela régua ÚNICA do caixa (metrics-core.cashIn): o
+      // mesmo número do Resumo do Financeiro e de Clientes.
+      bases.received = cashIn({
+        customers: allCust, invoices: allInv, mpPayments: await mirror(), saas: product.id,
+        inWin: (iso) => monthKey(iso) === month,
+      }).total;
     }
     // WhatsApp do mês: custo REAL das conversas (conversation_analytics da
     // conta, em BRL). Conta é GLOBAL como a IA → atribui ao primeiro produto

@@ -11,7 +11,8 @@ import { mirrorSubscriptionToMp, createCustomerCharge } from "../payments/mp-cha
 import { markCustomerChurn, clearCustomerChurn } from "./churn.js";
 import { parseUpsellBody, recordUpsell } from "./upsell.js";
 import { NOT_CONFIGURED } from "../platform/http-status.js";
-import { customerCashIn, rangeFromQuery, cashReceivedByCustomer } from "../metrics/metrics-core.js";
+import { customerCashIn, rangeFromQuery, cashIn, paidProofKindOf } from "../metrics/metrics-core.js";
+import { validateManualPaid } from "../payments/payment-links.js";
 import { isChurnedCustomer } from "./churn.js";
 import { plansOf } from "./plan-catalog.js";
 import {
@@ -278,7 +279,7 @@ export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
     const [customers, invoices, mpPayments, plans] = await Promise.all([
       repo.listWhere("customers", { saas }), repo.listWhere("invoices", { saas }), repo.list("mp_payments"), plansOf(repo, saas),
     ]);
-    const received = cashReceivedByCustomer({ customers, invoices, mpPayments });
+    const received = cashIn({ customers, invoices, mpPayments, saas }).byCustomer;
     const known = new Set(plans.map((p) => p.code));
     const blank = () => ({ active: 0, churned: 0, arr: 0, mrr: 0, received: 0, customers: [] });
     const out = { plans: Object.fromEntries(plans.map((p) => [p.code, blank()])), custom: blank(), none: blank() };
@@ -339,10 +340,17 @@ export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
 
   // Baixa de fatura (o pagamento em si acontece no MP/app — fase 4). Se a
   // assinatura estava past_due e não sobrou fatura vencida, volta a active.
-  app.post("/api/invoices/:id/pay", async (req, reply) => {
-    const inv = await repo.get("invoices", req.params.id);
-    if (!inv) return reply.code(404).send({ error: "Not found" });
-    const paid = await repo.update("invoices", inv.id, { status: "paid", paidAt: new Date().toISOString() });
+  // Baixa MANUAL exige a prova: quando entrou, como entrou (pix/boleto/…),
+  // valor (opcional, quando difere), nota e quem marcou. Sem isso a fatura
+  // baixada à mão era indistinguível de fatura inventada (23 assim em prod).
+  async function manualPay(req, reply, inv, { confirm = false } = {}) {
+    const { error, value } = validateManualPaid(req.body || {});
+    if (error) return reply.code(400).send({ error });
+    const amount = req.body?.amount != null && req.body.amount !== "" ? Number(req.body.amount) : null;
+    if (amount != null && !(amount > 0)) return reply.code(400).send({ error: "valor recebido inválido" });
+    const by = req.authUser?.id || "api";
+    const paidProof = { kind: "manual", at: value.at, method: value.method, note: value.note, by, markedAt: new Date().toISOString(), ...(amount != null ? { amount } : {}), ...(confirm ? { confirmedFrom: "closing" } : {}) };
+    const paid = await repo.update("invoices", inv.id, { status: "paid", paidAt: value.at, paidMethod: value.method, paidProof });
     if (inv.subscription) {
       const stillOverdue = (await repo.list("invoices"))
         .some((i) => i.subscription === inv.subscription && i.id !== inv.id && i.status === "overdue");
@@ -355,9 +363,25 @@ export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
     // Aviso no Discord (fail-open) — baixa manual também é dinheiro entrando.
     if (discord?.configured()) {
       const customer = paid.customer ? await repo.get("customers", paid.customer) : null;
-      await discord.invoicePaid({ invoice: paid, customerName: customer?.name, via: "baixa manual" });
+      await discord.invoicePaid({ invoice: paid, customerName: customer?.name, via: confirm ? "confirmação" : "baixa manual" });
     }
     return paid;
+  }
+
+  app.post("/api/invoices/:id/pay", async (req, reply) => {
+    const inv = await repo.get("invoices", req.params.id);
+    if (!inv) return reply.code(404).send({ error: "Not found" });
+    if (inv.status === "paid" && paidProofKindOf(inv) !== "closing") return reply.code(409).send({ error: "essa fatura já está paga" });
+    return manualPay(req, reply, inv);
+  });
+
+  // Confirmar uma fatura PRESUMIDA (nasceu paga no fechamento à vista): a
+  // mesma prova da baixa manual, e ela sai de "presumido" pra "recebido".
+  app.post("/api/invoices/:id/confirm", async (req, reply) => {
+    const inv = await repo.get("invoices", req.params.id);
+    if (!inv) return reply.code(404).send({ error: "Not found" });
+    if (inv.status !== "paid" || paidProofKindOf(inv) !== "closing") return reply.code(409).send({ error: "só fatura presumida (nascida paga no fechamento) pode ser confirmada" });
+    return manualPay(req, reply, inv, { confirm: true });
   });
 
   // Desfaz uma baixa MANUAL (clique errado no "marcar paga"). Pagamento real do
@@ -371,7 +395,7 @@ export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
     if (inv.status !== "paid") return inv;
     const overdue = inv.dueDate && new Date(inv.dueDate).getTime() + 3 * 86400000 <= Date.now();
     const reopened = await repo.update("invoices", inv.id, {
-      status: overdue ? "overdue" : "open", paidAt: "",
+      status: overdue ? "overdue" : "open", paidAt: "", paidMethod: "", paidProof: null,
       ...(overdue ? { overdueAt: new Date().toISOString() } : {}),
     });
     if (inv.subscription && overdue) {
@@ -391,30 +415,13 @@ export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
   // inicial que NASCE paga no fechamento (paidAt === periodStart, convenção do
   // createClosedSubscription) fica fora: é suposição de recebimento, e o
   // fechamento no cartão sem o link pago provou que ela mente (Marianna, 13/08).
+  // Régua única (metrics-core.cashIn), sem janela: o acumulado por cliente.
   app.get("/api/billing/received/:saas", async (req) => {
-    const customers = (await repo.list("customers")).filter((c) => c.saas === req.params.saas);
-    const ids = new Set(customers.map((c) => c.id));
-    const byLead = new Map(customers.filter((c) => c.leadId).map((c) => [c.leadId, c.id]));
-    const received = {};
-    const add = (cid, v) => { if (cid && ids.has(cid) && v > 0) received[cid] = Math.round(((received[cid] || 0) + v) * 100) / 100; };
-    const countedMp = new Set(); // idempotência: pagamento espelhado + fatura baixada por ele contam UMA vez
-    for (const p of await repo.list("mp_payments")) {
-      if (p.status !== "approved") continue;
-      const cid = (ids.has(p.customer) ? p.customer : "") || byLead.get(p.lead) || "";
-      if (!cid) continue;
-      add(cid, Number(p.amount) || 0);
-      countedMp.add(String(p.mpId));
-    }
-    for (const i of await repo.list("invoices")) {
-      if (i.status !== "paid" || !ids.has(i.customer)) continue;
-      if (i.mpPaymentId) {
-        if (!countedMp.has(String(i.mpPaymentId))) add(i.customer, Number(i.amount) || 0);
-        continue;
-      }
-      if (i.paidAt && i.periodStart && i.paidAt === i.periodStart) continue; // nasceu paga no fechamento
-      add(i.customer, Number(i.amount) || 0);
-    }
-    return received;
+    const saas = req.params.saas;
+    const [customers, invoices, mpPayments] = await Promise.all([
+      repo.listWhere("customers", { saas }), repo.listWhere("invoices", { saas }), repo.list("mp_payments"),
+    ]);
+    return Object.fromEntries(cashIn({ customers, invoices, mpPayments, saas }).byCustomer);
   });
 
   app.get("/api/billing/cash/:saas", async (req, reply) => {

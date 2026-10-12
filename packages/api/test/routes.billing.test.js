@@ -158,7 +158,7 @@ test("motor: rollover gera fatura de renovação; dunning marca past_due; pagar 
   })).json();
   // Paga a fatura inicial pra isolar o rollover.
   const initial = (await repo.list("invoices"))[0];
-  await app.inject({ method: "POST", url: `/api/invoices/${initial.id}/pay` });
+  await app.inject({ method: "POST", url: `/api/invoices/${initial.id}/pay`, payload: { method: "pix" } });
 
   // Ciclo venceu há 10 dias → renovação com dueDate no passado (vencida além da carência).
   const now = Date.now();
@@ -178,7 +178,7 @@ test("motor: rollover gera fatura de renovação; dunning marca past_due; pagar 
 
   const renewal = (await repo.list("invoices")).find((i) => i.status === "overdue");
   assert.equal(renewal.amount, 100);
-  const paid = (await app.inject({ method: "POST", url: `/api/invoices/${renewal.id}/pay` })).json();
+  const paid = (await app.inject({ method: "POST", url: `/api/invoices/${renewal.id}/pay`, payload: { method: "pix" } })).json();
   assert.equal(paid.status, "paid");
   assert.equal((await repo.get("subscriptions", sub.id)).status, "active");
 

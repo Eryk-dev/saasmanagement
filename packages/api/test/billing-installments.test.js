@@ -106,9 +106,9 @@ test("runBilling não fatura por mês no cronograma; parcela vencida derruba pra
   assert.equal(sub.status, "past_due");
 
   const app = buildApp(repo);
-  await app.inject({ method: "POST", url: `/api/invoices/${parc[0].id}/pay` });
+  await app.inject({ method: "POST", url: `/api/invoices/${parc[0].id}/pay`, payload: { method: "boleto" } });
   assert.equal((await repo.list("subscriptions"))[0].status, "past_due", "ainda tem a 2ª vencida");
-  await app.inject({ method: "POST", url: `/api/invoices/${parc[1].id}/pay` });
+  await app.inject({ method: "POST", url: `/api/invoices/${parc[1].id}/pay`, payload: { method: "boleto" } });
   assert.equal((await repo.list("subscriptions"))[0].status, "active", "sem vencida → recupera");
   await app.close();
 });

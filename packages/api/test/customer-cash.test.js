@@ -15,7 +15,7 @@ const customers = [
 const calc = (data = {}) => customerCashIn({ ...period, customers, ...data });
 
 test("caixa de Clientes: contrato e tempo de assinatura não presumem recebimento", () => {
-  assert.deepEqual(calc(), { ...period, received: 0, receivable: 0, openCount: 0 });
+  assert.deepEqual(calc(), { ...period, received: 0, presumed: 0, receivable: 0, openCount: 0 });
   assert.equal(calc({ invoices: [
     { customer: "new", status: "paid", amount: 12000, paidAt: "2026-09-05", periodStart: "2026-09-05" },
     { customer: "new", status: "paid", amount: 12000 },
@@ -91,7 +91,7 @@ test("GET billing/cash aplica período e produto na API sem alterar o acumulado 
   t.after(() => app.close());
   const res = await app.inject("/api/billing/cash/leverads?since=2026-09-01&until=2026-09-30");
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(res.json(), { ...period, received: 150, receivable: 200, openCount: 1 });
+  assert.deepEqual(res.json(), { ...period, received: 150, presumed: 0, receivable: 200, openCount: 1 });
   assert.deepEqual((await app.inject("/api/billing/received/leverads")).json(), { old: 850 });
   assert.equal((await app.inject("/api/billing/cash/uniquekids?since=2026-09-01&until=2026-09-30")).json().received, 0);
   for (const query of ["since=2026-09-31", "until=bad", "since=2026-10-01&until=2026-09-01"]) {
