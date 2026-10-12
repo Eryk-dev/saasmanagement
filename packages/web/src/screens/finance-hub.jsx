@@ -818,7 +818,7 @@ const ROLE_LABEL = { sdr: "SDR", closer: "Closer", cs: "Integrador · CS", socia
 const sign = (v) => `${v < 0 ? "−" : "+"} ${money(Math.abs(v))}`;
 
 function FichaForm({ product, uid, profile, onDone, onCancel }) {
-  const [f, setF] = useState({ regime: profile?.regime || "", fixed: profile?.fixed ?? "", vr: profile?.vr ?? "", vt: profile?.vt ?? "", notes: profile?.notes || "", extras: Array.isArray(profile?.extras) ? profile.extras.map((e) => ({ ...e })) : [] });
+  const [f, setF] = useState({ regime: profile?.regime || "", fixed: profile?.fixed ?? "", benefits: profile?.benefits !== false, vrDay: profile?.vrDay ?? "", vtDay: profile?.vtDay ?? "", vr: profile?.vr || "", vt: profile?.vt || "", notes: profile?.notes || "", extras: Array.isArray(profile?.extras) ? profile.extras.map((e) => ({ ...e })) : [] });
   const [saving, setSaving] = useState(false), [err, setErr] = useState(null);
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
   const setExtra = (i, k, v) => setF((s) => ({ ...s, extras: s.extras.map((e, j) => (j === i ? { ...e, [k]: v } : e)) }));
@@ -829,6 +829,7 @@ function FichaForm({ product, uid, profile, onDone, onCancel }) {
     try {
       const doc = {
         id: uid, uid, saas: product.id, regime: f.regime || "", fixed: numOrNull(f.fixed),
+        benefits: !!f.benefits, vrDay: numOrNull(f.vrDay), vtDay: numOrNull(f.vtDay),
         vr: Number(numOrNull(f.vr)) || 0, vt: Number(numOrNull(f.vt)) || 0, notes: f.notes.trim(),
         extras: f.extras.filter((e) => String(e.label || "").trim() && numOrNull(e.amount) != null).map((e) => ({ label: e.label.trim(), amount: Number(numOrNull(e.amount)), kind: e.kind || "acordo" })),
         updatedAt: new Date().toISOString(),
@@ -846,10 +847,21 @@ function FichaForm({ product, uid, profile, onDone, onCancel }) {
           <select aria-label="Regime" value={f.regime} onChange={(e) => set("regime", e.target.value)} style={{ ...inp, width: 120 }}><option value="">do plano (CLT)</option><option value="clt">CLT</option><option value="pj">PJ</option></select></label>
         <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}><span className="kicker">Fixo da pessoa (R$)</span>
           <input aria-label="Fixo da pessoa" type="number" min="0" step="0.01" placeholder="vazio = fixo do plano" value={f.fixed} onChange={(e) => set("fixed", e.target.value)} style={{ ...inp, width: 150, fontFamily: "var(--mono)", textAlign: "right" }} /></label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}><span className="kicker">VR / mês</span>
-          <input aria-label="VR" type="number" min="0" step="0.01" value={f.vr} onChange={(e) => set("vr", e.target.value)} style={{ ...inp, width: 110, fontFamily: "var(--mono)", textAlign: "right" }} /></label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}><span className="kicker">VT / mês</span>
-          <input aria-label="VT" type="number" min="0" step="0.01" value={f.vt} onChange={(e) => set("vt", e.target.value)} style={{ ...inp, width: 110, fontFamily: "var(--mono)", textAlign: "right" }} /></label>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, height: 36 }} title="VR e VT por dia útil (segunda a sexta do mês). Padrão da casa: R$ 30 e R$ 12.">
+          <input type="checkbox" checked={!!f.benefits} onChange={(e) => set("benefits", e.target.checked)} /> VR e VT
+        </label>
+        {f.benefits && (<>
+          <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}><span className="kicker">VR / dia útil</span>
+            <input aria-label="VR por dia" type="number" min="0" step="0.01" placeholder="30 (padrão)" value={f.vrDay} onChange={(e) => set("vrDay", e.target.value)} style={{ ...inp, width: 120, fontFamily: "var(--mono)", textAlign: "right" }} /></label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}><span className="kicker">VT / dia útil</span>
+            <input aria-label="VT por dia" type="number" min="0" step="0.01" placeholder="12 (padrão)" value={f.vtDay} onChange={(e) => set("vtDay", e.target.value)} style={{ ...inp, width: 120, fontFamily: "var(--mono)", textAlign: "right" }} /></label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }} title="Se preenchido, vale por cima do diário × dias úteis."><span className="kicker">VR mensal fechado</span>
+            <input aria-label="VR mensal" type="number" min="0" step="0.01" placeholder="vazio = por dia" value={f.vr} onChange={(e) => set("vr", e.target.value)} style={{ ...inp, width: 130, fontFamily: "var(--mono)", textAlign: "right" }} /></label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }} title="Se preenchido, vale por cima do diário × dias úteis."><span className="kicker">VT mensal fechado</span>
+            <input aria-label="VT mensal" type="number" min="0" step="0.01" placeholder="vazio = por dia" value={f.vt} onChange={(e) => set("vt", e.target.value)} style={{ ...inp, width: 130, fontFamily: "var(--mono)", textAlign: "right" }} /></label>
+        </>)}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         <span className="kicker">Acordos recorrentes (todo mês) · benefício e acordo somam, desconto subtrai</span>
@@ -976,8 +988,8 @@ export function FolhaTab({ product, month }) {
                   <span>fixo <b style={{ color: "var(--fg-1)" }}>{money(r.fixed)}</b> <span style={{ color: "var(--fg-4)" }}>({r.fixedFrom})</span></span>
                   <span>variável <b style={{ color: "var(--fg-1)" }}>{money(r.variable)}</b>{!r.stamped && <span style={{ color: "var(--warn)" }}> · entra no fechamento</span>}</span>
                   <span>time <b style={{ color: "var(--fg-1)" }}>{money(r.teamBonus)}</b></span>
-                  <span>VR <b style={{ color: "var(--fg-1)" }}>{money(r.vr)}</b></span>
-                  <span>VT <b style={{ color: "var(--fg-1)" }}>{money(r.vt)}</b></span>
+                  <span title={r.benefitsOn ? `${r.vrDay}/dia × ${r.businessDays} dias úteis` : "sem VR na ficha"}>VR <b style={{ color: "var(--fg-1)" }}>{money(r.vr)}</b></span>
+                  <span title={r.benefitsOn ? `${r.vtDay}/dia × ${r.businessDays} dias úteis` : "sem VT na ficha"}>VT <b style={{ color: "var(--fg-1)" }}>{money(r.vt)}</b></span>
                   {r.extras?.length > 0 && <span>acordos <b style={{ color: r.extrasTotal < 0 ? "var(--neg)" : "var(--fg-1)" }}>{sign(r.extrasTotal)}</b></span>}
                   {ajustes.length > 0 && <span>ajustes do mês <b style={{ color: r.adjustmentsTotal < 0 ? "var(--neg)" : "var(--fg-1)" }}>{sign(r.adjustmentsTotal)}</b></span>}
                 </div>
@@ -1038,7 +1050,7 @@ export function FolhaTab({ product, month }) {
         </div>
       </Card>
       <InfoNota>
-        Papel na folha e nível ficam no usuário (Ajustes → Equipe; promoção em Metas → Meta por pessoa). A ficha guarda o que foge do plano: regime, fixo da pessoa, VR, VT e acordos recorrentes. Ajuste do mês vale uma vez. O vencimento é dia 1 do mês seguinte; a saída do Mercado Pago com o mesmo valor, até 5 dias do vencimento, dá baixa sozinha.
+        Papel na folha e nível ficam no usuário (Ajustes → Equipe; promoção em Metas → Meta por pessoa). VR R$ 30 e VT R$ 12 por dia útil são o padrão da casa; a ficha guarda o que foge do plano: regime, fixo da pessoa, VR/VT diferentes e acordos recorrentes. Ajuste do mês vale uma vez. O vencimento é dia 1 do mês seguinte; a saída do Mercado Pago com o mesmo valor, até 5 dias do vencimento, dá baixa sozinha.
       </InfoNota>
     </div>
   );

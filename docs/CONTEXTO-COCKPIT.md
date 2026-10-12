@@ -295,8 +295,10 @@ a mesma regra; os testes ficam em `sdr-brain.test.js`.
    - **Folha pela Remuneração** (`comp/payroll.js`, 12/10/2026): botão "gerar
      folha" em A pagar → Folha calcula por pessoa fixo (nível/regime do plano
      ou `payrollFixed`) + duas pernas pelo carimbo `comp_months` + bônus de
-     time + VR/VT e acordos recorrentes da FICHA (`payroll_profiles`, id = uid:
-     regime, fixo da pessoa, vr, vt, extras benefício/acordo/desconto) ± ajustes
+     time + VR/VT (padrão da casa R$ 30 e R$ 12 POR DIA ÚTIL seg–sex,
+     `PAYROLL_DEFAULTS` × `businessDaysIn(mês)`) e acordos recorrentes da FICHA
+     (`payroll_profiles`, id = uid: regime, fixo da pessoa, benefits on/off,
+     vrDay/vtDay, vr/vt mensal fechado, extras benefício/acordo/desconto) ± ajustes
      do mês (`payroll_adjustments`), e cria/atualiza a conta
      `pay_folha_<saas>_<mês>_<uid>` (vence dia 1 do mês seguinte); paga não
      muda, `amountManual` é respeitado. Papel e nível ficam no usuário

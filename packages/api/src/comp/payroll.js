@@ -21,6 +21,17 @@ import { compLevelOf } from "./comp-plan.js";
 import { stampCompMonth, monthPersonId } from "./comp-months.js";
 
 export const PAYROLL_ROLES = new Set(["sdr", "closer", "cs", "social"]);
+// Benefícios padrão da casa (Leo, 12/10/2026): VR R$ 30 e VT R$ 12 POR DIA ÚTIL
+// (segunda a sexta do mês). A ficha da pessoa sobrepõe (vrDay/vtDay) ou
+// desliga (benefits: false); valor mensal fechado (vr/vt) também vale.
+export const PAYROLL_DEFAULTS = { vrDay: 30, vtDay: 12 };
+export function businessDaysIn(month) {
+  const [y, m] = String(month).split("-").map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  let n = 0;
+  for (let d = 1; d <= last; d++) { const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); if (wd !== 0 && wd !== 6) n++; }
+  return n;
+}
 export const PAYROLL_CATEGORY = { sdr: "pessoal_com", closer: "pessoal_com", cs: "suporte", social: "pessoal_com", manual: "pessoal_adm" };
 export const payrollPayableId = (saas, month, uid) => `pay_folha_${saas}_${month}_${uid}`;
 const r2 = (n) => Math.round(n * 100) / 100;
@@ -36,15 +47,24 @@ const nextMonthFirstDay = (month) => {
 // continuam no usuário (Equipe e Metas → Meta por pessoa).
 const cleanExtras = (list) => (Array.isArray(list) ? list : []).filter((e) => e && String(e.label || "").trim() && Number.isFinite(Number(e.amount)))
   .map((e) => ({ label: String(e.label).trim(), amount: r2(Number(e.amount)), kind: e.kind === "desconto" ? "desconto" : e.kind === "beneficio" ? "beneficio" : "acordo" }));
-export const payrollSetupOf = (u, profile = null) => ({
-  role: PAYROLL_ROLES.has(u?.payrollRole) ? u.payrollRole : (u?.payrollRole === "manual" ? "manual" : "none"),
-  level: compLevelOf(u),
-  regime: (profile?.regime || u?.payrollRegime) === "pj" ? "pj" : "clt",
-  fixed: profile?.fixed != null && profile.fixed !== "" ? num(profile.fixed) : (u?.payrollFixed != null && u.payrollFixed !== "" ? num(u.payrollFixed) : null),
-  vr: r2(num(profile?.vr)), vt: r2(num(profile?.vt)),
-  extras: cleanExtras(profile?.extras),
-  saas: profile?.saas || u?.payrollSaas || u?.saas || "",
-});
+const dayOr = (v, dflt) => (v == null || v === "" ? dflt : num(v));
+export const payrollSetupOf = (u, profile = null, month = "") => {
+  const days = month ? businessDaysIn(month) : 0;
+  const benefitsOn = profile?.benefits !== false;
+  const vrDay = dayOr(profile?.vrDay, PAYROLL_DEFAULTS.vrDay), vtDay = dayOr(profile?.vtDay, PAYROLL_DEFAULTS.vtDay);
+  // Mensal fechado na ficha (vr/vt > 0) vale por cima do diário × dias úteis.
+  const vr = !benefitsOn ? 0 : num(profile?.vr) > 0 ? r2(num(profile.vr)) : r2(vrDay * days);
+  const vt = !benefitsOn ? 0 : num(profile?.vt) > 0 ? r2(num(profile.vt)) : r2(vtDay * days);
+  return {
+    role: PAYROLL_ROLES.has(u?.payrollRole) ? u.payrollRole : (u?.payrollRole === "manual" ? "manual" : "none"),
+    level: compLevelOf(u),
+    regime: (profile?.regime || u?.payrollRegime) === "pj" ? "pj" : "clt",
+    fixed: profile?.fixed != null && profile.fixed !== "" ? num(profile.fixed) : (u?.payrollFixed != null && u.payrollFixed !== "" ? num(u.payrollFixed) : null),
+    vr, vt, vrDay, vtDay, businessDays: days, benefitsOn,
+    extras: cleanExtras(profile?.extras),
+    saas: profile?.saas || u?.payrollSaas || u?.saas || "",
+  };
+};
 
 // Quem entra na folha deste produto.
 export function payrollUsers(users, saas, { defaultSaas } = {}) {
@@ -58,7 +78,7 @@ export function payrollUsers(users, saas, { defaultSaas } = {}) {
 
 // Uma linha da folha: fixo + pernas + time, com o detalhamento.
 export function payrollRowOf(user, { compDocs, stamp, month, profile = null, adjustments = [] }) {
-  const s = payrollSetupOf(user, profile);
+  const s = payrollSetupOf(user, profile, month);
   const plan = planFor(compDocs, s.role) || {};
   const lv = levelOf(plan, s.level);
   const fixedPlan = s.role === "closer" && s.regime === "pj" ? num(lv.fixedPj) : num(lv.fixed);
@@ -83,8 +103,9 @@ export function payrollRowOf(user, { compDocs, stamp, month, profile = null, adj
   // Benefícios e acordos: VR/VT da ficha, acordos recorrentes (benefício soma,
   // desconto subtrai) e os ajustes pontuais do mês.
   const benefits = r2(s.vr + s.vt);
-  if (s.vr) notes.push(`VR R$ ${s.vr}`);
-  if (s.vt) notes.push(`VT R$ ${s.vt}`);
+  if (s.vr) notes.push(`VR R$ ${s.vr}${num(profile?.vr) > 0 ? " (mensal da ficha)" : ` (${s.vrDay}/dia × ${s.businessDays} dias úteis)`}`);
+  if (s.vt) notes.push(`VT R$ ${s.vt}${num(profile?.vt) > 0 ? " (mensal da ficha)" : ` (${s.vtDay}/dia × ${s.businessDays} dias úteis)`}`);
+  if (!s.benefitsOn) notes.push("sem VR/VT (ficha)");
   const signed = (e) => (e.kind === "desconto" ? -Math.abs(e.amount) : e.amount);
   const extras = s.extras.map((e) => ({ ...e, signed: signed(e) }));
   const monthAdj = (adjustments || []).filter((a) => a && a.uid === user.id && a.month === month && Number.isFinite(Number(a.amount)))
@@ -98,7 +119,7 @@ export function payrollRowOf(user, { compDocs, stamp, month, profile = null, adj
   return {
     uid: user.id, name: user.name || user.id, role: s.role, level: s.level, regime: s.regime,
     fixed: r2(fixed), fixedFrom: s.fixed != null ? "pessoa" : `plano nível ${s.level}${regimeLabel}`,
-    variable, legs, teamBonus, vr: s.vr, vt: s.vt, benefits, extras, extrasTotal, adjustments: monthAdj, adjustmentsTotal,
+    variable, legs, teamBonus, vr: s.vr, vt: s.vt, vrDay: s.vrDay, vtDay: s.vtDay, businessDays: s.businessDays, benefitsOn: s.benefitsOn, benefits, extras, extrasTotal, adjustments: monthAdj, adjustmentsTotal,
     total, stamped: !!stamp, month,
     notes: [`fixo R$ ${r2(fixed)} (${s.fixed != null ? "fixo da pessoa" : `plano nível ${s.level}${regimeLabel}`})`, ...notes].join(" · "),
   };
@@ -152,7 +173,7 @@ export async function generatePayroll(repo, product, month, { by = "api", now = 
   for (const r of calc.rows) {
     const id = payrollPayableId(product.id, month, r.uid);
     const cur = (r.payable && (await repo.get("payables", r.payable.id))) || (await repo.get("payables", id));
-    const payroll = { fixed: r.fixed, fixedFrom: r.fixedFrom, variable: r.variable, legs: r.legs, teamBonus: r.teamBonus, vr: r.vr, vt: r.vt, benefits: r.benefits, extras: r.extras, extrasTotal: r.extrasTotal, adjustments: r.adjustments, adjustmentsTotal: r.adjustmentsTotal, total: r.total, stamped: r.stamped, generatedAt: now.toISOString(), by };
+    const payroll = { fixed: r.fixed, fixedFrom: r.fixedFrom, variable: r.variable, legs: r.legs, teamBonus: r.teamBonus, vr: r.vr, vt: r.vt, vrDay: r.vrDay, vtDay: r.vtDay, businessDays: r.businessDays, benefits: r.benefits, extras: r.extras, extrasTotal: r.extrasTotal, adjustments: r.adjustments, adjustmentsTotal: r.adjustmentsTotal, total: r.total, stamped: r.stamped, generatedAt: now.toISOString(), by };
     if (cur) {
       if (cur.status === "paga") { out.kept++; out.rows.push({ uid: r.uid, action: "paga" }); continue; }
       const patch = { notes: r.notes, payroll, ...(cur.amountManual ? {} : { amount: r.total }) };
