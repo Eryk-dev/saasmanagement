@@ -70,7 +70,7 @@ test("ficha e ajustes do mês: VR/VT somam, acordo recorrente e desconto, ajuste
   assert.deepEqual([fx.fixed, fx.fixedFrom], [5000, "pessoa"]);
 });
 
-test("quem entra na folha: só sdr/closer/cs/social do produto; manual e none ficam fora", () => {
+test("quem entra na folha: sdr/closer/cs/social/manual do produto; none fica fora", () => {
   const users = [
     { id: "sdr", payrollRole: "sdr", saas: "leverads" },
     { id: "yudi", payrollRole: "cs" }, // sem saas → produto padrão
@@ -78,7 +78,7 @@ test("quem entra na folha: só sdr/closer/cs/social do produto; manual e none fi
     { id: "bia", payrollRole: "none" },
     { id: "ana", payrollRole: "closer", saas: "uniquekids" },
   ];
-  assert.deepEqual(payrollUsers(users, "leverads", { defaultSaas: "leverads" }).map((u) => u.id), ["sdr", "yudi"]);
+  assert.deepEqual(payrollUsers(users, "leverads", { defaultSaas: "leverads" }).map((u) => u.id), ["sdr", "yudi", "leo"], "sócio (manual) aparece pra registrar");
   assert.deepEqual(payrollUsers(users, "uniquekids", { defaultSaas: "leverads" }).map((u) => u.id), ["ana"]);
 });
 
@@ -93,7 +93,7 @@ test("gerar folha: cria a conta por pessoa (dia 1 do mês seguinte), atualiza em
   await repo.create("comp_months", { id: "cm_leverads_2026-09_igor_social", ...stamp({ uid: "igor", role: "social", teamBonusValue: 200, contractsAtt: null, revenueAtt: null }) });
   const product = await repo.get("products", "leverads");
   const r1 = await generatePayroll(repo, product, "2026-09", { by: "leo", now: new Date("2026-10-01T12:00:00Z") });
-  assert.deepEqual([r1.created, r1.updated, r1.kept], [2, 0, 0]);
+  assert.deepEqual([r1.created, r1.updated, r1.kept, r1.skipped], [2, 0, 0, 1], "o sócio sem retirada definida aparece mas não vira conta");
   const pays = (await repo.list("payables")).filter((p) => p.month === "2026-09");
   assert.equal(pays.length, 2);
   const manu = pays.find((p) => p.userId === "sdr");
@@ -123,6 +123,14 @@ test("gerar folha: cria a conta por pessoa (dia 1 do mês seguinte), atualiza em
   const preview = await computePayroll(repo, product, "2026-09");
   assert.equal(preview.rows.find((r) => r.uid === "sdr").payable.status, "paga");
   assert.equal(preview.total, (2200 + 550 + 950 + 300 + VRVT_SET) + (4700 + 500 + 264 + 250), "cálculo atualizado: receita a 140% paga 950, VR e ajuste do Igor");
+});
+
+test("sócio na folha: sem ficha a linha é zero; com retirada fixa na ficha vira conta; VR/VT só se a ficha ligar", () => {
+  const zero = payrollRowOf({ id: "leo", name: "Leonardo", payrollRole: "manual", roles: ["admin", "closer"], compLevel: 3 }, { compDocs: [], stamp: stamp({ uid: "leo", role: "closer" }), month: "2026-09" });
+  assert.deepEqual([zero.role, zero.fixed, zero.variable, zero.teamBonus, zero.benefits, zero.total], ["manual", 0, 0, 0, 0, 0]);
+  assert.equal(zero.fixedFrom, "sem retirada definida");
+  const fixa = payrollRowOf({ id: "leo", payrollRole: "manual" }, { compDocs: [], stamp: null, month: "2026-09", profile: { fixed: 8000, benefits: true } });
+  assert.equal(fixa.total, 8000 + VRVT_SET);
 });
 
 test("rotas /api/comp/payroll: preview e generate", async () => {

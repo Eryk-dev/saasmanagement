@@ -114,7 +114,7 @@ const NAV = [
   { id: "mindmaps",   label: "Mapas mentais",  icon: "⌬",  group: "geral" },
   { id: "metas",      label: "Metas",          icon: "◎",  group: "geral" },
   { id: "remuneracao", label: "Remuneração",   icon: "◫",  group: "geral", adminOnly: true }, // modelos de comp por cargo (salário: admin, ou tela concedida explicitamente = leitura)
-  { id: "expenses",   label: "Financeiro",     icon: "◫",  group: "geral" },
+  { id: "expenses",   label: "Financeiro",     icon: "◫",  group: "geral", adminOnly: true, adminStrict: true }, // Financeiro: só a etiqueta admin (Leo, 12/10/2026); tela concedida não abre
   { id: "settings",   label: "Configurações",  icon: "✦",  group: "geral" },
 ];
 
@@ -251,7 +251,7 @@ function NavRail({ current, onNav, collapsed, onSearch }) {
   const groups = [];
   // "settings" aparece pra TODO usuário: quem não tem a tela liberada abre a
   // versão reduzida (só a conexão Google pessoal) — ver SettingsLite.
-  NAV.filter((item) => !item.hidden && inSaas(item) && (canSeeScreen(item.id) || item.id === "settings") && (!item.adminOnly || isAdminUser() || hasExplicitScreen(item.id))).forEach(item => {
+  NAV.filter((item) => !item.hidden && inSaas(item) && (canSeeScreen(item.id) || item.id === "settings") && (!item.adminOnly || isAdminUser() || (!item.adminStrict && hasExplicitScreen(item.id)))).forEach(item => {
     let g = groups.find(x => x.key === item.group);
     if (!g) { g = { key: item.group, items: [] }; groups.push(g); }
     g.items.push(item);

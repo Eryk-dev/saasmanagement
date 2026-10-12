@@ -304,7 +304,11 @@ a mesma regra; os testes ficam em `sdr-brain.test.js`.
      muda, `amountManual` é respeitado. Papel e nível ficam no usuário
      (`payrollRole` sdr|closer|cs|social|manual|none, `compLevel`; seed
      confirmado pelo Leo em `migrations-fin.js`). A aba Folha do Financeiro é a
-     folha salarial: ficha por pessoa, ajustes do mês, retiradas dos sócios. Plano numa fonte só: `shared/comp-plan-defaults.js`
+     folha salarial: ficha por pessoa, ajustes do mês, histórico de pagamentos
+     por pessoa; sócios (`manual`) aparecem na mesma lista pra registrar
+     retirada (linha zerada não vira conta). **O Financeiro inteiro é só de
+     admin** (`ADMIN_ONLY_SCREENS` em `auth/screens.js`; nem lista em branco nem
+     tela concedida abrem; nav `adminStrict`). Plano numa fonte só: `shared/comp-plan-defaults.js`
      (a tela Remuneração importa de lá). Saída do MP com o mesmo valor até 5
      dias do vencimento e candidata única dá baixa sozinha
      (`payments/outflow-match.js`, no sync). Referências: `payroll.test.js`,

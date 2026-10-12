@@ -210,6 +210,29 @@ test("usuário só com Visão geral (overview): LÊ os painéis da tela de gest�
   assert.equal((await app.inject({ method: "POST", url: "/api/invoices/i1/pay", headers: H, payload: {} })).statusCode, 403);
 });
 
+test("Financeiro é só de admin: lista em branco ou tela concedida não abrem; rota compartilhada segue pela outra tela", async (t) => {
+  const { screenForRequest: sfr, ADMIN_ONLY_SCREENS } = await import("../src/auth/screens.js");
+  assert.ok(ADMIN_ONLY_SCREENS.has("expenses"));
+  assert.deepEqual(sfr("GET", "/api/fin/leverads"), ["expenses"]);
+  const { makeMemRepo: mem } = await import("./helpers/mem-repo.js");
+  const { hashPassword: hp } = await import("../src/auth/auth.js");
+  const repo = mem();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [] });
+  await repo.create("users", { id: "tudo", name: "Vê tudo", username: "tudo", passwordHash: hp("1234"), roles: ["closer"], screens: [] });
+  await repo.create("users", { id: "conc", name: "Concedida", username: "conc", passwordHash: hp("1234"), roles: ["closer"], screens: ["expenses", "overview"] });
+  await repo.create("users", { id: "adm", name: "Admin", username: "adm", passwordHash: hp("1234"), roles: ["admin"], screens: [] });
+  const app = buildApp(repo);
+  t.after(() => app.close());
+  const H = async (u) => ({ "x-api-key": await loginToken(app, u, "1234") });
+  for (const u of ["tudo", "conc"]) {
+    assert.equal((await app.inject({ url: "/api/fin/leverads", headers: await H(u) })).statusCode, 403, `${u} não vê o Financeiro`);
+    assert.equal((await app.inject({ url: "/api/payables", headers: await H(u) })).statusCode, 403, `${u} não vê contas a pagar`);
+  }
+  assert.equal((await app.inject({ url: "/api/fin/leverads", headers: await H("adm") })).statusCode, 200);
+  // Rota compartilhada com a Visão geral (leitura) continua aberta pra quem tem overview.
+  assert.equal((await app.inject({ url: "/api/expenses/summary/leverads", headers: await H("conc") })).statusCode, 200);
+});
+
 test("bootstrap filtrado: restrito recebe leads mas NÃO clientes/portfólio/financeiro do produto", async (t) => {
   const repo = makeMemRepo();
   await seedTestAdmins(repo);
