@@ -392,6 +392,9 @@ export const api = {
   finSyncAll: (saas, { reclassify } = {}) => req("POST", `/api/fin/${saas}/sync${reclassify ? "?reclassify=1" : ""}`, {}),
   // Materializa as contas a pagar recorrentes do mês (o GET não cria nada).
   finMaterialize: (saas, month) => req("POST", `/api/fin/${saas}/materialize${month ? `?month=${month}` : ""}`, {}),
+  // Folha do mês pela Remuneração: cálculo por pessoa e geração das contas a pagar.
+  payrollPreview: (saas, month) => req("GET", `/api/comp/payroll/${saas}/${month}`),
+  payrollGenerate: (saas, month) => req("POST", `/api/comp/payroll/${saas}/${month}/generate`, {}),
   // Aplica as regras de conciliação aprendidas nas pendências.
   finRulesApply: (saas) => req("POST", `/api/fin/${saas}/rules/apply`, {}),
   // Mídia social: métricas do perfil, histórico e publicação orgânica (IG/FB).

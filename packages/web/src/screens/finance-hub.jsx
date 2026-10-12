@@ -742,9 +742,12 @@ function situacao(p, today) {
 
 function PayableRow({ p, fin, reload, showPerson = true }) {
   const [busy,setBusy]=useState(false),[err,setErr]=useState(null);
+  const [editing, setEditing] = useState(false), [draft, setDraft] = useState("");
   const action=React.useRef(false);
   async function run(fn){if(action.current)return;action.current=true;setBusy(true);setErr(null);try{await fn();await reload();}catch(e){setErr(e.message);}finally{action.current=false;setBusy(false);}}
   const user = p.userId ? allUsers().find((u) => u.id === p.userId) : null;
+  // Revisar a folha: valor editado à mão fica (amountManual) e gerar de novo não sobrescreve.
+  const salvarValor = () => { const v = Number(String(draft).replace(",", ".")); if (!(v > 0)) return; setEditing(false); return run(()=>api.update("payables",p.id,{amount:v,amountManual:true})); };
   const pagar = () => run(()=>api.update("payables",p.id,{status:"paga",paidAt:new Date().toISOString()}));
   const reabrir = () => run(()=>api.update("payables",p.id,{status:"aberta",paidAt:"",paidVia:""}));
   const excluir = () => {if(window.confirm(`Excluir "${p.description}" (${money(p.amount)})?${p.recurring ? " Os meses futuros param de nascer; os já lançados ficam." : ""}`))return run(()=>api.remove("payables",p.id));};
@@ -759,16 +762,29 @@ function PayableRow({ p, fin, reload, showPerson = true }) {
           {[catLabel(p.category),
             p.month !== fin.month ? `competência ${mesCurto(p.month)}` : null,
             p.recurring ? "recorrente" : p.templateId ? "da recorrência" : null,
-            p.paidVia === "mp" ? "baixada pela saída do MP" : null,
+            p.source === "payroll" ? "folha pela Remuneração" : null,
+            p.amountManual ? "valor revisado à mão" : null,
+            p.paidVia === "mp" ? (p.autoMatched ? "baixada sozinha pela saída do MP" : "baixada pela saída do MP") : null,
           ].filter(Boolean).join(" · ")}
         </span>
+        {p.payroll && (
+          <span className="dim tnum" style={{ display: "block", fontSize: 11 }} title={p.notes || ""}>
+            fixo {money(p.payroll.fixed)} + variável {money(p.payroll.variable)} + time {money(p.payroll.teamBonus)}{p.payroll.stamped ? "" : " · variável entra no fechamento do mês"}
+          </span>
+        )}
       </span>
       {showPerson && (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 120, fontSize: 12.5 }}>
           {user ? (<><Avatar id={user.id} name={user.name} size={20} /> {user.name}</>) : (p.supplierName || <span className="dim">sem favorecido</span>)}
         </span>
       )}
-      <span className="tnum" style={{ fontWeight: 650, whiteSpace: "nowrap" }}>{money(p.amount)}</span>
+      {editing
+        ? <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+            <input aria-label="Novo valor" type="number" min="0" step="0.01" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") salvarValor(); if (e.key === "Escape") setEditing(false); }} style={{ ...inp, width: 110, height: 28, fontFamily: "var(--mono)", textAlign: "right" }} autoFocus />
+            <button onClick={salvarValor} style={{ ...btnPri, height: 28 }}>salvar</button>
+            <button onClick={() => setEditing(false)} className="dim" style={{ fontSize: 12 }}>cancelar</button>
+          </span>
+        : <button className="tnum" onClick={() => { if (p.status !== "paga") { setDraft(String(p.amount)); setEditing(true); } }} title={p.status !== "paga" ? "editar o valor (revisão da folha)" : ""} style={{ fontWeight: 650, whiteSpace: "nowrap", padding: 0, cursor: p.status !== "paga" ? "pointer" : "default" }}>{money(p.amount)}</button>}
       {situacao(p, fin.today)}
       <span style={{ display: "inline-flex", gap: 8 }}>
         {p.status !== "paga"
@@ -790,9 +806,23 @@ const roleCat = (u) => {
   return "pessoal_adm";
 };
 
-// A lente por COLABORADOR das mesmas contas (a antiga aba Folha).
+// A lente por COLABORADOR das mesmas contas (a antiga aba Folha). A folha
+// NASCE da Remuneração (12/10/2026): "gerar folha" calcula fixo + pernas +
+// bônus de time por pessoa e cria/atualiza a conta de cada um (paga não muda;
+// valor editado à mão é respeitado). Gerar e revisar antes de pagar (Leo).
 function FolhaView({ product, month, fin, reload }) {
   const [formFor, setFormFor] = useState(null); // userId com o form aberto
+  const [gerando, setGerando] = useState(false), [geraNote, setGeraNote] = useState(null);
+  const gerar = async () => {
+    if (gerando) return;
+    setGerando(true); setGeraNote(null);
+    try {
+      const r = await api.payrollGenerate(product.id, month);
+      setGeraNote({ ok: true, text: `folha de ${mesCurto(month)}: ${int(r.created)} criada${r.created === 1 ? "" : "s"} · ${int(r.updated)} atualizada${r.updated === 1 ? "" : "s"} · ${int(r.kept)} já paga${r.kept === 1 ? "" : "s"} · total ${money(r.total)}${r.stamped ? "" : " · mês ainda não fechado na Remuneração: só o fixo entrou, gere de novo depois do fechamento"}` });
+      await reload();
+    } catch (e) { setGeraNote({ ok: false, text: e.message }); }
+    finally { setGerando(false); }
+  };
   const doMes = fin.payables.filter((p) => p.counterpartyType === "colaborador" && p.month === month);
   const porPessoa = new Map();
   for (const p of doMes) {
@@ -819,7 +849,9 @@ function FolhaView({ product, month, fin, reload }) {
         <StatTile label="Em aberto" value={money(totalAberto)} tone={totalAberto > 0 ? "down" : "flat"} />
       </div>
 
-      <Card title="Por colaborador" hint="salário recorrente lançado 1 vez nasce sozinho todo mês · a saída do MP casada na Conciliação dá baixa aqui">
+      <Card title="Por colaborador" hint="a folha sai da Remuneração: fixo do nível + variável pelo atingimento + bônus de time · vence dia 1 do mês seguinte · a saída do MP com o mesmo valor dá baixa sozinha"
+        action={<button onClick={gerar} disabled={gerando} style={btnPri}>{gerando ? "gerando…" : `gerar folha de ${mesCurto(month)}`}</button>}>
+        {geraNote && <div role={geraNote.ok ? "status" : "alert"} className="finance-notice" style={{ margin: "8px var(--inset-x) 0", fontSize: 12, color: geraNote.ok ? "var(--pos)" : "var(--neg)" }}>{geraNote.text}</div>}
         <div style={{ padding: "6px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 4 }}>
           {linhas.map(({ user, itens }) => {
             const pago = soma(itens, (p) => p.status === "paga");

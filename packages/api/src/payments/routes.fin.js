@@ -27,6 +27,7 @@ import { isMpSale, SALE_KINDS } from "./mp-classify.js";
 import { normalizeRuleValue, ruleMatches, rulesFor } from "./fin-rules.js";
 import { ensurePayables, missingInstances } from "./payables.js";
 import { round2, syncMpOutflows } from "./mp-outflow.js";
+import { autoMatchOutflows } from "./outflow-match.js";
 
 export { ensurePayables, normalizeRuleValue };
 
@@ -324,6 +325,8 @@ export function registerFinRoutes(app, repo, { mp, discord } = {}) {
     catch (e) { out.out = { error: String(e.message || e).slice(0, 200) }; }
     try { out.rules = await applyFinRulesToPending(repo, { saas: product.id, discord, log: req.log }); }
     catch (e) { out.rules = { error: String(e.message || e).slice(0, 200) }; }
+    try { out.match = await autoMatchOutflows(repo, { log: req.log }); }
+    catch (e) { out.match = { error: String(e.message || e).slice(0, 200) }; }
     return out;
   });
 

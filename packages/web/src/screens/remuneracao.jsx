@@ -6,6 +6,7 @@ import { api } from "../lib/api.js";
 import { hasExplicitScreen, isAdminUser } from "../lib/users.js";
 import { levelLabel } from "../lib/levels.js";
 import { useActiveSaas } from "../lib/workspace.js";
+import { DEFAULT_PLAN, teamBonusFor, legBonus } from "../../../api/src/shared/comp-plan-defaults.js";
 
 // Remuneração — tela da GESTÃO com o plano OFICIAL da casa, definido pelo
 // Leo em 04/08/2026 (folhas amarelas + decisões no chat): 3 trilhas (SDR,
@@ -32,6 +33,7 @@ const { useState: useS, useEffect: useE } = React;
 
 const money = (v) => window.fmt.money(Number(v) || 0);
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+const EPS = 1e-9;
 const box = { border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px 22px" };
 const inputS = { height: 28, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 12.5, width: 92 };
 const cellIn = { ...inputS, width: 78, height: 26, fontSize: 12 };
@@ -53,87 +55,13 @@ const RULES = [
   ["Bônus de time", "todo mundo do plano (SDR, closer, CS e mídia social) leva um valor fixo, pelo cargo e nível, quando o mês fecha com as DUAS condições juntas: a meta de venda do mês da empresa batida (a mesma faixa Meta do mês da Visão geral) e o churn do mês abaixo de 15%. Faltou uma, ninguém leva. Durante o mês a Visão geral mostra se o time está no ritmo."],
 ];
 
-// ── O plano aprovado (padrão da tela; salvar sobrescreve por trilha) ─────────
-const DEFAULT_PLAN = {
-  sdr: {
-    levels: [
-      { n: 1, fixed: 2200, metaContracts: 20, metaRevenue: 90000, b80: 300, b100: 550, b120: 750, b140: 950 },
-      { n: 2, fixed: 2600, metaContracts: 25, metaRevenue: 120000, b80: 450, b100: 750, b120: 1000, b140: 1250 },
-      { n: 3, fixed: 3000, metaContracts: 35, metaRevenue: 180000, b80: 650, b100: 1000, b120: 1300, b140: 1600 },
-    ],
-    notes: "",
-  },
-  closer: {
-    levels: [
-      { n: 1, fixed: 3000, fixedPj: 4200, metaContracts: 20, metaRevenue: 90000, b80: 600, b100: 1000, b120: 1500, b140: 2000 },
-      { n: 2, fixed: 4000, fixedPj: 5500, metaContracts: 25, metaRevenue: 120000, b80: 1000, b100: 1500, b120: 2100, b140: 2700 },
-      { n: 3, fixed: 5500, fixedPj: 7500, metaContracts: 35, metaRevenue: 180000, b80: 1500, b100: 2500, b120: 3700, b140: 4900 },
-    ],
-    notes: "",
-  },
-  cs: {
-    levels: [
-      { n: 1, fixed: 2200, npsBonus: 500, churnBonus: 500 },
-      { n: 2, fixed: 2600, npsBonus: 700, churnBonus: 700 },
-      { n: 3, fixed: 3000, npsBonus: 1000, churnBonus: 1000 },
-    ],
-    referralMeeting: 100,
-    // R$ 500 desde 12/09/2026 (era 250): o prêmio de fechamento é o que puxa
-    // coleta de nome qualificado, e sobre um ticket de R$ 5 a 7 mil anual isso é
-    // ~8%, bem abaixo do CAC de Meta.
-    referralClosed: 500,
-    npsFloor: 80,
-    churnMax: 15,
-    notes: "",
-  },
-  // Parcela COLETIVA (13/09/2026): valor fixo por cargo e nível, pago quando o
-  // mês fecha com as duas condições juntas. Espelha o DEFAULT_TEAM_BONUS do
-  // comp-plan.js na API — mudou aqui, mudar lá.
-  team: {
-    products: ["leverads"],
-    sdr: [300, 400, 500],
-    closer: [400, 600, 800],
-    cs: [300, 400, 500],
-    social: 200,
-  },
-};
+// ── O plano aprovado: fonte ÚNICA em packages/api/src/shared/comp-plan-defaults.js
+// (a folha automática da API calcula com os mesmos números). Salvar na tela
+// sobrescreve por trilha (comp_plans, campo plan).
+export { teamBonusFor };
 
-// Valor do bônus de time por cargo e nível (mídia social não tem nível).
-export function teamBonusFor(team, role, level = 1) {
-  const chave = role === "integrator" ? "cs" : role;
-  const v = (team || {})[chave];
-  if (v == null) return 0;
-  if (!Array.isArray(v)) return num(v);
-  const i = Math.min(Math.max(Math.floor(Number(level)) || 1, 1), v.length) - 1;
-  return num(v[i]);
-}
-
-// Bônus de UMA perna: att = realizado ÷ meta (1 = 100%). É DEGRAU, não rampa
-// (Leo, 19/08): a banda só paga quando é BATIDA, então o valor entre duas
-// âncoras é o da âncora de baixo (110% paga b100 inteiro, nada de proporcional
-// rumo a b120). Cliff em 80% (abaixo disso a perna zera) e escada ABERTA acima
-// de 140% (Leo, 08/08): cada degrau de +20% COMPLETO paga a diferença entre os
-// dois degraus anteriores + R$100, sem limite — o degrau cresce R$100 por vez
-// (ex.: b120=750/b140=950 → 160%=1.250 · 180%=1.650 · 200%=2.150). Plano salvo
-// sem b140 (anterior à coluna) herda a extrapolação antiga da inclinação
-// 100→120.
-// EPS: att vem de uma divisão (22/20, 95000/90000…) e a âncora exata pode cair
-// um fio abaixo em ponto flutuante — bater a meta na régua não pode virar banda
-// de baixo por causa de arredondamento.
-const EPS = 1e-9;
-export function legBonus(att, b80, b100, b120, b140) {
-  if (!Number.isFinite(att) || att < 0.8 - EPS) return 0;
-  if (att < 1 - EPS) return b80;
-  if (att < 1.2 - EPS) return b100;
-  if (att < 1.4 - EPS) return b120;
-  const top = Number.isFinite(b140) ? b140 : b120 + (b120 - b100);
-  // k degraus de 20% COMPLETOS acima de 140% (degrau pela metade não paga).
-  // Degrau i (1-indexado) paga (b140 − b120) + 100·i; a soma fechada evita
-  // loop com att digitado gigante no simulador.
-  const k = Math.floor((att - 1.4) / 0.2 + EPS);
-  if (k <= 0) return top;
-  return top + k * (top - b120) + 100 * ((k * (k + 1)) / 2);
-}
+// legBonus: degrau por perna, da fonte única (comp-plan-defaults.js).
+export { legBonus };
 const pctS = (att) => (Number.isFinite(att) ? `${Math.round(att * 100)}%` : "—");
 // Banda ALCANÇADA (a que está pagando), pra tela não deixar dúvida de qual
 // degrau caiu: 110% mostra "banda 100%". Abaixo de 80% não há banda.

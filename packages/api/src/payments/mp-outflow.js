@@ -1,6 +1,8 @@
 // SAÍDAS da conta Mercado Pago (settlement report): saques e transferências
 // viram movimentos do financeiro. A rota (botão) e o poller usam syncMpOutflows.
 
+import { autoMatchOutflows } from "./outflow-match.js";
+
 export const round2 = (n) => Math.round(n * 100) / 100;
 
 // ── Settlement report CSV → movimentos de saída ──────────────────────────────
@@ -129,8 +131,14 @@ export async function syncMpOutflows(repo, mp, { log, maxFiles = 50 } = {}) {
       }
     }
   }
+  // Saída nova: tenta casar sozinha com a conta a pagar (valor + data, única).
+  let autoMatched = 0;
+  if (imported > 0) {
+    try { autoMatched = (await autoMatchOutflows(repo, { log })).matched; }
+    catch (err) { log?.warn?.({ err: err.message }, "MP saídas: casamento automático falhou"); }
+  }
   const result = {
-    ok: true, filesRead, filesTotal: files.length, imported, requested,
+    ok: true, filesRead, filesTotal: files.length, imported, requested, ...(autoMatched ? { autoMatched } : {}),
     ...(rowsSeen ? { rowsSeen } : {}), ...(downloadErrors ? { downloadErrors } : {}),
     ...(requestError ? { requestError } : {}),
     ...(sample && !imported ? { sample } : {}), // só quando nada entrou: é o caso a diagnosticar

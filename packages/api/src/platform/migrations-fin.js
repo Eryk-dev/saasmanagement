@@ -190,6 +190,31 @@ export async function migrateOneOffCustomers(repo) {
   return n;
 }
 
+// Cadastro da FOLHA confirmado pelo Leo em 12/10/2026 (uma vez; carimbo
+// payrollSeedV1 no usuário). Quem já tem o campo não é tocado.
+//   Manuela SDR júnior · Vitor closer júnior (CLT) · Yudi CS júnior · Igor mídia
+//   social/videomaker com fixo R$ 4.500 · Eryk, Jonan, Jonathan, Leonardo =
+//   retirada não definida (entram só por lançamento) · o resto fora da folha.
+const PAYROLL_SEED = {
+  sdr: { payrollRole: "sdr", compLevel: 1, payrollRegime: "clt" },
+  us_mrqkn2tm03: { payrollRole: "closer", compLevel: 1, payrollRegime: "clt" },
+  us_mu1iysva01: { payrollRole: "cs", compLevel: 1 },
+  igor: { payrollRole: "social", payrollFixed: 4500, payrollNote: "videomaker" },
+  eryk: { payrollRole: "manual" }, jonan: { payrollRole: "manual" }, jonathan: { payrollRole: "manual" }, leonardo: { payrollRole: "manual" },
+};
+export async function seedPayrollSetup(repo) {
+  let n = 0;
+  for (const u of await repo.list("users")) {
+    if (u.payrollSeedV1) continue;
+    const seed = PAYROLL_SEED[u.id] || { payrollRole: "none" };
+    const patch = { payrollSeedV1: true };
+    for (const [k, v] of Object.entries(seed)) if (u[k] == null || u[k] === "") patch[k] = v;
+    await repo.update("users", u.id, patch, { silent: true });
+    n++;
+  }
+  return n;
+}
+
 export const FIN_MIGRATIONS = [
   ["dedupeExpensePct", dedupeExpensePct, "lançamento(s) percentual(is) duplicado(s) removido(s)"],
   ["migrateCheckoutToRealFee", migrateCheckoutToRealFee, "lançamento(s) de checkout lendo a taxa real do MP"],
@@ -200,6 +225,7 @@ export const FIN_MIGRATIONS = [
   ["stampInvoicePaidProof", stampInvoicePaidProof, "fatura(s) paga(s) com paidProof carimbado"],
   ["purgeBadFinRules", purgeBadFinRules, "regra(s) de conciliação por documento da casa/MP removida(s)"],
   ["migrateOneOffCustomers", migrateOneOffCustomers, "cliente(s) de serviço único fora do ARR, com fatura avulsa"],
+  ["seedPayrollSetup", seedPayrollSetup, "usuário(s) com o cadastro da folha carimbado"],
 ];
 
 export async function runFinMigrations(repo, { log = console } = {}) {

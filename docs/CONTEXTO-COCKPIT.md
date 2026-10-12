@@ -292,6 +292,18 @@ a mesma regra; os testes ficam em `sdr-brain.test.js`.
      valor vira fatura avulsa (`ensureOneOffInvoice`), presumida no à vista.
      Condição personalizada = `paymentMethod: "custom"` + `paymentTerms`.
      Referências: `one-off-not-arr.test.js`, `payment-method-custom.test.js`.
+   - **Folha pela Remuneração** (`comp/payroll.js`, 12/10/2026): botão "gerar
+     folha" em A pagar → Folha calcula por pessoa fixo (nível/regime do plano
+     ou `payrollFixed`) + duas pernas pelo carimbo `comp_months` + bônus de
+     time, e cria/atualiza a conta `pay_folha_<saas>_<mês>_<uid>` (vence dia 1
+     do mês seguinte); paga não muda, `amountManual` é respeitado. Cadastro no
+     usuário: `payrollRole` sdr|closer|cs|social|manual|none, `compLevel`,
+     `payrollRegime`, `payrollFixed` (seed confirmado pelo Leo em
+     `migrations-fin.js`). Plano numa fonte só: `shared/comp-plan-defaults.js`
+     (a tela Remuneração importa de lá). Saída do MP com o mesmo valor até 5
+     dias do vencimento e candidata única dá baixa sozinha
+     (`payments/outflow-match.js`, no sync). Referências: `payroll.test.js`,
+     `outflow-match.test.js`.
    - **Custo de checkout = taxa real do MP** (base `taxa_real`, `mpFeesIn`:
      bruto − líquido por pagamento de cliente); saídas da conta (settlement
      report com sinal + `kind: saida` do espelho) entram no fluxo
