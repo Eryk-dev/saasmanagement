@@ -6,7 +6,7 @@ import { StatTile, Card, Pill } from "../components/viz.jsx";
 import { AvisoTopo, InfoNota } from "../components/story.jsx";
 import { Avatar, EmptyState } from "../atoms.jsx";
 import { allUsers } from "../lib/users.js";
-import { mpMethodLabel } from "../lib/payments.js";
+import { mpMethodLabel, gatewayShort } from "../lib/payments.js";
 import { ManualPaidModal } from "../components/manual-paid-modal.jsx";
 import { PagamentosLista, KIND_LABEL, kindOf } from "./finance.jsx";
 import { SECTOR_CATS, SECTOR_LABEL, PAY_CAT_LABEL, catLabel, money, mesCurto, mesLongo } from "../lib/fin-cats.js";
@@ -469,7 +469,10 @@ export function ConciliacaoTab({ product, month }) {
       const outTxt = o.error ? `saídas: ${o.error}` : o.requestError ? `saídas: ${int(o.imported || 0)} importadas · o MP recusou gerar relatório novo: ${o.requestError}`
         : `saídas: ${int(o.imported || 0)} importadas de ${int(o.filesRead || 0)} relatório${o.filesRead === 1 ? "" : "s"}${o.requested ? " · relatório novo pedido ao MP, sincronize de novo em alguns minutos" : ""}`;
       const rulesTxt = r.rules?.applied ? ` · regras: ${int(r.rules.applied)} resolvida${r.rules.applied === 1 ? "" : "s"}` : "";
-      setNote({ ok: !r.in?.error && !o.error && !o.requestError, text: `${inTxt} · ${outTxt}${rulesTxt}` });
+      const a = r.asaas;
+      const asaasTxt = !a ? "" : a.error ? ` · Asaas: ${a.error}` : ` · Asaas: ${int(a.seen || 0)} lidas, ${int(a.settled || 0)} baixadas`;
+      const mpTxt = r.in || r.out ? `${inTxt} · ${outTxt}` : "Mercado Pago desligado";
+      setNote({ ok: !r.in?.error && !o.error && !o.requestError && !a?.error, text: `${mpTxt}${asaasTxt}${rulesTxt}` });
       await reload(); await loadAll();
     } catch (e) { setNote({ ok: false, text: e.message }); }
   };
@@ -518,8 +521,8 @@ export function ConciliacaoTab({ product, month }) {
         <StatTile label={`Vendas em ${mesCurto(month)}`} value={money(C.espelhoMes)}
           delta={delta === 0 ? "bateu com o recebido" : `${delta > 0 ? "+" : "−"} ${money(Math.abs(delta))} vs recebido do mês`}
           title="Pagamentos de cliente aprovados no mês (venda + maquininha). A diferença pro recebido é o que ainda não tem dono, ou baixa manual sem pagamento no MP." />
-        <StatTile label="Taxa do MP no mês" value={money(C.taxasMes)} delta="bruto − líquido, por pagamento de cliente"
-          title="O que o Mercado Pago descontou de verdade. É a base do custo 'taxa real do MP' na aba Custos." />
+        <StatTile label="Taxa dos gateways no mês" value={money(C.taxasMes)} delta="bruto − líquido, por pagamento de cliente"
+          title="O que Mercado Pago, Asaas e Appmax descontaram de verdade. É a base do custo 'taxa real do MP' na aba Custos." />
         <StatTile label="Não é venda" value={money(naoVenda)} delta={`${int(C.internas.n)} interna${C.internas.n === 1 ? "" : "s"} · ${int(C.saidasMp.n)} saída${C.saidasMp.n === 1 ? "" : "s"} · ${int(C.ruido.n)} ruído`}
           title="O que o espelho traz e NÃO é dinheiro de cliente: reserva/transferência da própria casa, pagamento feito com o saldo, cashback. Fica fora do recebido e da base de taxa." />
       </div>
@@ -550,6 +553,7 @@ export function ConciliacaoTab({ product, month }) {
               <div key={`entrada:${p.id}`} style={{ padding: "10px 12px", background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
                   <Pill tone="pos" title={k.title}>{k.label}</Pill>
+                  {p.gateway && p.gateway !== "mp" && <Pill tone="mut" title={`pagamento recebido pelo ${gatewayShort(p.gateway)}`}>{gatewayShort(p.gateway)}</Pill>}
                   <span className="tnum dim" style={{ fontSize: 12, width: 42 }}>{dmy((p.dateApproved || p.dateCreated || "").slice(0, 10))}</span>
                   <span style={{ flex: 1, minWidth: 160, fontSize: 13, fontWeight: 600 }}>
                     {p.payerName || p.payerEmail || p.description || "pagador sem nome"}
@@ -617,7 +621,7 @@ export function ConciliacaoTab({ product, month }) {
         </div>
       </Card>
 
-      <Card title="Espelho do Mercado Pago" hint="tudo que passou pela conta, classificado · venda e maquininha somam no recebido; o resto fica visível e fora dos números"
+      <Card title="Espelho dos gateways" hint="tudo que passou pelo Mercado Pago, Asaas e Appmax, classificado · venda e maquininha somam no recebido; o resto fica visível e fora dos números"
         action={<button onClick={() => setTodosMeses((v) => !v)} style={{ fontSize: 12.5, fontWeight: 600, color: "var(--accent)" }}>{todosMeses ? `só ${mesCurto(month)}` : "todos os meses"}</button>}>
         <div style={{ padding: "10px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 12 }}>
           <div className="finance-filters" role="group" aria-label="Tipo de lançamento">

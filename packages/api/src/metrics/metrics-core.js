@@ -378,7 +378,9 @@ export function cashReceivedByCustomer({ invoices = [], mpPayments = [], custome
 //   closing       nasceu paga no fechamento à vista → PRESUMIDO (sai do caixa
 //                 até alguém confirmar ou o MP casar). Fatura sem carimbo cai na
 //                 mesma leitura pela convenção antiga (paidAt === periodStart).
-export const PROOF_KINDS = new Set(["mp", "manual", "manual_legacy", "closing"]);
+//   asaas/appmax  o mesmo FATO, vindo dos outros gateways (payments/gateways.js)
+export const PROOF_KINDS = new Set(["mp", "asaas", "appmax", "manual", "manual_legacy", "closing"]);
+export const GATEWAY_PROOFS = new Set(["mp", "asaas", "appmax"]);
 export function paidProofKindOf(inv) {
   const k = inv?.paidProof?.kind;
   if (PROOF_KINDS.has(k)) return k;

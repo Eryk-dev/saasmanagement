@@ -1149,7 +1149,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
                   do ⋯, e é o passo seguinte à apresentação — quem fecha na call
                   precisa cobrar sem procurar. */}
               <button onClick={() => setPayLink(true)}
-                title={lead.mpChargeUrl ? "Abrir/refazer o link de pagamento deste lead" : "Criar o link de pagamento deste lead (Mercado Pago)"}
+                title={lead.mpChargeUrl ? "Abrir/refazer o link de pagamento deste lead" : "Criar o link de pagamento deste lead (Mercado Pago, Asaas ou Appmax)"}
                 style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
                 {lead.mpChargeUrl ? (lead.mpChargeKind === "recurring" ? "link da assinatura" : "link de pagamento") : "link de pagamento"}
               </button>

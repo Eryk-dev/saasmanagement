@@ -25,6 +25,7 @@ import { logActivity } from "../crm/lead-flow.js";
 import { classifyMpPayment, scrubMpOwnDoc, MP_CLASS_V, SALE_KINDS } from "./mp-classify.js";
 import { ruleMatches, rulesFor } from "./fin-rules.js";
 import { paidProofKindOf } from "../metrics/metrics-core.js";
+import { gatewayOf, gatewayLabel, mirrorIdOf, phoneKey } from "./gateways.js";
 
 // Id da conta (collector_id) — GET /users/me uma vez, carimbado em app_config
 // "mp_account"; env MERCADOPAGO_COLLECTOR_ID vale como fallback/override.
@@ -98,16 +99,20 @@ export function normalizeMpPayment(pmt) {
 // Baixa uma fatura com os dados REAIS do pagamento (data, forma, parcelas) e
 // recupera a assinatura past_due quando não sobra vencida — mesma regra do
 // applyMpPayment da fase 4, com o "como pagou" carimbado na fatura.
-export async function settleInvoice(repo, invoice, pmt, { discord, log } = {}) {
+//
+// `gateway` (mp | asaas | appmax): de onde veio o pagamento — vai na prova
+// (paidProof.kind) e em paidGateway; `mpPaymentId` é o id NO gateway.
+export async function settleInvoice(repo, invoice, pmt, { discord, log, gateway = "mp" } = {}) {
   const paidAt = pmt.date_approved || pmt.date_created || new Date().toISOString();
   const paid = await repo.update("invoices", invoice.id, {
     status: "paid", paidAt, mpPaymentId: String(pmt.id),
+    paidGateway: gateway,
     paidMethod: pmt.payment_method_id || "",
     paidMethodType: pmt.payment_type_id || "",
     paidInstallments: Number(pmt.installments) || 1,
-    // A prova do recebimento: pagamento aprovado do MP. Fatura que nasceu paga
-    // no fechamento (presumida) vira FATO aqui.
-    paidProof: { kind: "mp", at: paidAt, mpPaymentId: String(pmt.id), ...(invoice.paidProof?.kind === "closing" ? { confirmedFrom: "closing" } : {}) },
+    // A prova do recebimento: pagamento aprovado do gateway. Fatura que nasceu
+    // paga no fechamento (presumida) vira FATO aqui.
+    paidProof: { kind: gateway, at: paidAt, mpPaymentId: String(pmt.id), ...(invoice.paidProof?.kind === "closing" ? { confirmedFrom: "closing" } : {}) },
   });
   if (invoice.subscription) {
     const sub = await repo.get("subscriptions", invoice.subscription);
@@ -121,7 +126,7 @@ export async function settleInvoice(repo, invoice, pmt, { discord, log } = {}) {
   if (discord?.configured()) {
     try {
       const customer = invoice.customer ? await repo.get("customers", invoice.customer) : null;
-      await discord.invoicePaid({ invoice: paid, customerName: customer?.name, via: "Mercado Pago" });
+      await discord.invoicePaid({ invoice: paid, customerName: customer?.name, via: gatewayLabel(gateway) });
     } catch (err) { log?.warn?.({ invoice: invoice.id, err: err.message }, "MP: aviso Discord falhou"); }
   }
   return paid;
@@ -134,10 +139,19 @@ export function settleTarget(invoices, link, base) {
   // o pagamento do MP de valor exato é a prova que faltava — ela vira fato em
   // vez de ficar presumida pra sempre ao lado de um pagamento "sem fatura".
   const presumed = (i) => i.status === "paid" && !i.mpPaymentId && paidProofKindOf(i) === "closing";
-  const exact = (i) => Math.abs(Number(i.amount) - base.amount) < 0.01;
+  // Parcela de um parcelamento do Asaas (um doc por parcela): o valor exato é
+  // o do GRUPO, e só quando todas as parcelas estão confirmadas (cartão
+  // confirma todas de uma vez; carnê de boleto só no fim).
+  const groupOk = base.installmentId && base.installmentAllPaid && Number(base.installmentTotal) > 0;
+  const exact = (i) => Math.abs(Number(i.amount) - base.amount) < 0.01
+    || (groupOk && Math.abs(Number(i.amount) - Number(base.installmentTotal)) < 0.01);
   if (link.invoice) {
     const inv = invoices.find((i) => i.id === link.invoice);
-    return inv && (open(inv) || (presumed(inv) && exact(inv))) ? inv : null;
+    if (!inv) return null;
+    // Parcela solta de um parcelamento ainda em curso não baixa a fatura
+    // inteira: espera o grupo fechar (ou um valor que bata sozinho).
+    if (base.installmentId && !groupOk && !exact(inv)) return null;
+    return open(inv) || (presumed(inv) && exact(inv)) ? inv : null;
   }
   if (link.subscription) {
     const abertas = invoices
@@ -159,13 +173,13 @@ export function settleTarget(invoices, link, base) {
 
 const sameDoc = (a, b, keys) => a && keys.every((k) => JSON.stringify(a[k] ?? null) === JSON.stringify(b[k] ?? null));
 
-// Upsert do espelho + casamento + baixa. Idempotente e barata quando nada mudou
-// (o poller repassa a mesma janela a cada tick — sem escrita não há SSE/refresh).
+// Upsert do espelho + casamento + baixa (Mercado Pago). Normaliza e classifica
+// o doc cru do MP e entrega ao núcleo genérico (ingestMirrorPayment).
 export async function ingestMpPayment(repo, pmt, { discord, log, extra, collectorId } = {}) {
   const mpId = String(pmt.id);
-  const mirrorId = `mpp_${mpId}`;
-  const prev = await repo.get("mp_payments", mirrorId);
+  const prev = await repo.get("mp_payments", mirrorIdOf("mp", mpId));
   const base = normalizeMpPayment(pmt);
+  base.gateway = "mp";
 
   // Classificação: a API (collector/payer) manda; sem ela, heurística — e a
   // classificação forte já gravada nunca regride pra heurística (o search
@@ -178,6 +192,48 @@ export async function ingestMpPayment(repo, pmt, { discord, log, extra, collecto
   }
   const scrub = scrubMpOwnDoc(base);
   if (scrub) Object.assign(base, scrub);
+  return ingestMirrorPayment(repo, base, { discord, log, extra, prev });
+}
+
+// Dialeto cru do MP a partir do doc do espelho — settleInvoice fala a língua
+// do /v1/payments (date_approved, payment_method_id…), seja qual for o gateway.
+export const rawDialectOf = (p) => ({
+  id: p.mpId, date_approved: p.dateApproved, date_created: p.dateCreated,
+  payment_method_id: p.method, payment_type_id: p.methodType, installments: p.installments,
+});
+
+// Casamento por TELEFONE (gateways que mandam o telefone do pagador: Appmax,
+// Asaas) — mesma régua do e-mail: exatamente UM cliente (senão UM lead).
+async function matchByPhone(repo, phone) {
+  if (!phone) return null;
+  const byCustomer = (await repo.list("customers")).filter((c) => phoneKey(c.phone) === phone);
+  if (byCustomer.length === 1) return { saas: byCustomer[0].saas || "", customer: byCustomer[0].id, matchedBy: "phone" };
+  if (byCustomer.length) return null;
+  const byLead = (await repo.list("leads")).filter((l) => phoneKey(l.phone) === phone);
+  if (byLead.length === 1) return { saas: byLead[0].saas || "", lead: byLead[0].id, customer: byLead[0].customerId || "", matchedBy: "phone" };
+  return null;
+}
+
+// NÚCLEO do espelho, igual pra todo gateway: recebe o doc JÁ normalizado
+// (dialeto do espelho, com gateway/kind) e faz upsert + casamento + baixa.
+// Idempotente e barato quando nada mudou (o poller repassa a mesma janela a
+// cada tick — sem escrita não há SSE/refresh).
+//
+// `noRegress`: gateway que entrega evento por evento (Appmax; redelivery do
+// Asaas) pode mandar um "pendente" velho depois do "pago" — aprovado não
+// volta pra pendente por isso (estorno/chargeback/cancelado continuam valendo).
+export async function ingestMirrorPayment(repo, input, { discord, log, extra, prev: prevGiven, noRegress = false } = {}) {
+  const base = { ...input };
+  const gateway = gatewayOf(base);
+  base.gateway = gateway;
+  const mpId = String(base.mpId);
+  const mirrorId = mirrorIdOf(gateway, mpId);
+  const prev = prevGiven !== undefined ? prevGiven : await repo.get("mp_payments", mirrorId);
+  if (noRegress && prev?.status === "approved" && (base.status === "pending" || base.status === "in_process")) {
+    base.status = prev.status;
+    base.statusDetail = prev.statusDetail || base.statusDetail;
+    base.dateApproved = prev.dateApproved || base.dateApproved;
+  }
   const isSale = SALE_KINDS.has(base.kind);
 
   // O poller re-varre a janela com o doc MAGRO do search — pagador já
@@ -191,6 +247,7 @@ export async function ingestMpPayment(repo, pmt, { discord, log, extra, collecto
     base.payerName = base.payerName || (prevName && prevName !== base.payerBank ? prevName : "");
     base.payerEmail = base.payerEmail || clean(prev.payerEmail).toLowerCase();
     base.payerDoc = base.payerDoc || clean(prev.payerDoc);
+    base.payerPhone = base.payerPhone || prev.payerPhone || "";
   }
 
   // Vínculo já feito (ingest anterior ou manual) é preservado.
@@ -262,8 +319,9 @@ export async function ingestMpPayment(repo, pmt, { discord, log, extra, collecto
       // — e o vínculo dela entrega a ASSINATURA, não só o cliente (então a
       // fatura do ciclo recebe a baixa). Vale antes do e-mail solto por ser mais
       // específico; ambíguo (2 recorrências do mesmo pagador) não casa.
-      const byPre = (await repo.list("mp_preapprovals"))
-        .filter((p) => p.subscription && String(p.payerEmail || "").toLowerCase() === base.payerEmail);
+      const byPre = gateway === "mp"
+        ? (await repo.list("mp_preapprovals")).filter((p) => p.subscription && String(p.payerEmail || "").toLowerCase() === base.payerEmail)
+        : [];
       if (byPre.length === 1) {
         Object.assign(link, {
           saas: byPre[0].saas || "", customer: byPre[0].customer || "",
@@ -286,6 +344,11 @@ export async function ingestMpPayment(repo, pmt, { discord, log, extra, collecto
           }
         }
       }
+    }
+    // E-mail não resolveu: o telefone do pagador (quando o gateway manda).
+    if (!link.customer && !link.lead && base.payerPhone) {
+      const byPhone = await matchByPhone(repo, base.payerPhone);
+      if (byPhone) Object.assign(link, byPhone);
     }
   }
 
@@ -316,7 +379,7 @@ export async function ingestMpPayment(repo, pmt, { discord, log, extra, collecto
   if (isSale && base.status === "approved" && !alreadySettled && !base.finIgnored) {
     const target = settleTarget(invoices, link, base);
     if (target) {
-      settledNow = await settleInvoice(repo, target, pmt, { discord, log });
+      settledNow = await settleInvoice(repo, target, rawDialectOf(base), { discord, log, gateway });
       link.invoice = target.id;
       link.customer = link.customer || target.customer || "";
       link.saas = link.saas || target.saas || "";
@@ -347,8 +410,8 @@ export async function ingestMpPayment(repo, pmt, { discord, log, extra, collecto
       try {
         await logActivity(repo, {
           saas: link.saas || "", lead: link.lead, type: "system",
-          text: `Pagamento de R$ ${(Number(base.amount) || 0).toFixed(2).replace(".", ",")} sofreu ${badLabel} no Mercado Pago`,
-          meta: { event: "mp_refund", mpPaymentId: base.mpId, status: base.status }, author: "mercadopago",
+          text: `Pagamento de R$ ${(Number(base.amount) || 0).toFixed(2).replace(".", ",")} sofreu ${badLabel} no ${gatewayLabel(gateway)}`,
+          meta: { event: "mp_refund", mpPaymentId: base.mpId, gateway, status: base.status }, author: gateway === "mp" ? "mercadopago" : gateway,
         });
       } catch { /* timeline nunca quebra o ingest */ }
     }
@@ -356,7 +419,7 @@ export async function ingestMpPayment(repo, pmt, { discord, log, extra, collecto
       try { await discord.paymentRefunded({ payment: saved, customerName }); }
       catch (err) { log?.warn?.({ payment: mpId, err: err.message }, "MP: aviso de estorno no Discord falhou"); }
     }
-    log?.warn?.({ payment: mpId, status: base.status, customer: link.customer || "" }, `MP: ${badLabel} detectado no espelho`);
+    log?.warn?.({ payment: mpId, gateway, status: base.status, customer: link.customer || "" }, `${gatewayLabel(gateway)}: ${badLabel} detectado no espelho`);
   }
 
   return {
@@ -390,10 +453,7 @@ export async function applyFinRulesToPending(repo, { saas, discord, log } = {}) 
         const alvo = settleTarget(invoices, { customer: customer.id }, p);
         if (alvo) {
           // settleInvoice fala o dialeto CRU da API do MP — traduz do espelho.
-          const paid = await settleInvoice(repo, alvo, {
-            id: p.mpId, date_approved: p.dateApproved, date_created: p.dateCreated,
-            payment_method_id: p.method, payment_type_id: p.methodType, installments: p.installments,
-          }, { discord, log });
+          const paid = await settleInvoice(repo, alvo, rawDialectOf(p), { discord, log, gateway: gatewayOf(p) });
           Object.assign(alvo, paid);
           patch.invoice = alvo.id;
           settled++;
@@ -468,6 +528,7 @@ export async function runMpSync(repo, mp, { discord, log, now = new Date(), back
   let reclassified = 0;
   if (enriched < enrichLimit) {
     const stale = (await repo.list("mp_payments"))
+      .filter((d) => gatewayOf(d) === "mp")
       .filter((d) => (d.payerDetail !== PAYER_DETAIL_V && (!d.payerName || !d.payerBank)) || (collectorId && d.classV !== MP_CLASS_V));
     for (const d of stale) {
       if (enriched >= enrichLimit) break;

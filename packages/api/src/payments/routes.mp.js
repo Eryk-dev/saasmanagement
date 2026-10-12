@@ -21,7 +21,9 @@ import { DEAL_PRODUCT_LABEL } from "../proposals/proposal-catalog.js";
 import { MENTORIA_LABEL } from "../customers/mentoria.js";
 import { logActivity } from "../crm/lead-flow.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "../platform/http-status.js";
-import { createCustomerCharge, createPreferenceWith, mpUrls, payerEmailOrNone } from "./mp-charges.js";
+import { createCustomerCharge, payerEmailOrNone } from "./mp-charges.js";
+import { createGatewayLink, pickGateway, refusedMessage, GatewayError } from "./gateway-links.js";
+import { gatewayOf, gatewayLabel } from "./gateways.js";
 
 // Recorrência (preapproval) DEIXOU de ser vendida em 10/09/2026 (decisão do
 // Leo): nenhuma rota cria preapproval novo. O que já existe (assinaturas
@@ -109,7 +111,7 @@ function payerMismatch(sub, eventPayer) {
   return !!(sub.payerEmail && eventPayer && String(eventPayer).toLowerCase() !== String(sub.payerEmail).toLowerCase());
 }
 
-export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
+export function registerMpRoutes(app, repo, { mp = defaultMp, asaas, appmax, discord } = {}) {
   // Fatura baixada pelo webhook avisa no Discord (fail-open; duplicado não tem
   // result.invoice, então não re-avisa).
   async function notifyPaid(sub, result) {
@@ -121,10 +123,15 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
     await discord.invoicePaid({ invoice, customerName: customer?.name, via: "Mercado Pago" });
   }
 
-  // Cria a preferência e, se o MP recusar COM e-mail do pagador, tenta de novo
-  // sem ele. Link sem pré-preenchimento é melhor que venda travada; o cliente
-  // digita o e-mail no próprio checkout.
-  const createPreference = (args, log) => createPreferenceWith(mp, args, log);
+  // Link por gateway (gateway-links.js): `gateway` no body escolhe Mercado
+  // Pago (default), Asaas ou Appmax (link colado). Erro de configuração/
+  // validação sai 4xx com a mensagem; recusa do gateway sai UPSTREAM_FAILED.
+  const makeLink = (req, gateway, args) => createGatewayLink({ gateway, mp, asaas, appmax, req, log: req.log }, args);
+  const linkError = (reply, err, gateway, ctxLog, logMsg) => {
+    if (err instanceof GatewayError) return reply.code(err.notConfigured ? NOT_CONFIGURED : 400).send({ error: err.message });
+    ctxLog.warn({ ...(ctxLog.ctx || {}), err: err.message }, logMsg);
+    return reply.code(UPSTREAM_FAILED).send({ error: refusedMessage(gateway), detail: String(err.message || err).slice(0, 300) });
+  };
 
   // Link de autorização de uma assinatura: só DEVOLVE o que já existe (a
   // recorrência não é mais vendida). Assinatura sem preapproval responde 410.
@@ -155,10 +162,13 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
     if (q.to) items = items.filter((p) => String(p.dateCreated || "") <= q.to);
     items.sort((a, b) => String(b.dateCreated || "").localeCompare(String(a.dateCreated || "")));
     const sync = await repo.get("app_config", "mp_sync");
+    const asaasSync = asaas?.configured?.() ? await repo.get("app_config", "asaas_sync") : null;
     return {
       payments: items,
       sync: sync ? { lastAt: sync.lastAt, lastSeen: sync.lastSeen } : null,
+      asaasSync: asaasSync ? { lastAt: asaasSync.lastAt, lastSeen: asaasSync.lastSeen } : null,
       configured: mp.configured(),
+      gateways: { mp: mp.configured(), asaas: !!asaas?.configured?.(), appmax: !!appmax?.configured?.() },
     };
   });
 
@@ -206,7 +216,7 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
         settledInv = await settleInvoice(repo, cand[0], {
           id: p.mpId, date_approved: p.dateApproved, date_created: p.dateCreated,
           payment_method_id: p.method, payment_type_id: p.methodType, installments: p.installments,
-        }, { discord, log: req.log });
+        }, { discord, log: req.log, gateway: gatewayOf(p) });
         patch.invoice = settledInv.id;
       }
     }
@@ -297,7 +307,8 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
   // pagamento (checkout preference) com external_reference = id da fatura — o
   // webhook/poller dá a baixa sozinho quando o cliente pagar.
   app.post("/api/customers/:id/charge", async (req, reply) => {
-    if (!mp.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Mercado Pago não configurado (MERCADOPAGO_ACCESS_TOKEN)" });
+    let gateway;
+    try { gateway = pickGateway(req.body); } catch (err) { return reply.code(400).send({ error: err.message }); }
     const customer = await repo.get("customers", req.params.id);
     if (!customer) return reply.code(404).send({ error: "Not found" });
     const amount = Math.round(Number(req.body?.amount) * 100) / 100;
@@ -306,17 +317,18 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
       const { invoice, url } = await createCustomerCharge(repo, mp, req, customer, {
         amount, title: req.body?.title, kind: req.body?.kind, dueDate: req.body?.dueDate,
         maxInstallments: req.body?.maxInstallments, origin: req.body?.origin,
+        gateway, url: req.body?.url, gateways: { asaas, appmax },
       });
-      return { ok: true, invoice, url };
+      return { ok: true, invoice, url, gateway };
     } catch (err) {
-      req.log.warn({ customer: customer.id, err: err.message }, "MP: falha ao criar link de cobrança");
-      return reply.code(UPSTREAM_FAILED).send({ error: "MP recusou a criação do link de cobrança", detail: String(err.message || err).slice(0, 300) });
+      return linkError(reply, err, gateway, req.log, `${gatewayLabel(gateway)}: falha ao criar link de cobrança`);
     }
   });
 
   // Link de pagamento pra uma fatura JÁ existente (renovação em aberto etc).
   app.post("/api/invoices/:id/mp/link", async (req, reply) => {
-    if (!mp.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Mercado Pago não configurado (MERCADOPAGO_ACCESS_TOKEN)" });
+    let gateway;
+    try { gateway = pickGateway(req.body); } catch (err) { return reply.code(400).send({ error: err.message }); }
     const invoice = await repo.get("invoices", req.params.id);
     if (!invoice) return reply.code(404).send({ error: "Not found" });
     if (invoice.status === "paid") return reply.code(400).send({ error: "fatura já está paga" });
@@ -326,25 +338,24 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
     const title = String(req.body?.title || "").trim()
       || [product?.name || invoice.saas, invoice.title || KIND_LABEL[invoice.kind] || "fatura"].filter(Boolean).join(" · ");
     try {
-      const pref = await createPreference({
+      const pref = await makeLink(req, gateway, {
         title, amount: Number(invoice.amount), externalReference: invoice.id,
         payerEmail: payerEmailOrNone(customer?.email),
-        ...mpUrls(req),
         maxInstallments: Number(req.body?.maxInstallments) || undefined,
+        url: req.body?.url,
       });
-      const updated = await repo.update("invoices", invoice.id, { mpPrefId: pref.id, mpInitPoint: pref.init_point || null });
+      const updated = await repo.update("invoices", invoice.id, { mpPrefId: pref.id, mpInitPoint: pref.url || null, paymentGateway: gateway });
       await recordPaymentLink(repo, {
         saas: invoice.saas || "", kind: "invoice", origin: "fatura",
         customer: invoice.customer || "", invoice: invoice.id,
         targetName: customer?.name || "", targetPhone: customer?.phone || "",
-        amount: Number(invoice.amount), title, url: pref.init_point || "", prefId: pref.id || "",
+        amount: Number(invoice.amount), title, url: pref.url || "", prefId: pref.id || "", gateway,
         payerEmail: customer?.email || "", reference: invoice.id,
         createdBy: req.authUser?.id || "",
       }, { log: req.log });
-      return { ok: true, invoice: updated, url: pref.init_point || null };
+      return { ok: true, invoice: updated, url: pref.url || null, gateway };
     } catch (err) {
-      req.log.warn({ invoice: invoice.id, err: err.message }, "MP: falha ao criar link da fatura");
-      return reply.code(UPSTREAM_FAILED).send({ error: "MP recusou a criação do link", detail: String(err.message || err).slice(0, 300) });
+      return linkError(reply, err, gateway, req.log, `${gatewayLabel(gateway)}: falha ao criar link da fatura`);
     }
   });
 
@@ -366,7 +377,8 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
   // existia na tela Assinaturas, ou seja, DEPOIS do Ganho, e a venda no cartão
   // recorrente saía com um link avulso na frente e outro link depois.
   app.post("/api/leads/:id/mp/link", async (req, reply) => {
-    if (!mp.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Mercado Pago não configurado (MERCADOPAGO_ACCESS_TOKEN)" });
+    let gateway;
+    try { gateway = pickGateway(req.body); } catch (err) { return reply.code(400).send({ error: err.message }); }
     const lead = await repo.get("leads", req.params.id);
     if (!lead) return reply.code(404).send({ error: "Not found" });
     const amount = Math.round(Number(req.body?.amount) * 100) / 100;
@@ -392,19 +404,20 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
       return reply.code(400).send({ error: "a casa não vende mais assinatura recorrente: gere um link de pagamento avulso (à vista ou parcelado)" });
     }
     try {
-      const pref = await createPreference({
+      const pref = await makeLink(req, gateway, {
         title, description, amount, externalReference: lead.id,
         payerEmail,
-        ...mpUrls(req),
         maxInstallments: Number(req.body?.maxInstallments) || undefined,
+        url: req.body?.url,
       });
       const contractValue = Math.round(Number(req.body?.contractValue) * 100) / 100;
       const paymentMethod = String(req.body?.paymentMethod || "").trim();
       const updated = await repo.update("leads", lead.id, {
-        mpChargeUrl: pref.init_point || null, mpChargeAmount: amount,
+        mpChargeUrl: pref.url || null, mpChargeAmount: amount,
         mpChargeTitle: title, mpChargeAt: new Date().toISOString(),
-        // Que tipo de link é o ÚLTIMO gerado (a tela e o card mostram isso).
-        mpChargeKind: "once",
+        // Que tipo de link é o ÚLTIMO gerado (a tela e o card mostram isso)
+        // e por qual gateway.
+        mpChargeKind: "once", mpChargeGateway: gateway,
         ...(plan ? { planClosed: plan } : {}),
         ...(dealProduct ? { dealProduct } : {}),
         ...(contractValue > 0 ? { amount: contractValue } : {}),
@@ -412,7 +425,7 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
       });
       await logActivity(repo, {
         saas: lead.saas || "", lead: lead.id, type: "note",
-        text: `Link de pagamento criado: R$ ${amount.toFixed(2).replace(".", ",")} (${title})`
+        text: `Link de pagamento criado${gateway !== "mp" ? ` no ${gatewayLabel(gateway)}` : ""}: R$ ${amount.toFixed(2).replace(".", ",")} (${title})`
           + (contractValue > 0 && contractValue !== amount ? ` · contrato R$ ${contractValue.toFixed(2).replace(".", ",")}` : ""),
         author: req.authUser?.id || "system",
       });
@@ -422,18 +435,14 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
         saas: lead.saas || "", kind: "lead", origin: req.body?.origin || "card",
         lead: lead.id, customer: lead.customerId || "",
         targetName: lead.name || "", targetPhone: lead.phone || "",
-        amount, title, description, url: pref.init_point || "", prefId: pref.id || "",
+        amount, title, description, url: pref.url || "", prefId: pref.id || "", gateway,
         payerEmail, reference: lead.id, plan, product: dealProduct,
         recurring: false, frequencyMonths: 0,
         createdBy: req.authUser?.id || "",
       }, { log: req.log });
-      return { ok: true, lead: updated, url: pref.init_point || null, recurring: false };
+      return { ok: true, lead: updated, url: pref.url || null, recurring: false, gateway };
     } catch (err) {
-      req.log.warn({ lead: lead.id, err: err.message }, "MP: falha ao criar link do lead");
-      return reply.code(UPSTREAM_FAILED).send({
-        error: "MP recusou a criação do link",
-        detail: String(err.message || err).slice(0, 300),
-      });
+      return linkError(reply, err, gateway, req.log, `${gatewayLabel(gateway)}: falha ao criar link do lead`);
     }
   });
 

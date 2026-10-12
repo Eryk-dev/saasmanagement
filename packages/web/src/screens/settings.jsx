@@ -1257,8 +1257,17 @@ function IntegrationsSettings({ s }) {
   // do webhook (tempo real, opcional — o poller de 10 min cobre sem ele) e
   // forçar uma sincronização dos pagamentos agora.
   const mpWebhookOn = !!window.SEED?.CONFIG?.mp?.webhook;
-  const mpWebhookUrl = `${(import.meta.env.VITE_API_BASE || window.location.origin).replace(/\/+$/, "")}/public/mp/webhook`;
+  const apiBase = (import.meta.env.VITE_API_BASE || window.location.origin).replace(/\/+$/, "");
+  const mpWebhookUrl = `${apiBase}/public/mp/webhook`;
   const [mpMsg, setMpMsg] = useStS(null);
+  // Gateways alternativos (12/10/2026): Asaas (API + webhook com token no
+  // header) e Appmax (só webhook, token na URL — a Appmax não assina).
+  const asaasCfg = window.SEED?.CONFIG?.asaas || {};
+  const appmaxCfg = window.SEED?.CONFIG?.appmax || {};
+  const asaasWebhookUrl = `${apiBase}/public/asaas/webhook`;
+  const appmaxWebhookUrl = `${apiBase}/public/appmax/webhook?token=<APPMAX_WEBHOOK_TOKEN>`;
+  const [gwMsg, setGwMsg] = useStS(null);
+  const copyText = (text, msg) => { try { navigator.clipboard.writeText(text); setGwMsg(msg); } catch { window.prompt("URL do webhook:", text); } };
 
   const items = [
     { k: "E-mail", desc: "envio de proposta + notificações (Resend/SMTP)", on: false, off: "em breve" },
@@ -1297,6 +1306,55 @@ function IntegrationsSettings({ s }) {
           </>
         )}
       </div>
+
+      {/* Asaas: link de pagamento pela API + espelho (poller) + webhook */}
+      <div style={{ padding: "14px 16px", border: asaasCfg.configured ? "1px solid var(--line-1)" : "1px dashed var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", marginBottom: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>Asaas</div>
+            <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>
+              gateway alternativo: link de pagamento (opção “Asaas” no modal do link) + espelho dos pagamentos da conta no mesmo Financeiro → Conciliação + baixa automática de fatura{asaasCfg.sandbox ? " · SANDBOX" : ""}
+            </div>
+          </div>
+          <span className={"chip " + (asaasCfg.configured ? "pos" : "")} style={{ height: 22 }}>{asaasCfg.configured ? "conectado" : "configurar ASAAS_API_KEY"}</span>
+        </div>
+        {asaasCfg.configured && (
+          <>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
+              <span className="kicker" style={{ whiteSpace: "nowrap" }}>webhook (tempo real, opcional)</span>
+              <code className="mono" style={{ fontSize: 11, padding: "4px 8px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-2)", overflowWrap: "anywhere" }}>{asaasWebhookUrl}</code>
+              <button onClick={() => copyText(asaasWebhookUrl, "URL copiada — cole no painel Asaas → Integrações → Webhooks (eventos de cobrança) com o mesmo token do ASAAS_WEBHOOK_TOKEN")}
+                style={{ height: 24, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11 }}>copiar</button>
+              <span className={"chip " + (asaasCfg.webhook ? "pos" : "")} style={{ height: 20 }} title={asaasCfg.webhook ? "ASAAS_WEBHOOK_TOKEN definido: só eventos com o token entram" : "sem ASAAS_WEBHOOK_TOKEN: o webhook recusa eventos; o poller de 10 min segue cobrindo tudo"}>
+                {asaasCfg.webhook ? "token ok" : "sem token"}
+              </span>
+            </div>
+            <div className="mono dim" style={{ fontSize: 10.5, marginTop: 10 }}>o servidor sincroniza sozinho a cada 10 min (1º boot varre 400 dias) · o botão “sincronizar” do Financeiro → Conciliação varre MP e Asaas juntos</div>
+          </>
+        )}
+      </div>
+
+      {/* Appmax: só webhook (sem API de link nem de listagem) */}
+      <div style={{ padding: "14px 16px", border: appmaxCfg.configured ? "1px solid var(--line-1)" : "1px dashed var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", marginBottom: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>Appmax</div>
+            <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>
+              gateway alternativo: o link nasce no painel da Appmax e é colado no modal do link (opção “Appmax”); os pagamentos entram SÓ pelo webhook e casam pelo e-mail/telefone do pagador
+            </div>
+          </div>
+          <span className={"chip " + (appmaxCfg.configured ? "pos" : "")} style={{ height: 22 }}>{appmaxCfg.configured ? "webhook ligado" : "configurar APPMAX_WEBHOOK_TOKEN"}</span>
+        </div>
+        {appmaxCfg.configured && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
+            <span className="kicker" style={{ whiteSpace: "nowrap" }}>webhook (obrigatório)</span>
+            <code className="mono" style={{ fontSize: 11, padding: "4px 8px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-2)", overflowWrap: "anywhere" }}>{appmaxWebhookUrl}</code>
+            <button onClick={() => copyText(appmaxWebhookUrl, "URL copiada — troque <APPMAX_WEBHOOK_TOKEN> pelo token do env e cole em Appmax → Configurações → Apphooks (modelo padrão, eventos de Pedido + Pagamento não autorizado)")}
+              style={{ height: 24, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11 }}>copiar</button>
+          </div>
+        )}
+      </div>
+      {gwMsg && <div className="mono" style={{ fontSize: 10.5, color: "var(--accent)", margin: "-4px 0 10px" }}>{gwMsg}</div>}
 
       {/* Meta Ads: status global + ad account deste SaaS */}
       <div style={{ padding: "14px 16px", border: metaOn ? "1px solid var(--line-1)" : "1px dashed var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", marginBottom: 10 }}>

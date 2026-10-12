@@ -1,7 +1,7 @@
 import React from "react";
 import { Pill } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
-import { mpMethodLabel, MP_PAY_STATUS } from "../lib/payments.js";
+import { mpMethodLabel, MP_PAY_STATUS, gatewayShort } from "../lib/payments.js";
 import { money } from "../lib/fin-cats.js";
 
 // Lista do espelho do Mercado Pago (quem pagou, quanto, como, quando, casado
@@ -52,7 +52,10 @@ export function PagamentosLista({ product, payments = [], customers = [], onLink
               <tr key={p.id} style={p.finIgnored ? { opacity: .55 } : undefined}>
                 <td className="mono dim tnum" style={{ ...td, fontSize: 12, whiteSpace: "nowrap" }}>{fmtAt(p.dateApproved || p.dateCreated)}</td>
                 <td style={td}>
-                  <div style={{ fontWeight: 500 }}>{p.payerName || (p.description && !isSale ? p.description : "—")}</div>
+                  <div style={{ fontWeight: 500 }}>
+                    {p.payerName || (p.description && !isSale ? p.description : "—")}
+                    {p.gateway && p.gateway !== "mp" && <span className="mono" title={`recebido pelo ${gatewayShort(p.gateway)}`} style={{ marginLeft: 6, fontSize: 9.5, padding: "1px 6px", borderRadius: 999, background: "var(--bg-2)", color: "var(--fg-3)", fontWeight: 600 }}>{gatewayShort(p.gateway)}</span>}
+                  </div>
                   {(p.payerDoc || p.payerEmail || p.payerDocMp) && (
                     <div className="mono dim" style={{ fontSize: 10.5 }}>
                       {[p.payerDoc && `CPF/CNPJ ${p.payerDoc}`, p.payerDocMp && "sem documento (PIX via MP)", p.payerEmail].filter(Boolean).join(" · ")}

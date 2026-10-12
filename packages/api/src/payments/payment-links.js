@@ -15,6 +15,11 @@
 
 import { dayKey } from "../metrics/metrics-core.js";
 import { SALE_KINDS } from "./mp-classify.js";
+import { isGateway, gatewayOf } from "./gateways.js";
+
+// Quem confirmou o dinheiro de um link pago: um gateway (mp/asaas/appmax),
+// baixa manual ou fatura baixada.
+export const GATEWAY_PAID = new Set(["mp", "asaas", "appmax"]);
 
 const ORIGINS = new Set(["card", "tela", "cliente", "fatura"]);
 const KINDS = new Set(["lead", "customer", "invoice"]);
@@ -43,6 +48,8 @@ export async function recordPaymentLink(repo, fields = {}, { log } = {}) {
       description: str(fields.description, 300),
       url: str(fields.url, 600),
       prefId: str(fields.prefId, 120),
+      // Por qual gateway o link nasceu (payments/gateways.js); vazio/antigo = MP.
+      gateway: isGateway(fields.gateway) ? fields.gateway : "mp",
       payerEmail: str(fields.payerEmail, 160).toLowerCase(),
       // external_reference mandado ao MP: é por ele que o pagamento volta casado.
       reference: str(fields.reference, 120),
@@ -77,12 +84,19 @@ const sameAmount = (a, b) => Math.abs((Number(a) || 0) - (Number(b) || 0)) < 0.0
 function matchesLink(link, p) {
   // Reserva interna, saída ou ruído do espelho nunca "pagam" um link.
   if (p.kind && !SALE_KINDS.has(p.kind)) return false;
-  const refOk = !!link.reference && String(p.externalReference || "") === link.reference;
+  // Link do Asaas: o pagamento volta com o id do link (gatewayLink) — vale
+  // como referência mesmo quando o Asaas não repassa o externalReference.
+  const refOk = (!!link.reference && String(p.externalReference || "") === link.reference)
+    || (!!link.prefId && gatewayOf(link) === "asaas" && String(p.gatewayLink || "") === link.prefId);
   const entOk = (!!link.lead && p.lead === link.lead) || (!!link.customer && p.customer === link.customer);
   if (!refOk && !entOk) return false;
   if (!refOk && !sameAmount(p.amount, link.amount)) return false;
+  // Asaas/Appmax mandam a data SEM hora (vira meio-dia BRT): um link gerado
+  // de manhã e pago à tarde no mesmo dia pareceria "pago antes de existir" —
+  // pra esses a folga é de um dia; no MP (hora exata) fica o minuto.
   const linkAt = ts(link.createdAt), payAt = ts(p.dateCreated);
-  if (Number.isFinite(linkAt) && Number.isFinite(payAt) && payAt < linkAt - 60_000) return false;
+  const slack = gatewayOf(p) === "mp" ? 60_000 : 86_400_000;
+  if (Number.isFinite(linkAt) && Number.isFinite(payAt) && payAt < linkAt - slack) return false;
   return true;
 }
 
@@ -129,7 +143,21 @@ export function enrichPaymentLinks(links, payments = [], invoices = []) {
     // Aprovado ganha de recusado/pendente: o que interessa é "pagou?".
     const payment = cand.find((p) => p.status === "approved") || cand[0] || null;
     if (payment) used.add(payment.id);
-    const mpPaid = payment?.status === "approved";
+    let mpPaid = payment?.status === "approved";
+    // Parcelamento do Asaas (um doc por parcela): as parcelas irmãs
+    // aprovadas entram no MESMO link — o pago é a soma; o link só fecha
+    // quando o grupo fecha (cartão: todas de uma vez) ou a soma cobre o valor.
+    let paidSum = mpPaid ? money(payment.amount) : 0;
+    let partial = false;
+    if (payment?.installmentId) {
+      for (const s of payments) {
+        if (s.id === payment.id || used.has(s.id) || s.installmentId !== payment.installmentId) continue;
+        used.add(s.id);
+        if (s.status === "approved") paidSum = money(paidSum + (Number(s.amount) || 0));
+      }
+      if (paidSum > 0 && !payment.installmentAllPaid && paidSum < money(link.amount) - 0.01) { mpPaid = false; partial = true; }
+      else if (paidSum > 0) mpPaid = true;
+    }
 
     // Fatura baixada na mão (sem passar pelo MP) também é pagamento.
     const invoice = link.invoice ? invoiceById.get(link.invoice) : null;
@@ -140,8 +168,9 @@ export function enrichPaymentLinks(links, payments = [], invoices = []) {
       o.kind === link.kind && sameAmount(o.amount, link.amount)
       && ((o.lead && o.lead === link.lead) || (o.customer && o.customer === link.customer) || (o.reference && o.reference === link.reference)));
 
-    const paidBy = mpPaid ? "mp" : manual ? "manual" : invoicePaid ? "invoice" : "";
+    const paidBy = mpPaid ? gatewayOf(payment) : manual ? "manual" : invoicePaid ? "invoice" : "";
     const status = paidBy ? "paid"
+      : partial ? "in_process"
       : payment ? payment.status
       : newer ? "superseded"
       : "waiting";
@@ -152,10 +181,11 @@ export function enrichPaymentLinks(links, payments = [], invoices = []) {
       paidBy,
       paidAt: mpPaid ? (payment.dateApproved || payment.dateCreated) : manual ? manual.at : invoicePaid ? (invoice.paidAt || "") : "",
       // O que ENTROU: o valor do pagamento pode diferir do link em centavos.
-      paidAmount: mpPaid ? money(payment.amount) : paidBy ? money(link.amount) : 0,
+      paidAmount: mpPaid ? paidSum : partial ? paidSum : paidBy ? money(link.amount) : 0,
       // Só o recorte que a tela mostra — o espelho inteiro é da tela Financeiro.
       payment: payment ? {
-        id: payment.id, mpId: payment.mpId, status: payment.status, amount: payment.amount,
+        id: payment.id, mpId: payment.mpId, gateway: gatewayOf(payment), status: payment.status, amount: payment.amount,
+        ...(payment.installmentId ? { installmentId: payment.installmentId, paidSum } : {}),
         method: payment.method, methodType: payment.methodType, installments: payment.installments,
         payerName: payment.payerName, dateCreated: payment.dateCreated, dateApproved: payment.dateApproved,
       } : null,
