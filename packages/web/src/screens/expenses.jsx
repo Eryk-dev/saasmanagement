@@ -35,6 +35,10 @@ const PCT_BASES = [
   { id: "won", option: "% dos ganhos do mês", pill: "dos ganhos", title: "sobre os ganhos do mês no pipeline", key: "wonBase" },
   { id: "cartao12x", option: "% dos recebidos no cartão", pill: "do cartão", title: "sobre o dinheiro de cartão de crédito que entrou no mês (espelho do Mercado Pago). Com antecipação D+0 a taxa incide inteira no mês em que o dinheiro cai; contrato marcado como 12x que ainda não passou no cartão não gera taxa.", key: "cardBase" },
   { id: "received", option: "% dos recebidos no mês", pill: "dos recebidos", title: "sobre os recebidos do mês (faturas pagas)", key: "receivedBase" },
+  // taxa_real: o valor da linha É a taxa que o Mercado Pago descontou no mês
+  // (bruto − líquido de cada pagamento de cliente); o % só cobre pagamento
+  // antigo sem líquido informado. Substitui a estimativa "Checkout 12%".
+  { id: "taxa_real", option: "taxa real do Mercado Pago (% só de reserva)", pill: "taxa real do MP", title: "soma da taxa que o Mercado Pago descontou de cada pagamento de cliente no mês (bruto − líquido). O % é usado só em pagamento antigo sem líquido informado.", key: "feeBase" },
 ];
 const pctBaseInfo = (id) => PCT_BASES.find((b) => b.id === id) || PCT_BASES[0];
 

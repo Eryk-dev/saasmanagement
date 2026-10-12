@@ -17,8 +17,9 @@
 //     entram no fluxo/DRE por competência; IA e WhatsApp (APIs externas) ficam
 //     fora deste endpoint de propósito — a UI soma pelo /api/expenses/summary.
 
-import { monthKey, dayKey, isSaleLead, winsIn, tcvOf, customerStartMap, cashCollectedIn, card12xBaseIn, paymentMethodOf } from "../metrics/metrics-core.js";
+import { monthKey, dayKey, isSaleLead, winsIn, tcvOf, customerStartMap, cashCollectedIn, card12xBaseIn, mpFeesIn, PCT_BASES, paymentMethodOf } from "../metrics/metrics-core.js";
 import { settleTarget, settleInvoice } from "./mp-payments.js";
+import { isMpSale, SALE_KINDS } from "./mp-classify.js";
 import { round2, syncMpOutflows } from "./mp-outflow.js";
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -96,9 +97,9 @@ function expensesOfMonth({ product, expenses, insights, invoices, leads, starts,
     .filter((r) => String(r.date || "").startsWith(month))
     .reduce((a, r) => a + (Number(r.spend) || 0), 0));
   const mine = expenses.filter((e) => applies(e));
-  const pctBaseOf = (e) => (e.base === "cartao12x" || e.base === "received" ? e.base : "won");
+  const pctBaseOf = (e) => (PCT_BASES.has(e.base) ? e.base : "won");
   const needed = new Set(mine.filter((e) => Number(e.pct) > 0).map(pctBaseOf));
-  const bases = { won: 0, cartao12x: 0, received: 0 };
+  const bases = { won: 0, cartao12x: 0, received: 0, taxa_real: 0 };
   if (needed.has("won")) {
     const wins = winsIn(product, leads, (iso) => monthKey(iso) === month, starts);
     bases.won = tcvOf(leads.filter((l) => wins.has(l.id)));
@@ -107,9 +108,16 @@ function expensesOfMonth({ product, expenses, insights, invoices, leads, starts,
   // — card12xBaseIn é a MESMA régua do /api/expenses/summary.
   if (needed.has("cartao12x")) bases.cartao12x = card12xBaseIn(mp, month);
   if (needed.has("received")) bases.received = cashCollectedIn(invoices, month, methodOf);
-  const rows = mine.map((e) => (Number(e.pct) > 0
-    ? { category: e.category || "outros", pctBase: pctBaseOf(e), amount: round2((Number(e.pct) / 100) * bases[pctBaseOf(e)]) }
-    : { category: e.category || "outros", pctBase: "", amount: Number(e.amount) || 0 }));
+  const rows = mine.map((e) => {
+    if (!(Number(e.pct) > 0)) return { category: e.category || "outros", pctBase: "", amount: Number(e.amount) || 0 };
+    const base = pctBaseOf(e);
+    // taxa_real: o valor É a taxa que o MP descontou (feeAmount do espelho);
+    // o % do lançamento só serve de fallback pra pagamento sem líquido.
+    const amount = base === "taxa_real"
+      ? mpFeesIn(mp, month, { fallbackPct: Number(e.pct) })
+      : round2((Number(e.pct) / 100) * bases[base]);
+    return { category: e.category || "outros", pctBase: base, amount };
+  });
   const total = round2(rows.reduce((a, r) => a + r.amount, 0) + ads);
   return { ads, rows, total };
 }
@@ -150,7 +158,13 @@ export function registerFinRoutes(app, repo, { mp } = {}) {
     ]);
     const payables = allPayables.filter((p) => p.saas === product.id);
     const invoices = allInvoices.filter((i) => i.saas === product.id);
-    const espelho = allMp.filter((p) => !p.saas || p.saas === product.id);
+    // Espelho do produto: vinculado a ele, ou ainda sem dono (saas vazio).
+    // `espelho` = dinheiro de cliente (venda/maquininha); o resto fica em
+    // baldes próprios da conciliação e NUNCA soma como recebido.
+    const espelhoTodo = allMp.filter((p) => !p.saas || p.saas === product.id);
+    const espelho = espelhoTodo.filter((p) => !p.kind || SALE_KINDS.has(p.kind));
+    const kindBucket = (kind) => espelhoTodo.filter((p) => p.status === "approved" && p.kind === kind && !p.finIgnored);
+    const somaMp = (list) => round2(list.reduce((a, p) => a + (Number(p.amount) || 0), 0));
     const customers = allCustomers.filter((c) => c.saas === product.id);
     const ctx = {
       product,
@@ -224,8 +238,10 @@ export function registerFinRoutes(app, repo, { mp } = {}) {
     const recebidosMes = round2(cashCollectedIn(invoices, month, ctx.methodOf));
 
     // ── Conciliação: o que sobrou sem regra vira pendência COM SUGESTÃO ──────
-    const pendentes = espelho.filter((p) => p.status === "approved" && !p.customer && !p.finIgnored);
-    const espelhoMes = espelho.filter((p) => p.status === "approved" && monthKey(p.dateApproved || p.dateCreated) === month);
+    const pendentes = espelho.filter((p) => isMpSale(p) && !p.customer);
+    const espelhoMes = espelho.filter((p) => isMpSale(p) && monthKey(p.dateApproved || p.dateCreated) === month);
+    const internas = kindBucket("interna"), saidasMp = kindBucket("saida"), ruido = kindBucket("ruido");
+    const heuristicas = espelhoTodo.filter((p) => p.status === "approved" && p.kindSource === "heuristic").length;
     const sugestoes = {};
     for (const p of pendentes) {
       const fatura = openInv.find((i) => Math.abs((Number(i.amount) || 0) - (Number(p.amount) || 0)) <= 0.01);
@@ -260,7 +276,7 @@ export function registerFinRoutes(app, repo, { mp } = {}) {
     for (const p of payables.filter((x) => x.month === month)) addSet(sectorOf(p.category), p.category || "outros", Number(p.amount) || 0);
     for (const r of custosByMonth[month].rows) {
       if (r.pctBase === "received") addSet("deducoes", "imposto", r.amount);
-      else if (r.pctBase === "cartao12x") addSet("cogs", "taxas", r.amount);
+      else if (r.pctBase === "cartao12x" || r.pctBase === "taxa_real") addSet("cogs", "taxas", r.amount);
       else addSet(sectorOf(r.category), r.category || "outros", r.amount);
     }
     addSet("sm", "ads", custosByMonth[month].ads);
@@ -283,9 +299,16 @@ export function registerFinRoutes(app, repo, { mp } = {}) {
         vencidas: { n: invVencidas.length, total: somaInv(invVencidas) },
       },
       conciliacao: {
-        pendentes: { n: pendentes.length, total: round2(pendentes.reduce((a, p) => a + (Number(p.amount) || 0), 0)) },
-        espelhoMes: round2(espelhoMes.reduce((a, p) => a + (Number(p.amount) || 0), 0)),
-        ignoradas: espelho.filter((p) => p.finIgnored).length,
+        pendentes: { n: pendentes.length, total: somaMp(pendentes) },
+        espelhoMes: somaMp(espelhoMes),
+        taxasMes: mpFeesIn(espelho, month),
+        // O que o espelho traz e NÃO é venda: reserva/transferência da própria
+        // casa, pagamento feito com o saldo (vira conta a pagar) e ruído.
+        internas: { n: internas.length, total: somaMp(internas) },
+        saidasMp: { n: saidasMp.length, total: somaMp(saidasMp) },
+        ruido: { n: ruido.length, total: somaMp(ruido) },
+        heuristicas,
+        ignoradas: espelhoTodo.filter((p) => p.finIgnored).length,
         autoAplicadas,
         regras: rules.length,
         sugestoes,

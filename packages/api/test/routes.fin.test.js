@@ -110,7 +110,7 @@ test("conciliação: aprovado sem cliente é pendência; desconsiderado sai; esp
   const r = await fin(app, "2026-08");
   assert.deepEqual(r.conciliacao.pendentes, { n: 1, total: 900 });
   assert.equal(r.conciliacao.ignoradas, 1);
-  assert.equal(r.conciliacao.espelhoMes, 1450, "aprovados do mês, inclusive vinculados e ignorados");
+  assert.equal(r.conciliacao.espelhoMes, 1300, "aprovados do mês, inclusive vinculados — o desconsiderado NÃO soma (não é dinheiro de cliente)");
   await app.close();
 });
 

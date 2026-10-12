@@ -124,6 +124,9 @@ export function makeMp({ fetch: f = globalThis.fetch, accessToken, webhookSecret
     }),
 
     getPayment: (id) => request("GET", `/v1/payments/${id}`),
+    // Quem é a conta (collector_id): é o que separa VENDA (cliente paga, nós
+    // recebemos) de dinheiro da própria casa/saída (mp-classify.js).
+    me: () => request("GET", "/users/me"),
     getAuthorizedPayment: (id) => request("GET", `/authorized_payments/${id}`),
     refundPayment: (id, { amount } = {}) =>
       request("POST", `/v1/payments/${id}/refunds`, amount == null ? {} : { amount: Math.round(Number(amount) * 100) / 100 }),

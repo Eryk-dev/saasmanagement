@@ -15,7 +15,7 @@ import { aiCosts as defaultAiCosts } from "./ai-costs.js";
 import { NOT_CONFIGURED } from "../platform/http-status.js";
 import {
   DAY_MS, round2, dayKey, monthKey, isRealLead, isSaleLead,
-  winsIn, customerStartMap, tcvOf, cashCollectedIn, card12xBaseIn, paymentMethodOf, upsellSalesIn, upsellContractedOf,
+  winsIn, customerStartMap, tcvOf, cashCollectedIn, card12xBaseIn, mpFeesIn, PCT_BASES, paymentMethodOf, upsellSalesIn, upsellContractedOf,
 } from "./metrics-core.js";
 
 const monthOf = monthKey; // mês do dia do NEGÓCIO (metrics-core), não UTC
@@ -83,11 +83,13 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhats
     //   · "received"      — RECEBIDOS no mês (faturas pagas por paidAt, régua
     //     cashCollectedIn do metrics-core) — imposto por regime de caixa: o
     //     faturado em 12 boletos só paga imposto conforme as parcelas entram.
-    const pctBaseOf = (e) => (e.base === "cartao12x" || e.base === "received" ? e.base : "won");
+    const pctBaseOf = (e) => (PCT_BASES.has(e.base) ? e.base : "won");
     const basesNeeded = new Set(expenses
       .filter((e) => e.saas === product.id && Number(e.pct) > 0 && applies(e))
       .map(pctBaseOf));
-    const bases = { won: 0, cartao12x: 0, received: 0 };
+    const bases = { won: 0, cartao12x: 0, received: 0, taxa_real: 0 };
+    let mpMirror = null;
+    const mirror = async () => (mpMirror ??= (await repo.list("mp_payments")).filter((p) => !p.saas || p.saas === product.id));
     if (basesNeeded.has("won")) {
       const [allLeads, allCustomers] = await Promise.all([repo.list("leads"), repo.list("customers")]);
       // Base do custo % sobre o VENDIDO: a mentoria entra (Leo, 16/08) — a taxa
@@ -100,10 +102,10 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhats
       const upsells = upsellSalesIn(await repo.list("invoices").catch(() => []), inMonth, { saas: product.id });
       bases.won = Math.round((tcvOf(leads.filter((l) => wins.has(l.id))) + upsellContractedOf(upsells)) * 100) / 100;
     }
-    if (basesNeeded.has("cartao12x")) {
-      const mp = (await repo.list("mp_payments")).filter((p) => !p.saas || p.saas === product.id);
-      bases.cartao12x = card12xBaseIn(mp, month);
-    }
+    if (basesNeeded.has("cartao12x")) bases.cartao12x = card12xBaseIn(await mirror(), month);
+    // taxa_real: a taxa que o MP descontou de fato no mês (feeAmount do
+    // espelho) — o valor da linha É a base; o % só cobre pagamento sem líquido.
+    if (basesNeeded.has("taxa_real")) bases.taxa_real = mpFeesIn(await mirror(), month);
     if (basesNeeded.has("received")) {
       const [allInv, allCust] = await Promise.all([repo.list("invoices"), repo.list("customers")]);
       const invoices = allInv.filter((i) => i.saas === product.id);
@@ -135,7 +137,9 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhats
     const manual = expenses
       .filter((e) => e.saas === product.id && applies(e))
       .map((e) => (Number(e.pct) > 0
-        ? { ...e, base: pctBaseOf(e), amount: round2((Number(e.pct) / 100) * bases[pctBaseOf(e)]) }
+        ? { ...e, base: pctBaseOf(e), amount: pctBaseOf(e) === "taxa_real"
+          ? round2(bases.taxa_real || mpFeesIn(mpMirror || [], month, { fallbackPct: Number(e.pct) }))
+          : round2((Number(e.pct) / 100) * bases[pctBaseOf(e)]) }
         : e))
       .sort((a, b) => (b.recurring === true) - (a.recurring === true) || String(a.category).localeCompare(String(b.category)));
     const manualTotal = round2(manual.reduce((a, e) => a + (Number(e.amount) || 0), 0));
@@ -151,6 +155,7 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhats
       payablesTotal, payablesCount: payablesMonth.length, total,
       wonBase: basesNeeded.has("won") ? round2(bases.won) : undefined,
       cardBase: basesNeeded.has("cartao12x") ? round2(bases.cartao12x) : undefined,
+      feeBase: basesNeeded.has("taxa_real") ? round2(bases.taxa_real) : undefined,
       receivedBase: basesNeeded.has("received") ? round2(bases.received) : undefined,
     };
   });

@@ -22,6 +22,8 @@ import { leadGradeInfo, LEGACY_ACCOUNTS, LEGACY_LISTINGS, LEGACY_VOLUME } from "
 
 import { kindOf, isLoss, isNoShowStage, isWonLead, wonAtOf, TOUCH_TYPES, TERMINAL_KINDS } from "../crm/stages.js";
 import { isMentoriaLead, mentoriaFit } from "../customers/mentoria.js";
+import { isMpSale } from "../payments/mp-classify.js";
+export { isMpSale };
 
 export { isWonLead, wonAtOf }; // a régua oficial de ganho, num import só
 
@@ -32,12 +34,35 @@ export { isWonLead, wonAtOf }; // a régua oficial de ganho, num import só
 // incide INTEIRA no mês em que o dinheiro CAI — nunca sobre a marcação
 // "cartão 12x" do fechamento (contrato marcado que ainda não passou no cartão
 // não paga taxa; foi isso que inflou a base pra 172k com ~100 recebidos).
+// Bases do lançamento percentual (expenses.pct): o que o % multiplica.
+// taxa_real = taxa cobrada pelo MP lida do espelho (mpFeesIn), não um %.
+export const PCT_BASES = new Set(["won", "cartao12x", "received", "taxa_real"]);
+
+// Só dinheiro de CLIENTE (isMpSale): reserva interna, saída e ruído do espelho
+// não pagam taxa de checkout, e pagamento desconsiderado também não.
 export function card12xBaseIn(mpPayments, month) {
   let sum = 0;
   for (const p of mpPayments || []) {
-    if (p.status !== "approved" || p.methodType !== "credit_card") continue;
+    if (!isMpSale(p) || p.methodType !== "credit_card") continue;
     if (monthKey(p.dateApproved || p.dateCreated) !== month) continue;
     sum += Number(p.amount) || 0;
+  }
+  return Math.round(sum * 100) / 100;
+}
+
+// Taxa REAL cobrada pelo Mercado Pago no mês (bruto − líquido recebido, por
+// pagamento de cliente aprovado, por dateApproved). Substitui a estimativa
+// "Checkout 12%": o número já vem no espelho (feeAmount). Pagamento sem
+// líquido informado (espelho antigo) cai no fallback percentual do lançamento.
+export function mpFeesIn(mpPayments, month, { fallbackPct = 0 } = {}) {
+  let sum = 0;
+  for (const p of mpPayments || []) {
+    if (!isMpSale(p)) continue;
+    if (monthKey(p.dateApproved || p.dateCreated) !== month) continue;
+    const fee = Number(p.feeAmount);
+    if (fee > 0) sum += fee;
+    else if (Number(p.netAmount) > 0) sum += Math.max(0, (Number(p.amount) || 0) - Number(p.netAmount));
+    else if (fallbackPct > 0 && p.methodType === "credit_card") sum += (Number(p.amount) || 0) * (fallbackPct / 100);
   }
   return Math.round(sum * 100) / 100;
 }
@@ -323,7 +348,7 @@ export function cashReceivedByCustomer({ invoices = [], mpPayments = [], custome
   const add = (cid, v) => { if (cid && ids.has(cid) && v > 0) cash.set(cid, round2((cash.get(cid) || 0) + v)); };
   const countedMp = new Set();
   for (const p of mpPayments) {
-    if (p.status !== "approved") continue;
+    if (!isMpSale(p)) continue;
     const cid = (ids.has(p.customer) ? p.customer : "") || byLead.get(p.lead) || "";
     if (!cid) continue;
     // Marca ANTES da janela: a fatura baixada por este pagamento não pode
@@ -367,12 +392,12 @@ export function customerCashIn({ customers = [], invoices = [], mpPayments = [],
       const payment = i.mpPaymentId && byMp.get(String(i.mpPaymentId));
       // O estado atual do MP prevalece sobre uma fatura que ficou marcada
       // paga depois de estorno/cancelamento. Sem espelho, vale a baixa datada.
-      return !payment || (payment.status === "approved" && (!payment.saas || payment.saas === saas));
+      return !payment || (isMpSale(payment) && (!payment.saas || payment.saas === saas));
     }),
   });
   const open = scopedInvoices.filter((i) => {
     if ((i.status !== "open" && i.status !== "overdue") || !inWin(i.dueDate)) return false;
-    return !i.mpPaymentId || byMp.get(String(i.mpPaymentId))?.status !== "approved";
+    return !i.mpPaymentId || !isMpSale(byMp.get(String(i.mpPaymentId)));
   });
   return {
     saas, since, until,
