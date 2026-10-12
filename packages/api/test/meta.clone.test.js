@@ -357,6 +357,40 @@ test("assetFeedWithVideo: mantém textos/links/CTA, troca os vídeos pelo novo c
   assert.deepEqual(assetFeedWithVideo({ bodies: [{ text: "x" }] }, { videoId: "v" }).ad_formats, ["SINGLE_VIDEO"]);
 });
 
+// 12/10/2026: o 1º clone em produção com o feed morreu em "The link field is
+// required" (100/2061015). O Gerenciador tinha deixado o link só no
+// video_data.call_to_action do object_story_spec, e o feed veio sem link_urls.
+test("assetFeedWithVideo: feed sem link_urls/CTA herda o link e o CTA do object_story_spec de origem", () => {
+  const { link_urls, call_to_action_types, ...semLink } = FEED; // eslint-disable-line no-unused-vars
+  const sourceSpec = { page_id: "10", video_data: { video_id: "v_old", call_to_action: { type: "LEARN_MORE", value: { link: "https://leverads.com.br/diagnostico" } } } };
+  const feed = assetFeedWithVideo(semLink, { videoId: "v_new", imageUrl: "t", sourceSpec });
+  assert.deepEqual(feed.link_urls, [{ website_url: "https://leverads.com.br/diagnostico" }]);
+  assert.deepEqual(feed.call_to_action_types, ["LEARN_MORE"]);
+  // Feed COM link_urls: o da origem fica, o story não sobrescreve.
+  const feed2 = assetFeedWithVideo(FEED, { videoId: "v_new", sourceSpec: { video_data: { call_to_action: { type: "SIGN_UP", value: { link: "https://outro" } } } } });
+  assert.deepEqual(feed2.link_urls, FEED.link_urls);
+  assert.deepEqual(feed2.call_to_action_types, ["LEARN_MORE"]);
+  // link_urls presente mas vazio conta como sem link.
+  const feed3 = assetFeedWithVideo({ ...semLink, link_urls: [{ display_url: "x" }] }, { videoId: "v", sourceSpec: { link_data: { link: "https://ld" } } });
+  assert.deepEqual(feed3.link_urls, [{ website_url: "https://ld" }]);
+  // Sem link em lugar nenhum: feed sai sem link_urls (quem cria recusa com erro claro).
+  assert.equal(assetFeedWithVideo(semLink, { videoId: "v", sourceSpec: { page_id: "10", video_data: { video_id: "v_old" } } }).link_urls, undefined);
+});
+
+test("createVideoCreativeFromSpec: origem sem link em lugar nenhum falha ANTES de chamar a Meta, com a instrução de ajustar a origem", async () => {
+  const f = recorder(() => ({ id: "cr_feed" }));
+  const meta = makeMeta({ fetch: f, accessToken: "tok" });
+  const { link_urls, call_to_action_types, ...semLink } = FEED; // eslint-disable-line no-unused-vars
+  await assert.rejects(() => meta.createVideoCreativeFromSpec("act_9", { name: "x", sourceSpec: { page_id: "10", video_data: { video_id: "v_old" } }, assetFeed: semLink, videoId: "v", imageUrl: "t" }), /sem link de destino/);
+  assert.equal(f.calls.length, 0);
+  // Com o link no call_to_action da origem: cria, e o feed leva o link.
+  const id = await meta.createVideoCreativeFromSpec("act_9", { name: "x", sourceSpec: { page_id: "10", video_data: { video_id: "v_old", call_to_action: { type: "LEARN_MORE", value: { link: "https://leverads.com.br/diagnostico" } } } }, assetFeed: semLink, videoId: "v", imageUrl: "t" });
+  assert.equal(id, "cr_feed");
+  const feed = JSON.parse(f.calls[0].body.asset_feed_spec);
+  assert.deepEqual(feed.link_urls, [{ website_url: "https://leverads.com.br/diagnostico" }]);
+  assert.deepEqual(feed.call_to_action_types, ["LEARN_MORE"]);
+});
+
 test("createVideoCreativeFromSpec: com texto no asset_feed_spec, cria com o feed e o object_story_spec só de página/Instagram", async () => {
   const f = recorder(() => ({ id: "cr_feed" }));
   const meta = makeMeta({ fetch: f, accessToken: "tok" });

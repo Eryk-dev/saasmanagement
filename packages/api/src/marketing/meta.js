@@ -114,10 +114,31 @@ const hasFeedText = (afs) => !!afs && ["bodies", "titles", "descriptions"].some(
 // todos os vídeos antigos, pra regra de personalização por posicionamento
 // continuar apontando pra um vídeo que existe). null = origem sem texto no
 // feed, segue pelo object_story_spec.video_data.
-export function assetFeedWithVideo(assetFeed, { videoId, imageUrl }) {
+// Link e CTA do object_story_spec de origem (video_data.call_to_action ou
+// link_data), pra quando o feed vem sem eles — ver assetFeedWithVideo.
+export function storyLinkOf(spec) {
+  const vd = spec?.video_data || {};
+  const ld = spec?.link_data || {};
+  const cta = vd.call_to_action || ld.call_to_action || null;
+  const link = String(cta?.value?.link || ld.link || "").trim();
+  const ctaType = String(cta?.type || "").trim();
+  return { link, ctaType };
+}
+export function assetFeedWithVideo(assetFeed, { videoId, imageUrl, sourceSpec = null }) {
   if (!hasFeedText(assetFeed)) return null;
   const feed = {};
   for (const k of ASSET_FEED_FIELDS) if (assetFeed[k] != null) feed[k] = JSON.parse(JSON.stringify(assetFeed[k]));
+  // Link e CTA (12/10/2026): o Gerenciador nem sempre grava o link em
+  // asset_feed_spec.link_urls — em parte dos anúncios flexíveis ele fica só no
+  // object_story_spec.video_data.call_to_action.value.link, que o criativo novo
+  // NÃO leva (a Meta recusa video_data junto do feed). Sem link_urls a criação
+  // morre em "The link field is required" (100/2061015), caso do 1491 [PRICE].
+  // É cópia do que está na origem, não ajuste: o link é o mesmo do anúncio.
+  const { link, ctaType } = storyLinkOf(sourceSpec);
+  const hasLinks = Array.isArray(feed.link_urls) && feed.link_urls.some((l) => String(l?.website_url || "").trim());
+  if (!hasLinks && link) feed.link_urls = [{ website_url: link }];
+  const hasCta = Array.isArray(feed.call_to_action_types) && feed.call_to_action_types.length;
+  if (!hasCta && ctaType) feed.call_to_action_types = [ctaType];
   const labels = [];
   for (const v of Array.isArray(assetFeed.videos) ? assetFeed.videos : []) {
     for (const l of v.adlabels || []) if (!labels.some((x) => x.name === l.name)) labels.push(l);
@@ -781,9 +802,12 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       // títulos, descrições, links, CTA, formato) e só os vídeos trocados pelo
       // novo. O object_story_spec aí leva só página e Instagram (a Meta recusa
       // video_data junto com asset_feed_spec).
-      const feed = assetFeedWithVideo(assetFeed, { videoId, imageUrl });
+      const feed = assetFeedWithVideo(assetFeed, { videoId, imageUrl, sourceSpec: spec });
       if (feed) {
         if (!spec?.page_id) throw new Error("o anúncio de origem não tem página no object_story_spec — não dá pra montar o criativo");
+        if (!Array.isArray(feed.link_urls) || !feed.link_urls.length) {
+          throw new Error("o anúncio de origem está sem link de destino (nem em asset_feed_spec.link_urls nem no call_to_action) — abra o anúncio de origem no Gerenciador, confira o campo Link do site e salve, depois suba de novo");
+        }
         const story = { page_id: spec.page_id };
         for (const k of ["instagram_user_id", "instagram_actor_id"]) if (spec[k]) story[k] = spec[k];
         const body = await post(`${acct(adAccountId)}/adcreatives`, {
