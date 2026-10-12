@@ -6,6 +6,8 @@
 import { repo as defaultRepo } from "./platform/db.js";
 import { DOMAINS } from "./domains.js";
 import { mp as defaultMpClient } from "./payments/mp.js";
+import { asaas as defaultAsaasClient } from "./payments/asaas.js";
+import { appmax as defaultAppmaxClient } from "./payments/appmax.js";
 import { meta as defaultMetaClient } from "./marketing/meta.js";
 import { metaCapi as defaultMetaCapi } from "./marketing/meta-capi.js";
 import { discord as defaultDiscord } from "./integrations/discord.js";
@@ -33,6 +35,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   ctx.salesWhatsapp = makeSalesWhatsapp(() => ctx.whatsapp);
   ctx.meta = opts.meta || defaultMetaClient;
   ctx.mp = opts.mp || defaultMpClient;
+  // Gateways alternativos de recebimento (payments/gateways.js).
+  ctx.asaas = opts.asaas || defaultAsaasClient;
+  ctx.appmax = opts.appmax || defaultAppmaxClient;
 
   for (const domain of DOMAINS) domain.register(app, repo, ctx);
 

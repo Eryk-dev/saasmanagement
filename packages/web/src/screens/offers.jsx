@@ -7,7 +7,7 @@ import { useData } from "../data.jsx";
 import { usePeriod } from "../components/period-picker.jsx";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
 import { ManualPaidModal } from "../components/manual-paid-modal.jsx";
-import { linkStatusOf, linkOriginLabel, linkPaidByLabel } from "../lib/payments.js";
+import { linkStatusOf, linkOriginLabel, linkPaidByLabel, anyGatewayOn, gatewaysOn, gatewayShort } from "../lib/payments.js";
 import { displayName, usersByRole, isAdminUser } from "../lib/users.js";
 import { waLink } from "../lib/ui.js";
 import "./offers.css";
@@ -31,7 +31,9 @@ function OffersScreen({ onOpenLead }) {
   const [product] = useActiveSaas();
   const { version } = useData();
   const { win } = usePeriod();
-  const mpOn = !!window.SEED?.CONFIG?.mp?.configured;
+  // Qualquer gateway ligado (MP, Asaas ou Appmax) libera gerar link.
+  const mpOn = anyGatewayOn();
+  const multi = gatewaysOn().length > 1;
   const admin = isAdminUser();
   const [result,setResult] = useState(null), [err,setErr] = useState(null), [reading,setReading] = useState(false);
   const [tab,setTab] = useState("aguardando"), [q,setQ] = useState(""), [by,setBy] = useState("");
@@ -88,7 +90,7 @@ function OffersScreen({ onOpenLead }) {
   function clear() {setTab("todos");setQ("");setBy("");}
   return <div className="offers-page">
     <header className="offers-header"><h1>Links de pagamento</h1><button onClick={()=>setCreating(true)} disabled={!mpOn}>Gerar link</button></header>
-    {!mpOn && <div className="offers-state">Mercado Pago não conectado. O histórico continua disponível; conecte a conta para gerar novos links.</div>}
+    {!mpOn && <div className="offers-state">Nenhum gateway conectado (Mercado Pago, Asaas ou Appmax). O histórico continua disponível; conecte uma conta em Ajustes → Integrações para gerar novos links.</div>}
     {error && <div className="offers-state" role="alert">{data?"Não deu para atualizar o histórico. Os dados anteriores continuam visíveis:":"Não deu para carregar o histórico:"} {error} <button onClick={load}>Tentar novamente</button></div>}
     {!data && !error && <div className="offers-state" role="status">Carregando histórico…</div>}
     {data && <>
@@ -115,7 +117,7 @@ function OffersScreen({ onOpenLead }) {
                 <span className="offers-date"><span>{date(g.lastAt)}</span><small>{ago(g.lastAt)}</small></span>
                 <span className="offers-actions" onClick={e=>e.stopPropagation()}>{waiting?.url&&<>{wa&&<a className="offers-charge" href={`${wa}?text=${encodeURIComponent(`Oi${g.name?` ${String(g.name).split(" ")[0]}`:""}, segue o link do pagamento: ${waiting.url}`)}`} target="_blank" rel="noopener noreferrer">Cobrar</a>}<button onClick={()=>copyLink(waiting.url,`g-${g.key}`)}>{copied===`g-${g.key}`?"Copiado ✓":"Copiar"}</button></>}</span>
               </div>
-              {expanded&&<div id={`offer-${g.key}`} className="offers-links">{g.links.map(l=><LinkRow key={l.id} link={l} copied={copied===l.id} busy={!!busy} onCopy={copyLink} onPay={markPaid} onUndo={undoPaid}/>)}</div>}
+              {expanded&&<div id={`offer-${g.key}`} className="offers-links">{g.links.map(l=><LinkRow key={l.id} link={l} multi={multi} copied={copied===l.id} busy={!!busy} onCopy={copyLink} onPay={markPaid} onUndo={undoPaid}/>)}</div>}
             </React.Fragment>;
           })}
         </div></div>
@@ -139,13 +141,14 @@ function MoneySummary({totals,counts,onWaiting}) {
       <button onClick={onWaiting}>Ver quem está devendo →</button>
     </div>
     <div className="offers-bar" aria-hidden="true"><span style={{width:`${pct(totals.paid)}%`}}/><span style={{width:`${pct(totals.waiting)}%`}}/><span style={{width:`${pct(totals.failed)}%`}}/></div>
-    <div className="offers-legend"><span><i/>pago</span><span><i/>em aberto</span><span><i/>recusado</span><span title="O status vem do Mercado Pago: o pagamento casa pelo link (referência do lead/fatura) ou pelo e-mail do pagador. Baixa manual = dinheiro que entrou por fora e foi marcado à mão. Substituído = link antigo de quem gerou de novo pelo mesmo valor.">como o status funciona ⓘ</span></div>
+    <div className="offers-legend"><span><i/>pago</span><span><i/>em aberto</span><span><i/>recusado</span><span title="O status vem do gateway (Mercado Pago, Asaas ou Appmax): o pagamento casa pelo link (referência do lead/fatura), pelo e-mail ou pelo telefone do pagador. Baixa manual = dinheiro que entrou por fora e foi marcado à mão. Substituído = link antigo de quem gerou de novo pelo mesmo valor.">como o status funciona ⓘ</span></div>
   </section>;
 }
-function LinkRow({link:l,copied,busy,onCopy,onPay,onUndo}) {
-  const status=linkStatusOf(l.status),wa=waLink(l.targetPhone);
+function LinkRow({link:l,multi,copied,busy,onCopy,onPay,onUndo}) {
+  // Parcelamento do Asaas em curso: parte das parcelas já caiu (paidAmount).
+  const status=l.status==="in_process"&&l.payment?.installmentId?{label:`parcelas · ${BRL.format(Number(l.paidAmount)||0)} pago`,tone:"warn"}:linkStatusOf(l.status),wa=waLink(l.targetPhone);
   const canPay=l.status!=="paid"&&l.status!=="superseded",canUndo=l.paidBy==="manual"||l.paidBy==="invoice";
-  const description=[l.title||"—",l.recurring?`↻ ${RECURRING_LABEL[l.frequencyMonths]||"recorrente"}`:"",linkOriginLabel(l.origin)].filter(Boolean).join(" · ");
+  const description=[l.title||"—",l.recurring?`↻ ${RECURRING_LABEL[l.frequencyMonths]||"recorrente"}`:"",multi||(l.gateway&&l.gateway!=="mp")?gatewayShort(l.gateway):"",linkOriginLabel(l.origin)].filter(Boolean).join(" · ");
   return <div className="offers-link" data-link={l.id}>
     <span className="offers-pill" data-tone={status.tone}>{status.label}</span><strong>{BRL.format(Number(l.amount)||0)}</strong><span className="offers-description">{description}</span><span className="offers-when">{ago(l.createdAt)?`gerado ${ago(l.createdAt)}`:"—"}</span>
     {l.paidBy&&<span className="offers-paid-via">{linkPaidByLabel(l.paidBy)}</span>}

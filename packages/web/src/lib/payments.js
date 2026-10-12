@@ -197,7 +197,28 @@ export const dealProductLabel = (id, saas = "") =>
   || DEAL_PRODUCTS.find((p) => p.id === id)?.label
   || String(id || "");
 
-// Como o pagamento SAIU no Mercado Pago (payment_type_id/payment_method_id do
+// ── Gateways de recebimento (espelho da API, payments/gateways.js) ──────────
+// O espelho é um só (mp_payments): cada pagamento/link/fatura carrega
+// `gateway` (mp | asaas | appmax); vazio = Mercado Pago (histórico).
+export const GATEWAYS = [
+  { id: "mp", label: "Mercado Pago", short: "MP" },
+  { id: "asaas", label: "Asaas", short: "Asaas" },
+  { id: "appmax", label: "Appmax", short: "Appmax" },
+];
+export const gatewayLabel = (id) => GATEWAYS.find((g) => g.id === (id || "mp"))?.label || String(id || "");
+export const gatewayShort = (id) => GATEWAYS.find((g) => g.id === (id || "mp"))?.short || String(id || "");
+// Quais estão configurados no servidor (CONFIG do SEED): o modal do link só
+// oferece esses; sem nenhum, o botão "gerar link" fica desligado.
+export function gatewaysOn() {
+  const cfg = (typeof window !== "undefined" && window.SEED?.CONFIG) || {};
+  return GATEWAYS.filter((g) => !!cfg[g.id]?.configured);
+}
+export const anyGatewayOn = () => gatewaysOn().length > 0;
+// O gateway padrão de um atalho rápido (link da fatura na ficha): o primeiro
+// configurado, na ordem acima.
+export const defaultGateway = () => gatewaysOn()[0]?.id || "mp";
+
+// Como o pagamento SAIU no gateway (payment_type_id/payment_method_id do
 // /v1/payments) — diferente de PAYMENT_METHODS (o combinado do fechamento):
 // aqui é o FATO, a forma com que o dinheiro realmente entrou. Vale pro espelho
 // (mp_payments: method/methodType/installments) e pra fatura baixada
@@ -218,13 +239,13 @@ export function mpMethodLabel(p = {}) {
 // estados de PAGAMENTO reaproveitam MP_PAY_STATUS abaixo — estes três são do
 // link em si: nasceu e ninguém pagou, ou foi trocado por um mais novo.
 const LINK_STATUS = {
-  paid: { label: "pago", tone: "pos", hint: "dinheiro confirmado: pelo Mercado Pago, por baixa manual ou pela fatura" },
+  paid: { label: "pago", tone: "pos", hint: "dinheiro confirmado: pelo gateway (Mercado Pago, Asaas, Appmax), por baixa manual ou pela fatura" },
   waiting: { label: "em aberto", tone: "warn", hint: "link gerado e nenhum pagamento até agora" },
   superseded: { label: "substituído", tone: "mut", hint: "gerou outro link pro mesmo cliente e mesmo valor depois deste" },
 };
 export const linkStatusOf = (s) => LINK_STATUS[s] || MP_PAY_STATUS[s] || { label: s || "—", tone: "mut" };
 // Quem confirmou o dinheiro de um link pago (paidBy do servidor).
-const LINK_PAID_BY = { mp: "Mercado Pago", manual: "baixa manual", invoice: "fatura baixada" };
+const LINK_PAID_BY = { mp: "Mercado Pago", asaas: "Asaas", appmax: "Appmax", manual: "baixa manual", invoice: "fatura baixada" };
 export const linkPaidByLabel = (by) => LINK_PAID_BY[by] || "";
 // Como o dinheiro entrou numa baixa MANUAL (espelho de MANUAL_METHODS na API).
 export const MANUAL_PAY_METHODS = [

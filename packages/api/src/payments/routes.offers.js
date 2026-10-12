@@ -14,7 +14,8 @@
 // o Financeiro só lia faturas); link de LEAD ainda sem cliente só marca o
 // link (a fatura é do cliente, pós-Ganho).
 
-import { enrichPaymentLinks, filterPaymentLinks, groupPaymentLinks, validateManualPaid, GROUP_TABS } from "./payment-links.js";
+import { enrichPaymentLinks, filterPaymentLinks, groupPaymentLinks, validateManualPaid, GROUP_TABS, GATEWAY_PAID } from "./payment-links.js";
+import { gatewayLabel } from "./gateways.js";
 import { logActivity } from "../crm/lead-flow.js";
 import { isAdmin } from "../auth/roles.js";
 import { syncCustomerArr } from "../billing/billing.js";
@@ -98,7 +99,7 @@ export function registerOfferRoutes(app, repo) {
     const { error, value } = validateManualPaid(req.body || {});
     if (error) return reply.code(400).send({ error });
     const cur = await enrichOne(link);
-    if (cur.paidBy === "mp") return reply.code(409).send({ error: "esse link já foi pago pelo Mercado Pago" });
+    if (GATEWAY_PAID.has(cur.paidBy)) return reply.code(409).send({ error: `esse link já foi pago pelo ${gatewayLabel(cur.paidBy)}` });
     const author = req.authUser?.id || "";
     const markedAt = new Date().toISOString();
     const paidProof = { kind: "manual", at: value.at, method: value.method, note: value.note, by: author || "api", markedAt, link: link.id };
@@ -106,7 +107,7 @@ export function registerOfferRoutes(app, repo) {
     if (link.invoice) {
       // Link COM fatura: a baixa é da fatura, com a mesma prova (uma porta só).
       const inv = await repo.get("invoices", link.invoice);
-      if (inv && inv.status === "paid" && inv.mpPaymentId) return reply.code(409).send({ error: "a fatura desse link já foi paga pelo Mercado Pago" });
+      if (inv && inv.status === "paid" && inv.mpPaymentId) return reply.code(409).send({ error: `a fatura desse link já foi paga pelo ${gatewayLabel(inv.paidGateway)}` });
       if (inv && inv.status !== "paid") {
         await repo.update("invoices", inv.id, { status: "paid", paidAt: value.at, paidMethod: value.method, paidProof });
         if (inv.subscription) {
@@ -143,7 +144,7 @@ export function registerOfferRoutes(app, repo) {
     // Desfaz também a fatura que essa baixa pagou/criou (nunca a baixada pelo MP).
     if (link.invoice) {
       const inv = await repo.get("invoices", link.invoice);
-      if (inv?.mpPaymentId) return reply.code(409).send({ error: "a fatura desse link foi paga pelo Mercado Pago — não dá pra desfazer" });
+      if (inv?.mpPaymentId) return reply.code(409).send({ error: `a fatura desse link foi paga pelo ${gatewayLabel(inv.paidGateway)} — não dá pra desfazer` });
       if (inv?.paymentLink === link.id) await repo.remove("invoices", inv.id);
       else if (inv?.paidProof?.link === link.id) await repo.update("invoices", inv.id, { status: "open", paidAt: "", paidMethod: "", paidProof: null });
     }

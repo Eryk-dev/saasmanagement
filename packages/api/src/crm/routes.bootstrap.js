@@ -24,7 +24,7 @@ async function peopleObject(repo) {
   return obj;
 }
 
-export function registerBootstrapRoutes(app, repo, { googleClient, mpClient, metaClient, anthropicClient, discordClient, whatsappClient } = {}) {
+export function registerBootstrapRoutes(app, repo, { googleClient, mpClient, asaasClient, appmaxClient, metaClient, anthropicClient, discordClient, whatsappClient } = {}) {
   // Everything the cockpit web app needs in one shot (mirrors window.SEED).
   // Usuário com telas restritas (user.screens) recebe o payload FILTRADO:
   // esconder o menu no SPA sem cortar os dados aqui não seria restrição —
@@ -224,6 +224,10 @@ export function registerBootstrapRoutes(app, repo, { googleClient, mpClient, met
         // limites pra as telas escolherem e nomearem plano sem lista fixa.
         plans: catalogPlans.reduce((acc, p) => { (acc[p.saas] || (acc[p.saas] = [])).push(slimPlan(p)); return acc; }, {}),
         mp: { configured: mpClient.configured(), webhook: mpClient.hasWebhookSecret() },
+        // Gateways alternativos (payments/gateways.js): o modal do link oferece
+        // só os configurados; Ajustes → Integrações mostra o estado.
+        asaas: { configured: !!asaasClient?.configured?.(), webhook: !!asaasClient?.hasWebhookToken?.(), sandbox: !!asaasClient?.sandbox?.() },
+        appmax: { configured: !!appmaxClient?.configured?.() },
         meta: { configured: metaClient.configured() },
         // meetCalendar: onde o evento do Meet nasce (GOOGLE_MEET_CALENDAR_ID).
         // Aparece em Ajustes → Integrações porque é a causa nº 1 de "não cria o

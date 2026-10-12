@@ -4,17 +4,21 @@
 import { registerMpRoutes } from "./routes.mp.js";
 import { registerOfferRoutes } from "./routes.offers.js";
 import { registerFinRoutes } from "./routes.fin.js";
+import { registerGatewayRoutes } from "./routes.gateways.js";
 import { startMpSync } from "./mp-payments.js";
+import { startAsaasSync } from "./asaas-payments.js";
 import { startPreapprovalSync } from "./mp-subscriptions.js";
 import { startMpOutflowSync } from "./mp-outflow.js";
 import { mp as defaultMp } from "./mp.js";
 
 export function register(app, repo, ctx) {
   // Mercado Pago (fase 4): link de assinatura + webhook de baixa automática.
-  registerMpRoutes(app, repo, { mp: ctx.mp, discord: ctx.discord });
+  registerMpRoutes(app, repo, { mp: ctx.mp, asaas: ctx.asaas, appmax: ctx.appmax, discord: ctx.discord });
+  // Gateways alternativos (Asaas + Appmax): webhooks, sync e estado.
+  registerGatewayRoutes(app, repo, { mp: ctx.mp, asaas: ctx.asaas, appmax: ctx.appmax, discord: ctx.discord });
   // Links de pagamento das ofertas (ferramenta).
   registerOfferRoutes(app, repo);
-  registerFinRoutes(app, repo, { mp: ctx.mp, discord: ctx.discord });
+  registerFinRoutes(app, repo, { mp: ctx.mp, asaas: ctx.asaas, discord: ctx.discord });
 }
 
 export function start(repo, { log, jobOn }) {
@@ -22,6 +26,9 @@ export function start(repo, { log, jobOn }) {
   // e dá baixa nas faturas — funciona mesmo SEM o webhook configurado no painel
   // (1º tick faz o backfill de 400 dias). No-op sem MERCADOPAGO_ACCESS_TOKEN.
   if (jobOn("mpSync")) startMpSync(repo, { log });
+  // Espelho do ASAAS (mesma collection, gateway "asaas"): poller de 10 min,
+  // backfill de 400 dias no 1º tick. No-op sem ASAAS_API_KEY.
+  if (jobOn("asaasSync")) startAsaasSync(repo, { log });
   // Espelho das assinaturas RECORRENTES da conta MP (inclusive as criadas fora
   // do cockpit): a tela Assinaturas → MP liga cada uma ao cliente. No-op sem
   // MERCADOPAGO_ACCESS_TOKEN.

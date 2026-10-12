@@ -49,7 +49,9 @@ export async function createPreferenceWith(mp, args, log) {
 // "+ cobrança" da ficha e o registro de upsell com link (routes.billing.js).
 // `extra` = campos a mais carimbados na fatura (upsell: quem vendeu, modo…).
 // Falha no MP remove a fatura (não fica órfã) e propaga o erro.
-export async function createCustomerCharge(repo, mp, req, customer, { amount, title, kind, dueDate, maxInstallments, origin, extra = {} } = {}) {
+// `gateway` (mp | asaas | appmax) e `url` (link colado, só Appmax) escolhem a
+// porta (gateway-links.js); `gateways` = { asaas, appmax } quando houver.
+export async function createCustomerCharge(repo, mp, req, customer, { amount, title, kind, dueDate, maxInstallments, origin, extra = {}, gateway = "mp", url, gateways = {} } = {}) {
   const product = customer.saas ? await repo.get("products", customer.saas) : null;
   const finalTitle = String(title || "").trim()
     || [product?.name || customer.saas, kind === "upsell" ? "upsell" : "cobrança"].filter(Boolean).join(" · ");
@@ -60,22 +62,23 @@ export async function createCustomerCharge(repo, mp, req, customer, { amount, ti
     title: finalTitle, dueDate: dueDate || nowIso, createdAt: nowIso, ...extra,
   });
   try {
-    const pref = await createPreferenceWith(mp, {
+    const { createGatewayLink } = await import("./gateway-links.js");
+    const pref = await createGatewayLink({ gateway, mp, asaas: gateways.asaas, appmax: gateways.appmax, req, log: req.log }, {
       title: finalTitle, amount, externalReference: invoice.id,
       payerEmail: payerEmailOrNone(customer.email),
-      ...mpUrls(req),
       maxInstallments: Number(maxInstallments) || undefined,
-    }, req.log);
-    const updated = await repo.update("invoices", invoice.id, { mpPrefId: pref.id, mpInitPoint: pref.init_point || null });
+      url,
+    });
+    const updated = await repo.update("invoices", invoice.id, { mpPrefId: pref.id, mpInitPoint: pref.url || null, paymentGateway: gateway });
     await recordPaymentLink(repo, {
       saas: customer.saas || "", kind: "customer", origin: origin || "cliente",
       customer: customer.id, invoice: invoice.id,
       targetName: customer.name || "", targetPhone: customer.phone || "",
-      amount, title: finalTitle, url: pref.init_point || "", prefId: pref.id || "",
+      amount, title: finalTitle, url: pref.url || "", prefId: pref.id || "", gateway,
       payerEmail: customer.email || "", reference: invoice.id,
       createdBy: req.authUser?.id || "",
     }, { log: req.log });
-    return { invoice: updated, url: pref.init_point || null };
+    return { invoice: updated, url: pref.url || null, gateway };
   } catch (err) {
     await repo.remove("invoices", invoice.id); // fatura sem link não fica órfã
     throw err;

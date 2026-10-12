@@ -2,12 +2,18 @@ import React from "react";
 import { Modal } from "./overlay.jsx";
 import { waLink } from "../lib/ui.js";
 import { api } from "../lib/api.js";
-import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, CLOSED_PLAN_TITLE as PLAN_TITLE, withLegacyOption, DEAL_PRODUCTS_ACTIVE, dealProductLabel, dealProductsOf, paymentPickerValue, paymentPatchOf } from "../lib/payments.js";
+import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, CLOSED_PLAN_TITLE as PLAN_TITLE, withLegacyOption, DEAL_PRODUCTS_ACTIVE, dealProductLabel, dealProductsOf, paymentPickerValue, paymentPatchOf, gatewaysOn, gatewayLabel } from "../lib/payments.js";
 import { ProductOptions, PaymentMethodSelect } from "./lead-blocks.jsx";
 
-// Modal do LINK DE PAGAMENTO do Mercado Pago — o MESMO em todo lugar que gera
-// link: atalho do card do lead (deal.jsx) e tela "Links de pagamento", que abre
-// ele já com o seletor de quem vai pagar.
+// Modal do LINK DE PAGAMENTO — o MESMO em todo lugar que gera link: atalho do
+// card do lead (deal.jsx) e tela "Links de pagamento", que abre ele já com o
+// seletor de quem vai pagar.
+//
+// GATEWAY (12/10/2026): a casa recebe por Mercado Pago, Asaas e Appmax. O
+// modal oferece os configurados no servidor (CONFIG.<gateway>.configured).
+// MP e Asaas criam o link pela API; a Appmax não tem API de link: o closer
+// cria no painel dela e COLA aqui, só pro histórico e pro casamento do
+// pagamento (webhook) com o lead/cliente.
 //
 // LEAD: cria o checkout com external_reference = id do lead — o pagamento entra
 // no Financeiro já casado com a origem (e com o cliente quando o lead vira
@@ -161,6 +167,11 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved, onBusyChange
   const [titleDirty, setTitleDirty] = React.useState(isLead ? !!doc.mpChargeTitle : true);
   const [description, setDescription] = React.useState("");
   const [url, setUrl] = React.useState(isLead ? (doc.mpChargeUrl || "") : "");
+  // Gateway: os configurados; o último usado no lead vem selecionado.
+  const gateways = React.useMemo(() => gatewaysOn(), []);
+  const [gateway, setGateway] = React.useState(() =>
+    (isLead && gateways.some((g) => g.id === doc.mpChargeGateway)) ? doc.mpChargeGateway : (gateways[0]?.id || "mp"));
+  const [pasted, setPasted] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const submitting = React.useRef(false);
   const [err, setErr] = React.useState(null);
@@ -182,10 +193,12 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved, onBusyChange
     const value = Number(String(amount).replace(",", "."));
     if (!(value > 0)) { setErr("Informe o valor da cobrança."); return; }
     const contractValue = Number(String(contract).replace(",", "."));
+    if (gateway === "appmax" && !/^https:\/\/\S+$/i.test(pasted.trim())) { setErr("Cole o link de pagamento criado no painel da Appmax (https://…)."); return; }
     submitting.current = true; setBusy(true); onBusyChange(true); setErr(null);
     try {
       const r = isLead
         ? await api.mpLeadLink(doc.id, {
+          gateway, url: gateway === "appmax" ? pasted.trim() : undefined,
           amount: value,
           maxInstallments: Number(installments) || undefined,
           title: title.trim() || undefined, description: description.trim() || undefined,
@@ -196,13 +209,14 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved, onBusyChange
           origin,
         })
         : await api.createCharge(doc.id, {
+          gateway, url: gateway === "appmax" ? pasted.trim() : undefined,
           amount: value, title: title.trim() || undefined,
           maxInstallments: Number(installments) || undefined, origin,
         });
       setUrl(r.url || "");
       setCopied(false);
       onSaved && onSaved(r);
-    } catch (e) { setErr(e.message || "MP não respondeu"); }
+    } catch (e) { setErr(e.message || `${gatewayLabel(gateway)} não respondeu`); }
     finally { submitting.current = false; setBusy(false); onBusyChange(false); }
   }
 
@@ -220,9 +234,37 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved, onBusyChange
           : `${product?.name || doc.saas} · cria a fatura no cliente e a baixa é automática quando pagar`}
         onClose={onClose} onBack={onBack} />
 
-      {/* O que o cliente vê ao abrir o checkout do MP. */}
+      {/* Por onde cobrar: só aparece quando há mais de um gateway ligado. */}
+      {gateways.length > 1 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span className="kicker accent">cobrar por</span>
+          <div role="radiogroup" aria-label="Gateway de pagamento" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {gateways.map((g) => (
+              <button key={g.id} type="button" role="radio" aria-checked={gateway === g.id} onClick={() => setGateway(g.id)} className="chip" style={{
+                cursor: "pointer", fontWeight: 600,
+                background: gateway === g.id ? "var(--accent-soft)" : "var(--bg-2)",
+                color: gateway === g.id ? "var(--accent)" : "var(--fg-3)",
+                boxShadow: gateway === g.id ? "inset 0 0 0 1px var(--accent-line)" : "none",
+              }}>{g.label}</button>
+            ))}
+          </div>
+          {gateway === "appmax" && (
+            <div className="mono dim" style={{ fontSize: 10.5 }}>
+              a Appmax não cria link pela API: crie o link no painel dela e cole abaixo. O pagamento entra pelo webhook e casa pelo e-mail/telefone do pagador.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* O que o cliente vê ao abrir o checkout do gateway. */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <span className="kicker accent">checkout</span>
+        {gateway === "appmax" && (
+          <label style={field}>
+            <span className="kicker">Link do painel da Appmax</span>
+            <input type="url" value={pasted} placeholder="https://…" onChange={(e) => setPasted(e.target.value)} style={inputStyle} />
+          </label>
+        )}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 96px", gap: 8 }}>
           <label style={field}>
             <span className="kicker">Valor da cobrança (R$)</span>
@@ -310,7 +352,9 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved, onBusyChange
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <button onClick={create} disabled={busy}
           style={{ height: 36, padding: "0 16px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600, opacity: busy ? 0.6 : 1 }}>
-          {busy ? "gerando…" : (url ? "gerar novo link" : "gerar link")}
+          {busy ? (gateway === "appmax" ? "registrando…" : "gerando…")
+            : gateway === "appmax" ? "registrar link"
+            : (url ? "gerar novo link" : "gerar link")}{gateways.length > 1 ? ` · ${gatewayLabel(gateway)}` : ""}
         </button>
       </div>
 

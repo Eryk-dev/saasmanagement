@@ -23,7 +23,7 @@ import { leadTier, waLink, GRADE_STYLE } from "../lib/ui.js";
 import { scriptChecklist } from "../lib/scripts.js";
 import { displayName, usersByRole } from "../lib/users.js";
 import { npsBucket, lastNps, pendingNps, NPS_TONE } from "../lib/nps.js";
-import { paymentLabel, paymentUpfront, paymentRecurring, paymentCustom, PAY_STATUS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel, accruedAmountOf, isRecurringClose, CYCLE_LABEL, closedPlanFromLabel, plansOf } from "../lib/payments.js";
+import { paymentLabel, paymentUpfront, paymentRecurring, paymentCustom, PAY_STATUS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel, accruedAmountOf, isRecurringClose, CYCLE_LABEL, closedPlanFromLabel, plansOf, anyGatewayOn, defaultGateway, gatewayLabel } from "../lib/payments.js";
 import { CustomerPlanPanel, CustomerContractForm, CustomerProducts } from "../components/customer-plan.jsx";
 import { PaymentMethodSelect } from "../components/lead-blocks.jsx";
 import { UpsellPanel } from "../components/UpsellPanel.jsx";
@@ -1564,7 +1564,9 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
   // Cobrança avulsa pelo Mercado Pago: fatura + link de pagamento anexados ao
   // cliente numa tacada (POST /charge). O link vai pro clipboard; a baixa é
   // automática quando o cliente pagar (webhook/poller casam pelo id da fatura).
-  const mpOn = !!window.SEED?.CONFIG?.mp?.configured;
+  // Qualquer gateway ligado libera cobrar (modal escolhe por onde); o atalho
+  // de link da fatura/parcela usa o gateway padrão (defaultGateway).
+  const mpOn = anyGatewayOn();
   // Cronograma do faturado (faturas kind:"installment"): marcar paga /
   // desmarcar por parcela. O override local dá o feedback imediato; o SSE
   // recarrega a lista de verdade logo depois (deps [product, version]).
@@ -1639,10 +1641,10 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
   async function invoiceLink(inv) {
     if (inv.mpInitPoint) return copyLink(inv.mpInitPoint, "link da fatura copiado");
     try {
-      const r = await api.invoiceMpLink(inv.id);
-      await copyLink(r.url, "link criado e copiado");
+      const r = await api.invoiceMpLink(inv.id, { gateway: defaultGateway() });
+      await copyLink(r.url, `link criado no ${gatewayLabel(r.gateway)} e copiado`);
       refresh();
-    } catch (err) { flashFin(err.message || "MP recusou o link"); }
+    } catch (err) { flashFin(err.message || "o gateway recusou o link"); }
   }
 
   // O antigo grid de `summary` (plano, casa, último contato, assinatura,
@@ -2007,9 +2009,9 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
                     <span style={{ display: "inline-flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
                       {mpOn && st !== "paid" && (
                         <button onClick={() => invoiceLink(i)}
-                          title={i.mpInitPoint ? "copiar o link de pagamento desta parcela" : "gerar o link de pagamento desta parcela no Mercado Pago"}
+                          title={i.mpInitPoint ? `copiar o link de pagamento desta parcela${i.paymentGateway && i.paymentGateway !== "mp" ? ` (${gatewayLabel(i.paymentGateway)})` : ""}` : `gerar o link de pagamento desta parcela no ${gatewayLabel(defaultGateway())}`}
                           style={{ height: 20, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--accent)", fontSize: 10.5 }}>
-                          {i.mpInitPoint ? "copiar link" : "link MP"}
+                          {i.mpInitPoint ? "copiar link" : "gerar link"}
                         </button>
                       )}
                       <span className="tnum mono" style={{ fontWeight: 500 }}>{money(i.amount || 0)}</span>
@@ -2077,7 +2079,7 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
             )}
             {mpOn && (
               <button onClick={() => setChargeOpen((v) => !v)}
-                title="Gerar uma cobrança pelo Mercado Pago: cria a fatura e o link de pagamento anexado ao cliente. A baixa é automática quando pagar."
+                title="Gerar uma cobrança (Mercado Pago, Asaas ou Appmax): cria a fatura e o link de pagamento anexado ao cliente. A baixa é automática quando pagar."
                 style={{ marginLeft: churned ? "auto" : 0, height: 22, padding: "0 9px", borderRadius: 999, border: "1px solid var(--accent-line, var(--line-2))", background: "var(--bg-1)", color: "var(--accent)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
                 {chargeOpen ? "cancelar" : "+ cobrança"}
               </button>
@@ -2132,9 +2134,9 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
               <span style={{ display: "inline-flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
                 {mpOn && st !== "paid" && (
                   <button onClick={() => invoiceLink(i)}
-                    title={i.mpInitPoint ? "copiar o link de pagamento desta fatura" : "gerar o link de pagamento desta fatura no Mercado Pago"}
+                    title={i.mpInitPoint ? `copiar o link de pagamento desta fatura${i.paymentGateway && i.paymentGateway !== "mp" ? ` (${gatewayLabel(i.paymentGateway)})` : ""}` : `gerar o link de pagamento desta fatura no ${gatewayLabel(defaultGateway())}`}
                     style={{ height: 20, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--accent)", fontSize: 10.5 }}>
-                    {i.mpInitPoint ? "copiar link" : "link MP"}
+                    {i.mpInitPoint ? "copiar link" : "gerar link"}
                   </button>
                 )}
                 <span className="tnum mono" style={{ fontWeight: 500 }}>{money(i.amount || 0)}</span>

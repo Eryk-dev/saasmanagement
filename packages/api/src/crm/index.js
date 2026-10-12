@@ -13,7 +13,7 @@ export function register(app, repo, ctx) {
   // Follow-up em 4 contatos: mensagens e prazos globais (Configurações).
   registerFollowupConfigRoutes(app, repo);
   // Carga inicial do SPA (SEED), portfólio e leaderboard.
-  registerBootstrapRoutes(app, repo, { googleClient: ctx.google, mpClient: ctx.mp, metaClient: ctx.meta, anthropicClient: ctx.anthropic, discordClient: ctx.discord, whatsappClient: ctx.whatsapp });
+  registerBootstrapRoutes(app, repo, { googleClient: ctx.google, mpClient: ctx.mp, asaasClient: ctx.asaas, appmaxClient: ctx.appmax, metaClient: ctx.meta, anthropicClient: ctx.anthropic, discordClient: ctx.discord, whatsappClient: ctx.whatsapp });
   // Foto anexada a um toque da timeline.
   registerActivityAssetRoutes(app, repo);
   // CRUD genérico sobre as coleções (/api/:collection).

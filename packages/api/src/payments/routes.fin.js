@@ -23,6 +23,7 @@
 
 import { monthKey, dayKey, isSaleLead, winsIn, tcvOf, customerStartMap, cashIn, card12xBaseIn, mpFeesIn, PCT_BASES, upsellSalesIn, upsellContractedOf } from "../metrics/metrics-core.js";
 import { applyFinRulesToPending, runMpSync } from "./mp-payments.js";
+import { runAsaasSync } from "./asaas-payments.js";
 import { isMpSale, SALE_KINDS } from "./mp-classify.js";
 import { normalizeRuleValue, ruleMatches, rulesFor } from "./fin-rules.js";
 import { ensurePayables, missingInstances } from "./payables.js";
@@ -97,7 +98,7 @@ function expensesOfMonth({ product, expenses, insights, invoices, leads, starts,
   return { ads, rows, total };
 }
 
-export function registerFinRoutes(app, repo, { mp, discord } = {}) {
+export function registerFinRoutes(app, repo, { mp, asaas, discord } = {}) {
   // A leitura do mês inteira numa chamada, SEM efeito colateral: contas a
   // pagar, tiles, receber (com o presumido), conciliação (com sugestões),
   // fluxo de 6 meses e DRE por setor.
@@ -313,16 +314,25 @@ export function registerFinRoutes(app, repo, { mp, discord } = {}) {
   // UM botão de sincronizar (12/10/2026): entradas (espelho de pagamentos,
   // com reclassificação) + saídas (settlement report) numa passada só. Erro
   // de um lado não esconde o outro — cada bloco traz o próprio resultado.
+  // Com Asaas configurado, a mesma passada varre o espelho dele (bloco
+  // `asaas`); o Appmax só entra por webhook (nada a puxar).
   app.post("/api/fin/:saas/sync", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "produto não encontrado" });
-    if (!mp?.configured?.()) return reply.code(400).send({ error: "Mercado Pago não configurado (MERCADOPAGO_ACCESS_TOKEN)" });
+    const mpOn = !!mp?.configured?.(), asaasOn = !!asaas?.configured?.();
+    if (!mpOn && !asaasOn) return reply.code(400).send({ error: "nenhum gateway configurado (MERCADOPAGO_ACCESS_TOKEN ou ASAAS_API_KEY)" });
     const full = String(req.query?.reclassify || "") === "1";
     const out = { ok: true };
-    try { out.in = await runMpSync(repo, mp, { discord, log: req.log, ...(full ? { enrichLimit: 1000 } : {}) }); }
-    catch (e) { out.in = { error: String(e.message || e).slice(0, 200) }; }
-    try { out.out = await syncMpOutflows(repo, mp, { log: req.log }); }
-    catch (e) { out.out = { error: String(e.message || e).slice(0, 200) }; }
+    if (mpOn) {
+      try { out.in = await runMpSync(repo, mp, { discord, log: req.log, ...(full ? { enrichLimit: 1000 } : {}) }); }
+      catch (e) { out.in = { error: String(e.message || e).slice(0, 200) }; }
+      try { out.out = await syncMpOutflows(repo, mp, { log: req.log }); }
+      catch (e) { out.out = { error: String(e.message || e).slice(0, 200) }; }
+    }
+    if (asaasOn) {
+      try { out.asaas = await runAsaasSync(repo, asaas, { discord, log: req.log }); }
+      catch (e) { out.asaas = { error: String(e.message || e).slice(0, 200) }; }
+    }
     try { out.rules = await applyFinRulesToPending(repo, { saas: product.id, discord, log: req.log }); }
     catch (e) { out.rules = { error: String(e.message || e).slice(0, 200) }; }
     try { out.match = await autoMatchOutflows(repo, { log: req.log }); }

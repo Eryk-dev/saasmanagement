@@ -100,7 +100,9 @@ const ROUTE_SCREENS = [
   // Recorrências do MP ↔ clientes: mora na aba MP da tela Assinaturas (dentro
   // de Clientes). Precede /api/mp/ — primeiro match vence.
   ["/api/mp/preapprovals", ["customers", "expenses"]],
-  ["/api/mp/", ["expenses"]],            // financeiro: espelho de pagamentos do MP (payments/sync/link) — aba Pagamentos da tela Financeiro
+  ["/api/mp/", ["expenses"]],
+  ["/api/asaas/", ["expenses"]],         // financeiro: sync do espelho do Asaas
+  ["/api/gateways", ["expenses", "offers", "customers"]], // estado dos gateways de recebimento            // financeiro: espelho de pagamentos do MP (payments/sync/link) — aba Pagamentos da tela Financeiro
   ["/api/mp_payments", ["expenses"]],    // CRUD genérico do espelho (mesma tela)
   ["/api/mp_preapprovals", ["customers", "expenses"]], // CRUD genérico do espelho de recorrências
   ["/api/fin/", ["expenses"]],           // financeiro completo: leitura do mês (contas a pagar, fluxo, DRE, conciliação)
