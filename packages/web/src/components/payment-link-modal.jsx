@@ -2,7 +2,7 @@ import React from "react";
 import { Modal } from "./overlay.jsx";
 import { waLink } from "../lib/ui.js";
 import { api } from "../lib/api.js";
-import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, CLOSED_PLAN_TITLE as PLAN_TITLE, withLegacyOption, DEAL_PRODUCTS_ACTIVE, dealProductLabel, dealProductsOf } from "../lib/payments.js";
+import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, CLOSED_PLAN_TITLE as PLAN_TITLE, withLegacyOption, DEAL_PRODUCTS_ACTIVE, dealProductLabel, dealProductsOf, paymentPickerValue, paymentPatchOf } from "../lib/payments.js";
 import { ProductOptions, PaymentMethodSelect } from "./lead-blocks.jsx";
 
 // Modal do LINK DE PAGAMENTO do Mercado Pago — o MESMO em todo lugar que gera
@@ -153,7 +153,7 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved, onBusyChange
   const [plan, setPlan] = React.useState(doc.planClosed || "anual");
   const [dealProduct, setDealProduct] = React.useState(doc.dealProduct || "");
   const [contract, setContract] = React.useState(isLead && Number(doc.amount) > 0 ? String(doc.amount) : "");
-  const [method, setMethod] = React.useState(doc.paymentMethod || "");
+  const [method, setMethod] = React.useState(paymentPickerValue(doc));
   const [payerEmail, setPayerEmail] = React.useState(emailOf(doc));
   const [title, setTitle] = React.useState(isLead
     ? (doc.mpChargeTitle || titleFor(doc.planClosed || "anual", doc.dealProduct || ""))
@@ -192,7 +192,7 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved, onBusyChange
           payerEmail: payerEmail.trim() || undefined,
           plan, product: dealProduct || undefined,
           contractValue: contractValue > 0 ? contractValue : undefined,
-          paymentMethod: method || undefined,
+          ...(method ? paymentPatchOf(method) : {}),
           origin,
         })
         : await api.createCharge(doc.id, {

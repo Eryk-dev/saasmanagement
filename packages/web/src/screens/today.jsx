@@ -25,7 +25,7 @@ import { clientSummary, ClientSummaryCard, AttributionCard, LeadChecklist, Scrip
 import { SelectPopover } from "../components/select-popover.jsx";
 import { Choice } from "../components/plan-editor.jsx";
 import { resolveScript, scriptTokens, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor } from "../lib/scripts.js";
-import { CLOSED_PLANS, withLegacyOption, closedPlanLabel, dealProductLabel, closingPlansOf } from "../lib/payments.js";
+import { CLOSED_PLANS, withLegacyOption, closedPlanLabel, dealProductLabel, closingPlansOf, paymentPickerValue, paymentPatchOf } from "../lib/payments.js";
 import { LeadSendActions, useLeadProposalActions } from "../components/lead-send-actions.jsx";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
 import { PresentationConfig } from "../components/presentation-config.jsx";
@@ -2425,7 +2425,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   // (manda o link de convite e o cliente marca) ou "depois" (vai sem horário).
   // Só muda o que aparece: link e depois movem sem integrationAt, como antes.
   const [schedMode, setSchedMode] = useS("horario");
-  const [payment, setPayment] = useS(lead.paymentMethod || "");
+  const [payment, setPayment] = useS(paymentPickerValue(lead));
   // O que foi VENDIDO (um item por produto do catálogo: plano, ciclo e valor):
   // o card só vai pra Integração depois de fechar, e a entrega precisa do escopo.
   const [items, setItems] = useS(() => dealItemsFromLead(lead));
@@ -2449,7 +2449,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   useE(() => {
     setDest(null); setCloser(lead.closer || ""); setSlot(lead.callAt || ""); setDay(nextBusinessDays(1)[0]); setRetryAt(""); setFupDay("");
     setIntegrator(lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
-    setPayment(lead.paymentMethod || ""); setReason(""); setNote(""); setIntegNote(lead.integrationNote || ""); setSchedMode(bookingLinkPending(lead, lead.integrator) ? "link" : "horario");
+    setPayment(paymentPickerValue(lead)); setReason(""); setNote(""); setIntegNote(lead.integrationNote || ""); setSchedMode(bookingLinkPending(lead, lead.integrator) ? "link" : "horario");
     setItems(dealItemsFromLead(lead));
     setOffer(lead.proposalOffer || ""); setOfferProduct(lead.proposalProduct || "");
     setEmail(lead.email || ""); setEmailTouched(false); setMeetBusy(false); setMeetRes(null); setMeetErr(null);
@@ -2564,7 +2564,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   // assinatura por produto recorrente); com um só, a lista antiga é limpa.
   const dealPatch = () => ({
     amount: amountNum,
-    paymentMethod: payment,
+    ...paymentPatchOf(payment),
     ...(askProduct ? { dealProduct: rows[0].product, planClosed: rows[0].closed } : {}),
     ...(askProduct && rows.length > 1
       ? { dealItems: rows.map((r) => ({ product: r.product, planClosed: r.closed, amount: r.value })) }

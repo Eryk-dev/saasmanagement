@@ -28,7 +28,10 @@ export const CLOSED_PLANS = [
   { id: "anual", label: "Anual", title: "Plano Anual", cycle: "annual", months: 12, annualFactor: 1, catalogKey: "anu" },
   { id: "semestral", label: "Semestral", title: "Plano Semestral", cycle: "semiannual", months: 6, annualFactor: 2, catalogKey: "sem" },
   { id: "mensal", label: "Mensal", selectLabel: "Assinatura mensal", cycle: "monthly", months: 1, annualFactor: 12, legacy: true },
-  { id: "unico", label: "Serviço único", title: "Serviço único", annualFactor: 1 },
+  // Serviço único NÃO é receita recorrente (12/10/2026): fator 0 — não entra
+  // no ARR/MRR; o dinheiro vira fatura avulsa (ensureOneOffInvoice) e conta
+  // na meta do mês em que fechou, como sempre.
+  { id: "unico", label: "Serviço único", title: "Serviço único", annualFactor: 0 },
 ];
 
 const mapOf = (field) => Object.fromEntries(CLOSED_PLANS.filter((p) => p[field] !== undefined).map((p) => [p.id, p[field]]));

@@ -27,7 +27,7 @@ test("planos de fechamento: os mapas derivados batem com os que existiam espalha
   // Serviço único não é recorrência: sem ciclo nem meses.
   assert.deepEqual(CLOSED_PLAN_CYCLE, { anual: "annual", semestral: "semiannual", mensal: "monthly" });
   assert.deepEqual(CLOSED_PLAN_MONTHS, { anual: 12, semestral: 6, mensal: 1 });
-  assert.deepEqual(CLOSED_PLAN_ANNUAL_FACTOR, { anual: 1, semestral: 2, mensal: 12, unico: 1 });
+  assert.deepEqual(CLOSED_PLAN_ANNUAL_FACTOR, { anual: 1, semestral: 2, mensal: 12, unico: 0 }, "serviço único não anualiza (12/10/2026)");
   assert.deepEqual(CLOSED_PLANS.filter((p) => p.catalogKey).map((p) => [p.catalogKey, p.id, p.label]),
     [["anu", "anual", "Anual"], ["sem", "semestral", "Semestral"]]);
   assert.deepEqual(CLOSED_PLANS.filter((p) => p.legacy).map((p) => p.id), ["mensal"]);

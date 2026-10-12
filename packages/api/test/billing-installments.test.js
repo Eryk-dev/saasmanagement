@@ -134,7 +134,7 @@ test("desmarcar: baixa manual volta pra aberta/vencida e re-derruba a assinatura
   await app.close();
 });
 
-test("serviço único faturado em 3x: sem assinatura, cronograma preso só ao cliente, arr manual", async () => {
+test("serviço único faturado em 3x: sem assinatura, cronograma preso só ao cliente, arr 0 (compra única não é ARR)", async () => {
   const repo = makeMemRepo();
   await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [{ stage: "Inbox" }, { stage: "Ganho", kind: "ganho" }] });
   const lead = await repo.create("leads", {
@@ -144,7 +144,7 @@ test("serviço único faturado em 3x: sem assinatura, cronograma preso só ao cl
   const customer = await convertWonLead(repo, lead, { metaCapi: capi });
   assert.ok(customer, "cliente nasce");
   assert.equal((await repo.list("subscriptions")).length, 0, "serviço único não é recorrência");
-  assert.equal((await repo.get("customers", customer.id)).arr, 2988);
+  assert.equal((await repo.get("customers", customer.id)).arr, 0, "compra única não é receita recorrente (12/10/2026)");
   const parc = await parcelasOf(repo, customer.id);
   assert.equal(parc.length, 3);
   assert.equal(parc[0].subscription, "", "cronograma sem assinatura");

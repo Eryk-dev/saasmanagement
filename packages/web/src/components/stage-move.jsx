@@ -3,7 +3,7 @@ import { PrimaryButton } from "../atoms.jsx";
 import { Modal } from "./overlay.jsx";
 import { stageKind, phaseOf, isLossKind, isWonKind, lossReasonsOf } from "../lib/funnel.js";
 import { usersByRole, currentUser, displayName } from "../lib/users.js";
-import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, CONSULT_PACKAGES, CLOSED_PLAN_MONTHS, dealProductsOf, paymentUpfront, paymentRecurring, paymentCustom } from "../lib/payments.js";
+import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, CONSULT_PACKAGES, CLOSED_PLAN_MONTHS, dealProductsOf, paymentUpfront, paymentRecurring, paymentCustom, paymentPickerValue, paymentPatchOf } from "../lib/payments.js";
 import { DealProductField, isOneOffProduct, PopoverWithCustom, PaymentMethodPicker } from "./lead-blocks.jsx";
 import { SelectPopover } from "./select-popover.jsx";
 import { Choice } from "./plan-editor.jsx";
@@ -71,7 +71,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   const [note, setNote] = React.useState("");
   const [callAt, setCallAt] = React.useState("");
   const [amount, setAmount] = React.useState(Number(lead.amount) > 0 ? String(lead.amount) : "");
-  const [payment, setPayment] = React.useState(lead.paymentMethod || "");
+  const [payment, setPayment] = React.useState(paymentPickerValue(lead));
   const [planClosed, setPlanClosed] = React.useState(lead.planClosed || "anual");
   // Faturado/parcelado: em quantas parcelas o dinheiro entra. Vazio = sugestão
   // do plano (12 anual, 6 semestral). Vira o cronograma de faturas "Parcela
@@ -189,7 +189,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
       if (note.trim()) patch.lostNote = note.trim();
     } else if (isWonGate) {
       patch.amount = amountNum;
-      patch.paymentMethod = payment;
+      Object.assign(patch, paymentPatchOf(payment));
       // À vista/cartão zera o parcelamento (um faturado antigo não assombra).
       patch.paymentInstallments = isFaturado ? effInstallments : "";
       // Mentoria é compra única (o valor não anualiza); o pacote é o "plano".

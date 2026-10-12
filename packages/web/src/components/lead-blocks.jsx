@@ -81,7 +81,7 @@ export function clientSummary(saasCfg, lead, stage, cat, { full = false } = {}) 
     // é essa oferta que o follow-up cobra.
     ["Proposta na mesa", lead.proposalOffer ? (lead.proposalOffer === "nenhuma" ? "não chegou na proposta"
       : [dealProductLabel(lead.proposalProduct, lead.saas), closedPlanLabel(lead.proposalOffer) || lead.proposalOffer].filter(Boolean).join(" · ")) : null],
-    ["Pagamento", lead.paymentMethod ? paymentLabel(lead.paymentMethod) : null],
+    ["Pagamento", lead.paymentMethod ? paymentLabel(lead.paymentMethod, lead.paymentTerms) : null],
     ["Origem", lead.source],
     // Indicação: quem indicou e quem colheu andam juntos — o crédito é do
     // coletor, então o nome dele é parte do fato, não detalhe de bastidor.

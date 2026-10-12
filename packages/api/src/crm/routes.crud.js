@@ -738,8 +738,10 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
       try {
         const lead = await repo.get("leads", updated.leadId);
         if (lead && lead.customerId === updated.id) {
-          const amount = Math.round((Number(updated.arr) || 0) / (CLOSED_PLAN_ANNUAL_FACTOR[lead.planClosed] || 1));
-          if (amount !== (Number(lead.amount) || 0)) {
+          const factor = CLOSED_PLAN_ANNUAL_FACTOR[lead.planClosed] ?? 1;
+          const amount = Math.round((Number(updated.arr) || 0) / (factor || 1));
+          // Serviço único (fator 0) não tem ARR: editar o arr não reescreve o valor da venda.
+          if (factor > 0 && amount !== (Number(lead.amount) || 0)) {
             const fresh = await repo.update("leads", lead.id, { amount });
             // Serviço único/fechamento legado não têm spec de assinatura: só o
             // amount espelha (cancelar/mexer em assinatura a partir de uma

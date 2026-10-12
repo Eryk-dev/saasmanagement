@@ -414,7 +414,7 @@ function CustomersScreen({ initialTab }) {
     nivel: (c) => { const g = gradeOf(c).grade; return g in GRADE_RANK ? GRADE_RANK[g] : null; },
     plano: (c) => String(isMentoria(c) ? consultPackageLabel(journeyOf(c).total) : contractPlan(c)).toLowerCase() || null,
     mrr: (c) => (c.arr || 0),
-    pagamento: (c) => { const pm = c.paymentMethod || leadById.get(c.leadId)?.paymentMethod; return pm ? paymentLabel(pm).toLowerCase() : null; },
+    pagamento: (c) => { const pm = c.paymentMethod || leadById.get(c.leadId)?.paymentMethod; return pm ? paymentLabel(pm, c.paymentTerms || leadById.get(c.leadId)?.paymentTerms).toLowerCase() : null; },
     recebido: (c) => trazidoOf(c) || null,
     pgto: (c) => payStatus(c).rank,
     entrada: (c) => entradaDate(c)?.getTime() ?? null,
@@ -1023,7 +1023,7 @@ function CustomerFacts({ customer, lead, product, leverOrg, onPatch, cicloAte = 
           ? `${window.fmt.money(lead.amount)}/mês · acumulado ${window.fmt.money(accruedAmountOf(lead, { endAt: customer.endedAt }))}`
           : window.fmt.money(lead.amount))
         : null],
-      ["Pagamento", (customer.paymentMethod || lead?.paymentMethod) ? paymentLabel(customer.paymentMethod || lead?.paymentMethod) : null],
+      ["Pagamento", (customer.paymentMethod || lead?.paymentMethod) ? paymentLabel(customer.paymentMethod || lead?.paymentMethod, customer.paymentTerms || lead?.paymentTerms) : null],
       ["Status pgto.", PAY_STATUS[customer.paymentStatus] ? `${PAY_STATUS[customer.paymentStatus].label} (manual)` : null],
       ["Ciclo atual até", cicloAte],
       ["Upsells", Number(customer.upsellCount) > 0

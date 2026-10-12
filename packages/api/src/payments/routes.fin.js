@@ -144,10 +144,20 @@ export function registerFinRoutes(app, repo, { mp, discord } = {}) {
     // custos do mês (competência). Previsto do mês pedido usa vencimento.
     const paidInMonth = (m) => payables.filter((p) => p.status === "paga" && monthKey(p.paidAt) === m);
     const custosByMonth = Object.fromEntries(window.map((m) => [m, expensesOfMonth(ctx, m)]));
+    // Saídas da conta MP sem dono (settlement report + pagamento feito com o
+    // saldo, classificado `saida` no espelho): dinheiro que SAIU de verdade e
+    // ainda não casou com conta a pagar — entra no fluxo pela data; casada,
+    // a conta a pagar (paga) é quem conta.
+    const movsOut = allMovs.filter((m) => (m.direction || "out") === "out" && !m.finIgnored && !m.payableId);
+    const mpOut = espelhoTodo.filter((p) => p.status === "approved" && p.kind === "saida" && !p.finIgnored && !p.payableId);
+    const saidasSemDonoDe = (m) => round2(
+      movsOut.filter((x) => monthKey(x.date) === m).reduce((a, x) => a + (Number(x.amount) || 0), 0)
+      + mpOut.filter((x) => monthKey(x.dateApproved || x.dateCreated) === m).reduce((a, x) => a + (Number(x.amount) || 0), 0));
     const fluxo = window.map((m) => ({
       month: m,
       entrada: m === month ? recebidosMes : caixaDe(m).total,
-      saida: round2(paidInMonth(m).reduce((a, p) => a + (Number(p.amount) || 0), 0) + custosByMonth[m].total),
+      saida: round2(paidInMonth(m).reduce((a, p) => a + (Number(p.amount) || 0), 0) + custosByMonth[m].total + saidasSemDonoDe(m)),
+      saidasSemDono: saidasSemDonoDe(m),
     }));
 
     const abertas = payables.filter((p) => p.status !== "paga");
@@ -201,8 +211,11 @@ export function registerFinRoutes(app, repo, { mp, discord } = {}) {
       }
     }
 
-    // Saídas da conta MP (settlement report) ainda sem dono.
-    const movsPend = allMovs.filter((m) => !m.payableId && !m.finIgnored);
+    // Saídas da conta MP ainda sem dono: settlement report + espelho (kind saida).
+    const saidasPend = [
+      ...movsOut.map((m) => ({ id: m.id, source: "settlement", type: m.type, at: m.date, amount: Number(m.amount) || 0, fee: Number(m.fee) || 0, description: "" })),
+      ...mpOut.map((p) => ({ id: p.id, source: "mp", type: p.methodType || "", at: p.dateApproved || p.dateCreated, amount: Number(p.amount) || 0, fee: 0, description: p.description || "" })),
+    ].sort((a, b) => String(b.at).localeCompare(String(a.at)));
 
     // ── DRE por SETOR: receita por tipo de fatura (caixa, a MESMA régua do
     // recebido) → deduções → COGS (margem bruta) → S&M → R&D → G&A.
@@ -257,7 +270,7 @@ export function registerFinRoutes(app, repo, { mp, discord } = {}) {
         regras: rules.length,
         regrasPendentes,
         sugestoes,
-        saidasPendentes: { n: movsPend.length, total: round2(movsPend.reduce((a, m) => a + (Number(m.amount) || 0), 0)) },
+        saidasPendentes: { n: saidasPend.length, total: round2(saidasPend.reduce((a, m) => a + m.amount, 0)), items: saidasPend.slice(0, 200) },
       },
       fluxo,
       previsto: {

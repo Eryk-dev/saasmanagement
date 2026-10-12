@@ -92,9 +92,34 @@ const METHOD_LABEL = { boleto: "boleto faturado", pix_parcelado: "PIX parcelado"
 // Só vale em pagamento faturado/parcelado: à vista/cartão 12x a adquirente
 // antecipa, parcela é problema dela.
 export function closedInstallments({ paymentMethod, paymentInstallments } = {}) {
-  if (!MONTHLY_PAYMENT.has(String(paymentMethod || ""))) return 0;
+  const m = String(paymentMethod || "");
+  // Condição PERSONALIZADA (`custom`, texto em paymentTerms): só vira
+  // cronograma quando o closer informou o Nº de parcelas de propósito.
+  if (!MONTHLY_PAYMENT.has(m) && m !== "custom") return 0;
   const n = Math.round(Number(paymentInstallments) || 0);
   return n > 0 ? Math.min(n, 36) : 0;
+}
+
+// Fatura AVULSA do serviço único (compra única não é recorrência nem ARR):
+// uma por cliente/venda, idempotente (`oneOff: true` + mesmo startAt). À vista
+// nasce PRESUMIDA (paga, prova closing — o MP ou a baixa confirmam); no resto
+// nasce aberta. Reedição do valor atualiza a fatura que ainda não foi provada.
+export async function ensureOneOffInvoice(repo, { customerId, saas, amount, paymentMethod, startAt, title = "Serviço único" }, now = new Date()) {
+  const value = Math.round((Number(amount) || 0) * 100) / 100;
+  if (!customerId || value <= 0) return null;
+  const at = startAt || now.toISOString();
+  const naVista = !paymentMethod || UPFRONT_PAYMENT.has(String(paymentMethod));
+  const existing = (await repo.list("invoices")).filter((i) => i.customer === customerId && i.oneOff && !i.mpPaymentId && i.paidProof?.kind !== "manual");
+  if (existing.length) {
+    const inv = existing[0];
+    if (Number(inv.amount) !== value || inv.title !== title) return repo.update("invoices", inv.id, { amount: value, title });
+    return inv;
+  }
+  return repo.create("invoices", {
+    customer: customerId, saas: saas || "", amount: value, kind: "manual", title, oneOff: true,
+    status: naVista ? "paid" : "open", dueDate: at, createdAt: now.toISOString(),
+    ...(naVista ? { paidAt: at, paidProof: { kind: "closing", at } } : {}),
+  });
 }
 
 // Ciclo e preço da assinatura que um fechamento implica. Serviço único (ou

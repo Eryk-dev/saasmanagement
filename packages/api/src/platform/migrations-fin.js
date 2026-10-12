@@ -148,6 +148,48 @@ export async function migrateCheckoutToRealFee(repo) {
   return n;
 }
 
+// Clientes de SERVIÇO ÚNICO (ciclo "unico") estavam no ARR/MRR como receita
+// recorrente (6 em prod, R$ 22 mil) e sem fatura nenhuma. Zera o arr, guarda
+// o valor em oneOffAmount e cria a fatura avulsa: paga com prova do MP quando
+// há pagamento de cliente do mesmo valor vinculado; presumida (paga, closing)
+// no à vista; aberta no resto. Carimbo `oneOffMigrated` = roda uma vez.
+export async function migrateOneOffCustomers(repo) {
+  const [customers, leads, invoices, mps] = await Promise.all([
+    repo.list("customers"), repo.list("leads"), repo.list("invoices"), repo.list("mp_payments"),
+  ]);
+  const leadById = new Map(leads.map((l) => [l.id, l]));
+  const UPFRONT = new Set(["pix", "boleto_vista", "cartao12x", ""]);
+  let n = 0;
+  for (const c of customers) {
+    if (c.oneOffMigrated) continue;
+    const lead = leadById.get(c.leadId);
+    const isOneOff = c.planCycle === "unico" || lead?.planClosed === "unico";
+    if (!isOneOff) continue;
+    const amount = Number(c.arr) > 0 ? Number(c.arr) : Number(lead?.amount) || 0;
+    const patch = { oneOffMigrated: true, arr: 0, oneOffAmount: Math.round(amount * 100) / 100 };
+    const has = invoices.some((i) => i.customer === c.id && (i.oneOff || i.kind === "installment" || Number(i.amount) === amount));
+    if (amount > 0 && !has) {
+      const at = c.startedAt || new Date().toISOString();
+      const pay = mps.find((p) => p.status === "approved" && (!p.kind || p.kind === "venda" || p.kind === "maquininha")
+        && (p.customer === c.id || (lead && p.lead === lead.id)) && Math.abs((Number(p.amount) || 0) - amount) < 0.01
+        && !invoices.some((i) => i.mpPaymentId === p.mpId));
+      const method = c.paymentMethod || lead?.paymentMethod || "";
+      const base = { customer: c.id, saas: c.saas || "", amount, kind: "manual", title: c.plan || "Serviço único", oneOff: true, dueDate: at, createdAt: new Date().toISOString() };
+      if (pay) {
+        await repo.create("invoices", { ...base, status: "paid", paidAt: pay.dateApproved || at, mpPaymentId: pay.mpId, paidMethod: pay.method || "", paidMethodType: pay.methodType || "", paidProof: { kind: "mp", at: pay.dateApproved || at, mpPaymentId: pay.mpId, stamped: "migration" } });
+        await repo.update("mp_payments", pay.id, { invoice: "", customer: c.id, saas: c.saas || pay.saas || "" }, { silent: true });
+      } else if (UPFRONT.has(String(method))) {
+        await repo.create("invoices", { ...base, status: "paid", paidAt: at, paidProof: { kind: "closing", at, stamped: "migration" } });
+      } else {
+        await repo.create("invoices", { ...base, status: "open" });
+      }
+    }
+    await repo.update("customers", c.id, patch, { silent: true });
+    n++;
+  }
+  return n;
+}
+
 export const FIN_MIGRATIONS = [
   ["dedupeExpensePct", dedupeExpensePct, "lançamento(s) percentual(is) duplicado(s) removido(s)"],
   ["migrateCheckoutToRealFee", migrateCheckoutToRealFee, "lançamento(s) de checkout lendo a taxa real do MP"],
@@ -157,6 +199,7 @@ export const FIN_MIGRATIONS = [
   ["fixPayableDescriptions", fixPayableDescriptions, "conta(s) a pagar com mês tirado da descrição"],
   ["stampInvoicePaidProof", stampInvoicePaidProof, "fatura(s) paga(s) com paidProof carimbado"],
   ["purgeBadFinRules", purgeBadFinRules, "regra(s) de conciliação por documento da casa/MP removida(s)"],
+  ["migrateOneOffCustomers", migrateOneOffCustomers, "cliente(s) de serviço único fora do ARR, com fatura avulsa"],
 ];
 
 export async function runFinMigrations(repo, { log = console } = {}) {

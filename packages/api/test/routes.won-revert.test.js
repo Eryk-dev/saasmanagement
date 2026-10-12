@@ -128,7 +128,7 @@ test("lead legado SEM planClosed: editar o valor não cancela a assinatura (só 
   assert.equal(sub.price, 7188, "sem plano definido não se adivinha preço novo");
 });
 
-test("fechamento reeditado pra serviço único encerra a recorrência e o arr vira o valor do negócio", async () => {
+test("fechamento reeditado pra serviço único encerra a recorrência; o valor NÃO vira ARR, vira fatura avulsa", async () => {
   const repo = makeMemRepo();
   await seedWon(repo);
   const app = buildApp(repo);
@@ -140,6 +140,10 @@ test("fechamento reeditado pra serviço único encerra a recorrência e o arr vi
   const sub = await repo.get("subscriptions", "su1");
   assert.equal(sub.status, "canceled", "recorrência encerrada");
   const customer = await repo.get("customers", "cu1");
-  assert.equal(customer.arr, 1490, "arr = valor do negócio (sem recorrência)");
+  assert.equal(customer.arr, 0, "compra única não é receita recorrente (12/10/2026)");
+  assert.equal(customer.oneOffAmount, 1490);
   assert.equal(customer.plan, "Serviço único");
+  const avulsa = (await repo.list("invoices")).find((i) => i.customer === "cu1" && i.oneOff);
+  assert.ok(avulsa, "fatura avulsa do serviço único");
+  assert.deepEqual([avulsa.amount, avulsa.status, avulsa.paidProof?.kind], [1490, "paid", "closing"], "à vista: presumida até o MP/baixa confirmar");
 });

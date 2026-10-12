@@ -102,7 +102,7 @@ test("fluxo e DRE: fatura recebida + conta paga + custo manual + mídia fecham a
   assert.equal(r.dre.despesasMes, 3300);
   assert.equal(r.dre.resultado, 1700);
   const ago = r.fluxo.find((f) => f.month === "2026-08");
-  assert.deepEqual(ago, { month: "2026-08", entrada: 5000, saida: 3300 });
+  assert.deepEqual(ago, { month: "2026-08", entrada: 5000, saida: 3300, saidasSemDono: 0 });
   // previsto: fatura aberta do mês entra; a conta paga não (só abertas + custos)
   assert.equal(r.previsto.entrada, 2000);
   assert.equal(r.previsto.saida, 300);
@@ -185,7 +185,7 @@ test("DRE setoriza percentuais pela base: imposto vira dedução, checkout vira 
   await app.close();
 });
 
-test("parseSettlementCsv: só WITHDRAWAL/PAYOUT viram movimento, com valor pt-BR e tarifa", async () => {
+test("parseSettlementCsv: liquidação positiva (entrada) fica fora; saída = líquido negativo ou tipo de saída, valor pt-BR e tarifa", async () => {
   const { parseSettlementCsv } = await import("../src/payments/mp-outflow.js");
   const csv = [
     "TRANSACTION_TYPE;TRANSACTION_DATE;SOURCE_ID;SETTLEMENT_NET_AMOUNT;FEE_AMOUNT",
@@ -193,11 +193,14 @@ test("parseSettlementCsv: só WITHDRAWAL/PAYOUT viram movimento, com valor pt-BR
     "WITHDRAWAL;2026-08-02T10:00:00Z;222;-3.000,50;0,00",
     "PAYOUT;2026-08-03T10:00:00Z;333;900,00;-3,50",
     "REFUND;2026-08-04T10:00:00Z;444;-100,00;0,00",
+    "SETTLEMENT;2026-08-05T10:00:00Z;555;-20,00;0,00",
   ].join("\n");
   const rows = parseSettlementCsv(csv);
-  assert.equal(rows.length, 2);
-  assert.deepEqual(rows[0], { sourceId: "222", type: "WITHDRAWAL", date: "2026-08-02", amount: 3000.5, fee: 0 });
-  assert.deepEqual(rows[1], { sourceId: "333", type: "PAYOUT", date: "2026-08-03", amount: 900, fee: 3.5 });
+  assert.equal(rows.length, 4, "a liquidação positiva (venda já no espelho) não é saída");
+  assert.deepEqual(rows[0], { sourceId: "222", type: "WITHDRAWAL", date: "2026-08-02", amount: 3000.5, fee: 0, direction: "out" });
+  assert.deepEqual(rows[1], { sourceId: "333", type: "PAYOUT", date: "2026-08-03", amount: 900, fee: 3.5, direction: "out" });
+  assert.deepEqual(rows[2].type, "REFUND");
+  assert.deepEqual([rows[3].type, rows[3].amount], ["SETTLEMENT", 20], "liquidação NEGATIVA (ajuste/estorno) é saída");
   await Promise.resolve();
 });
 
