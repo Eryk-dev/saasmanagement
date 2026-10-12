@@ -252,6 +252,11 @@ const ADMIN_PREFIXES = ["/api/comp_plans", "/api/comp/"];
 // etiqueta admin ou resetaria a senha de um admin. Ler a lista segue aberto
 // (pickers); o próprio perfil vive em /api/auth/me, fora daqui.
 const ADMIN_WRITE_PREFIXES = ["/api/auth/users"];
+// Telas SÓ DE ADMIN (Leo, 12/10/2026): o Financeiro inteiro (caixa, folha,
+// espelho do MP). Nem a lista em branco ("vê tudo") nem a tela concedida em
+// Ajustes → Equipe abrem — só a etiqueta admin. Rota compartilhada com outra
+// tela (ex.: /api/expenses/summary pra Visão geral) segue valendo pela outra.
+export const ADMIN_ONLY_SCREENS = new Set(["expenses"]);
 
 // Hook Fastify (registrar DEPOIS do makeAuthHook, que popula req.authUser).
 export function makeScreenGuardHook() {
@@ -272,6 +277,9 @@ export function makeScreenGuardHook() {
     const screens = screenForRequest(req.method, path);
     if (screens && !screens.some((s) => canScreen(user, s))) {
       return reply.code(403).send({ error: "Sem acesso a esta área" });
+    }
+    if (screens && screens.every((s) => ADMIN_ONLY_SCREENS.has(s)) && !(user.roles || []).includes("admin")) {
+      return reply.code(403).send({ error: "O Financeiro é só pra quem tem a etiqueta admin" });
     }
   };
 }

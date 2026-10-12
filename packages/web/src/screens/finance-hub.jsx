@@ -814,7 +814,8 @@ const roleCat = (u) => {
 // respeitado). Gerar e revisar antes de pagar (Leo). Papel e nível vivem no
 // usuário (Equipe / Metas → Meta por pessoa); o que foge do plano mora na ficha.
 const KIND_EXTRA = { beneficio: "benefício", acordo: "acordo", desconto: "desconto" };
-const ROLE_LABEL = { sdr: "SDR", closer: "Closer", cs: "Integrador · CS", social: "Mídia social", manual: "retirada não definida" };
+const ROLE_LABEL = { sdr: "SDR", closer: "Closer", cs: "Integrador · CS", social: "Mídia social", manual: "sócio · retirada" };
+const dmyFull = (d) => (d ? `${String(d).slice(8, 10)}/${String(d).slice(5, 7)}/${String(d).slice(2, 4)}` : "");
 const sign = (v) => `${v < 0 ? "−" : "+"} ${money(Math.abs(v))}`;
 
 function FichaForm({ product, uid, profile, onDone, onCancel }) {
@@ -914,15 +915,15 @@ export function FolhaTab({ product, month }) {
   const { fin, err, reload } = useFin(product, month);
   const { version } = useData();
   const [calc, setCalc] = useState(null), [calcErr, setCalcErr] = useState(null);
-  const [profiles, setProfiles] = useState([]), [adjs, setAdjs] = useState([]);
-  const [fichaFor, setFichaFor] = useState(null), [ajusteFor, setAjusteFor] = useState(null), [formFor, setFormFor] = useState(null);
+  const [profiles, setProfiles] = useState([]), [adjs, setAdjs] = useState([]), [allPay, setAllPay] = useState([]);
+  const [fichaFor, setFichaFor] = useState(null), [ajusteFor, setAjusteFor] = useState(null), [formFor, setFormFor] = useState(null), [histFor, setHistFor] = useState(null);
   const [gerando, setGerando] = useState(false), [note, setNote] = useState(null);
   const read = React.useRef(0);
   const loadAll = useCallback(async () => {
     const seq = ++read.current; setCalcErr(null);
     try {
-      const [c, p, a] = await Promise.all([api.payrollPreview(product.id, month), api.list("payroll_profiles"), api.list("payroll_adjustments")]);
-      if (seq === read.current) { setCalc(c); setProfiles(p || []); setAdjs((a || []).filter((x) => x.month === month && (!x.saas || x.saas === product.id))); }
+      const [c, p, a, all] = await Promise.all([api.payrollPreview(product.id, month), api.list("payroll_profiles"), api.list("payroll_adjustments"), api.list("payables")]);
+      if (seq === read.current) { setCalc(c); setProfiles(p || []); setAdjs((a || []).filter((x) => x.month === month && (!x.saas || x.saas === product.id))); setAllPay((all || []).filter((x) => x.saas === product.id && x.counterpartyType === "colaborador")); }
     } catch (e) { if (seq === read.current) setCalcErr(e.message); }
   }, [product.id, month]);
   useEffect(() => { loadAll(); return () => { read.current++; }; }, [loadAll, version]);
@@ -949,9 +950,10 @@ export function FolhaTab({ product, month }) {
   const rows = calc.rows || [];
   const profileOf = (uid) => profiles.find((p) => p.id === uid || p.uid === uid) || null;
   const payablesOf = (uid) => doMes.filter((p) => p.userId === uid);
-  const socios = time.filter((u) => u.payrollRole === "manual");
-  const semVinculo = doMes.filter((p) => !p.userId || (!rows.some((r) => r.uid === p.userId) && !socios.some((u) => u.id === p.userId)));
-  const naFolha = rows.map((r) => r.uid);
+  const semVinculo = doMes.filter((p) => !p.userId || !rows.some((r) => r.uid === p.userId));
+  // Histórico de pagamentos da pessoa (todos os meses), do mais novo pro mais velho.
+  const historicoDe = (uid) => allPay.filter((p) => p.userId === uid).sort((a, b) => String(b.month).localeCompare(String(a.month)) || String(b.dueDate || "").localeCompare(String(a.dueDate || "")));
+  const ano = month.slice(0, 4);
   const excluirAjuste = async (a) => { if (!window.confirm(`Remover o ajuste "${a.label}" (${money(Math.abs(a.amount))})?`)) return; try { await api.remove("payroll_adjustments", a.id); await refreshAll(); } catch (e) { setNote({ ok: false, text: e.message }); } };
 
   return (
@@ -968,7 +970,7 @@ export function FolhaTab({ product, month }) {
       <Card title="Por colaborador" hint="fixo do nível ou da pessoa + variável pelo atingimento + bônus de time + VR/VT + acordos ± ajustes do mês · a saída do MP com o mesmo valor dá baixa sozinha"
         action={<button onClick={gerar} disabled={gerando} style={btnPri}>{gerando ? "gerando…" : (doMes.length ? `atualizar folha de ${mesCurto(month)}` : `gerar folha de ${mesCurto(month)}`)}</button>}>
         <div style={{ padding: "6px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 4 }}>
-          {!rows.length && <span className="dim" style={{ fontSize: 12.5, padding: "10px 0" }}>Ninguém cadastrado na folha deste produto. O papel na folha (SDR, closer, CS, mídia social) é definido no usuário.</span>}
+          {!rows.length && <span className="dim" style={{ fontSize: 12.5, padding: "10px 0" }}>Ninguém cadastrado na folha deste produto. O papel na folha (SDR, closer, CS, mídia social, sócio) é definido no usuário.</span>}
           {rows.map((r) => {
             const u = time.find((x) => x.id === r.uid) || { id: r.uid, name: r.name };
             const prof = profileOf(r.uid);
@@ -979,10 +981,12 @@ export function FolhaTab({ product, month }) {
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <Avatar id={u.id} name={u.name} size={26} />
                   <span style={{ fontSize: 13.5, fontWeight: 650, minWidth: 120 }}>{u.name}</span>
-                  <span className="dim" style={{ fontSize: 11.5 }}>{ROLE_LABEL[r.role] || r.role}{r.role === "sdr" || r.role === "closer" || r.role === "cs" ? ` · nível ${r.level}` : ""}{r.role === "closer" ? ` · ${r.regime.toUpperCase()}` : ""}</span>
+                  <span className="dim" style={{ fontSize: 11.5 }}>{ROLE_LABEL[r.role] || r.role}{r.role === "sdr" || r.role === "closer" || r.role === "cs" ? ` · nível ${r.level}` : ""}{r.role === "closer" ? ` · ${r.regime.toUpperCase()}` : ""}{r.role === "manual" && r.fixedFrom === "sem retirada definida" ? " · sem retirada definida" : ""}</span>
                   <span className="tnum" style={{ marginLeft: "auto", fontSize: 14, fontWeight: 700 }}>{money(r.total)}</span>
                   <button onClick={() => setFichaFor(fichaFor === r.uid ? null : r.uid)} style={{ ...btn, height: 28 }}>{fichaFor === r.uid ? "fechar ficha" : "ficha"}</button>
                   <button onClick={() => setAjusteFor(ajusteFor === r.uid ? null : r.uid)} style={{ ...btn, height: 28 }}>{ajusteFor === r.uid ? "fechar" : "+ ajuste do mês"}</button>
+                  {r.role === "manual" && <button onClick={() => setFormFor(formFor === r.uid ? null : r.uid)} style={{ ...btn, height: 28 }}>{formFor === r.uid ? "fechar" : "+ pagamento"}</button>}
+                  <button onClick={() => setHistFor(histFor === r.uid ? null : r.uid)} className="dim" style={{ fontSize: 12, fontWeight: 600 }} title="todos os pagamentos dessa pessoa, mês a mês">{histFor === r.uid ? "fechar histórico" : `histórico (${int(historicoDe(r.uid).length)})`}</button>
                 </div>
                 <div className="tnum dim" style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 11.5, marginTop: 6 }} title={r.notes}>
                   <span>fixo <b style={{ color: "var(--fg-1)" }}>{money(r.fixed)}</b> <span style={{ color: "var(--fg-4)" }}>({r.fixedFrom})</span></span>
@@ -1011,6 +1015,33 @@ export function FolhaTab({ product, month }) {
                 )}
                 {fichaFor === r.uid && <div style={{ marginTop: 10 }}><FichaForm product={product} uid={r.uid} profile={prof} onDone={async () => { setFichaFor(null); await refreshAll(); }} onCancel={() => setFichaFor(null)} /></div>}
                 {ajusteFor === r.uid && <div style={{ marginTop: 10 }}><AjusteForm product={product} uid={r.uid} month={month} onDone={refreshAll} /></div>}
+                {formFor === r.uid && (
+                  <div style={{ marginTop: 10 }}>
+                    <PayableForm product={product} month={month} onDone={() => { setFormFor(null); refreshAll(); }}
+                      preset={{ counterpartyType: "colaborador", userId: r.uid, category: "prolabore", description: "Retirada" }} />
+                  </div>
+                )}
+                {histFor === r.uid && (() => {
+                  const hist = historicoDe(r.uid);
+                  const pagoAno = soma(hist, (p) => p.status === "paga" && String(p.month).startsWith(ano));
+                  const abertoTot = soma(hist, (p) => p.status !== "paga");
+                  return (
+                    <div style={{ marginTop: 10, padding: "10px 12px", background: "var(--bg-inset)", borderRadius: "var(--r-3)" }}>
+                      <div className="kicker" style={{ marginBottom: 6 }}>histórico de pagamentos · pago em {ano} {money(pagoAno)}{abertoTot > 0 ? ` · em aberto ${money(abertoTot)}` : ""}</div>
+                      {!hist.length && <span className="dim" style={{ fontSize: 12 }}>nenhum pagamento registrado ainda</span>}
+                      {hist.map((p) => (
+                        <div key={p.id} style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap", padding: "5px 0", borderBottom: "1px solid var(--line-faint)", fontSize: 12.5 }} title={p.notes || ""}>
+                          <span className="tnum" style={{ width: 56, textTransform: "capitalize" }}>{mesCurto(p.month)}/{String(p.month).slice(2, 4)}</span>
+                          <span style={{ flex: 1, minWidth: 140 }}>{p.description}<span className="dim"> · {catLabel(p.category)}{p.source === "payroll" ? " · folha" : ""}{p.amountManual ? " · revisado" : ""}</span></span>
+                          <span className="tnum" style={{ fontWeight: 650 }}>{money(p.amount)}</span>
+                          {p.status === "paga"
+                            ? <Pill tone="pos">pago {dmyFull(String(p.paidAt || "").slice(0, 10))}{p.paidVia === "mp" ? " · MP" : ""}</Pill>
+                            : p.dueDate && p.dueDate < fin.today ? <Pill tone="neg">vencida {dmyFull(p.dueDate)}</Pill> : <Pill>vence {dmyFull(p.dueDate)}</Pill>}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
                 {contas.length > 0 && (
                   <div style={{ marginTop: 6 }}>
                     {contas.map((p) => <PayableRow key={p.id} p={p} fin={fin} reload={refreshAll} showPerson={false} />)}
@@ -1023,32 +1054,13 @@ export function FolhaTab({ product, month }) {
         </div>
       </Card>
 
-      <Card title="Retiradas e lançamentos à mão" hint="sócios e quem está fora do plano: a conta entra quando alguém lança · também aparecem aqui contas de colaborador sem vínculo com a folha">
-        <div style={{ padding: "6px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 4 }}>
-          {socios.map((u) => {
-            const contas = payablesOf(u.id);
-            return (
-              <div key={u.id} style={{ padding: "10px 0", borderBottom: "1px solid var(--line-faint)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <Avatar id={u.id} name={u.name} size={26} />
-                  <span style={{ fontSize: 13.5, fontWeight: 650, flex: 1, minWidth: 120 }}>{u.name}</span>
-                  <span className="dim" style={{ fontSize: 11.5 }}>{ROLE_LABEL.manual}{contas.length ? ` · ${money(soma(contas))} no mês` : ""}</span>
-                  <button onClick={() => setFormFor(formFor === u.id ? null : u.id)} style={{ ...btn, height: 28 }}>{formFor === u.id ? "fechar" : "+ pagamento"}</button>
-                </div>
-                {formFor === u.id && (
-                  <div style={{ marginTop: 10 }}>
-                    <PayableForm product={product} month={month} onDone={() => { setFormFor(null); refreshAll(); }}
-                      preset={{ counterpartyType: "colaborador", userId: u.id, category: "prolabore", description: "Retirada" }} />
-                  </div>
-                )}
-                {contas.length > 0 && <div style={{ marginTop: 4 }}>{contas.map((p) => <PayableRow key={p.id} p={p} fin={fin} reload={refreshAll} showPerson={false} />)}</div>}
-              </div>
-            );
-          })}
-          {semVinculo.length > 0 && <div style={{ marginTop: 6 }}>{semVinculo.map((p) => <PayableRow key={p.id} p={p} fin={fin} reload={refreshAll} />)}</div>}
-          {!socios.length && !semVinculo.length && <span className="dim" style={{ fontSize: 12.5, padding: "10px 0" }}>Nada lançado à mão neste mês.</span>}
-        </div>
-      </Card>
+      {semVinculo.length > 0 && (
+        <Card title="Contas de colaborador sem vínculo com a folha" hint="lançadas à mão pra alguém que não está na folha deste produto">
+          <div style={{ padding: "6px var(--inset-x) 18px", display: "flex", flexDirection: "column" }}>
+            {semVinculo.map((p) => <PayableRow key={p.id} p={p} fin={fin} reload={refreshAll} />)}
+          </div>
+        </Card>
+      )}
       <InfoNota>
         Papel na folha e nível ficam no usuário (Ajustes → Equipe; promoção em Metas → Meta por pessoa). VR R$ 30 e VT R$ 12 por dia útil são o padrão da casa; a ficha guarda o que foge do plano: regime, fixo da pessoa, VR/VT diferentes e acordos recorrentes. Ajuste do mês vale uma vez. O vencimento é dia 1 do mês seguinte; a saída do Mercado Pago com o mesmo valor, até 5 dias do vencimento, dá baixa sozinha.
       </InfoNota>
