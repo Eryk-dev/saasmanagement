@@ -6,7 +6,7 @@ import { PageHead, StatTile, Card, Pill } from "../components/viz.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { EmptyState } from "../atoms.jsx";
 import { ResumoTab, ConciliacaoTab, PagarTab } from "./finance-hub.jsx";
-import { SECTOR_CATS, catLabel, moneyFull, mesLongo, mesCurto, monthKeyOf, shiftMonth } from "../lib/fin-cats.js";
+import { SECTOR_CATS, catLabel, money, moneyFull, mesLongo, mesCurto, monthKeyOf, shiftMonth } from "../lib/fin-cats.js";
 // Financeiro — o dinheiro do produto num lugar só, em QUATRO abas (12/10/2026):
 //   Resumo      — a foto do mês: pendências com prazo, recebido (régua única
 //                 de caixa) × presumido, fluxo de 6 meses, gastos e DRE.
@@ -44,7 +44,7 @@ function MonthPicker({ month, onChange }) {
     <div className="finance-month" aria-label="Mês de competência">
       <button type="button" onClick={() => onChange(shiftMonth(month, -1))} aria-label="Mês anterior">‹</button>
       <label>
-        <span>{mesLongo(month)}</span>
+        <span>{mesLongo(month).replace(/^./, (c) => c.toUpperCase())}</span>
         <input type="month" value={month} max={max} onChange={(e) => { if (/^\d{4}-\d{2}$/.test(e.target.value)) onChange(e.target.value); }} aria-label="Escolher o mês" />
       </label>
       <button type="button" onClick={() => onChange(shiftMonth(month, 1))} disabled={month >= max} aria-label="Mês seguinte">›</button>
@@ -150,7 +150,7 @@ function CostsTab({ product, month, onTab }) {
   }
 
   const inputStyle = { height: 38, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
-  const v = (f) => (data && !data.error ? moneyFull(f(data)) : "…");
+  const v = (f) => (data && !data.error ? money(f(data)) : "…");
 
   return (
     <fieldset disabled={busy} className="finance-content finance-costs">
@@ -161,9 +161,9 @@ function CostsTab({ product, month, onTab }) {
           <StatTile label="Total do mês" value={v((d) => d.total)} delta="mídia + IA + WhatsApp + lançamentos + contas a pagar"
             title="Tudo que custou no mês por competência: automáticos, lançamentos desta aba e as contas a pagar do mês. É o mesmo total das despesas do Resumo." />
           <StatTile label="Publicidade" value={v((d) => d.ads)} delta="automático · Meta e entradas manuais de anúncio" />
-          <StatTile label="IA" value={data && !data.error ? (data.ai != null ? moneyFull(data.ai) : "sem dado no mês") : "…"}
+          <StatTile label="IA" value={data && !data.error ? (data.ai != null ? money(data.ai) : "sem dado no mês") : "…"}
             delta={data?.aiUSD != null ? `US$ ${data.aiUSD.toFixed(2).replace(".", ",")} · automático` : "automático via APIs dos provedores"} />
-          <StatTile label="WhatsApp" value={data && !data.error ? (data.wa != null ? moneyFull(data.wa) : "sem dado no mês") : "…"}
+          <StatTile label="WhatsApp" value={data && !data.error ? (data.wa != null ? money(data.wa) : "sem dado no mês") : "…"}
             delta={data?.waConversations != null ? `${data.waConversations} conversas cobradas · automático` : "automático via Meta"} />
           <StatTile label="Lançados aqui" value={v((d) => d.manualTotal)} delta={`${data?.manual?.length ?? 0} ${(data?.manual?.length ?? 0) === 1 ? "lançamento" : "lançamentos"}`} />
           <StatTile label="Contas a pagar do mês" value={v((d) => d.payablesTotal || 0)}
@@ -244,7 +244,7 @@ function CostsTab({ product, month, onTab }) {
                       {e.endMonth ? `recorrente até ${mesCurto(e.endMonth)}` : `recorrente · desde ${mesCurto(e.month)}`}
                     </Pill>
                   )}
-                  <span className="tnum" style={{ fontSize: 13.5, fontWeight: 600 }}>{moneyFull(e.amount)}</span>
+                  <span className="tnum" style={{ fontSize: 13.5, fontWeight: 600 }}>{money(e.amount)}</span>
                   {e.recurring && !e.endMonth && (
                     <button onClick={() => endRecurring(e)} title="Parar de contar a partir do mês seguinte"
                       style={{ fontSize: 12.5, fontWeight: 600, color: "var(--accent)", padding: "2px 4px" }}>

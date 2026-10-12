@@ -35,7 +35,7 @@ import { inboxMock } from "./inbox-mock.js";
 const inboxPreview = typeof location !== "undefined" && new URLSearchParams(location.search).has("inbox");
 import { trainingMock } from "./training-mock.js";
 import { ticketsMock } from "./tickets-mock.js";
-import { financeMock } from "./finance-mock.js";
+import { financeMock, financeMpPayments, financeRules } from "./finance-mock.js";
 const financePreview = typeof location !== "undefined" && new URLSearchParams(location.search).has("finance");
 import { teamPreviewScore } from "./team-mock.js";
 const teamPreview = typeof location !== "undefined" && new URLSearchParams(location.search).has("team");
@@ -181,7 +181,16 @@ const mockApi = new Proxy({}, {
     if (todayReview && Object.hasOwn(todayMock, nome)) return todayMock[nome];
     if (overviewReview && Object.hasOwn(overviewMock, nome)) return overviewMock[nome];
     if (financePreview && nome === "fin") return (...args) => Promise.resolve(financeMock(...args));
-    if (financePreview && nome === "expensesSummary") return () => Promise.resolve({ ai: 0, wa: 0 });
+    if (financePreview && nome === "expensesSummary") return (saas, month) => Promise.resolve({ month, ai: 420, aiUSD: 78.5, wa: 96.4, waConversations: 112, ads: 23500, manual: [
+      { id: "e1", saas, month: "2026-07", category: "taxas", name: "Checkout", pct: 12, base: "taxa_real", recurring: true, amount: 15100 },
+      { id: "e2", saas, month: "2026-07", category: "imposto", name: "Imposto", pct: 20, base: "received", recurring: true, amount: 39200 },
+      { id: "e3", saas, month: "2026-09", category: "dev", name: "Claude + Codex", amount: 6600, recurring: true },
+    ], manualTotal: 60900, payablesTotal: 5900, payablesCount: 2, total: 90816.4, wonBase: 318989, receivedBase: 195900, feeBase: 15100 });
+    if (financePreview && nome === "mpPayments") return ({ saas } = {}) => Promise.resolve(financeMpPayments(saas || "leverads"));
+    if (financePreview && nome === "list") return (col) => Promise.resolve(col === "fin_rules" ? financeRules("leverads") : []);
+    if (financePreview && (nome === "finMaterialize" || nome === "finRulesApply")) return () => Promise.resolve({ ok: true, created: 0, applied: 1, settled: 1 });
+    if (financePreview && nome === "finSyncAll") return () => Promise.resolve({ ok: true, in: { seen: 12, settled: 1, reclassified: 4 }, out: { imported: 2, filesRead: 3 }, rules: { applied: 0, settled: 0 } });
+    if (financePreview && (nome === "mpLinkPayment" || nome === "confirmInvoice" || nome === "payInvoice" || nome === "update" || nome === "create" || nome === "remove")) return () => Promise.resolve({ ok: true });
     if (teamPreview && nome === "scoreboard") return () => Promise.resolve({ ...RESPOSTAS.scoreboard(), ...teamPreviewScore });
     if (inboxPreview && Object.hasOwn(inboxMock, nome)) return (...args) => Promise.resolve().then(() => inboxMock[nome](...args));
     if (inboxPreview && nome === "update") return (col, id, patch) => Promise.resolve().then(() => { const row = (window.SEED[col.toUpperCase()] || []).find((r) => r.id === id); if (row) Object.assign(row, patch); return row; });
