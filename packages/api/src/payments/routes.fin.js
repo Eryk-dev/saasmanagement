@@ -22,7 +22,7 @@
 //     desconta do `dre.resultado` daqui (uma fórmula só).
 
 import { monthKey, dayKey, isSaleLead, winsIn, tcvOf, customerStartMap, cashIn, card12xBaseIn, mpFeesIn, PCT_BASES, upsellSalesIn, upsellContractedOf } from "../metrics/metrics-core.js";
-import { applyFinRulesToPending } from "./mp-payments.js";
+import { applyFinRulesToPending, runMpSync } from "./mp-payments.js";
 import { isMpSale, SALE_KINDS } from "./mp-classify.js";
 import { normalizeRuleValue, ruleMatches, rulesFor } from "./fin-rules.js";
 import { ensurePayables, missingInstances } from "./payables.js";
@@ -307,6 +307,24 @@ export function registerFinRoutes(app, repo, { mp, discord } = {}) {
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "produto não encontrado" });
     return { ok: true, ...(await applyFinRulesToPending(repo, { saas: product.id, discord, log: req.log })) };
+  });
+
+  // UM botão de sincronizar (12/10/2026): entradas (espelho de pagamentos,
+  // com reclassificação) + saídas (settlement report) numa passada só. Erro
+  // de um lado não esconde o outro — cada bloco traz o próprio resultado.
+  app.post("/api/fin/:saas/sync", async (req, reply) => {
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "produto não encontrado" });
+    if (!mp?.configured?.()) return reply.code(400).send({ error: "Mercado Pago não configurado (MERCADOPAGO_ACCESS_TOKEN)" });
+    const full = String(req.query?.reclassify || "") === "1";
+    const out = { ok: true };
+    try { out.in = await runMpSync(repo, mp, { discord, log: req.log, ...(full ? { enrichLimit: 1000 } : {}) }); }
+    catch (e) { out.in = { error: String(e.message || e).slice(0, 200) }; }
+    try { out.out = await syncMpOutflows(repo, mp, { log: req.log }); }
+    catch (e) { out.out = { error: String(e.message || e).slice(0, 200) }; }
+    try { out.rules = await applyFinRulesToPending(repo, { saas: product.id, discord, log: req.log }); }
+    catch (e) { out.rules = { error: String(e.message || e).slice(0, 200) }; }
+    return out;
   });
 
   // Importa as SAÍDAS da conta MP (settlement report "Dinheiro em conta").

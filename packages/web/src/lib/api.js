@@ -388,6 +388,12 @@ export const api = {
   fin: (saas, month) => req("GET", `/api/fin/${saas}${month ? `?month=${month}` : ""}`),
   // Importa as SAÍDAS da conta MP (settlement report) pra conciliação.
   finMpOutSync: (saas) => req("POST", `/api/fin/${saas}/mp-out/sync`, {}),
+  // UM sincronizar: entradas + saídas + regras (12/10/2026).
+  finSyncAll: (saas, { reclassify } = {}) => req("POST", `/api/fin/${saas}/sync${reclassify ? "?reclassify=1" : ""}`, {}),
+  // Materializa as contas a pagar recorrentes do mês (o GET não cria nada).
+  finMaterialize: (saas, month) => req("POST", `/api/fin/${saas}/materialize${month ? `?month=${month}` : ""}`, {}),
+  // Aplica as regras de conciliação aprendidas nas pendências.
+  finRulesApply: (saas) => req("POST", `/api/fin/${saas}/rules/apply`, {}),
   // Mídia social: métricas do perfil, histórico e publicação orgânica (IG/FB).
   socialSummary: (saas, days) => req("GET", `/api/social/summary?saas=${encodeURIComponent(saas)}${days ? `&days=${days}` : ""}`),
   // Só a contagem líquida de novos seguidores (~24h) + o @ do perfil, pro aviso
@@ -538,7 +544,10 @@ export const api = {
   saveFunnel: (productId, funnel, renames) => req("PUT", `/api/products/${productId}/funnel`, { funnel, renames }),
   // Billing (fase 5).
   changeSubscription: (id, body) => req("POST", `/api/subscriptions/${id}/change`, body),
-  payInvoice: (id) => req("POST", `/api/invoices/${id}/pay`),
+  // Baixa manual COM PROVA: { at, method, note, amount? } (12/10/2026).
+  payInvoice: (id, body = {}) => req("POST", `/api/invoices/${id}/pay`, body),
+  // Confirma a fatura presumida (nasceu paga no fechamento) com a mesma prova.
+  confirmInvoice: (id, body = {}) => req("POST", `/api/invoices/${id}/confirm`, body),
   // Dinheiro real recebido por cliente ({ customerId: total }) — Status pgto.
   // Plano do cliente: histórico de mudanças e o direito de acesso/limites por produto.
   // Produto novo pra um cliente que já existe: nasce a assinatura do plano escolhido.

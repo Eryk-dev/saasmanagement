@@ -131,7 +131,7 @@ edição e estado vazio com o preview `?shell=1&inbox=1&qualification=full#whats
 | `mindmaps` | mindmaps.jsx | Geral · Mapas mentais | mapas mentais | canvas próprio | **REDESENHADA 13/09/2026** (pacote, 13e: #952) · a lista de mapas virou gaveta e a tela abre no mapa |
 | `metas` | metas.jsx | Geral · Metas | metas por vaga/pessoa, SUPER METAS, regra de crescimento (#622) | réguas próprias | **REDESENHADA 13/09/2026** (pacote, 13b: #948) · a cadeia deixou de ser cartão separado e virou seção que explica a meta logo abaixo dela |
 | `training` | training.jsx + training.css | Treinamentos | flashcards FSRS por pessoa + provas + dash da equipe + manual da empresa | IcpCard, Segmented, Avatar, FocusShell, CardFace, Modal, AvisoTopo, InfoNota | **ADAPTADA AO PROTÓTIPO 14/09/2026** · estudo por baralho, domínio e consistência no trilho, estudo/prova em modal, Equipe com quatro colunas e raio-x preservado, criação rápida e editor de cards em modal; revisão web em desktop/mobile e temas claro/escuro |
-| `expenses` | expenses.jsx + finance.jsx | Geral · Financeiro | abas Pagamentos (espelho MP, cobrança, baixa) + Custos (% por lançamento) | tabela manual | **REDESENHADA 13/09/2026** (pacote, 13d: #948) · o Resumo abre pelas pendências com prazo (vencidos a receber, contas vencidas, entradas sem dono); a foto do mês virou uma linha |
+| `expenses` | expenses.jsx + finance-hub.jsx + finance.jsx | Geral · Financeiro | **4 abas (12/10/2026)**: Resumo (pendências, recebido × presumido, fluxo, gastos, DRE) · Conciliação (fila "precisa de dono" + espelho do MP por tipo venda/maquininha/interna/saída/ruído + regras + UM sincronizar) · A pagar (lente Contas/Folha) · Custos (plano de contas único, taxa real do MP) | um seletor de mês (‹ › + input month), sem o período global | **REDESENHADA 13/09/2026** (#948) · reorganizada 12/10/2026: Pagamentos e Folha viraram filtros; baixa com prova (ManualPaidModal) em Clientes/Cobranças/Links; confirmação do presumido no Resumo |
 | `settings` | settings.jsx | Geral · Configurações | usuários/telas, produto (funil, ICP), integrações, tema | EntityForm, theme-inputs | **REDESENHADA 13/09/2026** (pacote, 13f: #949) · as seis abas viraram menu lateral e a lista de etapas ganhou "Leads agora" |
 
 ## Sub-telas, overlays e chrome (auditar junto da tela-mãe ou como lote próprio)
@@ -1120,7 +1120,14 @@ Validação: 1.739 testes da API, testes web/smoke, build e revisão visual apro
 
 - Cabeçalho compacto, abas navy, meses, pendências suaves, resumo em papel,
   colunas 2:1 de fluxo/DRE e gastos em anel seguem `TelaFinanceiro.dc.html`.
-  Mantidas as seis abas: Resumo, Conciliação, A pagar, Folha, Pagamentos e Custos.
+  Desde 12/10/2026 são QUATRO abas (Resumo, Conciliação, A pagar, Custos):
+  Pagamentos virou o filtro por tipo dentro de Conciliação (mesmo espelho,
+  um só lugar pra vincular e um só botão de sincronizar) e Folha virou a lente
+  "Folha" do segmentado de A pagar. Um seletor de mês (‹ › + mês digitável)
+  manda em todas as abas; a tela saiu de `PERIOD_SCREENS`. O Resumo mostra o
+  "presumido" ao lado do recebido e o card "Pendente de confirmação" (botão
+  confirma com data/meio pelo `ManualPaidModal`, modo `confirm`). Dar baixa em
+  Clientes, Cobranças e Links passa pelo mesmo modal (prova obrigatória).
 - Leituras financeiras têm erro/nova tentativa; falha não vira total zero,
   plano vazio ou fila conciliada. Resumo aguarda também custos externos antes
   de mostrar DRE completa. Respostas antigas são ignoradas e mês/produto

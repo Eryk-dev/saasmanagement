@@ -69,14 +69,11 @@ function OffersScreen({ onOpenLead }) {
     try {await navigator.clipboard.writeText(url);} catch {window.prompt("Link de pagamento:",url);return;}
     setCopied(id);clearTimeout(copyTimer.current);copyTimer.current=setTimeout(()=>setCopied(""),1600);
   }
-  async function markPaid(link) {
+  // Dar baixa = registrar a PROVA (quando/como entrou). Uma porta só: o
+  // servidor dá baixa na fatura do link, ou cria a fatura avulsa do cliente.
+  function markPaid(link) {
     if(mutation.current) return;
-    if(!link.invoice) {setPaying(link);return;}
-    if(!window.confirm(`Dar baixa na fatura deste link (${BRL.format(Number(link.amount)||0)})? O mesmo que marcar paga na ficha do cliente.`)) return;
-    mutation.current=true;setBusy(link.id);
-    try {await api.payInvoice(link.invoice);toast("fatura baixada","pos");await load();}
-    catch(e) {toast(e.message || "não deu pra dar baixa na fatura","neg");}
-    finally {mutation.current=false;setBusy("");}
+    setPaying(link);
   }
   async function undoPaid(link) {
     if(mutation.current || !window.confirm(`Desfazer a baixa de ${BRL.format(Number(link.amount)||0)}? O link voltará para em aberto.`)) return;

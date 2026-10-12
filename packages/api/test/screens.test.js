@@ -51,7 +51,8 @@ test("screenForRequest: mapa por prefixo + escritas administrativas", () => {
   assert.deepEqual(screenForRequest("GET", "/api/marketing/leverads"), ["metrics", "overview"]);
   assert.deepEqual(screenForRequest("POST", "/api/marketing/sync"), ["metrics"]);
   assert.deepEqual(screenForRequest("GET", "/api/invoices"), ["customers", "overview"]);
-  assert.deepEqual(screenForRequest("POST", "/api/invoices/i1/pay"), ["customers"]);
+  assert.deepEqual(screenForRequest("POST", "/api/invoices/i1/pay"), ["customers", "expenses"]);
+  assert.deepEqual(screenForRequest("POST", "/api/invoices/i1/confirm"), ["customers", "expenses"]);
   assert.deepEqual(screenForRequest("GET", "/api/metrics/leverads"), ["metrics", "overview"]);
   assert.deepEqual(screenForRequest("POST", "/api/expenses"), ["expenses"]);
   assert.deepEqual(screenForRequest("POST", "/api/leads/l1/proposal"), ["pipeline", "today"]);

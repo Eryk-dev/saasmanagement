@@ -1259,16 +1259,6 @@ function IntegrationsSettings({ s }) {
   const mpWebhookOn = !!window.SEED?.CONFIG?.mp?.webhook;
   const mpWebhookUrl = `${(import.meta.env.VITE_API_BASE || window.location.origin).replace(/\/+$/, "")}/public/mp/webhook`;
   const [mpMsg, setMpMsg] = useStS(null);
-  const [mpBusy, setMpBusy] = useStS(false);
-  async function mpSync() {
-    if (mpBusy) return;
-    setMpBusy(true); setMpMsg(null);
-    try {
-      const r = await api.mpSyncNow();
-      setMpMsg(`ok: ${r.seen} pagamento(s) vistos · ${r.matched} casados com clientes · ${r.settled} fatura(s) baixada(s)`);
-    } catch (e) { setMpMsg(e.message || "MP não respondeu"); }
-    finally { setMpBusy(false); }
-  }
 
   const items = [
     { k: "E-mail", desc: "envio de proposta + notificações (Resend/SMTP)", on: false, off: "em breve" },
@@ -1284,7 +1274,7 @@ function IntegrationsSettings({ s }) {
           <div>
             <div style={{ fontSize: 13, fontWeight: 500 }}>Mercado Pago</div>
             <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>
-              financeiro: espelho de quem pagou e como (tela Financeiro, aba Pagamentos) + cobrança avulsa com link + assinaturas recorrentes da conta pra ligar aos clientes (Clientes → Assinaturas → MP recorrentes) + baixa automática de fatura
+              financeiro: espelho de quem pagou e como (Financeiro → Conciliação) + cobrança avulsa com link + assinaturas recorrentes antigas da conta (Clientes → Cobranças → Recorrências do Mercado Pago) + baixa automática de fatura
             </div>
           </div>
           <span className={"chip " + (mpOn ? "pos" : "")} style={{ height: 22 }}>{mpOn ? "conectado" : "configurar MERCADOPAGO_ACCESS_TOKEN"}</span>
@@ -1301,10 +1291,7 @@ function IntegrationsSettings({ s }) {
               </span>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
-              <button onClick={mpSync} disabled={mpBusy} style={{ height: 26, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, opacity: mpBusy ? 0.6 : 1 }}>
-                {mpBusy ? "sincronizando…" : "↻ sincronizar pagamentos agora"}
-              </button>
-              <span className="mono dim" style={{ fontSize: 10.5 }}>o servidor sincroniza sozinho a cada 10 min (1º boot varre 400 dias)</span>
+              <span className="mono dim" style={{ fontSize: 10.5 }}>o servidor sincroniza sozinho a cada 10 min (1º boot varre 400 dias) · o botão “sincronizar” mora em Financeiro → Conciliação (entradas + saídas)</span>
             </div>
             {mpMsg && <div className="mono" style={{ fontSize: 10.5, color: "var(--accent)", marginTop: 8 }}>{mpMsg}</div>}
           </>

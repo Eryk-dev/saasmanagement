@@ -1,10 +1,12 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { isAdminUser } from "../lib/users.js";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
 import { EmptyState, PrimaryButton, MoreMenu } from "../atoms.jsx";
 import { Modal } from "../components/overlay.jsx";
+import { ManualPaidModal } from "../components/manual-paid-modal.jsx";
 import { Segmented } from "../components/viz.jsx";
 import { mpMethodLabel, MP_SUB_STATUS, CYCLE_LABEL, annualized as annualizedPrice } from "../lib/payments.js";
 // Assinaturas (fase 5) — Cockpit como system-of-record de billing: assinaturas,
@@ -134,11 +136,10 @@ function SubscriptionsScreen({ saasId, compact = false }) {
     await api.update("subscriptions", sub.id, { status });
     await refresh();
   }
-  async function pay(inv) {
-    await api.payInvoice(inv.id);
-    flash("fatura baixada");
-    await refresh();
-  }
+  // Dar baixa pede a PROVA (quando/como entrou): abre o modal; o servidor
+  // recusa baixa sem ela (12/10/2026).
+  const [paying, setPaying] = useState(null);
+  function pay(inv) { setPaying(inv); }
   // Link de pagamento da fatura (checkout MP, avulso): copia o que já existe ou
   // gera um. O pagamento baixa a fatura sozinho (external_reference = fatura).
   async function invLink(inv) {
@@ -242,6 +243,7 @@ function SubscriptionsScreen({ saasId, compact = false }) {
         </div></div>
       </section></>}
       {toast&&<div role="status" className="customers-billing-toast">{toast}</div>}
+      {paying&&createPortal(<ManualPaidModal target={{kind:"invoice",id:paying.id,amount:paying.amount,title:paying.title||"fatura"}} onClose={()=>setPaying(null)} onDone={async()=>{setPaying(null);flash("fatura baixada");await refresh();}}/>,document.body)}
       {changing&&<ChangeModal sub={changing} plans={plans} customerName={customerName(changing.customer)} onClose={()=>setChanging(null)} onDone={async msg=>{setChanging(null);flash(msg);await refresh();}}/>}
     </div>;
   }
