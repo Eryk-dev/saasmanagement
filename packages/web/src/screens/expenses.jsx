@@ -5,7 +5,7 @@ import { useData } from "../data.jsx";
 import { PageHead, StatTile, Card, Pill } from "../components/viz.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { EmptyState } from "../atoms.jsx";
-import { ResumoTab, ConciliacaoTab, PagarTab } from "./finance-hub.jsx";
+import { ResumoTab, ConciliacaoTab, PagarTab, FolhaTab } from "./finance-hub.jsx";
 import { SECTOR_CATS, catLabel, money, moneyFull, mesLongo, mesCurto, monthKeyOf, shiftMonth } from "../lib/fin-cats.js";
 // Financeiro — o dinheiro do produto num lugar só, em QUATRO abas (12/10/2026):
 //   Resumo      — a foto do mês: pendências com prazo, recebido (régua única
@@ -14,8 +14,10 @@ import { SECTOR_CATS, catLabel, money, moneyFull, mesLongo, mesCurto, monthKeyOf
 //                 maquininha, interna, saída, ruído), a fila do que precisa de
 //                 dono e as regras aprendidas. A antiga aba "Pagamentos" vive
 //                 aqui como filtro: era o mesmo espelho em dois lugares.
-//   A pagar     — contas com vencimento, situação, setor e recorrência; a
-//                 Folha é a MESMA lista na lente por colaborador.
+//   A pagar     — contas com vencimento, situação, setor e recorrência.
+//   Folha       — folha salarial gerada pela Remuneração: por pessoa, fixo +
+//                 variável + bônus de time + VR/VT + acordos da ficha ± ajustes
+//                 do mês; gerar e revisar antes de pagar.
 //   Custos      — regras e automáticos por competência (mídia, IA, WhatsApp,
 //                 percentuais e taxa real do MP) no MESMO plano de contas.
 // UM seletor de mês, obedecido por todas as abas (o filtro global de período
@@ -57,13 +59,12 @@ function ExpensesScreen() {
   const [tab, setTabState] = useState(() => {
     try {
       const t = localStorage.getItem("cockpit_financeiro_tab") || "resumo";
-      // Abas que viraram filtro: Pagamentos → Conciliação, Folha → A pagar.
-      return { pagamentos: "conciliacao", folha: "pagar" }[t] || t;
+      // Aba que virou filtro: Pagamentos → Conciliação.
+      return { pagamentos: "conciliacao" }[t] || t;
     } catch { return "resumo"; }
   });
   const setTab = (t) => { setTabState(t); try { localStorage.setItem("cockpit_financeiro_tab", t); } catch { /* ignore */ } };
   const [month, setMonth] = useState(monthKeyOf(new Date()));
-  const [pagarView, setPagarView] = useState("contas"); // "contas" | "folha"
 
   if (!product) return <EmptyState title="Nenhum produto cadastrado" hint="Crie o produto em Ajustes." />;
 
@@ -73,13 +74,15 @@ function ExpensesScreen() {
         sub={{
           resumo: `${mesLongo(month)} · a foto do mês: pendências, recebido × presumido, fluxo, gastos e DRE`,
           conciliacao: `${mesLongo(month)} · o espelho do Mercado Pago inteiro: todo pagamento aprovado precisa de dono ou motivo`,
-          pagar: `${mesLongo(month)} · contas com vencimento, situação e recorrência · a Folha é a lente por colaborador`,
+          pagar: `${mesLongo(month)} · contas com vencimento, situação e recorrência`,
+          folha: `${mesLongo(month)} · folha salarial pela Remuneração: fixo, variável, bônus, VR/VT, acordos e ajustes por pessoa`,
           custos: `${mesLongo(month)} · automáticos (mídia, IA, WhatsApp, taxa do MP) e lançamentos por competência`,
         }[tab] || ""}>
         <nav className="finance-tabs" aria-label="Abas do financeiro">{[
           { value: "resumo", label: "Resumo" },
           { value: "conciliacao", label: "Conciliação" },
           { value: "pagar", label: "A pagar" },
+          { value: "folha", label: "Folha" },
           { value: "custos", label: "Custos" },
         ].map(o => <button key={o.value} aria-current={tab === o.value ? "page" : undefined} onClick={()=>setTab(o.value)}>{o.label}</button>)}</nav>
         <MonthPicker month={month} onChange={setMonth} />
@@ -89,7 +92,8 @@ function ExpensesScreen() {
           de custo e vínculo em andamento nunca vazam pro SaaS errado. */}
       {tab === "resumo" && <ResumoTab key={`${product.id}:${month}`} product={product} month={month} onTab={setTab} onMonth={setMonth} />}
       {tab === "conciliacao" && <ConciliacaoTab key={`${product.id}:${month}`} product={product} month={month} />}
-      {tab === "pagar" && <PagarTab key={`${product.id}:${month}`} product={product} month={month} view={pagarView} onView={setPagarView} />}
+      {tab === "pagar" && <PagarTab key={`${product.id}:${month}`} product={product} month={month} />}
+      {tab === "folha" && <FolhaTab key={`${product.id}:${month}`} product={product} month={month} />}
       {tab === "custos" && <CostsTab key={`${product.id}:${month}`} product={product} month={month} onTab={setTab} />}
     </div>
   );

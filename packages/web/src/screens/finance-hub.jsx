@@ -2,7 +2,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { StatTile, Card, Pill, Segmented } from "../components/viz.jsx";
+import { StatTile, Card, Pill } from "../components/viz.jsx";
 import { AvisoTopo, InfoNota } from "../components/story.jsx";
 import { Avatar, EmptyState } from "../atoms.jsx";
 import { allUsers } from "../lib/users.js";
@@ -806,103 +806,251 @@ const roleCat = (u) => {
   return "pessoal_adm";
 };
 
-// A lente por COLABORADOR das mesmas contas (a antiga aba Folha). A folha
-// NASCE da Remuneração (12/10/2026): "gerar folha" calcula fixo + pernas +
-// bônus de time por pessoa e cria/atualiza a conta de cada um (paga não muda;
-// valor editado à mão é respeitado). Gerar e revisar antes de pagar (Leo).
-function FolhaView({ product, month, fin, reload }) {
-  const [formFor, setFormFor] = useState(null); // userId com o form aberto
-  const [gerando, setGerando] = useState(false), [geraNote, setGeraNote] = useState(null);
+// ── Folha salarial (aba própria, 12/10/2026) ─────────────────────────────────
+// A folha NASCE da Remuneração: "gerar folha" calcula, por pessoa, fixo do
+// nível/regime (ou fixo da pessoa) + duas pernas pelo atingimento carimbado +
+// bônus de time + VR/VT + acordos recorrentes da FICHA ± ajustes do mês, e
+// cria/atualiza a conta de cada um (paga não muda; valor revisado à mão é
+// respeitado). Gerar e revisar antes de pagar (Leo). Papel e nível vivem no
+// usuário (Equipe / Metas → Meta por pessoa); o que foge do plano mora na ficha.
+const KIND_EXTRA = { beneficio: "benefício", acordo: "acordo", desconto: "desconto" };
+const ROLE_LABEL = { sdr: "SDR", closer: "Closer", cs: "Integrador · CS", social: "Mídia social", manual: "retirada não definida" };
+const sign = (v) => `${v < 0 ? "−" : "+"} ${money(Math.abs(v))}`;
+
+function FichaForm({ product, uid, profile, onDone, onCancel }) {
+  const [f, setF] = useState({ regime: profile?.regime || "", fixed: profile?.fixed ?? "", vr: profile?.vr ?? "", vt: profile?.vt ?? "", notes: profile?.notes || "", extras: Array.isArray(profile?.extras) ? profile.extras.map((e) => ({ ...e })) : [] });
+  const [saving, setSaving] = useState(false), [err, setErr] = useState(null);
+  const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+  const setExtra = (i, k, v) => setF((s) => ({ ...s, extras: s.extras.map((e, j) => (j === i ? { ...e, [k]: v } : e)) }));
+  const numOrNull = (v) => (v === "" || v == null ? null : Number(String(v).replace(",", ".")));
+  const salvar = async () => {
+    if (saving) return;
+    setSaving(true); setErr(null);
+    try {
+      const doc = {
+        id: uid, uid, saas: product.id, regime: f.regime || "", fixed: numOrNull(f.fixed),
+        vr: Number(numOrNull(f.vr)) || 0, vt: Number(numOrNull(f.vt)) || 0, notes: f.notes.trim(),
+        extras: f.extras.filter((e) => String(e.label || "").trim() && numOrNull(e.amount) != null).map((e) => ({ label: e.label.trim(), amount: Number(numOrNull(e.amount)), kind: e.kind || "acordo" })),
+        updatedAt: new Date().toISOString(),
+      };
+      if (profile?.id) await api.update("payroll_profiles", profile.id, doc); else await api.create("payroll_profiles", doc);
+      onDone && onDone();
+    } catch (e) { setErr(e.message); }
+    setSaving(false);
+  };
+  return (
+    <fieldset disabled={saving} className="finance-payable-form" style={{ flexDirection: "column", alignItems: "stretch", gap: 8, padding: "10px 12px", background: "var(--bg-inset)", borderRadius: "var(--r-3)" }}>
+      {err && <div role="alert" className="finance-notice">{err}</div>}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}><span className="kicker">Regime</span>
+          <select aria-label="Regime" value={f.regime} onChange={(e) => set("regime", e.target.value)} style={{ ...inp, width: 120 }}><option value="">do plano (CLT)</option><option value="clt">CLT</option><option value="pj">PJ</option></select></label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}><span className="kicker">Fixo da pessoa (R$)</span>
+          <input aria-label="Fixo da pessoa" type="number" min="0" step="0.01" placeholder="vazio = fixo do plano" value={f.fixed} onChange={(e) => set("fixed", e.target.value)} style={{ ...inp, width: 150, fontFamily: "var(--mono)", textAlign: "right" }} /></label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}><span className="kicker">VR / mês</span>
+          <input aria-label="VR" type="number" min="0" step="0.01" value={f.vr} onChange={(e) => set("vr", e.target.value)} style={{ ...inp, width: 110, fontFamily: "var(--mono)", textAlign: "right" }} /></label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}><span className="kicker">VT / mês</span>
+          <input aria-label="VT" type="number" min="0" step="0.01" value={f.vt} onChange={(e) => set("vt", e.target.value)} style={{ ...inp, width: 110, fontFamily: "var(--mono)", textAlign: "right" }} /></label>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <span className="kicker">Acordos recorrentes (todo mês) · benefício e acordo somam, desconto subtrai</span>
+        {f.extras.map((e, i) => (
+          <div key={i} style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <input aria-label={`Descrição do acordo ${i + 1}`} placeholder="ex.: ajuda de custo, plano de saúde, adiantamento" value={e.label || ""} onChange={(ev) => setExtra(i, "label", ev.target.value)} style={{ ...inp, flex: 1, minWidth: 180 }} />
+            <input aria-label={`Valor do acordo ${i + 1}`} type="number" step="0.01" value={e.amount ?? ""} onChange={(ev) => setExtra(i, "amount", ev.target.value)} style={{ ...inp, width: 110, fontFamily: "var(--mono)", textAlign: "right" }} />
+            <select aria-label={`Tipo do acordo ${i + 1}`} value={e.kind || "acordo"} onChange={(ev) => setExtra(i, "kind", ev.target.value)} style={{ ...inp, width: 120 }}>{Object.entries(KIND_EXTRA).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+            <button onClick={() => set("extras", f.extras.filter((_, j) => j !== i))} className="dim" style={{ fontSize: 12 }}>remover</button>
+          </div>
+        ))}
+        <button onClick={() => set("extras", [...f.extras, { label: "", amount: "", kind: "acordo" }])} style={{ ...btn, height: 28, alignSelf: "flex-start" }}>+ acordo recorrente</button>
+      </div>
+      <input aria-label="Notas da ficha" placeholder="notas (o combinado, desde quando, quem autorizou)" value={f.notes} onChange={(e) => set("notes", e.target.value)} style={{ ...inp }} />
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={salvar} style={btnPri}>{saving ? "salvando…" : "salvar ficha"}</button>
+        <button onClick={onCancel} className="dim" style={{ fontSize: 12.5, fontWeight: 600 }}>cancelar</button>
+      </div>
+    </fieldset>
+  );
+}
+
+function AjusteForm({ product, uid, month, onDone }) {
+  const [f, setF] = useState({ label: "", amount: "", kind: "acordo" });
+  const [saving, setSaving] = useState(false), [err, setErr] = useState(null);
+  const ok = f.label.trim() && Number.isFinite(Number(String(f.amount).replace(",", "."))) && Number(String(f.amount).replace(",", ".")) !== 0;
+  const salvar = async () => {
+    if (!ok || saving) return;
+    setSaving(true); setErr(null);
+    try {
+      const v = Number(String(f.amount).replace(",", "."));
+      await api.create("payroll_adjustments", { saas: product.id, month, uid, label: f.label.trim(), amount: f.kind === "desconto" ? -Math.abs(v) : Math.abs(v), kind: f.kind, createdAt: new Date().toISOString() });
+      setF({ label: "", amount: "", kind: "acordo" });
+      onDone && onDone();
+    } catch (e) { setErr(e.message); }
+    setSaving(false);
+  };
+  return (
+    <fieldset disabled={saving} className="finance-payable-form">
+      {err && <div role="alert" className="finance-notice">{err}</div>}
+      <input aria-label="Descrição do ajuste" placeholder={`ajuste só em ${mesCurto(month)} (bônus, hora extra, desconto…)`} value={f.label} onChange={(e) => setF((s) => ({ ...s, label: e.target.value }))} style={{ ...inp, flex: 1, minWidth: 200 }} />
+      <input aria-label="Valor do ajuste" type="number" min="0" step="0.01" placeholder="valor" value={f.amount} onChange={(e) => setF((s) => ({ ...s, amount: e.target.value }))} style={{ ...inp, width: 110, fontFamily: "var(--mono)", textAlign: "right" }} />
+      <select aria-label="Tipo do ajuste" value={f.kind} onChange={(e) => setF((s) => ({ ...s, kind: e.target.value }))} style={{ ...inp, width: 120 }}>{Object.entries(KIND_EXTRA).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+      <button onClick={salvar} disabled={!ok} style={{ ...btnPri, height: 28, opacity: ok ? 1 : .55 }}>lançar no mês</button>
+    </fieldset>
+  );
+}
+
+export function FolhaTab({ product, month }) {
+  const { fin, err, reload } = useFin(product, month);
+  const { version } = useData();
+  const [calc, setCalc] = useState(null), [calcErr, setCalcErr] = useState(null);
+  const [profiles, setProfiles] = useState([]), [adjs, setAdjs] = useState([]);
+  const [fichaFor, setFichaFor] = useState(null), [ajusteFor, setAjusteFor] = useState(null), [formFor, setFormFor] = useState(null);
+  const [gerando, setGerando] = useState(false), [note, setNote] = useState(null);
+  const read = React.useRef(0);
+  const loadAll = useCallback(async () => {
+    const seq = ++read.current; setCalcErr(null);
+    try {
+      const [c, p, a] = await Promise.all([api.payrollPreview(product.id, month), api.list("payroll_profiles"), api.list("payroll_adjustments")]);
+      if (seq === read.current) { setCalc(c); setProfiles(p || []); setAdjs((a || []).filter((x) => x.month === month && (!x.saas || x.saas === product.id))); }
+    } catch (e) { if (seq === read.current) setCalcErr(e.message); }
+  }, [product.id, month]);
+  useEffect(() => { loadAll(); return () => { read.current++; }; }, [loadAll, version]);
+  const refreshAll = async () => { await reload(); await loadAll(); };
   const gerar = async () => {
     if (gerando) return;
-    setGerando(true); setGeraNote(null);
+    setGerando(true); setNote(null);
     try {
       const r = await api.payrollGenerate(product.id, month);
-      setGeraNote({ ok: true, text: `folha de ${mesCurto(month)}: ${int(r.created)} criada${r.created === 1 ? "" : "s"} · ${int(r.updated)} atualizada${r.updated === 1 ? "" : "s"} · ${int(r.kept)} já paga${r.kept === 1 ? "" : "s"} · total ${money(r.total)}${r.stamped ? "" : " · mês ainda não fechado na Remuneração: só o fixo entrou, gere de novo depois do fechamento"}` });
-      await reload();
-    } catch (e) { setGeraNote({ ok: false, text: e.message }); }
+      setNote({ ok: true, text: `folha de ${mesCurto(month)}: ${int(r.created)} criada${r.created === 1 ? "" : "s"} · ${int(r.updated)} atualizada${r.updated === 1 ? "" : "s"} · ${int(r.kept)} já paga${r.kept === 1 ? "" : "s"} · total ${money(r.total)}${r.stamped ? "" : " · mês ainda não fechado na Remuneração: a variável entra no fechamento, gere de novo depois"}` });
+      await refreshAll();
+    } catch (e) { setNote({ ok: false, text: e.message }); }
     finally { setGerando(false); }
   };
+  if (!fin || err) return <Carregando err={err} retry={reload} />;
+  if (calcErr) return <Carregando err={calcErr} retry={loadAll} />;
+  if (!calc) return <Carregando />;
+
   const doMes = fin.payables.filter((p) => p.counterpartyType === "colaborador" && p.month === month);
-  const porPessoa = new Map();
-  for (const p of doMes) {
-    const k = p.userId || "?";
-    if (!porPessoa.has(k)) porPessoa.set(k, []);
-    porPessoa.get(k).push(p);
-  }
-  const time = allUsers();
-  const linhas = [
-    ...time.map((u) => ({ user: u, itens: porPessoa.get(u.id) || [] })),
-    ...[...porPessoa.keys()].filter((k) => k === "?" || !time.some((u) => u.id === k))
-      .map((k) => ({ user: { id: k, name: "Sem vínculo" }, itens: porPessoa.get(k) })),
-  ];
-  const soma = (list, f) => r2(list.filter(f).reduce((a, p) => a + (Number(p.amount) || 0), 0));
+  const soma = (list, f = () => true) => r2(list.filter(f).reduce((a, p) => a + (Number(p.amount) || 0), 0));
   const totalPago = soma(doMes, (p) => p.status === "paga");
   const totalAberto = soma(doMes, (p) => p.status !== "paga");
+  const time = allUsers();
+  const rows = calc.rows || [];
+  const profileOf = (uid) => profiles.find((p) => p.id === uid || p.uid === uid) || null;
+  const payablesOf = (uid) => doMes.filter((p) => p.userId === uid);
+  const socios = time.filter((u) => u.payrollRole === "manual");
+  const semVinculo = doMes.filter((p) => !p.userId || (!rows.some((r) => r.uid === p.userId) && !socios.some((u) => u.id === p.userId)));
+  const naFolha = rows.map((r) => r.uid);
+  const excluirAjuste = async (a) => { if (!window.confirm(`Remover o ajuste "${a.label}" (${money(Math.abs(a.amount))})?`)) return; try { await api.remove("payroll_adjustments", a.id); await refreshAll(); } catch (e) { setNote({ ok: false, text: e.message }); } };
 
   return (
-    <>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))", gap: 12 }}>
-        <StatTile label={`Folha de ${mesCurto(month)}`} value={money(totalPago + totalAberto)} delta={`${int(doMes.length)} lançamento${doMes.length === 1 ? "" : "s"}`}
-          title="Todas as contas a pagar do mês com favorecido colaborador (salário, pró-labore, comissão, bônus)." />
+    <div className="finance-content">
+      {note && <div role={note.ok ? "status" : "alert"} className="finance-notice" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 190px), 1fr))", gap: 12 }}>
+        <StatTile label={`Folha de ${mesCurto(month)} · calculada`} value={money(calc.total)} delta={`${int(rows.length)} pessoa${rows.length === 1 ? "" : "s"} no plano${calc.stamped ? "" : " · mês ainda não fechado"}`}
+          title="O que a Remuneração calcula pra este mês: fixo + variável + bônus de time + VR/VT + acordos ± ajustes." />
+        <StatTile label="Gerada em A pagar" value={money(totalPago + totalAberto)} delta={`${int(doMes.length)} conta${doMes.length === 1 ? "" : "s"} · vence dia 1 do mês seguinte`} />
         <StatTile label="Pago" value={money(totalPago)} />
         <StatTile label="Em aberto" value={money(totalAberto)} tone={totalAberto > 0 ? "down" : "flat"} />
       </div>
 
-      <Card title="Por colaborador" hint="a folha sai da Remuneração: fixo do nível + variável pelo atingimento + bônus de time · vence dia 1 do mês seguinte · a saída do MP com o mesmo valor dá baixa sozinha"
-        action={<button onClick={gerar} disabled={gerando} style={btnPri}>{gerando ? "gerando…" : `gerar folha de ${mesCurto(month)}`}</button>}>
-        {geraNote && <div role={geraNote.ok ? "status" : "alert"} className="finance-notice" style={{ margin: "8px var(--inset-x) 0", fontSize: 12, color: geraNote.ok ? "var(--pos)" : "var(--neg)" }}>{geraNote.text}</div>}
+      <Card title="Por colaborador" hint="fixo do nível ou da pessoa + variável pelo atingimento + bônus de time + VR/VT + acordos ± ajustes do mês · a saída do MP com o mesmo valor dá baixa sozinha"
+        action={<button onClick={gerar} disabled={gerando} style={btnPri}>{gerando ? "gerando…" : (doMes.length ? `atualizar folha de ${mesCurto(month)}` : `gerar folha de ${mesCurto(month)}`)}</button>}>
         <div style={{ padding: "6px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 4 }}>
-          {linhas.map(({ user, itens }) => {
-            const pago = soma(itens, (p) => p.status === "paga");
-            const aberto = soma(itens, (p) => p.status !== "paga");
+          {!rows.length && <span className="dim" style={{ fontSize: 12.5, padding: "10px 0" }}>Ninguém cadastrado na folha deste produto. O papel na folha (SDR, closer, CS, mídia social) é definido no usuário.</span>}
+          {rows.map((r) => {
+            const u = time.find((x) => x.id === r.uid) || { id: r.uid, name: r.name };
+            const prof = profileOf(r.uid);
+            const contas = payablesOf(r.uid);
+            const ajustes = adjs.filter((a) => a.uid === r.uid);
             return (
-              <div key={user.id} style={{ padding: "10px 0", borderBottom: "1px solid var(--line-faint)" }}>
+              <div key={r.uid} style={{ padding: "12px 0", borderBottom: "1px solid var(--line-faint)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <Avatar id={user.id} name={user.name} size={26} />
-                  <span style={{ fontSize: 13.5, fontWeight: 650, flex: 1, minWidth: 120 }}>{user.name}</span>
-                  <span className="tnum" style={{ fontSize: 12.5, color: "var(--fg-3)" }}>
-                    pago <b style={{ color: "var(--fg-1)" }}>{money(pago)}</b>
-                    {aberto > 0 && <> · em aberto <b style={{ color: "var(--warn)" }}>{money(aberto)}</b></>}
-                    {!itens.length && <span className="dim"> sem lançamento no mês</span>}
-                  </span>
-                  <button onClick={() => setFormFor(formFor === user.id ? null : user.id)} style={{ ...btn, height: 28 }}>
-                    {formFor === user.id ? "fechar" : "+ pagamento"}
-                  </button>
+                  <Avatar id={u.id} name={u.name} size={26} />
+                  <span style={{ fontSize: 13.5, fontWeight: 650, minWidth: 120 }}>{u.name}</span>
+                  <span className="dim" style={{ fontSize: 11.5 }}>{ROLE_LABEL[r.role] || r.role}{r.role === "sdr" || r.role === "closer" || r.role === "cs" ? ` · nível ${r.level}` : ""}{r.role === "closer" ? ` · ${r.regime.toUpperCase()}` : ""}</span>
+                  <span className="tnum" style={{ marginLeft: "auto", fontSize: 14, fontWeight: 700 }}>{money(r.total)}</span>
+                  <button onClick={() => setFichaFor(fichaFor === r.uid ? null : r.uid)} style={{ ...btn, height: 28 }}>{fichaFor === r.uid ? "fechar ficha" : "ficha"}</button>
+                  <button onClick={() => setAjusteFor(ajusteFor === r.uid ? null : r.uid)} style={{ ...btn, height: 28 }}>{ajusteFor === r.uid ? "fechar" : "+ ajuste do mês"}</button>
                 </div>
-                {formFor === user.id && (
-                  <div style={{ marginTop: 10 }}>
-                    {/* Descrição sem o mês: a recorrente nasce todo mês com a mesma
-                        descrição (antes "Salário set" virava o nome de outubro). */}
-                    <PayableForm product={product} month={month} onDone={() => { setFormFor(null); reload(); }}
-                      preset={{ counterpartyType: "colaborador", userId: user.id, category: roleCat(user), description: "Salário" }} />
+                <div className="tnum dim" style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 11.5, marginTop: 6 }} title={r.notes}>
+                  <span>fixo <b style={{ color: "var(--fg-1)" }}>{money(r.fixed)}</b> <span style={{ color: "var(--fg-4)" }}>({r.fixedFrom})</span></span>
+                  <span>variável <b style={{ color: "var(--fg-1)" }}>{money(r.variable)}</b>{!r.stamped && <span style={{ color: "var(--warn)" }}> · entra no fechamento</span>}</span>
+                  <span>time <b style={{ color: "var(--fg-1)" }}>{money(r.teamBonus)}</b></span>
+                  <span>VR <b style={{ color: "var(--fg-1)" }}>{money(r.vr)}</b></span>
+                  <span>VT <b style={{ color: "var(--fg-1)" }}>{money(r.vt)}</b></span>
+                  {r.extras?.length > 0 && <span>acordos <b style={{ color: r.extrasTotal < 0 ? "var(--neg)" : "var(--fg-1)" }}>{sign(r.extrasTotal)}</b></span>}
+                  {ajustes.length > 0 && <span>ajustes do mês <b style={{ color: r.adjustmentsTotal < 0 ? "var(--neg)" : "var(--fg-1)" }}>{sign(r.adjustmentsTotal)}</b></span>}
+                </div>
+                {(r.extras?.length > 0 || prof?.notes) && (
+                  <div className="dim" style={{ fontSize: 11.5, marginTop: 4 }}>
+                    {r.extras.map((e, i) => <span key={i} style={{ marginRight: 10 }}>{e.label} {sign(e.signed)} <span style={{ color: "var(--fg-4)" }}>({KIND_EXTRA[e.kind] || e.kind})</span></span>)}
+                    {prof?.notes && <span style={{ color: "var(--fg-4)" }}>· {prof.notes}</span>}
                   </div>
                 )}
-                {itens.length > 0 && (
-                  <div style={{ marginTop: 4 }}>
-                    {itens.map((p) => <PayableRow key={p.id} p={p} fin={fin} reload={reload} showPerson={false} />)}
+                {ajustes.length > 0 && (
+                  <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 2 }}>
+                    {ajustes.map((a) => (
+                      <div key={a.id} className="dim" style={{ fontSize: 11.5, display: "flex", gap: 8, alignItems: "baseline" }}>
+                        <span>{a.label} <b style={{ color: a.amount < 0 ? "var(--neg)" : "var(--fg-1)" }}>{sign(a.amount)}</b> <span style={{ color: "var(--fg-4)" }}>({KIND_EXTRA[a.kind] || a.kind} só em {mesCurto(month)})</span></span>
+                        <button onClick={() => excluirAjuste(a)} className="dim" style={{ fontSize: 11, fontWeight: 600 }}>remover</button>
+                      </div>
+                    ))}
                   </div>
                 )}
+                {fichaFor === r.uid && <div style={{ marginTop: 10 }}><FichaForm product={product} uid={r.uid} profile={prof} onDone={async () => { setFichaFor(null); await refreshAll(); }} onCancel={() => setFichaFor(null)} /></div>}
+                {ajusteFor === r.uid && <div style={{ marginTop: 10 }}><AjusteForm product={product} uid={r.uid} month={month} onDone={refreshAll} /></div>}
+                {contas.length > 0 && (
+                  <div style={{ marginTop: 6 }}>
+                    {contas.map((p) => <PayableRow key={p.id} p={p} fin={fin} reload={refreshAll} showPerson={false} />)}
+                  </div>
+                )}
+                {!contas.length && <div className="dim" style={{ fontSize: 11.5, marginTop: 6 }}>conta ainda não gerada neste mês</div>}
               </div>
             );
           })}
         </div>
       </Card>
-    </>
+
+      <Card title="Retiradas e lançamentos à mão" hint="sócios e quem está fora do plano: a conta entra quando alguém lança · também aparecem aqui contas de colaborador sem vínculo com a folha">
+        <div style={{ padding: "6px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 4 }}>
+          {socios.map((u) => {
+            const contas = payablesOf(u.id);
+            return (
+              <div key={u.id} style={{ padding: "10px 0", borderBottom: "1px solid var(--line-faint)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <Avatar id={u.id} name={u.name} size={26} />
+                  <span style={{ fontSize: 13.5, fontWeight: 650, flex: 1, minWidth: 120 }}>{u.name}</span>
+                  <span className="dim" style={{ fontSize: 11.5 }}>{ROLE_LABEL.manual}{contas.length ? ` · ${money(soma(contas))} no mês` : ""}</span>
+                  <button onClick={() => setFormFor(formFor === u.id ? null : u.id)} style={{ ...btn, height: 28 }}>{formFor === u.id ? "fechar" : "+ pagamento"}</button>
+                </div>
+                {formFor === u.id && (
+                  <div style={{ marginTop: 10 }}>
+                    <PayableForm product={product} month={month} onDone={() => { setFormFor(null); refreshAll(); }}
+                      preset={{ counterpartyType: "colaborador", userId: u.id, category: "prolabore", description: "Retirada" }} />
+                  </div>
+                )}
+                {contas.length > 0 && <div style={{ marginTop: 4 }}>{contas.map((p) => <PayableRow key={p.id} p={p} fin={fin} reload={refreshAll} showPerson={false} />)}</div>}
+              </div>
+            );
+          })}
+          {semVinculo.length > 0 && <div style={{ marginTop: 6 }}>{semVinculo.map((p) => <PayableRow key={p.id} p={p} fin={fin} reload={refreshAll} />)}</div>}
+          {!socios.length && !semVinculo.length && <span className="dim" style={{ fontSize: 12.5, padding: "10px 0" }}>Nada lançado à mão neste mês.</span>}
+        </div>
+      </Card>
+      <InfoNota>
+        Papel na folha e nível ficam no usuário (Ajustes → Equipe; promoção em Metas → Meta por pessoa). A ficha guarda o que foge do plano: regime, fixo da pessoa, VR, VT e acordos recorrentes. Ajuste do mês vale uma vez. O vencimento é dia 1 do mês seguinte; a saída do Mercado Pago com o mesmo valor, até 5 dias do vencimento, dá baixa sozinha.
+      </InfoNota>
+    </div>
   );
 }
 
-export function PagarTab({ product, month, view = "contas", onView }) {
+export function PagarTab({ product, month }) {
   const { fin, err, reload } = useFin(product, month);
-  const [localView, setLocalView] = useState(view);
-  const cur = onView ? view : localView;
-  const setView = onView || setLocalView;
   if (!fin || err) return <Carregando err={err} retry={reload} />;
   const t = fin.tiles;
   return (
     <div className="finance-content">
-      <Segmented value={cur} onChange={setView} options={[{ value: "contas", label: "Contas" }, { value: "folha", label: "Folha" }]} />
-      {cur === "folha" ? <FolhaView product={product} month={month} fin={fin} reload={reload} /> : (
+      {(
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: 12 }}>
             <StatTile label="Vencidos" value={money(t.vencidos.total)} delta={`${int(t.vencidos.n)} conta${t.vencidos.n === 1 ? "" : "s"}`} tone={t.vencidos.n ? "down" : "flat"} />
@@ -911,7 +1059,7 @@ export function PagarTab({ product, month, view = "contas", onView }) {
             <StatTile label="Pagos no mês" value={money(t.pagos.total)} delta={`${int(t.pagos.n)} conta${t.pagos.n === 1 ? "" : "s"}`} />
           </div>
 
-          <Card title="Nova conta a pagar" hint="a categoria decide o setor no DRE · salário e pró-labore entram como colaborador e aparecem na Folha · regra, automático e percentual moram na aba Custos">
+          <Card title="Nova conta a pagar" hint="a categoria decide o setor no DRE · salário sai da aba Folha (gerado pela Remuneração) · regra, automático e percentual moram na aba Custos">
             <div style={{ padding: "12px var(--inset-x) 18px" }}>
               <PayableForm product={product} month={month} onDone={reload} />
             </div>
@@ -927,9 +1075,4 @@ export function PagarTab({ product, month, view = "contas", onView }) {
       )}
     </div>
   );
-}
-
-// Compatibilidade: a Folha virou a lente "folha" dentro de A pagar.
-export function FolhaTab({ product, month }) {
-  return <PagarTab product={product} month={month} view="folha" />;
 }

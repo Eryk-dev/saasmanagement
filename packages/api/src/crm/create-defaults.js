@@ -65,6 +65,9 @@ export const CREATE_DEFAULTS = {
   payables: { saas: "", description: "", category: "outros", counterpartyType: "fornecedor", userId: "", supplierName: "", amount: 0, month: "", dueDate: "", status: "aberta", paidAt: "", paidVia: "", recurring: false, endMonth: "", templateId: "", notes: "" },
   // Regra de conciliação aprendida: quando o pagador (doc > e-mail > nome) bate,
   // o Financeiro aplica a ação sozinho e não pergunta mais (routes.fin.js).
+  // Folha salarial por pessoa (id = uid): o que foge do plano mora aqui.
+  payroll_profiles: { saas: "", uid: "", regime: "", fixed: null, vr: 0, vt: 0, extras: [], notes: "", updatedAt: "" },
+  payroll_adjustments: { saas: "", month: "", uid: "", label: "", amount: 0, kind: "acordo", createdAt: "" },
   fin_rules: { saas: "", matchField: "payerDoc", matchValue: "", action: "vincular", customer: "", reason: "", autoCount: 0, lastAppliedAt: "", createdAt: "" },
   // Kanban de tarefas do time (nível Asana): modelo e regras em tasks-core.js.
   // `column` = KEY estável da coluna do board; `completed` é a régua única de

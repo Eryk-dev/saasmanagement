@@ -106,6 +106,7 @@ const ROUTE_SCREENS = [
   ["/api/fin/", ["expenses"]],           // financeiro completo: leitura do mês (contas a pagar, fluxo, DRE, conciliação)
   ["/api/payables", ["expenses"]],       // CRUD genérico das contas a pagar
   ["/api/fin_rules", ["expenses"]],      // regras de conciliação aprendidas
+  ["/api/payroll_", ["expenses"]],       // folha salarial: ficha por pessoa e ajustes do mês
   ["/api/mp_movements", ["expenses"]],   // saídas da conta MP (settlement report)
   ["/api/plans", ["customers", "plans"]],
   ["/api/plan-changes", ["customers"]], // histórico de mudanças de plano (a coleção é PRIVATE no CRUD genérico)

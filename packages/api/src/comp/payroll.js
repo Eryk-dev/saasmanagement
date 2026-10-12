@@ -31,12 +31,19 @@ const nextMonthFirstDay = (month) => {
   return d.toISOString().slice(0, 10);
 };
 
-export const payrollSetupOf = (u) => ({
+// Ficha de folha (payroll_profiles, id = uid) sobrepõe o usuário: regime, fixo
+// da pessoa, VR, VT e os acordos recorrentes que fogem do plano. Papel e nível
+// continuam no usuário (Equipe e Metas → Meta por pessoa).
+const cleanExtras = (list) => (Array.isArray(list) ? list : []).filter((e) => e && String(e.label || "").trim() && Number.isFinite(Number(e.amount)))
+  .map((e) => ({ label: String(e.label).trim(), amount: r2(Number(e.amount)), kind: e.kind === "desconto" ? "desconto" : e.kind === "beneficio" ? "beneficio" : "acordo" }));
+export const payrollSetupOf = (u, profile = null) => ({
   role: PAYROLL_ROLES.has(u?.payrollRole) ? u.payrollRole : (u?.payrollRole === "manual" ? "manual" : "none"),
   level: compLevelOf(u),
-  regime: u?.payrollRegime === "pj" ? "pj" : "clt",
-  fixed: u?.payrollFixed != null && u.payrollFixed !== "" ? num(u.payrollFixed) : null,
-  saas: u?.payrollSaas || u?.saas || "",
+  regime: (profile?.regime || u?.payrollRegime) === "pj" ? "pj" : "clt",
+  fixed: profile?.fixed != null && profile.fixed !== "" ? num(profile.fixed) : (u?.payrollFixed != null && u.payrollFixed !== "" ? num(u.payrollFixed) : null),
+  vr: r2(num(profile?.vr)), vt: r2(num(profile?.vt)),
+  extras: cleanExtras(profile?.extras),
+  saas: profile?.saas || u?.payrollSaas || u?.saas || "",
 });
 
 // Quem entra na folha deste produto.
@@ -50,8 +57,8 @@ export function payrollUsers(users, saas, { defaultSaas } = {}) {
 }
 
 // Uma linha da folha: fixo + pernas + time, com o detalhamento.
-export function payrollRowOf(user, { compDocs, stamp, month }) {
-  const s = payrollSetupOf(user);
+export function payrollRowOf(user, { compDocs, stamp, month, profile = null, adjustments = [] }) {
+  const s = payrollSetupOf(user, profile);
   const plan = planFor(compDocs, s.role) || {};
   const lv = levelOf(plan, s.level);
   const fixedPlan = s.role === "closer" && s.regime === "pj" ? num(lv.fixedPj) : num(lv.fixed);
@@ -73,12 +80,26 @@ export function payrollRowOf(user, { compDocs, stamp, month }) {
   const teamBonus = stamp ? num(stamp.teamBonusValue) : 0;
   if (stamp) notes.push(stamp.teamBonusPaid ? `bônus de time R$ ${teamBonus}` : "bônus de time: a casa não bateu as duas condições");
   const variable = r2(legs.contracts + legs.revenue);
-  const total = r2(fixed + variable + teamBonus);
+  // Benefícios e acordos: VR/VT da ficha, acordos recorrentes (benefício soma,
+  // desconto subtrai) e os ajustes pontuais do mês.
+  const benefits = r2(s.vr + s.vt);
+  if (s.vr) notes.push(`VR R$ ${s.vr}`);
+  if (s.vt) notes.push(`VT R$ ${s.vt}`);
+  const signed = (e) => (e.kind === "desconto" ? -Math.abs(e.amount) : e.amount);
+  const extras = s.extras.map((e) => ({ ...e, signed: signed(e) }));
+  const monthAdj = (adjustments || []).filter((a) => a && a.uid === user.id && a.month === month && Number.isFinite(Number(a.amount)))
+    .map((a) => ({ id: a.id, label: String(a.label || "ajuste").trim(), amount: r2(Number(a.amount)), kind: a.kind || "acordo" }));
+  for (const e of extras) notes.push(`${e.label} ${e.signed < 0 ? "−" : "+"}R$ ${Math.abs(e.signed)}`);
+  for (const a of monthAdj) notes.push(`${a.label} (mês) ${a.amount < 0 ? "−" : "+"}R$ ${Math.abs(a.amount)}`);
+  const extrasTotal = r2(extras.reduce((a, e) => a + e.signed, 0));
+  const adjustmentsTotal = r2(monthAdj.reduce((a, e) => a + e.amount, 0));
+  const total = r2(fixed + variable + teamBonus + benefits + extrasTotal + adjustmentsTotal);
   const regimeLabel = s.role === "closer" ? (s.regime === "pj" ? " PJ" : " CLT") : "";
   return {
     uid: user.id, name: user.name || user.id, role: s.role, level: s.level, regime: s.regime,
     fixed: r2(fixed), fixedFrom: s.fixed != null ? "pessoa" : `plano nível ${s.level}${regimeLabel}`,
-    variable, legs, teamBonus, total, stamped: !!stamp, month,
+    variable, legs, teamBonus, vr: s.vr, vt: s.vt, benefits, extras, extrasTotal, adjustments: monthAdj, adjustmentsTotal,
+    total, stamped: !!stamp, month,
     notes: [`fixo R$ ${r2(fixed)} (${s.fixed != null ? "fixo da pessoa" : `plano nível ${s.level}${regimeLabel}`})`, ...notes].join(" · "),
   };
 }
@@ -98,13 +119,21 @@ async function stampsFor(repo, product, month, { now = new Date(), users } = {})
 }
 
 export async function computePayroll(repo, product, month, { now = new Date() } = {}) {
-  const [users, compDocs, products] = await Promise.all([repo.list("users"), repo.list("comp_plans").catch(() => []), repo.list("products")]);
+  const [users, compDocs, products, profiles, adjustments] = await Promise.all([
+    repo.list("users"), repo.list("comp_plans").catch(() => []), repo.list("products"),
+    repo.list("payroll_profiles").catch(() => []), repo.list("payroll_adjustments").catch(() => []),
+  ]);
   const defaultSaas = products[0]?.id || product.id;
-  const people = payrollUsers(users, product.id, { defaultSaas });
+  const profileOf = (u) => profiles.find((p) => p.id === u.id || p.uid === u.id) || null;
+  const people = (users || []).filter((u) => {
+    const s = payrollSetupOf(u, profileOf(u));
+    if (s.role === "none" || s.role === "manual") return false;
+    return (s.saas || defaultSaas) === product.id;
+  });
   const stamps = people.length ? await stampsFor(repo, product, month, { now, users }) : [];
   const stampOf = (u, role) => stamps.find((d) => d.id === monthPersonId(product.id, month, u.id, role))
     || stamps.find((d) => d.uid === u.id && d.role === role) || stamps.find((d) => d.uid === u.id) || null;
-  const rows = people.map((u) => payrollRowOf(u, { compDocs, stamp: stampOf(u, payrollSetupOf(u).role), month }));
+  const rows = people.map((u) => payrollRowOf(u, { compDocs, stamp: stampOf(u, payrollSetupOf(u).role), month, profile: profileOf(u), adjustments: adjustments.filter((a) => !a.saas || a.saas === product.id) }));
   const existing = (await repo.list("payables")).filter((p) => p.saas === product.id && p.month === month && p.counterpartyType === "colaborador");
   const byUid = new Map(existing.map((p) => [p.userId, p]));
   return {
@@ -123,7 +152,7 @@ export async function generatePayroll(repo, product, month, { by = "api", now = 
   for (const r of calc.rows) {
     const id = payrollPayableId(product.id, month, r.uid);
     const cur = (r.payable && (await repo.get("payables", r.payable.id))) || (await repo.get("payables", id));
-    const payroll = { fixed: r.fixed, fixedFrom: r.fixedFrom, variable: r.variable, legs: r.legs, teamBonus: r.teamBonus, total: r.total, stamped: r.stamped, generatedAt: now.toISOString(), by };
+    const payroll = { fixed: r.fixed, fixedFrom: r.fixedFrom, variable: r.variable, legs: r.legs, teamBonus: r.teamBonus, vr: r.vr, vt: r.vt, benefits: r.benefits, extras: r.extras, extrasTotal: r.extrasTotal, adjustments: r.adjustments, adjustmentsTotal: r.adjustmentsTotal, total: r.total, stamped: r.stamped, generatedAt: now.toISOString(), by };
     if (cur) {
       if (cur.status === "paga") { out.kept++; out.rows.push({ uid: r.uid, action: "paga" }); continue; }
       const patch = { notes: r.notes, payroll, ...(cur.amountManual ? {} : { amount: r.total }) };

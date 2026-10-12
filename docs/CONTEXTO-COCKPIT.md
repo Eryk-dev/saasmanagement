@@ -295,11 +295,14 @@ a mesma regra; os testes ficam em `sdr-brain.test.js`.
    - **Folha pela Remuneração** (`comp/payroll.js`, 12/10/2026): botão "gerar
      folha" em A pagar → Folha calcula por pessoa fixo (nível/regime do plano
      ou `payrollFixed`) + duas pernas pelo carimbo `comp_months` + bônus de
-     time, e cria/atualiza a conta `pay_folha_<saas>_<mês>_<uid>` (vence dia 1
-     do mês seguinte); paga não muda, `amountManual` é respeitado. Cadastro no
-     usuário: `payrollRole` sdr|closer|cs|social|manual|none, `compLevel`,
-     `payrollRegime`, `payrollFixed` (seed confirmado pelo Leo em
-     `migrations-fin.js`). Plano numa fonte só: `shared/comp-plan-defaults.js`
+     time + VR/VT e acordos recorrentes da FICHA (`payroll_profiles`, id = uid:
+     regime, fixo da pessoa, vr, vt, extras benefício/acordo/desconto) ± ajustes
+     do mês (`payroll_adjustments`), e cria/atualiza a conta
+     `pay_folha_<saas>_<mês>_<uid>` (vence dia 1 do mês seguinte); paga não
+     muda, `amountManual` é respeitado. Papel e nível ficam no usuário
+     (`payrollRole` sdr|closer|cs|social|manual|none, `compLevel`; seed
+     confirmado pelo Leo em `migrations-fin.js`). A aba Folha do Financeiro é a
+     folha salarial: ficha por pessoa, ajustes do mês, retiradas dos sócios. Plano numa fonte só: `shared/comp-plan-defaults.js`
      (a tela Remuneração importa de lá). Saída do MP com o mesmo valor até 5
      dias do vencimento e candidata única dá baixa sozinha
      (`payments/outflow-match.js`, no sync). Referências: `payroll.test.js`,

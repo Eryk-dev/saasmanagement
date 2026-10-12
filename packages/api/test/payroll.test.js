@@ -38,6 +38,26 @@ test("closer PJ usa o fixo PJ; fixo da pessoa (mídia social) sobrepõe o plano;
   assert.equal(legBonus(1.6, 300, 550, 750, 950), 950 + (950 - 750) + 100);
 });
 
+test("ficha e ajustes do mês: VR/VT somam, acordo recorrente e desconto, ajuste só no mês", () => {
+  const profile = { id: "sdr", regime: "clt", fixed: null, vr: 600, vt: 220, extras: [{ label: "ajuda de custo", amount: 300, kind: "acordo" }, { label: "adiantamento", amount: 150, kind: "desconto" }] };
+  const adjustments = [
+    { id: "a1", uid: "sdr", month: "2026-09", label: "hora extra", amount: 200, kind: "acordo" },
+    { id: "a2", uid: "sdr", month: "2026-08", label: "mês passado", amount: 999, kind: "acordo" },
+    { id: "a3", uid: "outro", month: "2026-09", label: "de outra pessoa", amount: 999, kind: "acordo" },
+  ];
+  const r = payrollRowOf({ id: "sdr", payrollRole: "sdr", compLevel: 1 }, { compDocs: [], stamp: stamp(), month: "2026-09", profile, adjustments });
+  assert.deepEqual([r.vr, r.vt, r.benefits], [600, 220, 820]);
+  assert.equal(r.extrasTotal, 150);
+  assert.deepEqual(r.adjustments.map((a) => a.label), ["hora extra"]);
+  assert.equal(r.total, 2200 + 550 + 750 + 300 + 820 + 150 + 200);
+  assert.match(r.notes, /VR R\$ 600 · VT R\$ 220 · ajuda de custo \+R\$ 300 · adiantamento −R\$ 150 · hora extra \(mês\) \+R\$ 200/);
+  // Regime e fixo da ficha sobrepõem o usuário.
+  const pj = payrollRowOf({ id: "v", payrollRole: "closer", compLevel: 1, payrollRegime: "clt" }, { compDocs: [], stamp: null, month: "2026-10", profile: { regime: "pj" } });
+  assert.equal(pj.fixed, 4200);
+  const fx = payrollRowOf({ id: "v", payrollRole: "closer", compLevel: 1 }, { compDocs: [], stamp: null, month: "2026-10", profile: { fixed: 5000 } });
+  assert.deepEqual([fx.fixed, fx.fixedFrom], [5000, "pessoa"]);
+});
+
 test("quem entra na folha: só sdr/closer/cs/social do produto; manual e none ficam fora", () => {
   const users = [
     { id: "sdr", payrollRole: "sdr", saas: "leverads" },
@@ -79,9 +99,18 @@ test("gerar folha: cria a conta por pessoa (dia 1 do mês seguinte), atualiza em
   const igor = await repo.get("payables", "pay_folha_leverads_2026-09_igor");
   assert.equal(igor.amount, 4600, "valor revisado à mão fica");
   assert.equal(igor.payroll.total, 4700, "o cálculo segue registrado");
+  // Ficha (VR) e ajuste do mês entram no cálculo e na conta gerada.
+  await repo.create("payroll_profiles", { id: "igor", uid: "igor", saas: "leverads", vr: 500, vt: 0, extras: [] });
+  await repo.create("payroll_adjustments", { id: "adj1", saas: "leverads", month: "2026-09", uid: "igor", label: "bônus vídeo", amount: 250, kind: "acordo" });
+  await repo.update("payables", "pay_folha_leverads_2026-09_igor", { amountManual: false });
+  const r3 = await generatePayroll(repo, product, "2026-09", { by: "leo" });
+  assert.equal(r3.updated, 1);
+  const igor2 = await repo.get("payables", "pay_folha_leverads_2026-09_igor");
+  assert.equal(igor2.amount, 4700 + 500 + 250);
+  assert.deepEqual([igor2.payroll.vr, igor2.payroll.adjustmentsTotal], [500, 250]);
   const preview = await computePayroll(repo, product, "2026-09");
   assert.equal(preview.rows.find((r) => r.uid === "sdr").payable.status, "paga");
-  assert.equal(preview.total, (2200 + 550 + 950 + 300) + 4700, "cálculo atualizado: receita a 140% paga 950");
+  assert.equal(preview.total, (2200 + 550 + 950 + 300) + (4700 + 500 + 250), "cálculo atualizado: receita a 140% paga 950, VR e ajuste do Igor");
 });
 
 test("rotas /api/comp/payroll: preview e generate", async () => {
