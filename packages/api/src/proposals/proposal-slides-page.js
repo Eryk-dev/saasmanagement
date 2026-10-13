@@ -473,6 +473,16 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0B141D; }
   border-radius: var(--radius-control); background: var(--paper-card); color: var(--ink);
   font: 400 13px/1 var(--font-sans); }
 .cfg-input:focus, .cfg-select:focus { outline: 2px solid var(--brand); outline-offset: 1px; }
+/* Cadeado do desconto: fechado trava em 15%, aberto (senha de admin) libera. */
+.cfg-lock { flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 34px; height: 34px;
+  padding: 0 9px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--paper-card);
+  color: var(--ink-muted); font: 600 12.5px/1 var(--font-sans); cursor: pointer; }
+.cfg-lock:hover:not(:disabled) { color: var(--ink); }
+.cfg-lock:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.cfg-lock:disabled { cursor: default; }
+.cfg-lock[data-open] { color: var(--brand); border-color: var(--brand); }
+.cfg-desc-form { display: flex; gap: 6px; }
+.cfg-desc-form[hidden] { display: none; }
 .cfg-card { background: var(--paper-card); border: 1px solid var(--line); border-radius: var(--radius-card);
   box-shadow: var(--shadow-card); padding: 22px; display: flex; flex-direction: column; gap: 12px; }
 .cfg-kicker { font-size: 13px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--ink-faint); }
@@ -857,11 +867,20 @@ export function contasDoForm(answers, calc) {
 
 // Configuração da apresentação: o que a tela zero guarda (state.deckC). Nasce
 // do que o FORMULÁRIO trouxe (nome, empresa, contas) e do produto que a régua
-// do catálogo sugere. Pedidos/mês, ticket médio e desconto à vista o form não
+// do catálogo sugere. Pedidos/mês, ticket médio e desconto o form não
 // pergunta: ficam em branco pro closer preencher na call (Leo, 18/09/2026),
 // nunca um número inventado que o cliente pudesse levar a sério.
 // Com `catalog`, linha, pacote, Price e pacote de OEM só valem se forem planos
 // que o catálogo vende (deckChoices); sem ele, as chaves de sempre.
+//
+// O desconto da negociação é travado em 15% (o teto da tela zero antiga). Acima
+// disso só com o cadeado aberto: a senha de um admin conferida no servidor, que
+// grava `state.descontoLiberado` FORA do deckC — o que o navegador manda nunca
+// abre o próprio teto.
+export const DESCONTO_TETO = 15;
+export const DESCONTO_TETO_LIBERADO = 90;
+export const descontoTeto = (p) => (p && p.state && p.state.descontoLiberado ? DESCONTO_TETO_LIBERADO : DESCONTO_TETO);
+
 export function deckConfig(p, { suggested = "", catalog = null } = {}) {
   const s = (p.state && p.state.deckC) || {};
   const lead = (p.data && p.data.lead) || {};
@@ -888,7 +907,7 @@ export function deckConfig(p, { suggested = "", catalog = null } = {}) {
     contas: num(s.contas, contasDoForm(answers, p.calc)),
     pedidos: num(s.pedidos, 0),
     ticket: num(s.ticket, 0),
-    vistaPct: Math.min(90, Math.max(0, Number(s.vistaPct) || 0)),
+    vistaPct: Math.min(descontoTeto(p), Math.max(0, Number(s.vistaPct) || 0)),
     plataforma: s.plataforma != null ? !!s.plataforma : true,
     linha: ["ads", "oem"].includes(String(s.linha || "")) ? String(s.linha) : (linhaSug === "oem" ? "oem" : "ads"),
     tier: ["essencial", "escala"].includes(String(s.tier || "")) ? String(s.tier) : (tierSug === "escala" ? "escala" : "essencial"),
@@ -956,9 +975,15 @@ function cfgScreen(configOnly = false) {
         <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px">
           <label style="min-width:0;display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--ink-muted)"><span>Ticket médio (R$)</span>
             <input class="cfg-input" type="number" min="1" placeholder="na call" data-cfg="ticket"></label>
-          <label style="min-width:0;display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--ink-muted)"><span>Desc. à vista (%)</span>
-            <input class="cfg-input" type="number" min="0" max="90" placeholder="0" data-cfg="vistaPct"></label>
+          <div data-desconto style="min-width:0;display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--ink-muted)"><label for="cfg-desconto">Desconto (%)</label>
+            <span style="display:flex;gap:6px"><input id="cfg-desconto" class="cfg-input" type="number" min="0" max="15" placeholder="0" data-cfg="vistaPct">
+              <button type="button" class="cfg-lock" data-desc-lock aria-expanded="false"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></button></span></div>
         </div>
+        <form class="cfg-desc-form" data-desconto data-desc-form hidden>
+          <input class="cfg-input" type="password" autocomplete="off" placeholder="Senha de um admin" aria-label="Senha de um admin" data-desc-senha>
+          <button type="submit" class="cfg-lock">Liberar</button>
+        </form>
+        <div data-desconto data-desc-msg role="status" style="font-size:12px;color:var(--ink-faint);line-height:1.4"></div>
       </div>
 
       <div class="cfg-card">
@@ -1071,6 +1096,8 @@ export function proposalSlidesPageHtml(p, { editable = false, previewBanner = fa
     salvavel: !!editable && p.id !== "preview",
     aceito: !!p.accepted,
     cfg,
+    descTeto: descontoTeto(p),
+    descTetoPadrao: DESCONTO_TETO,
     oferta,
     catalog: editable ? slim : null,
     hoje: new Date().toLocaleDateString("pt-BR"),
@@ -1105,7 +1132,7 @@ html, body { height: auto; overflow: auto; background: var(--paper-card); }
 .cfg-client > div { display: contents !important; }
 .cfg-client > .cfg-kicker, .cfg-client > div:nth-child(2),
 .cfg-client label:has([data-cfg="nome"]), .cfg-client label:has([data-cfg="empresa"]),
-.cfg-client label:has([data-cfg="contas"]), .cfg-client label:has([data-cfg="vistaPct"]) { display: none !important; }
+.cfg-client label:has([data-cfg="contas"]), .cfg-client [data-desconto] { display: none !important; }
 .cfg-prod { padding: 6px 8px; gap: 8px; }
 .cfg-prod strong { font-size: 12px; }
 .cfg-prod .sub, [data-nota-plano] { display: none; }
@@ -1472,6 +1499,7 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
       if (!el) return;
       var k = el.getAttribute("data-cfg");
       cfg[k] = el.type === "checkbox" ? el.checked : (el.type === "number" ? Number(el.value) : el.value);
+      if (k === "vistaPct") cfg[k] = Math.min(descTeto, Math.max(0, cfg[k] || 0));
       if (k === "linha") { var t = tiersDa(cfg.linha); if (!t.some(function (x) { return x.v === cfg.tier; })) cfg.tier = t[0] ? t[0].v : "essencial"; }
       pintarCfg(); pintar(); salvar();
     });
@@ -1485,6 +1513,63 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
       cfg.periodo = b.getAttribute("data-v");
       pintarCfg(); pintar(); salvar();
     });
+    // ── Desconto travado ────────────────────────────────────────────────
+    // Até o teto padrão (15%) qualquer closer aplica. O cadeado abre o campo
+    // de senha e quem confere é o servidor (senha de um admin), que grava a
+    // liberação na proposta. O teto vale no servidor de qualquer jeito: o
+    // limite aqui é só pra tela não mostrar um número que não seria salvo.
+    var descTeto = D.descTeto, descAberto = D.descTeto > D.descTetoPadrao;
+    var descInput = document.querySelector('[data-cfg="vistaPct"]');
+    var descLock = document.querySelector("[data-desc-lock]");
+    var descForm = document.querySelector("[data-desc-form]");
+    var descSenha = document.querySelector("[data-desc-senha]");
+    var descMsg = document.querySelector("[data-desc-msg]");
+    function pintarTrava(aviso) {
+      descInput.max = String(descTeto);
+      if (descAberto) descLock.setAttribute("data-open", ""); else descLock.removeAttribute("data-open");
+      descLock.querySelector("path").setAttribute("d", descAberto ? "M7 11V7a5 5 0 0 1 9.9-1" : "M7 11V7a5 5 0 0 1 10 0v4");
+      descLock.disabled = descAberto || !D.salvavel;
+      var rotulo = descAberto ? "Desconto liberado até " + descTeto + "%" : "Liberar desconto acima de " + descTeto + "% com a senha de um admin";
+      descLock.setAttribute("aria-label", rotulo);
+      descLock.title = rotulo;
+      if (descAberto) descForm.hidden = true;
+      descLock.setAttribute("aria-expanded", String(!descForm.hidden));
+      descMsg.textContent = aviso || (descAberto ? "Liberado até " + descTeto + "% com senha de admin."
+        : D.salvavel ? "Até " + descTeto + "%. O cadeado libera mais com a senha de um admin."
+        : "Até " + descTeto + "%. O cadeado só abre numa proposta salva.");
+    }
+    descLock.addEventListener("click", function () {
+      descForm.hidden = !descForm.hidden;
+      pintarTrava();
+      if (!descForm.hidden) descSenha.focus();
+    });
+    descForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+      if (!descSenha.value) return;
+      var botao = descForm.querySelector("button");
+      botao.disabled = true;
+      fetch("/public/proposals/" + encodeURIComponent(D.id) + "/discount-unlock", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ k: new URLSearchParams(location.search).get("k"), password: descSenha.value })
+      }).then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, j: j }; });
+      }).then(function (res) {
+        botao.disabled = false;
+        descSenha.value = "";
+        if (res.status !== 200) {
+          pintarTrava(res.status === 403 ? "Senha não confere com a de nenhum admin."
+            : res.status === 429 ? "Muitas tentativas. Espere alguns minutos."
+            : "Não liberou, tente de novo.");
+          descSenha.focus();
+          return;
+        }
+        descTeto = Number(res.j.teto) || descTeto;
+        descAberto = true;
+        pintarTrava();
+        descInput.focus();
+      }).catch(function () { botao.disabled = false; pintarTrava("Não liberou, tente de novo."); });
+    });
+    pintarTrava();
     pintarCfg();
   }
 

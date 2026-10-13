@@ -796,7 +796,14 @@ alteração funcional nesta preparação.
   trabalho do closer (slides, com `editKey`) recebe a tabela atual do template
   (`syncProposalCatalog`) ao abrir a tela zero, no PATCH, nas ofertas e no
   envio; o link do cliente continua com a oferta congelada no envio e sem
-  tabela. Validação: `test/proposal-deck-config.test.js` e
+  tabela. **Desconto:** `deckC.vistaPct` é o desconto da negociação (o nome é
+  de quando valia só no à vista): baixa a parcela, em reais inteiros, e o
+  total é parcela × nº de parcelas; o pacote de OEM avulso fica fora.
+  `deckConfig` trava em 15%. Até 90% só com o cadeado da tela zero: `POST
+  /public/proposals/:id/discount-unlock` confere o `editKey` e a senha
+  (scrypt local) de qualquer usuário com a etiqueta `admin`, no máximo 5
+  tentativas por proposta a cada 10 min, e grava `state.descontoLiberado`
+  fora do `deckC`. Validação: `test/proposal-deck-config.test.js` e
   `cd packages/web && node scripts/review/today-card.mjs` (API fictícia).
 
 - **Atalhos do lead (21/09/2026):** `components/lead-send-actions.jsx` reúne os

@@ -278,7 +278,7 @@ export function CurrentDeck({row,outline,onEdit}){
 // dele que saem tanto a prévia quanto o link que vai pro cliente.
 const PREVIEW_NUM = {
   oem: [["qtd", "Quantidade de anúncios", "na call"], ["valor", "Valor por anúncio (R$)", "na call"]],
-  slides: [["contas", "Contas", "2"], ["pedidos", "Pedidos/mês", "na call"], ["ticket", "Ticket médio (R$)", "na call"], ["vistaPct", "Desc. à vista (%)", "20"]],
+  slides: [["contas", "Contas", "2"], ["pedidos", "Pedidos/mês", "na call"], ["ticket", "Ticket médio (R$)", "na call"], ["vistaPct", "Desconto (%)", "até 15"]],
 };
 const TIER_NOME = { essencial: "Essencial", escala: "Escala", enterprise: "Enterprise" };
 const LINHA_NOME = { ads: "Lever Ads", oem: "Lever OEM (autopeças)" };

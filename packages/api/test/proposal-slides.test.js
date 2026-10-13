@@ -13,6 +13,7 @@ const { ensureProposalCatalog, ensureSlidesDeck, regenerateOpenLeadsToSlides } =
 const { runNativeProposal, shareProposalOffer, proposalOffersOf } = await import("../src/proposals/proposal.js");
 const { registerProposalRoutes } = await import("../src/proposals/routes.proposals.js");
 const { calcOferta, deckConfig, slimCatalog, proposalSlidesPageHtml } = await import("../src/proposals/proposal-slides-page.js");
+const { hashPassword } = await import("../src/auth/auth.js");
 
 const TEMPLATE = {
   id: "pt_leverads",
@@ -44,7 +45,7 @@ async function catalogoDoTemplate(repo) {
 }
 
 const cfgBase = {
-  nome: "Viviane", empresa: "Zpack", contas: 3, pedidos: 300, ticket: 120, vistaPct: 20,
+  nome: "Viviane", empresa: "Zpack", contas: 3, pedidos: 300, ticket: 120, vistaPct: 0,
   plataforma: true, linha: "ads", tier: "essencial",
   price: false, priceTier: "essencial", oem: false, oemPack: "1000", periodo: "anual",
 };
@@ -140,14 +141,22 @@ test("migração: o deck de slides é o publicado do leverads, com o catálogo d
   assert.equal(t2.calc.catalog.products.ads_escala.anu.per, 1099);
 });
 
-test("a conta do plano sai do catálogo: pacote, conta extra, período e pagamento à vista", async () => {
+test("a conta do plano sai do catálogo: pacote, conta extra, período e desconto", async () => {
   const repo = await seedRepo();
   const cat = await catalogoDoTemplate(repo);
 
   const essencial = calcOferta(cat, cfgBase);
   assert.equal(essencial.parcelas, 12);
   assert.equal(essencial.mensal, 497, "Ads Essencial anual");
-  assert.equal(essencial.vistaFmt, "4.771", "12 x 497 com 20% à vista");
+  assert.equal(essencial.vistaFmt, "5.964", "sem desconto, o total é 12 x 497");
+
+  // Desconto da negociação: baixa a PARCELA, e o total é a soma das parcelas.
+  const comDesconto = calcOferta(cat, { ...cfgBase, vistaPct: 15 });
+  assert.equal(comDesconto.mensal, 422, "497 com 15%, em reais inteiros");
+  assert.equal(comDesconto.mensalFmt, "422");
+  assert.equal(comDesconto.vistaFmt, "5.064", "12 x 422: o total acompanha a parcela");
+  const descontoComOem = calcOferta(cat, { ...cfgBase, vistaPct: 15, oem: true, oemPack: "2000" });
+  assert.equal(descontoComOem.setupFmt, "3.500", "pacote de OEM avulso fica fora do desconto");
 
   // 5 contas no Essencial (3 inclusas): duas extras a R$ 100.
   const comExtras = calcOferta(cat, { ...cfgBase, contas: 5 });
@@ -168,6 +177,46 @@ test("a conta do plano sai do catálogo: pacote, conta extra, período e pagamen
   assert.equal(completo.planoNome, "Ads Escala + Lever Price · Escala + OEM 2.000");
   assert.equal(completo.entregaveis.length, 4, "um card por produto + o lado humano");
   assert.ok(completo.entregaveis[0].itens.length > 0, "entregáveis vêm do catálogo, não escritos no slide");
+});
+
+test("cadeado do desconto: 15% sem senha; só a senha de um admin libera, e fica na proposta", async (t) => {
+  const repo = await seedRepo();
+  await repo.create("users", { id: "leo", name: "Leo", role: "admin", roles: ["admin"], passwordHash: hashPassword("senha-do-dono") });
+  await repo.create("users", { id: "ana", name: "Ana", role: "admin", roles: ["closer"], passwordHash: hashPassword("senha-da-closer") });
+  const lead = await repo.create("leads", { id: "ld_desconto", saas: "leverads", name: "Cliente" });
+  const { proposal } = await runNativeProposal(repo, lead, { template: "pt_leverads_slides", baseUrl: "http://x" });
+  const app = Fastify();
+  t.after(() => app.close());
+  registerProposalRoutes(app, repo, { unlockRateLimit: 3 });
+  const url = "/public/proposals/" + proposal.id;
+  const salvar = async (vistaPct) => {
+    const r = await app.inject({ method: "PATCH", url, payload: { k: proposal.editKey, deckC: { ...cfgBase, vistaPct } } });
+    assert.equal(r.statusCode, 200);
+    return (await repo.get("proposals", proposal.id)).state;
+  };
+  const liberar = (payload) => app.inject({ method: "POST", url: url + "/discount-unlock", payload });
+
+  assert.equal((await salvar(10)).deckC.vistaPct, 10, "até o teto o closer aplica sozinho");
+  assert.equal((await salvar(40)).deckC.vistaPct, 15, "acima do teto, trava em 15%");
+  assert.match((await app.inject({ url: `/p/${proposal.id}?k=${proposal.editKey}` })).body, /"descTeto":15/);
+
+  assert.equal((await liberar({ k: "errada", password: "senha-do-dono" })).statusCode, 401, "sem a chave de edição nem tenta a senha");
+  assert.equal((await liberar({ k: proposal.editKey, password: "senha-da-closer" })).statusCode, 403, "senha de quem não é admin não libera");
+  assert.equal((await liberar({ k: proposal.editKey })).statusCode, 403, "sem senha não libera");
+  assert.equal((await repo.get("proposals", proposal.id)).state.descontoLiberado, undefined);
+
+  const ok = await liberar({ k: proposal.editKey, password: "senha-do-dono" });
+  assert.equal(ok.statusCode, 200);
+  assert.equal(ok.json().teto, 90);
+  const estado = await salvar(40);
+  assert.equal(estado.deckC.vistaPct, 40, "liberado, o desconto passa do teto");
+  assert.equal(estado.descontoLiberado.by, "leo", "fica registrado quem liberou");
+  const pagina = (await app.inject({ url: `/p/${proposal.id}?k=${proposal.editKey}` })).body;
+  assert.match(pagina, /"descTeto":90/, "a tela zero reabre com o cadeado aberto");
+  assert.doesNotMatch(pagina, /senha-do-dono|passwordHash/);
+
+  // Senha errada em série: a rota fecha antes de virar adivinhação.
+  assert.equal((await liberar({ k: proposal.editKey, password: "chute" })).statusCode, 429, "4ª senha na mesma proposta");
 });
 
 test("sem produto escolhido, a apresentação não inventa preço", async () => {
@@ -212,7 +261,7 @@ test("a configuração nasce do formulário e do produto que a régua sugere; o 
   assert.equal(c.contas, 3, "faixa do form vale o piso (o closer sobe na call), não os assentos da fórmula");
   assert.equal(c.pedidos, 0, "o form não pergunta pedidos/mês: em branco pra call");
   assert.equal(c.ticket, 0, "o form não pergunta ticket médio: em branco pra call");
-  assert.equal(c.vistaPct, 0, "desconto à vista é decisão da call, não default");
+  assert.equal(c.vistaPct, 0, "desconto é decisão da call, não default");
   assert.equal(c.linha, "oem");
   assert.equal(c.tier, "escala");
   assert.equal(c.periodo, "anual", "a apresentação abre no anual");
@@ -227,7 +276,10 @@ test("a configuração nasce do formulário e do produto que a régua sugere; o 
   assert.equal(sujo.linha, "ads");
   assert.equal(sujo.tier, "essencial");
   assert.equal(sujo.contas, 0);
-  assert.equal(sujo.vistaPct, 90, "desconto à vista tem teto");
+  assert.equal(sujo.vistaPct, 15, "sem o cadeado, o desconto trava em 15%");
+  const liberado = deckConfig({ state: { deckC: { vistaPct: 999 }, descontoLiberado: { by: "leo", at: "2026-10-13" } } }, { suggested: "ads_essencial" });
+  assert.equal(liberado.vistaPct, 90, "com o cadeado aberto o teto sobe, mas existe");
+  assert.equal(deckConfig({ state: { deckC: { vistaPct: 40, descontoLiberado: true } } }).vistaPct, 15, "o navegador não abre o próprio cadeado pelo deckC");
   assert.equal(sujo.periodo, "anual");
 });
 

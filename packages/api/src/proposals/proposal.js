@@ -99,7 +99,8 @@ export async function syncProposalCatalog(repo, proposal) {
 // escolhido como `state.product` e o período como `state.cycle` — é o que o
 // resto do cockpit lê (valor do lead, gate de Ganho, link de pagamento).
 export function deckConfigState(proposal, state, deckC) {
-  const c = deckConfig({ state: { deckC, seats: state.seats }, data: proposal.data },
+  // A liberação do desconto viaja junto: é ela que decide o teto do deckConfig.
+  const c = deckConfig({ state: { deckC, seats: state.seats, descontoLiberado: state.descontoLiberado }, data: proposal.data },
     { suggested: activeProduct(proposal), catalog: proposal.calc?.catalog || null });
   const next = { ...state, deckC: c };
   const chave = c.linha + "_" + c.tier;

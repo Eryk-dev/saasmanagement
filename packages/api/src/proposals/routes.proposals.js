@@ -12,11 +12,12 @@ import { publicProposal, syncProposalLeadSnapshot, syncProposalCatalog, deckConf
 import { pickCases, publicCase } from "./cases.js";
 import { applyCatalog, catalogAmount, catalogUI, activeProduct } from "./proposal-catalog.js";
 import { proposalPageHtml } from "./proposal-page.js";
-import { proposalSlidesPageHtml, deckConfig, calcOferta, slimCatalog } from "./proposal-slides-page.js";
+import { proposalSlidesPageHtml, deckConfig, calcOferta, slimCatalog, DESCONTO_TETO_LIBERADO } from "./proposal-slides-page.js";
 import { proposalOemPageHtml, deckOemConfig, calcOem, OEM_PRINTS_BASE } from "./proposal-oem-page.js";
 import { leveradsResults, leveradsPresentationResults } from "../customers/leverads-results.js";
 import { liveDeckCases } from "./cases-live.js";
 import { makeRateLimiter } from "../forms/forms.js";
+import { verifyPassword } from "../auth/auth.js";
 import { convertWonLead } from "../crm/won-lead.js";
 import { logActivity, applyStageMove } from "../crm/lead-flow.js";
 import { gradeBandKnown } from "../metrics/metrics-core.js";
@@ -132,6 +133,13 @@ export function registerProposalRoutes(app, repo, opts = {}) {
   });
   const clientIp = (req) =>
     String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.ip || "?";
+  // Cadeado do desconto: a rota confere senha, então o limite é bem mais curto
+  // que o das páginas e conta por PROPOSTA, não por IP (x-forwarded-for é o
+  // cliente quem escreve; trocar o cabeçalho não pode zerar a contagem).
+  const allowUnlock = makeRateLimiter({
+    limit: opts.unlockRateLimit ?? 5,
+    windowMs: opts.unlockRateWindowMs ?? 10 * 60_000,
+  });
   // Dispositivo aproximado a partir do user-agent (sem lib): celular/computador +
   // sistema + navegador. Só pra dar contexto de QUEM abriu (não identifica pessoa).
   const deviceFromUA = (ua) => {
@@ -270,6 +278,27 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     // no-store: sem isso o navegador reusa HTML antigo por cache heurístico e o
     // closer apresenta uma versão velha do deck (re-snapshots são frequentes).
     return reply.type("text/html").header("cache-control", "no-store").send(renderProposal(p, { editable, configOnly: editable && req.query.embed === "config" }));
+  });
+
+  // Cadeado do desconto (tela zero do deck de slides): o closer aplica até 15%
+  // sozinho; acima disso um ADMIN digita a própria senha na tela. Vale a senha
+  // de qualquer usuário com a etiqueta admin (os donos da operação). A
+  // liberação fica gravada na proposta, com quem liberou e quando, fora do
+  // deckC que o navegador controla.
+  app.post("/public/proposals/:id/discount-unlock", async (req, reply) => {
+    const p = await repo.get("proposals", req.params.id);
+    if (!p) return reply.code(404).send({ error: "Not found" });
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    if (!p.editKey || !body.k || body.k !== p.editKey) return reply.code(401).send({ error: "Unauthorized" });
+    if (!allowUnlock(p.id)) return reply.code(429).send({ error: "Muitas tentativas. Espere alguns minutos." });
+    const password = typeof body.password === "string" ? body.password : "";
+    const admins = (await repo.list("users")).filter((u) => Array.isArray(u.roles) && u.roles.includes("admin"));
+    const admin = password ? admins.find((u) => verifyPassword(password, u.passwordHash)) : null;
+    if (!admin) return reply.code(403).send({ error: "Senha não confere com a de nenhum admin." });
+    await repo.update("proposals", p.id, {
+      state: { ...(p.state || {}), descontoLiberado: { by: admin.id, at: new Date().toISOString() } },
+    });
+    return { ok: true, teto: DESCONTO_TETO_LIBERADO };
   });
 
   // Painel do closer: só os campos de estado, só com o editKey certo.

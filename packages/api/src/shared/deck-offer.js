@@ -79,8 +79,13 @@ export function calcOferta(cat, st) {
     nota: "quem vende todo dia, cuidando de quem vende todo dia."
   });
 
-  var vistaPct = Math.min(90, Math.max(0, Number(st.vistaPct) || 0));
-  var vista = mensal * parcelas * (1 - vistaPct / 100);
+  // Desconto da negociação: baixa a PARCELA (em reais inteiros) e o total é a
+  // soma das parcelas, pra conta fechar na cabeça do cliente. A chave segue
+  // vistaPct porque nasceu como desconto só do à vista e já mora no estado
+  // das propostas salvas. O teto (15%, ou 90% com o cadeado) é do deckConfig.
+  var descPct = Math.min(90, Math.max(0, Number(st.vistaPct) || 0));
+  mensal = Math.round(mensal * (1 - descPct / 100));
+  var vista = mensal * parcelas;
   // Ticket e pedidos vêm da CALL (o formulário não pergunta): sem os dois o
   // slide "Na prática" sai da apresentação em vez de mostrar uma conta falsa.
   var ticket = Math.max(0, Number(st.ticket) || 0);
