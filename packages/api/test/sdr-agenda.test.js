@@ -202,3 +202,28 @@ test("'terça ou quarta' pede os dois dias; 'quarta que vem' e 'sexta feira tamb
     assert.equal(sdrAgendaWindow([inbound(text)], NOW).requested, false, text);
   }
 });
+
+// Leo, 13/10: o lead respondeu "só depois desse horário" a "amanhã às 9h ou às
+// 11h" e o robô repetiu o mesmo par três vezes. "Parte da manhã" era o MOTIVO
+// (a operação dele é de manhã), não um pedido de manhã.
+test("'depois desse horário' pede acima do par oferecido; cláusula de motivo não vira pedido de período", () => {
+  const offer = { direction: "out", text: "Tenho agenda para amanhã às 9h ou às 11h. Qual funciona melhor para você?", at: "2026-09-21T11:00:00Z" };
+  const w = sdrAgendaWindow([offer, inbound("Infelizmente só depois desse horário,  pq a minha operação é toda na parte da manhã,  o horário da coleta é às 11:45")], NOW);
+  assert.equal(w.requested, true);
+  assert.equal(w.fromHour, 12);
+  assert.equal(w.toHour, undefined);
+  assert.equal(w.startDate, "2026-09-22", "do dia oferecido em diante");
+  assert.equal(sdrAgendaWindow([offer, inbound("Tem algum horário depois desse?")], NOW).fromHour, 12);
+  assert.equal(sdrAgendaWindow([offer, inbound("Consegue mais tarde?")], NOW).fromHour, 12);
+  const cedo = sdrAgendaWindow([{ ...offer, text: "Consigo amanhã às 14h ou às 16h, qual fica melhor pra você?" }, inbound("antes desse horário dá?")], NOW);
+  assert.equal(cedo.toHour, 14);
+  assert.equal(cedo.fromHour, undefined);
+  // Sem oferta antes, "depois desse" não aponta pra nada: janela normal.
+  assert.equal(sdrAgendaWindow([inbound("Tem algum horário depois desse?")], NOW).requested, false);
+  // Motivo sozinho não pede manhã; pedido explícito de período segue valendo.
+  assert.equal(sdrAgendaWindow([inbound("pq a minha operação é toda na parte da manhã")], NOW).requested, false);
+  assert.equal(sdrAgendaWindow([inbound("só consigo à tarde porque de manhã eu trabalho")], NOW).fromHour, 12);
+  // Lembrete não é oferta: "depois desse" depois de um lembrete não vira restrição.
+  const lembrete = { direction: "out", text: "Confirmando nossa conversa amanhã às 13h", at: "2026-09-21T11:00:00Z" };
+  assert.equal(sdrAgendaWindow([lembrete, inbound("Tem algum horário depois desse?")], NOW).requested, false);
+});

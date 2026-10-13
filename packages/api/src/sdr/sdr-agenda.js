@@ -10,6 +10,7 @@
 // da tarde", "Mais sim na terça feira", "Poderíamos passar amanhã?"), e cada
 // uma virava handoff pra gente marcar na mão no dia seguinte.
 import { slotsForLead, wallNow, wallFromNaive, addBusinessDaysNaive, OFFER_HOURS } from "../crm/agenda-slots.js";
+import { isOfferMsg, expandSameDay } from "./sdr-signals.js";
 
 const ymd = (d) => d.toISOString().slice(0, 10);
 const normalize = (v) => String(v || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -40,15 +41,31 @@ const HOUR_BOUND_RX = /\b(depois|apos|a partir|antes)\s+(?:d[aeo]s?|[ao]s?)\s*(\
 const PERIOD_RX = /\b(?:de|pela|a|na|no|de|do|da|no periodo da|no periodo de|periodo da|periodo de)?\s*\b(manha|tarde|noite)\b/;
 const PERIODS = { manha: { fromHour: 6, toHour: 12 }, tarde: { fromHour: 12, toHour: 19 }, noite: { fromHour: 18, toHour: 21 } };
 const HAS_HOUR_RX = /\b\d{1,2}\s?h(\d{2})?\b|\b\d{1,2}:\d{2}\b/;
+// Restrição RELATIVA ao par que o robô acabou de oferecer (Leo, 13/10: o lead
+// respondeu "só depois desse horário" a "9h ou 11h" e o robô repetiu 9h ou
+// 11h três vezes). "depois desse/disso", "mais tarde" = acima da maior hora
+// oferecida; "antes desse", "mais cedo" = abaixo da menor. Só vale com uma
+// oferta na conversa: sem ela não há "esse horário" pra se referir.
+const LATER_RX = /\b(?:depois|apos)\s+(?:d[eo]ss[ea]s?|d[eo]st[ea]s?|disso)\b|\bmais tarde\b/;
+const EARLIER_RX = /\bantes\s+(?:d[eo]ss[ea]s?|d[eo]st[ea]s?|disso)\b|\bmais cedo\b/;
+// Cláusula de MOTIVO ("pq a minha operação é toda na parte da manhã"): a
+// pessoa explica por que não pode, não pede. Período citado ali não é pedido;
+// dia e hora ainda contam ("porque sexta eu viajo" segue sendo recusa).
+const REASON_SPLIT_RX = /\b(?:porque|pq|pois|ja que|visto que)\b/;
+const REASON_RX = /^(?:porque|pq|pois|ja que|visto que)\b/;
 
 // Faixa de horas pedida na cláusula (ou null). Depois de uma negação sem
 // pista de alternativa, "manhã/tarde/noite" é recusa, não pedido; "depois
 // das 15h" é sempre restrição (alternativa por natureza).
-function periodOf(t, negIdx) {
+function periodOf(t, negIdx, offer = null) {
   const bound = t.match(HOUR_BOUND_RX);
   if (bound) {
     const h = Number(bound[2]);
     if (h >= 0 && h <= 23) return bound[1] === "antes" ? { fromHour: null, toHour: h } : { fromHour: h, toHour: null };
+  }
+  if (offer?.hours?.length) {
+    if (LATER_RX.test(t)) return { fromHour: Math.max(...offer.hours) + 1, toHour: null, relative: true };
+    if (EARLIER_RX.test(t)) return { fromHour: null, toHour: Math.min(...offer.hours), relative: true };
   }
   const m = t.match(PERIOD_RX);
   if (!m) return null;
@@ -59,11 +76,12 @@ function periodOf(t, negIdx) {
 }
 
 // Uma cláusula → { date, days, period } (qualquer um pode faltar) ou null.
-function parseClause(t, at) {
+function parseClause(t, at, offer = null) {
   t = t.trim();
   if (!t || NOT_A_REQUEST_RX.test(t)) return null;
   const negIdx = t.search(NEG_RX);
-  const period = periodOf(t, negIdx);
+  const reason = REASON_RX.test(t);
+  const period = reason ? null : periodOf(t, negIdx, offer);
   const mentions = [...t.matchAll(DAY_RX)].map((m) => ({ text: m[0], idx: m.index }));
   // Dia recusado: antes da negação, ou logo depois dela sem pista de alternativa.
   const candidates = mentions.filter((m) => negIdx < 0 || (m.idx > negIdx && ALT_CUE_RX.test(t.slice(negIdx, m.idx))));
@@ -135,13 +153,15 @@ function mentionDate(pickText, t, at) {
 // da última cláusula que pede um; o PERÍODO, da última que cita um. Assim
 // "Amanhã eu não consigo. Teria que ser quarta" pede quarta, e "quarta, de
 // manhã" pede quarta de manhã.
-function requestedWindow(text, at) {
+function requestedWindow(text, at, offer = null) {
   const t = normalize(text).trim();
   if (!t) return null;
-  const clauses = t.split(/[,;.!?]|\bmas\b|\bporem\b/).map((s) => s.trim()).filter(Boolean);
+  // O motivo vira cláusula própria, começando pela conjunção, pra parseClause
+  // saber que ali ninguém está pedindo período.
+  const clauses = t.replace(REASON_SPLIT_RX, (m) => `. ${m}`).split(/[,;.!?]|\bmas\b|\bporem\b/).map((s) => s.trim()).filter(Boolean);
   let day = null, period = null;
   for (const c of clauses) {
-    const r = parseClause(c, at);
+    const r = parseClause(c, at, offer);
     if (!r) continue;
     if (r.date) day = r;
     if (r.period) period = r.period;
@@ -149,7 +169,10 @@ function requestedWindow(text, at) {
   if (!day && !period) return null;
   const out = { requested: true };
   if (day) { out.startDate = ymd(day.date); out.days = day.days; }
-  else {
+  else if (period.relative && offer?.startDate && offer.startDate >= ymd(at)) {
+    // "Depois desse horário": do dia oferecido em diante, dentro da faixa.
+    out.startDate = offer.startDate; out.days = 5; out.periodOnly = true;
+  } else {
     // Só período: hoje (dia útil) em diante, 5 dias úteis dentro da faixa.
     const start = isWeekend(at) ? wallFromNaive(addBusinessDaysNaive(ymd(at), 1)) : at;
     out.startDate = ymd(start); out.days = 5; out.periodOnly = true;
@@ -159,6 +182,18 @@ function requestedWindow(text, at) {
     if (period.toHour != null) out.toHour = Math.min(OFFER_HOURS.toHour, period.toHour);
   }
   return out;
+}
+
+// O que a nossa oferta disse: as horas citadas e o dia (lido com o mesmo
+// parser do pedido, relativo a quando a oferta saiu).
+function offeredWindow(text, at) {
+  const t = normalize(expandSameDay(text));
+  const hours = [...t.matchAll(/\b(\d{1,2})\s?h(?:\d{2})?\b|\b(\d{1,2}):\d{2}\b/g)].map((m) => Number(m[1] ?? m[2])).filter((h) => h >= 0 && h <= 23);
+  // "Tenho agenda para amanhã…" não tem verbo de pedido (é a nossa oferta,
+  // não um pedido do lead): o dia é lido direto da primeira menção.
+  const day = t.match(new RegExp(DAY_RX.source));
+  const d = day ? mentionDate(day[0], t, at) : null;
+  return { hours, startDate: d ? ymd(d.date) : null };
 }
 
 // Janela ESPONTÂNEA: hoje (se for dia útil; a folga de 2h do slotsForLead
@@ -183,12 +218,16 @@ const lastDayOf = (w) => ymd(dayPlus(wallFromNaive(w.startDate), Math.max(0, (w.
 export function sdrAgendaWindow(messages = [], now = wallNow(), { callAt = "" } = {}) {
   let window = defaultWindow(now);
   let lastIn = null;
+  let offer = null; // a última oferta nossa: { hours, startDate } pra "depois desse horário"
   for (const m of messages.slice(-24)) {
-    if (m.direction !== "in") continue;
-    lastIn = m;
     const parsedAt = m.at ? wallNow(new Date(m.at)) : now;
     const at = Number.isFinite(parsedAt.getTime()) ? parsedAt : now;
-    const requested = requestedWindow(m.transcript || m.text, at);
+    if (m.direction !== "in") {
+      if (isOfferMsg(m.text || "")) offer = offeredWindow(m.text, at);
+      continue;
+    }
+    lastIn = m;
+    const requested = requestedWindow(m.transcript || m.text, at, offer);
     if (!requested) continue;
     if (lastDayOf(requested) < ymd(now)) { window = defaultWindow(now); continue; }
     window = requested;
