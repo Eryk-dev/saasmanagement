@@ -163,7 +163,7 @@ const leadEngaged = (msgs) => msgs.some((m) => {
   return !FORM_MSG_RX.test(t) && (INTEREST_RX.test(t) || SCHEDULE_ASK_RX.test(t) || HAS_HOUR_RX.test(t));
 });
 // Pedido de dia/período do lead: aí a oferta pode pular a vaga de hoje.
-const PERIOD_ASK_RX = /manh[ãa]|tarde|noite|depois d[ao]s|antes d[ao]s|a partir d[ao]s|semana que vem|outro dia|s[óo] (?:na |no )?(?:segunda|ter[çc]a|quarta|quinta|sexta)/i;
+const PERIOD_ASK_RX = /manh[ãa]|tarde|noite|depois d[ao]s|antes d[ao]s|a partir d[ao]s|depois d[eo]ss|antes d[eo]ss|mais cedo|semana que vem|outro dia|s[óo] (?:na |no )?(?:segunda|ter[çc]a|quarta|quinta|sexta)/i;
 // Só frases que SÓ robô de atendimento escreve. Nada de "esse número é do…" ou
 // "clique no link", que gente de verdade também manda ("esse número é do meu
 // sócio") — o preço do falso positivo aqui é o robô emudecer com uma pessoa
