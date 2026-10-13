@@ -14,6 +14,11 @@
 .deck-cfg-product-title { display: block; font-size: 12.5px; font-weight: 600; color: var(--fg-1); }
 .deck-cfg-product-hint { display: block; margin-top: 1px; font-size: 11.5px; color: var(--fg-3); overflow-wrap: anywhere; }
 .deck-cfg-product-pick { padding-left: 24px; min-width: 0; }
+.deck-cfg-product-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.deck-cfg-product-row > :first-child { flex: 1 1 160px; min-width: 0; }
+.deck-cfg-contas { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.deck-cfg-contas .inp { width: 64px; height: 30px; font-size: 12.5px; text-align: center; box-sizing: border-box; font-variant-numeric: tabular-nums; }
+.deck-cfg-contas .inp:focus { border-color: var(--accent-line); }
 
 .deck-cfg-value { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--r-2); background: var(--bg-2); min-width: 0; }
 .deck-cfg-value-body { display: flex; flex-direction: column; gap: 2px; flex: 1 1 150px; min-width: 0; font-size: 11.5px; color: var(--fg-3); overflow-wrap: anywhere; }
@@ -26,5 +31,5 @@
 .deck-cfg-status[data-tone="neg"] { color: var(--neg); }
 
 @media (pointer: coarse) {
-  .deck-cfg-field .inp, .deck-cfg-present { min-height: 40px; }
+  .deck-cfg-field .inp, .deck-cfg-contas .inp, .deck-cfg-present { min-height: 40px; }
 }
