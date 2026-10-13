@@ -79,6 +79,16 @@ function DeckConfig({ leadId, url, initial }) {
   const packOptions = choices.oemPacks.map((x) => ({ value: String(x.qty), label: `${x.qty.toLocaleString("pt-BR")} anúncios`, hint: brl(x.price) }));
   const platKey = `${cfg.linha}_${cfg.tier}`;
   const plat = choices.plataforma.find((x) => x.key === platKey);
+  // Contas do cliente: em branco vale o que o pacote inclui; acima disso, a
+  // conta extra da tabela de Planos entra em cada parcela (a mesma regra de
+  // calcOferta). Era só leitura no card, o closer ajusta aqui (13/10/2026).
+  const inclusas = plat ? plat.contas : 0;
+  const contas = Number(cfg.contas) > 0 ? Number(cfg.contas) : inclusas;
+  const extras = Math.max(0, contas - inclusas);
+  const extraPer = Number(catalog?.addons?.contaExtra?.per) || 100;
+  const platHint = plat
+    ? `${contas} contas · ${brl((semestral ? plat.semestral : plat.anual) + extras * extraPer)}/mês${extras ? ` · ${extras} extra${extras > 1 ? "s" : ""} a ${brl(extraPer)}` : ""}`
+    : "escolha o plano";
   const priceSel = choices.price.find((x) => x.tier === cfg.priceTier);
   const packSel = choices.oemPacks.find((x) => String(x.qty) === String(cfg.oemPack));
 
@@ -101,10 +111,19 @@ function DeckConfig({ leadId, url, initial }) {
       <div className="deck-cfg-products" role="group" aria-label="Produtos no plano">
         <div className="kicker">Produtos no plano</div>
         {planOptions.length > 0 && (
-          <ProductRow title="LeverAds" hint={plat ? `${plat.contas} contas · ${perMonth(plat)}` : "escolha o plano"}
+          <ProductRow title="LeverAds" hint={platHint}
             on={!!cfg.plataforma} onToggle={(v) => update({ plataforma: v })}>
-            <SelectPopover label="Plano LeverAds" size="sm" width={300} value={platKey} options={planOptions}
-              onChange={(key) => { const x = choices.plataforma.find((p) => p.key === key); if (x) update({ linha: x.linha, tier: x.tier }); }} />
+            <div className="deck-cfg-product-row">
+              <SelectPopover label="Plano LeverAds" size="sm" width={300} value={platKey} options={planOptions}
+                onChange={(key) => { const x = choices.plataforma.find((p) => p.key === key); if (x) update({ linha: x.linha, tier: x.tier }); }} />
+              <label className="deck-cfg-contas">
+                <span className="kicker">Contas</span>
+                <input id={`deck-contas-${leadId}`} className="inp" type="text" inputMode="numeric" autoComplete="off" aria-label="Contas do cliente"
+                  placeholder={inclusas ? String(inclusas) : "na call"} title={`O pacote inclui ${inclusas}; cada conta a mais custa ${brl(extraPer)} por parcela`}
+                  value={Number(cfg.contas) > 0 ? String(cfg.contas) : ""}
+                  onChange={(e) => update({ contas: Number(e.target.value.replace(/\D/g, "")) || 0 })} />
+              </label>
+            </div>
           </ProductRow>
         )}
         {priceOptions.length > 0 && (
