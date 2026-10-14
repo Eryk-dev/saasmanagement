@@ -17,6 +17,8 @@ import { loadSeed } from "./data.jsx";
 import { api, setKey } from "./lib/api.js";
 import { clearCredentials, hasIdentitySession, identity, identityEnabled, readRecoveryHash, requestPasswordEmail, setPasswordFromRecovery } from "./lib/identity.js";
 import { AppStartup } from "./components/screen-loading.jsx";
+import Turnstile from "./components/turnstile.jsx";
+import { captchaError, turnstileEnabled } from "./lib/turnstile.js";
 
 // O cockpit NÃO usa service worker. Um SW zumbi (registrado por site que morou
 // no domínio antes) intercepta a navegação e serve um shell velho do cache pra
@@ -72,15 +74,23 @@ function Login() {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState(null);
   const [notice, setNotice] = React.useState(null);
+  // Token do Turnstile (só com VITE_TURNSTILE_SITE_KEY): vale uma chamada ao
+  // GoTrue; depois de cada uma, `round` troca a key e o widget pede outro.
+  const [captcha, setCaptcha] = React.useState("");
+  const [round, setRound] = React.useState(0);
+  const spendCaptcha = () => { if (captcha) { setCaptcha(""); setRound((n) => n + 1); } };
+  const waitingCaptcha = lever && turnstileEnabled() && !captcha;
   const inputStyle = { height: 34, padding: "0 10px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 };
 
   // Esqueci a senha do LeverId: o GoTrue manda o link de definir senha.
   async function forgot() {
     const email = username.trim();
     if (!email.includes("@")) { setError("digite seu e-mail acima e clique de novo"); return; }
+    if (waitingCaptcha) { setError("espere a verificação anti-robô concluir"); return; }
     setBusy(true); setError(null); setNotice(null);
     try {
-      await requestPasswordEmail(email);
+      spendCaptcha();
+      await requestPasswordEmail(email, captcha);
       setNotice(`se ${email} tiver LeverId, chega um link para definir a senha`);
     } catch (err) { setError(err.message || String(err)); }
     setBusy(false);
@@ -90,8 +100,11 @@ function Login() {
 
   async function submitLever() {
     await clearCredentials();
-    const { error: err } = await identity().signInWithPassword({ email: username.trim(), password });
-    if (err) throw Object.assign(new Error(err.code === "invalid_credentials" ? "e-mail ou senha inválidos" : err.message), { shown: true });
+    spendCaptcha();
+    const { error: err } = await identity().signInWithPassword({
+      email: username.trim(), password, ...(captcha ? { options: { captchaToken: captcha } } : {}),
+    });
+    if (err) throw Object.assign(new Error(err.code === "invalid_credentials" ? "e-mail ou senha inválidos" : captchaError(err) || err.message), { shown: true });
     try {
       remember(await api.me());
     } catch (e) {
@@ -111,6 +124,7 @@ function Login() {
   async function submit(e) {
     e.preventDefault();
     if (!username.trim() || !password) return;
+    if (waitingCaptcha) { setError("espere a verificação anti-robô concluir"); return; }
     setBusy(true); setError(null);
     try {
       await (lever ? submitLever() : submitLegacy());
@@ -136,6 +150,7 @@ function Login() {
           type="password" value={password} placeholder="senha" autoComplete="current-password" aria-label="senha"
           onChange={(e) => setPassword(e.target.value)} style={inputStyle}
         />
+        {lever && <Turnstile key={round} onToken={setCaptcha} />}
         {error && <div role="alert" className="mono" style={{ fontSize: 11, color: "var(--neg)", textAlign: "center" }}>{error}</div>}
         {notice && <div role="status" className="mono" style={{ fontSize: 11, color: "var(--pos)", textAlign: "center" }}>{notice}</div>}
         <button type="submit" disabled={busy} style={{ height: 34, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500, opacity: busy ? 0.6 : 1 }}>

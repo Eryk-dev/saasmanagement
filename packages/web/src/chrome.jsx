@@ -2,6 +2,8 @@ import React from "react";
 import "./chrome.css";
 import { api } from "./lib/api.js";
 import { clearCredentials, hasIdentitySession, identity, identityEmail } from "./lib/identity.js";
+import Turnstile from "./components/turnstile.jsx";
+import { captchaError, turnstileEnabled } from "./lib/turnstile.js";
 import { useActiveSaas } from "./lib/workspace.js";
 import { canSeeScreen, currentUser, hasExplicitScreen, isAdminUser, userById, userPhoto } from "./lib/users.js";
 import { nextTouch, stageKind, workableStages } from "./lib/funnel.js";
@@ -620,17 +622,27 @@ function PasswordModal({ onClose }) {
   const [next, setNext] = useS("");
   const [busy, setBusy] = useS(false);
   const [msg, setMsg] = useS(null); // { ok, text }
+  // LeverId com captcha: confirmar a senha atual é um login no GoTrue, e cada
+  // token do Turnstile vale um (troca de `round` = widget novo).
+  const lever = hasIdentitySession();
+  const [captcha, setCaptcha] = useS("");
+  const [round, setRound] = useS(0);
+  const waitingCaptcha = lever && turnstileEnabled() && !captcha;
   const inputStyle = { width: "100%", height: 30, padding: "0 8px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 };
 
   async function submit(e) {
     e.preventDefault();
+    if (waitingCaptcha) { setMsg({ ok: false, text: "espere a verificação anti-robô concluir" }); return; }
     setBusy(true); setMsg(null);
     try {
-      if (hasIdentitySession()) {
+      if (lever) {
         // LeverId: a senha mora na identidade central. Confirma a atual
         // entrando de novo e troca pelo GoTrue.
-        const { error: wrong } = await identity().signInWithPassword({ email: identityEmail(), password: current });
-        if (wrong) throw Object.assign(new Error("senha atual incorreta"), { status: 401 });
+        if (captcha) { setCaptcha(""); setRound((n) => n + 1); }
+        const { error: wrong } = await identity().signInWithPassword({
+          email: identityEmail(), password: current, ...(captcha ? { options: { captchaToken: captcha } } : {}),
+        });
+        if (wrong) throw Object.assign(new Error(captchaError(wrong) || "senha atual incorreta"), { status: captchaError(wrong) ? 400 : 401 });
         const { error } = await identity().updateUser({ password: next });
         if (error) throw new Error(error.code === "same_password" ? "a senha nova é igual à atual" : error.message);
       } else {
@@ -655,6 +667,7 @@ function PasswordModal({ onClose }) {
           <span className="kicker">Nova senha (8+ caracteres)</span>
           <input type="password" value={next} autoComplete="new-password" onChange={(e) => setNext(e.target.value)} style={inputStyle} />
         </label>
+        {lever && <Turnstile key={round} onToken={setCaptcha} />}
         {msg && <div className="mono" style={{ fontSize: 11, color: msg.ok ? "var(--pos)" : "var(--neg)" }}>{msg.text}</div>}
         <div style={{ display: "flex", gap: 8 }}>
           <button type="submit" disabled={busy || next.length < 8} style={{ flex: 1, padding: "8px 12px", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500, opacity: busy || next.length < 8 ? 0.6 : 1 }}>

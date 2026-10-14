@@ -7,6 +7,7 @@
 // aceita (AUTH_MODE, packages/api/src/auth-jwt.js).
 
 import { GoTrueClient } from "@supabase/auth-js";
+import { captchaError } from "./turnstile.js";
 
 const AUTH_URL = import.meta.env.VITE_AUTH_URL || "";
 const LEGACY_KEY = "cockpit_key";
@@ -123,8 +124,11 @@ export async function setPasswordFromRecovery({ accessToken, refreshToken }, pas
 }
 
 // "Esqueci minha senha" do LeverId: o GoTrue manda o e-mail (sem dizer se
-// o e-mail existe, para não revelar contas).
-export async function requestPasswordEmail(email) {
-  const { error } = await identity().resetPasswordForEmail(email, { redirectTo: `${location.origin}/` });
-  if (error) throw Object.assign(new Error(error.status === 429 ? "muitos pedidos — espere um pouco e tente de novo" : error.message), { shown: true });
+// o e-mail existe, para não revelar contas). `captcha`: token do Turnstile,
+// exigido com o captcha do GoTrue ligado (lib/turnstile.js).
+export async function requestPasswordEmail(email, captcha = "") {
+  const { error } = await identity().resetPasswordForEmail(email, {
+    redirectTo: `${location.origin}/`, ...(captcha ? { captchaToken: captcha } : {}),
+  });
+  if (error) throw Object.assign(new Error(error.status === 429 ? "muitos pedidos — espere um pouco e tente de novo" : captchaError(error) || error.message), { shown: true });
 }

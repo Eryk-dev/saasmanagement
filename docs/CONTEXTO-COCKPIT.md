@@ -440,7 +440,15 @@ internos; depois a comparação de modelos com o mesmo conjunto.
    sobrescreve senha já definida) e as etiquetas viram papéis de staff
    (`team`, `admin`, `support`) na identidade. O e-mail de definir/redefinir senha
    (admin na Equipe ou "esqueci minha senha" no login) volta ao cockpit com
-   `#…type=recovery`, tratado no `main.jsx` antes do boot. Na tela Clientes, a
+   `#…type=recovery`, tratado no `main.jsx` antes do boot. Com
+   `VITE_TURNSTILE_SITE_KEY` no build, as três chamadas de senha que o SPA faz
+   ao GoTrue (entrar, "esqueci minha senha" e confirmar a atual em Trocar
+   senha) levam o token do Cloudflare Turnstile (`lib/turnstile.js`,
+   `components/turnstile.jsx`), exigido quando o captcha do LeverId está
+   ligado (`CAPTCHA_ENABLED`); cada token vale uma chamada, e o widget é
+   redesenhado depois de cada uma. O que a API chama no GoTrue (vínculo,
+   e-mail de definir senha, migração da senha) vai com a chave de serviço,
+   que o captcha dispensa. Sem a chave, nenhum script da Cloudflare carrega. Na tela Clientes, a
    badge de LeverId (`components/leverid-badge.jsx`) marca o cliente cuja org já
    tem conta na identidade: `GET /api/customers/leverid?orgs=` (domínio
    `customers/`, `leverid-accounts.js`, cache de 60 s por org) chama a RPC
