@@ -227,3 +227,27 @@ test("'depois desse horário' pede acima do par oferecido; cláusula de motivo n
   const lembrete = { direction: "out", text: "Confirmando nossa conversa amanhã às 13h", at: "2026-09-21T11:00:00Z" };
   assert.equal(sdrAgendaWindow([lembrete, inbound("Tem algum horário depois desse?")], NOW).requested, false);
 });
+
+test("saudação 'boa tarde/boa noite' não é pedido de período; período pedido ONTEM anda pra hoje; 'como estaria sua agenda na sexta' pede sexta", async () => {
+  // "Olá, boa tarde" (lido por engano como "à tarde" em 15/10/2026, Daniel).
+  const oi = sdrAgendaWindow([inbound("Olá, boa tarde")], NOW);
+  assert.equal(oi.requested, false);
+  assert.equal(sdrAgendaWindow([inbound("Boa noite!")], NOW).requested, false);
+  // Saudação + pedido de verdade na mesma frase: o pedido vale.
+  assert.equal(sdrAgendaWindow([inbound("boa tarde, pode ser à tarde?")], NOW).fromHour, 12);
+  // Período pedido na sexta anterior, lido na segunda: continua "à tarde", mas a partir de hoje.
+  const ontem = { direction: "in", text: "Consigo no período da tarde", at: "2026-09-18T15:00:00Z" };
+  const w = sdrAgendaWindow([ontem], NOW);
+  assert.equal(w.periodOnly, true);
+  assert.equal(w.startDate, "2026-09-21");
+  assert.deepEqual([w.fromHour, w.toHour], [12, 19]);
+  const repo = await world();
+  const r = await sdrSlotsForLead(repo, { ...options, grade: "C", messages: [ontem] });
+  assert.ok(r.slots.length > 0, "janela de período no passado tem que andar pra hoje, não zerar a oferta");
+  assert.ok(r.slots.every((s) => s.at.slice(0, 10) >= "2026-09-21" && Number(s.at.slice(11, 13)) >= 12));
+  // Perguntar pela nossa agenda num dia é pedir esse dia.
+  const sexta = sdrAgendaWindow([inbound("Como estaria sua agenda na sexta-feira?")], NOW);
+  assert.equal(sexta.requested, true);
+  assert.equal(sexta.startDate, "2026-09-25");
+  assert.equal(sexta.days, 1);
+});
