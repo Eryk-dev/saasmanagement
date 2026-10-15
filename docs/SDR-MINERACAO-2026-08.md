@@ -1,4 +1,11 @@
-# Playbook do SDR · WhatsApp comercial LeverAds
+# Mineração do SDR · histórico (jul-ago/2026)
+
+ARQUIVO HISTÓRICO. Era o playbook do robô até 15/10/2026; as regras vigentes agora vivem em
+`packages/api/src/sdr/sdr-rules.js` e no playbook gerado `docs/SDR-PLAYBOOK-LEVERADS.md`. O que
+está abaixo registra a mineração que deu origem ao tom e aos argumentos, e contém táticas que
+DEPOIS foram revogadas (piso de preço, ligação, trial, part number no chat, a palavra "call").
+Não use como regra.
+
 
 Destilado da mineração do histórico REAL de conversas (Supabase prod, coleções
 `wa_threads`/`wa_messages`/`leads`, período 18/07 a 21/08/2026, ~5 semanas,

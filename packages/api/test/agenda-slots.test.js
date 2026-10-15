@@ -32,7 +32,7 @@ const JR = { id: "jr", name: "Junio", roles: ["closer"], compLevel: 1 };
 const PL = { id: "pl", name: "Plena", roles: ["closer"], compLevel: 2 };
 const SR = { id: "sr", name: "Sensei", roles: ["closer"], compLevel: 3 };
 
-test("closerPools separa por compLevel (sem campo = júnior) e respeita o escopo de produto", () => {
+test("closerPools separa por compLevel (sem campo = júnior) e respeita o escopo de produto #R-033", () => {
   const users = [JR, PL, SR,
     { id: "semnivel", name: "Novato", roles: ["closer"] },
     { id: "outro", name: "Ana", roles: ["closer"], saas: "uniquekids", compLevel: 3 },
@@ -48,7 +48,7 @@ test("occupyCells: call de 1h ocupa duas meias-horas; horário quebrado ancora e
   assert.deepEqual(occupyCells("2026-08-19T14:10"), ["2026-08-19-14-00", "2026-08-19-14-30", "2026-08-19-15-00"]);
 });
 
-test("lead S/A/B vai pro pool pleno/sênior e o slot mais cedo respeita o aviso mínimo", async () => {
+test("lead S/A/B vai pro pool pleno/sênior e o slot mais cedo respeita o aviso mínimo #R-033", async () => {
   const { repo, fill } = seedRepo({ users: [JR, PL, SR] });
   await fill();
   const lead = { id: "l1", saas: "leverads", accounts: "10+" }; // nota A na matriz
@@ -61,7 +61,7 @@ test("lead S/A/B vai pro pool pleno/sênior e o slot mais cedo respeita o aviso 
   assert.ok(slots.every((s) => s.closer !== "jr"), "A/B nunca cai no júnior");
 });
 
-test("ocupação vale: call marcada, bloqueio semanal e consulta tiram o horário; follow-up não ocupa", async () => {
+test("ocupação vale: call marcada, bloqueio semanal e consulta tiram o horário; follow-up não ocupa #R-020", async () => {
   const { repo, fill } = seedRepo({
     users: [PL, SR],
     leads: [
@@ -84,7 +84,7 @@ test("ocupação vale: call marcada, bloqueio semanal e consulta tiram o horári
   assert.equal(slots[0].closer, "pl");
 });
 
-test("horário de atendimento: fora dele o closer não recebe oferta (o mesmo que a grade do SPA trava)", async () => {
+test("horário de atendimento: fora dele o closer não recebe oferta (o mesmo que a grade do SPA trava) #R-033", async () => {
   // PL só atende quarta 14h-16h; SR não tem horário (agenda aberta 7h-21h).
   const { repo, fill } = seedRepo({ users: [{ ...PL, workHours: [{ weekday: 3, from: 14, to: 16 }] }] });
   await fill();
@@ -96,7 +96,7 @@ test("horário de atendimento: fora dele o closer não recebe oferta (o mesmo qu
   assert.deepEqual(slots.map((s) => s.at), ["2026-08-19T14:00", "2026-08-19T14:30", "2026-08-19T15:00"]);
 });
 
-test("C/D fica no júnior enquanto ele tem horário HOJE; dia lotado joga pro pleno", async () => {
+test("C/D fica no júnior enquanto ele tem horário HOJE; dia lotado joga pro pleno #R-033", async () => {
   const base = {
     users: [JR, PL],
     // Júnior bloqueado quarta, quinta e sexta inteiras → próximo slot dele é segunda.
@@ -124,7 +124,7 @@ test("C/D fica no júnior enquanto ele tem horário HOJE; dia lotado joga pro pl
 // A régua de 13/09/2026: o lead C/D não espera o dia seguinte com um closer
 // livre na mesma tarde. UM dia de diferença já basta pra subir — antes eram
 // necessários mais de 1 dia útil, e este caso ficava preso no júnior.
-test("C/D sobe assim que o dia do júnior lota, com o pleno atendendo no MESMO dia", async () => {
+test("C/D sobe assim que o dia do júnior lota, com o pleno atendendo no MESMO dia #R-033", async () => {
   const { repo, fill } = seedRepo({
     users: [JR, PL],
     // Júnior fora só HOJE (quarta): o próximo horário dele é amanhã de manhã,
@@ -141,7 +141,7 @@ test("C/D sobe assim que o dia do júnior lota, com o pleno atendendo no MESMO d
 
 // O overflow ACELERA, não transfere a fila: passado o dia cheio, o júnior volta
 // a aparecer na oferta em vez de perder o lead de vez.
-test("com o dia do pleno esgotado, o júnior volta pra oferta", async () => {
+test("com o dia do pleno esgotado, o júnior volta pra oferta #R-033", async () => {
   const { repo, fill } = seedRepo({
     users: [JR, PL],
     blocks: [{ id: "b1", user: "jr", kind: "block", recur: "once", date: "2026-08-19", allDay: true }],
@@ -160,7 +160,7 @@ test("com o dia do pleno esgotado, o júnior volta pra oferta", async () => {
   assert.ok(doJunior.every((s) => s.at.slice(0, 10) > "2026-08-19"));
 });
 
-test("pool vazio nunca trava: sem pleno/sênior, lead A cai em todos os closers", async () => {
+test("pool vazio nunca trava: sem pleno/sênior, lead A cai em todos os closers #R-033", async () => {
   const { repo, fill } = seedRepo({ users: [JR] });
   await fill();
   const r = await slotsForLead(repo, { lead: { id: "l3", saas: "leverads", accounts: "10+" }, saas: "leverads", now: NOW, limit: 2 });
@@ -168,7 +168,7 @@ test("pool vazio nunca trava: sem pleno/sênior, lead A cai em todos os closers"
   assert.equal(r.slots[0].closer, "jr");
 });
 
-test("fim de semana fora e soma de dias úteis pula sábado/domingo", async () => {
+test("fim de semana fora e soma de dias úteis pula sábado/domingo #R-022", async () => {
   // Sexta 21/08 às 19h: aviso mínimo joga pra depois das 21h → primeiro slot é segunda.
   const { repo, fill } = seedRepo({ users: [PL] });
   await fill();
@@ -178,20 +178,20 @@ test("fim de semana fora e soma de dias úteis pula sábado/domingo", async () =
   assert.equal(addBusinessDaysNaive("2026-08-21T10:00", 1), "2026-08-24T10:00");
 });
 
-test("slotLabel fala como gente: hoje, amanhã e dia da semana", () => {
+test("slotLabel fala como gente: hoje, amanhã e dia da semana #R-021", () => {
   assert.equal(slotLabel("2026-08-19T16:00", NOW), "hoje às 16h");
   assert.equal(slotLabel("2026-08-20T09:30", NOW), "amanhã às 9h30");
   assert.equal(slotLabel("2026-08-21T10:00", NOW), "sexta às 10h");
 });
 
-test("slotLabelFull crava a data no combinado: hoje/amanhã/dia sempre com dd/mm", () => {
+test("slotLabelFull crava a data no combinado: hoje/amanhã/dia sempre com dd/mm #R-021 #R-035", () => {
   assert.equal(slotLabelFull("2026-08-19T16:00", NOW), "hoje (19/08) às 16h");
   assert.equal(slotLabelFull("2026-08-20T09:30", NOW), "amanhã (20/08) às 9h30");
   assert.equal(slotLabelFull("2026-08-21T10:00", NOW), "sexta (21/08) às 10h");
   assert.equal(slotLabelFull("2026-09-04T10:00", NOW), "sexta (04/09) às 10h");
 });
 
-test("janela de oferta do robô: fromHour 9 tira os horários de madrugador da oferta", async () => {
+test("janela de oferta do robô: fromHour 9 tira os horários de madrugador da oferta #R-023", async () => {
   const { repo, fill } = seedRepo({ users: [PL] });
   await fill();
   const cedo = wallFromNaive("2026-08-19T06:00"); // 6h BRT + aviso de 2h = 8h
@@ -201,7 +201,7 @@ test("janela de oferta do robô: fromHour 9 tira os horários de madrugador da o
   assert.equal(oferta.slots[0].at, "2026-08-19T09:00", "o robô só oferece horário comercial confortável");
 });
 
-test("OFFER_HOURS: última call ofertável começa às 19h (teto 20 porque a call termina dentro da janela)", async () => {
+test("OFFER_HOURS: última call ofertável começa às 19h (teto 20 porque a call termina dentro da janela) #R-023", async () => {
   const { repo, fill } = seedRepo({ users: [PL] });
   await fill();
   const cedo = wallFromNaive("2026-08-19T06:00");
@@ -212,7 +212,7 @@ test("OFFER_HOURS: última call ofertável começa às 19h (teto 20 porque a cal
   assert.ok(!doDia.includes("19:30") && !doDia.includes("20:00"), "depois das 19h não oferece");
 });
 
-test("janela de oferta do robô bloqueia o almoço (12h-13h) e o par sugerido tem 2h de respiro", async () => {
+test("janela de oferta do robô bloqueia o almoço (12h-13h) e o par sugerido tem 2h de respiro #R-023", async () => {
   const { repo, fill } = seedRepo({ users: [PL] });
   await fill();
   const cedo = wallFromNaive("2026-08-19T06:00");

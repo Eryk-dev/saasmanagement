@@ -26,7 +26,7 @@ async function world({ handoffAt = ISO("2026-08-20T12:15:00Z"), messages = [], l
 }
 const runnerOf = (repo, at = NOW) => startSdrHandoffReminder(repo, { log: { warn: () => {} }, now: () => at });
 
-test("45 min sem gente depois do handoff: aviso pro closer com o motivo; não repete na mesma janela; repete 2h depois", async () => {
+test("45 min sem gente depois do handoff: aviso pro closer com o motivo; não repete na mesma janela; repete 2h depois #R-080", async () => {
   const repo = await world();
   const r = runnerOf(repo);
   assert.deepEqual(await r.tick(), { created: 1 });
@@ -41,7 +41,7 @@ test("45 min sem gente depois do handoff: aviso pro closer com o motivo; não re
   r.stop();
 });
 
-test("humano falou depois do handoff = atendido; handoff fresco (menos de 30 min) espera; fora do expediente cala", async () => {
+test("humano falou depois do handoff = atendido; handoff fresco (menos de 30 min) espera; fora do expediente cala #R-080", async () => {
   const attended = await world({ messages: [{ direction: "out", author: "pl", text: "Quarta 14h pode ser?", at: ISO("2026-08-20T12:30:00Z") }] });
   assert.deepEqual(await runnerOf(attended).tick(), { created: 0 });
   const fresh = await world({ handoffAt: ISO("2026-08-20T12:50:00Z") });
@@ -50,7 +50,7 @@ test("humano falou depois do handoff = atendido; handoff fresco (menos de 30 min
   assert.deepEqual(await runnerOf(night).tick(new Date("2026-08-21T02:00:00Z")), { created: 0 });
 });
 
-test("lead escreveu de novo enquanto esperava: o aviso diz que ele está sem resposta", async () => {
+test("lead escreveu de novo enquanto esperava: o aviso diz que ele está sem resposta #R-080", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "e aí?", at: ISO("2026-08-20T12:40:00Z") }] });
   await runnerOf(repo).tick();
   assert.match((await repo.list("notifications"))[0].text, /o lead escreveu de novo e está sem resposta/);

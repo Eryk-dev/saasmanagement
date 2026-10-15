@@ -32,7 +32,8 @@ não devem virar defaults novos sem conferir o catálogo vigente.
 | [Plano do rework](PLANO-REWORK.md) | Histórico detalhado de decisões, contratos e evolução dos módulos. Os estados de entrega e comandos de retomada envelheceram. |
 | [README](../README.md) | Arquitetura, ambiente local com Supabase no Docker, deploy, API e MCP (revisado em 14/09/2026). |
 | [Portfólio](../PORTFOLIO.md) | Histórico da simplificação para um produto; a proposta de alternador global já foi implementada. |
-| [Playbook SDR](SDR-PLAYBOOK-LEVERADS.md) | Tom, objeções e fluxo comercial derivados de conversas de julho/agosto de 2026; estatísticas são desse período. |
+| [Playbook SDR](SDR-PLAYBOOK-LEVERADS.md) | GERADO de `packages/api/src/sdr/sdr-rules.js` (`node src/sdr/sdr-rules.js --write`): as regras vigentes do robô, com id R-nnn, origem, estados, camada e exceções. |
+| [Mineração SDR](SDR-MINERACAO-2026-08.md) | Histórico: tom, objeções e fluxo minerados das conversas de julho/agosto de 2026; contém táticas depois revogadas, não é regra. |
 | [Revisão de UI](../.claude/skills/cockpit-ui-review/SKILL.md) | Procedimento específico já existente para o cockpit. |
 | [Design system](../.claude/skills/cockpit-ui-review/references/design-system.md) | Tokens, componentes e decisões visuais; conferir os componentes atuais ao aplicar. |
 | [Checklist visual](../.claude/skills/cockpit-ui-review/references/checklist.md) | Revisão de uma tela ou componente. |
@@ -213,7 +214,7 @@ Os caminhos abaixo são relativos a `packages/`.
 | Integração e entrega ao cliente | `api/src/forms/routes.integration-forms.js`, `customers/routes.integrations.js`, `calls/integration-brief.js`, `customers/client-pending.js`; telas `integration-forms.jsx` e `integrations.jsx`. |
 | Clientes, receita e pagamentos | `api/src/billing/` (`billing.js`, `churn.js`, `routes.billing.js`), `payments/` (`routes.mp.js`, `routes.fin.js`) e `metrics/metrics-core.js`; telas `customers.jsx`, `subscriptions.jsx`, `offers.jsx`, `expenses.jsx`. |
 | Planos, plano do cliente e acesso | `api/src/shared/plan-cycles.js`, `shared/plan-resources.js`, `billing/plan-catalog.js`, `billing/plan-history.js`, `billing/entitlements.js`, `billing/leverads-access.js`; `web/src/screens/plans.jsx`, `components/plan-editor.jsx`, `customer-plan.jsx`; testes `plan-cycles`, `plan-catalog`, `plan-history`, `entitlements`, `leverads-access`. |
-| WhatsApp e SDR | `api/src/whatsapp/` (`routes.whatsapp.js`, módulos `wa-*`) e `api/src/sdr/` (`sdr-flow.js`, `sdr-templates.leverads.js`); telas `whatsapp.jsx`, `calls.jsx`. |
+| WhatsApp e SDR | `api/src/whatsapp/` (`routes.whatsapp.js`, módulos `wa-*`) e `api/src/sdr/` (`sdr-rules.js` é o rulebook, `sdr-brain.js` a conversa com IA, `sdr-flow.js` o poller, `sdr-templates.leverads.js`); telas `whatsapp.jsx`, `calls.jsx`. |
 | Métricas e marketing | `api/src/metrics/` (`routes.metrics.js`, `routes.funnel-metrics.js`, `routes.scoreboard.js`, `routes.pipeline-pace.js`) e `marketing/routes.marketing.js`; telas `metrics.jsx`, `analise.jsx`, `desempenho.jsx`. |
 | Agenda, Google e consultas | `api/src/google/routes.google.js`, `calls/routes.consultations.js`; telas `agenda.jsx`, `agenda-grid.jsx`, `consultas.jsx`. |
 | Treinamentos | `api/src/training/` (`routes.flashcards.js`, `fsrs.js`); telas `training.jsx`, `training.css`, `training-focus.jsx`; testes `api/test/routes.flashcards.test.js`. |
@@ -248,6 +249,22 @@ turno. O estado `sdrLog.reschedule` persiste a espera pelo consentimento. Um
 Recusa ou resposta ambígua não libera agenda. Datas e ofertas anteriores ao
 cancelamento não valem como pedido para a nova call. Áudio transcrito segue
 a mesma regra; os testes ficam em `sdr-brain.test.js`.
+
+**Rulebook do robô SDR (15/10/2026):** toda regra de comportamento do robô é
+uma entrada em `packages/api/src/sdr/sdr-rules.js` com id estável (R-nnn),
+origem (data, quem pediu, PR ou print), enunciado, estados da conversa e
+roteiro em que vale, camada que a executa, exceções explícitas e status
+(ativa ou revogada). `docs/SDR-PLAYBOOK-LEVERADS.md` é gerado dele
+(`node src/sdr/sdr-rules.js --write` em `packages/api`) e o meta-teste
+`sdr-rulebook.test.js` recusa playbook desatualizado, exige teste ou cena
+com a tag `#R-nnn` no título pra toda regra ativa e só aceita regra sem
+cobertura listada em `PENDING_COVERAGE` com o PR que vai cobrir. Ajuste novo
+no robô = regra no rulebook + teste com a tag; conflito entre duas decisões
+(ex.: duração da conversa × roteiro OEM) é registrado em `except`/`conflicts`,
+nunca resolvido por acidente de roteamento. `sdr-acoplamento.test.js` faz
+gritar os acoplamentos por string (PITCH_RX × copy do 1º toque, dica do
+computador). Próximas fases: estado e intenção explícitos, validador único no
+`send()` (sombra → enforce por config), oferta estruturada, prompt por estado.
 
 1. **Receita de produto:** `rollupProduct` deriva clientes, ARR e MRR de
    `customers`, excluindo os churnados segundo `churn.js`. Não usar os números

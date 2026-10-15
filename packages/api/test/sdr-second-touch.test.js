@@ -47,7 +47,7 @@ async function world({ lead = {}, threads = [], messages = [] } = {}) {
 
 const tickOf = (repo, wa, at = NOW) => makeSdrRunner({ repo, whatsapp: wa, log: { warn: () => {} }, now: () => at }).tick();
 
-test("24h calado: manda a retomada UMA vez e carimba secondTouchAt", async () => {
+test("24h calado: manda a retomada UMA vez e carimba secondTouchAt #R-101", async () => {
   const repo = await world({
     threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads", hasIn: false, lastOutAuthor: "sdr-bot" }],
     messages: [{ id: "m1", thread: "5541999990000", leadId: "L1", direction: "out", author: "sdr-bot", text: "Oiii, Rafael...", at: ISO("2026-08-19T12:30:00Z") }],
@@ -63,7 +63,7 @@ test("24h calado: manda a retomada UMA vez e carimba secondTouchAt", async () =>
   assert.equal(wa.sent.filter((s) => s.name === "sdr_retomada_conversa").length, 1);
 });
 
-test("lead que respondeu qualquer coisa fica FORA do segundo toque", async () => {
+test("lead que respondeu qualquer coisa fica FORA do segundo toque #R-101", async () => {
   const repo = await world({
     threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads", hasIn: true, lastOutAuthor: "sdr-bot" }],
     messages: [
@@ -79,7 +79,7 @@ test("lead que respondeu qualquer coisa fica FORA do segundo toque", async () =>
 // Horário comercial (24/08): o ponto das 24h herda a hora do 1º toque (que é
 // 24/7) — lead das 23h levaria a retomada às 23h. Fora do expediente
 // (business-hours: seg a sex, 8h às 18h BRT) a retomada espera.
-test("fora do expediente a retomada espera; no expediente seguinte ela sai", async () => {
+test("fora do expediente a retomada espera; no expediente seguinte ela sai #R-101", async () => {
   // 1º toque terça 20:30 BRT; 24h caem fora do expediente.
   const repo = await world({ lead: { sdrLog: { firstTouchAt: ISO("2026-08-18T23:30:00Z"), firstTouchVia: "template" } } });
   const wa = makeWa({ approved: ["sdr_retomada_conversa"] });
@@ -91,7 +91,7 @@ test("fora do expediente a retomada espera; no expediente seguinte ela sai", asy
   assert.ok((await repo.get("leads", "L1")).sdrLog.secondTouchAt);
 });
 
-test("24h completadas na quinta à noite atravessam o fim de semana (teto 96h)", async () => {
+test("24h completadas na quinta à noite atravessam o fim de semana (teto 96h) #R-101", async () => {
   // 1º toque quinta 18:30 BRT → primeiro expediente é segunda 8h (~86h depois).
   const repo = await world({ lead: { sdrLog: { firstTouchAt: ISO("2026-08-13T21:30:00Z"), firstTouchVia: "template" } } });
   const wa = makeWa({ approved: ["sdr_retomada_conversa"] });
@@ -101,14 +101,14 @@ test("24h completadas na quinta à noite atravessam o fim de semana (teto 96h)",
   assert.equal(wa.sent.filter((s) => s.name === "sdr_retomada_conversa").length, 1);
 });
 
-test("mais velho que o teto de 96h fica de fora", async () => {
+test("mais velho que o teto de 96h fica de fora #R-101", async () => {
   const repo = await world({ lead: { sdrLog: { firstTouchAt: ISO("2026-08-13T10:00:00Z"), firstTouchVia: "template" } } });
   const wa = makeWa({ approved: ["sdr_retomada_conversa"] });
   await tickOf(repo, wa, new Date("2026-08-17T11:30:00Z")); // segunda 8:30 BRT, 97h depois
   assert.equal(wa.sent.filter((s) => s.name === "sdr_retomada_conversa").length, 0);
 });
 
-test("1º toque de HUMANO, call marcada ou menos de 24h: sem retomada", async () => {
+test("1º toque de HUMANO, call marcada ou menos de 24h: sem retomada #R-101", async () => {
   for (const lead of [
     { sdrLog: { firstTouchAt: ISO("2026-08-19T12:30:00Z"), firstTouchVia: "human" } },
     { callAt: "2026-08-21T10:00" },

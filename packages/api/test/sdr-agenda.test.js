@@ -22,7 +22,7 @@ async function world() {
 }
 const options = { saas: "leverads", now: NOW, limit: 0 };
 
-test("equipe SDR é nominal e respeita produto, independente de compLevel", () => {
+test("equipe SDR é nominal e respeita produto, independente de compLevel #R-033", () => {
   const pools = sdrCloserPools(TEAM, "leverads");
   assert.deepEqual(pools.upper.map((u) => u.id), ["leo", "jonan", "jonathan"]);
   assert.deepEqual(pools.junior.map((u) => u.id), ["vit"]);
@@ -30,7 +30,7 @@ test("equipe SDR é nominal e respeita produto, independente de compLevel", () =
 
 // Oferta espontânea (Leo, 30/09): HOJE com 2h de folga + o próximo dia útil.
 // NOW é segunda 08:00, então hoje entra a partir das 10h e nada de D+2.
-test("S/A/B somente Leonardo/Jonan/Jonathan; C/D/E e sem nota priorizam Vitor; oferta = hoje + amanhã", async () => {
+test("S/A/B somente Leonardo/Jonan/Jonathan; C/D/E e sem nota priorizam Vitor; oferta = hoje + amanhã #R-033 #R-022", async () => {
   const repo = await world();
   for (const grade of ["S", "A", "B", "C", "D", "E", null]) {
     const { slots, requested } = await sdrSlotsForLead(repo, { ...options, grade });
@@ -46,7 +46,7 @@ test("S/A/B somente Leonardo/Jonan/Jonathan; C/D/E e sem nota priorizam Vitor; o
   assert.ok(late.slots.length && late.slots.every((s) => s.at.startsWith("2026-09-22T")));
 });
 
-test("S/A/B balanceia entre os três; não desce ao Vitor com pool ausente", async () => {
+test("S/A/B balanceia entre os três; não desce ao Vitor com pool ausente #R-033", async () => {
   const repo = await world();
   await repo.create("leads", { id: "busy", saas: "leverads", stage: "Call", closer: "leo", callAt: "2026-09-22T15:00" });
   assert.equal((await sdrSlotsForLead(repo, { ...options, grade: "B" })).slots[0].closer, "jonan");
@@ -54,7 +54,7 @@ test("S/A/B balanceia entre os três; não desce ao Vitor com pool ausente", asy
   assert.deepEqual((await sdrSlotsForLead(repo, { ...options, grade: "A" })).slots, []);
 });
 
-test("C/D/E só sobe quando não sobra hora no dia do Vitor, inclusive para E", async () => {
+test("C/D/E só sobe quando não sobra hora no dia do Vitor, inclusive para E #R-033", async () => {
   const repo = await world();
   await repo.create("agenda_blocks", { id: "v", user: "vit", recur: "once", date: "2026-09-22", fromHour: 9, toHour: 18 });
   const partial = await sdrSlotsForLead(repo, { ...options, grade: "E" });
@@ -67,14 +67,14 @@ test("C/D/E só sobe quando não sobra hora no dia do Vitor, inclusive para E", 
   assert.ok(amanha.length && amanha.every((s) => s.closer !== "vit"), "amanhã lotado do Vitor sobe pros demais");
 });
 
-test("hoje e amanhã cheios ficam sem oferta; não abre D+2. Agenda manual ainda oferece outros dias", async () => {
+test("hoje e amanhã cheios ficam sem oferta; não abre D+2. Agenda manual ainda oferece outros dias #R-022", async () => {
   const repo = await world();
   for (const date of ["2026-09-21", "2026-09-22"]) await repo.create("agenda_blocks", { id: "full-" + date, users: TEAM.map((u) => u.id), recur: "once", date, allDay: true });
   assert.deepEqual((await sdrSlotsForLead(repo, { ...options, grade: "D" })).slots, []);
   assert.ok((await slotsForLead(repo, { ...options, grade: "B" })).slots.some((s) => s.at.startsWith("2026-09-23T")));
 });
 
-test("fim de semana usa segunda e nunca terça automaticamente", async () => {
+test("fim de semana usa segunda e nunca terça automaticamente #R-022", async () => {
   const repo = await world();
   for (const day of ["2026-09-25", "2026-09-26", "2026-09-27"]) {
     const r = await sdrSlotsForLead(repo, { ...options, now: wallFromNaive(day + "T22:00"), grade: "B" });
@@ -83,7 +83,7 @@ test("fim de semana usa segunda e nunca terça automaticamente", async () => {
   }
 });
 
-test("somente pedido do lead libera outra data, inclusive áudio e continuação com hora", async () => {
+test("somente pedido do lead libera outra data, inclusive áudio e continuação com hora #R-032", async () => {
   const repo = await world();
   for (const [text, date] of [["Pode ser quarta?", "2026-09-23"], ["Posso na quinta às 14h", "2026-09-24"], ["Só consigo depois de amanhã", "2026-09-23"], ["Podemos dia 30/09?", "2026-09-30"], ["Quero marcar 15/10/2026", "2026-10-15"], ["Tem hoje às 14h?", "2026-09-21"], ["sexta", "2026-09-25"], ["Podemos dia 16 de novembro?", "2026-11-16"], ["Podemos 15 de outubro?", "2026-10-15"]]) {
     const messages = [inbound(text), inbound("14h")];
@@ -102,7 +102,7 @@ test("somente pedido do lead libera outra data, inclusive áudio e continuação
 
 // ── Frases REAIS dos handoffs de 17 a 30/09 (raio-x 30/09): 8 de 14 não
 // viravam pedido e cada uma virou "deixa eu reservar e te confirmo" + gente.
-test("negação seguida de alternativa é pedido; dia recusado antes da negação não é", () => {
+test("negação seguida de alternativa é pedido; dia recusado antes da negação não é #R-032", () => {
   const cases = [
     ["Esse horário nao consigo pode ser quarta", "2026-09-23"],
     ["Amanhã eu não consigo. Teria que ser quarta", "2026-09-23"],
@@ -120,7 +120,7 @@ test("negação seguida de alternativa é pedido; dia recusado antes da negaçã
   }
 });
 
-test("período do dia vira faixa de horas: com dia, no dia; sem dia, 5 dias úteis dentro da faixa", async () => {
+test("período do dia vira faixa de horas: com dia, no dia; sem dia, 5 dias úteis dentro da faixa #R-032", async () => {
   const repo = await world();
   const tarde = sdrAgendaWindow([inbound("Consigo no período da tarde")], NOW);
   assert.equal(tarde.requested, true);
@@ -143,7 +143,7 @@ test("período do dia vira faixa de horas: com dia, no dia; sem dia, 5 dias úte
   assert.ok(r.slots.some((s) => s.at.startsWith("2026-09-23T")), "sem dia, a faixa avança pelos dias úteis");
 });
 
-test("hora solta com call marcada é o dia da call; pedido que ficou no passado é esquecido", () => {
+test("hora solta com call marcada é o dia da call; pedido que ficou no passado é esquecido #R-032", () => {
   const w = sdrAgendaWindow([inbound("Pois 13hs estou almoçando, pode ser 14h?")], NOW, { callAt: "2026-09-21T13:00" });
   assert.deepEqual([w.requested, w.startDate, w.days, w.callDay], [true, "2026-09-21", 1, true]);
   assert.equal(sdrAgendaWindow([inbound("pode ser 14h?")], NOW).requested, false, "sem call marcada, hora solta fica na janela normal");
@@ -152,7 +152,7 @@ test("hora solta com call marcada é o dia da call; pedido que ficou no passado 
   assert.equal(stale.startDate, "2026-09-21");
 });
 
-test("pedido sem vaga devolve as alternativas da janela normal com requestedEmpty", async () => {
+test("pedido sem vaga devolve as alternativas da janela normal com requestedEmpty #R-032", async () => {
   const repo = await world();
   await repo.create("agenda_blocks", { id: "full", users: TEAM.map((u) => u.id), recur: "once", date: "2026-09-23", allDay: true });
   const r = await sdrSlotsForLead(repo, { ...options, grade: "C", messages: [inbound("Pode ser quarta?")] });
@@ -162,7 +162,7 @@ test("pedido sem vaga devolve as alternativas da janela normal com requestedEmpt
   assert.ok(r.slots.length && r.slots.every((s) => s.at.startsWith("2026-09-21T") || s.at.startsWith("2026-09-22T")));
 });
 
-test("pedido de semana seguinte aplica prioridade do Vitor em cada dia", async () => {
+test("pedido de semana seguinte aplica prioridade do Vitor em cada dia #R-033 #R-032", async () => {
   const repo = await world();
   await repo.create("agenda_blocks", { id: "v", user: "vit", recur: "once", date: "2026-09-28", allDay: true });
   const r = await sdrSlotsForLead(repo, { ...options, grade: "D", messages: [inbound("Só consigo semana que vem")] });
@@ -170,13 +170,13 @@ test("pedido de semana seguinte aplica prioridade do Vitor em cada dia", async (
   assert.ok(r.slots.filter((s) => !s.at.startsWith("2026-09-28T")).every((s) => s.closer === "vit"));
 });
 
-test("pedido de sábado não autoriza segunda; data inválida não abre agenda", async () => {
+test("pedido de sábado não autoriza segunda; data inválida não abre agenda #R-032", async () => {
   const repo = await world();
   assert.deepEqual((await sdrSlotsForLead(repo, { ...options, messages: [inbound("Pode ser sábado?")] })).slots, []);
   assert.equal(sdrAgendaWindow([inbound("Podemos dia 31/09?")], NOW).requested, false);
 });
 
-test("reservas não abrem dias posteriores nem escondem vagas após o limite antigo de 16", async () => {
+test("reservas não abrem dias posteriores nem escondem vagas após o limite antigo de 16 #R-024 #R-022", async () => {
   const repo = await world();
   const available = await sdrSlotsForLead(repo, { ...options, grade: "A" });
   const holds = available.slots.slice(0, -1).map((s) => ({ at: s.at, leadId: "other" }));
@@ -189,7 +189,7 @@ test("reservas não abrem dias posteriores nem escondem vagas após o limite ant
 
 // Leo, 08/10: "terça ou quarta" (o robô ofereceu segunda) e "quarta que vem"
 // não viravam pedido.
-test("'terça ou quarta' pede os dois dias; 'quarta que vem' e 'sexta feira também' viram pedido", () => {
+test("'terça ou quarta' pede os dois dias; 'quarta que vem' e 'sexta feira também' viram pedido #R-032", () => {
   const w = sdrAgendaWindow([inbound("terça ou quarta")], NOW);
   assert.equal(w.requested, true);
   assert.equal(w.startDate, "2026-09-22");
@@ -206,7 +206,7 @@ test("'terça ou quarta' pede os dois dias; 'quarta que vem' e 'sexta feira tamb
 // Leo, 13/10: o lead respondeu "só depois desse horário" a "amanhã às 9h ou às
 // 11h" e o robô repetiu o mesmo par três vezes. "Parte da manhã" era o MOTIVO
 // (a operação dele é de manhã), não um pedido de manhã.
-test("'depois desse horário' pede acima do par oferecido; cláusula de motivo não vira pedido de período", () => {
+test("'depois desse horário' pede acima do par oferecido; cláusula de motivo não vira pedido de período #R-032", () => {
   const offer = { direction: "out", text: "Tenho agenda para amanhã às 9h ou às 11h. Qual funciona melhor para você?", at: "2026-09-21T11:00:00Z" };
   const w = sdrAgendaWindow([offer, inbound("Infelizmente só depois desse horário,  pq a minha operação é toda na parte da manhã,  o horário da coleta é às 11:45")], NOW);
   assert.equal(w.requested, true);
@@ -228,7 +228,7 @@ test("'depois desse horário' pede acima do par oferecido; cláusula de motivo n
   assert.equal(sdrAgendaWindow([lembrete, inbound("Tem algum horário depois desse?")], NOW).requested, false);
 });
 
-test("saudação 'boa tarde/boa noite' não é pedido de período; período pedido ONTEM anda pra hoje; 'como estaria sua agenda na sexta' pede sexta", async () => {
+test("saudação 'boa tarde/boa noite' não é pedido de período; período pedido ONTEM anda pra hoje; 'como estaria sua agenda na sexta' pede sexta #R-032", async () => {
   // "Olá, boa tarde" (lido por engano como "à tarde" em 15/10/2026, Daniel).
   const oi = sdrAgendaWindow([inbound("Olá, boa tarde")], NOW);
   assert.equal(oi.requested, false);

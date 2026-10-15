@@ -59,7 +59,7 @@ const runnerOf = (repo, wa, extra = {}) =>
   makeSdrRunner({ repo, whatsapp: wa, log: { warn: () => {}, info: () => {} }, now: () => NOW, ...extra });
 
 // ── A5 · nome do form ───────────────────────────────────────────────────────
-test("greetName: caixa e sujeira do form saem; o que não é nome de gente vira saudação sem nome", () => {
+test("greetName: caixa e sujeira do form saem; o que não é nome de gente vira saudação sem nome #R-007", () => {
   assert.equal(greetName("silas"), "Silas");            // minúsculo do WhatsApp
   assert.equal(greetName("PEDRO"), "Pedro");            // caixa alta gritada
   assert.equal(greetName("JOSNIEL"), "Josniel");
@@ -72,7 +72,7 @@ test("greetName: caixa e sujeira do form saem; o que não é nome de gente vira 
   assert.equal(greetName(""), "");
 });
 
-test("1º toque com nome impróprio sai sem nome, não com 'Oi PECAS'", async () => {
+test("1º toque com nome impróprio sai sem nome, não com 'Oi PECAS' #R-007", async () => {
   const repo = await world({
     leads: [{ id: "L1", name: "PECAS", phone: "5566999336126", stage: "Novo lead", accounts: "3-5", createdAt: ISO("2026-08-19T12:00:00Z") }],
   });
@@ -83,7 +83,7 @@ test("1º toque com nome impróprio sai sem nome, não com 'Oi PECAS'", async ()
 });
 
 // ── A3 · robô não fala por cima de gente ────────────────────────────────────
-test("lembrete cala quando gente confirmou na mão minutos antes (e o passo fica carimbado)", async () => {
+test("lembrete cala quando gente confirmou na mão minutos antes (e o passo fica carimbado) #R-104", async () => {
   const callAt = "2026-08-19T12:00"; // 2h depois do agora (BRT): janela do lembrete de 2h
   const repo = await world({
     leads: [{ id: "L1", name: "Jeverson", phone: "5562992864482", stage: "Call agendada", callAt, callSetAt: ISO("2026-08-17T12:00:00Z") }],
@@ -102,7 +102,7 @@ test("lembrete cala quando gente confirmou na mão minutos antes (e o passo fica
   assert.equal(log["2h"], "humano");
 });
 
-test("lembrete sai normalmente quando a última fala humana é antiga", async () => {
+test("lembrete sai normalmente quando a última fala humana é antiga #R-104", async () => {
   const repo = await world({
     leads: [{ id: "L1", name: "Jeverson", phone: "5562992864482", stage: "Call agendada", callAt: "2026-08-19T12:00", callSetAt: ISO("2026-08-17T12:00:00Z") }],
     threads: [{ id: "5562992864482", phone: "5562992864482", leadId: "L1", saas: "leverads" }],
@@ -120,7 +120,7 @@ test("lembrete sai normalmente quando a última fala humana é antiga", async ()
 // ── A4 · véspera não confirma o que acabou de ser combinado ─────────────────
 // Régua do Leo (30/09): a véspera saiu; a manhã do dia (08:30) assumiu o papel
 // dela, com as mesmas cercas de marcação fresca.
-test("manhã pula quando a call foi marcada hoje mesmo depois das 8h (caso Amilton, na régua nova)", async () => {
+test("manhã pula quando a call foi marcada hoje mesmo depois das 8h (caso Amilton, na régua nova) #R-110", async () => {
   // Call hoje 16h BRT, marcada às 9h55; o poller passa às 10h (janela da manhã).
   const repo = await world({
     leads: [{
@@ -136,7 +136,7 @@ test("manhã pula quando a call foi marcada hoje mesmo depois das 8h (caso Amilt
   assert.equal((await repo.get("leads", "L1")).confirmLog.manha, "skip", "passo carimbado: não sai atrasado depois");
 });
 
-test("manhã sai quando a marcação é de dias atrás (às 8h35, com Bom dia)", async () => {
+test("manhã sai quando a marcação é de dias atrás (às 8h35, com Bom dia) #R-110", async () => {
   const repo = await world({
     leads: [{
       id: "L1", name: "Amilton", phone: "5519991948264", stage: "Call agendada",
@@ -151,7 +151,7 @@ test("manhã sai quando a marcação é de dias atrás (às 8h35, com Bom dia)",
   assert.match(wa.sent[0].text, /^Bom dia Amilton! Nossa conversa é hoje às 16h/);
 });
 
-test("lead antigo sem callSetAt recebe a manhã normalmente (compatibilidade)", async () => {
+test("lead antigo sem callSetAt recebe a manhã normalmente (compatibilidade) #R-110", async () => {
   const repo = await world({
     leads: [{ id: "L1", name: "Amilton", phone: "5519991948264", stage: "Call agendada", callAt: "2026-08-19T16:00" }],
     threads: [{ id: "5519991948264", phone: "5519991948264", leadId: "L1", saas: "leverads" }],
@@ -163,7 +163,7 @@ test("lead antigo sem callSetAt recebe a manhã normalmente (compatibilidade)", 
 });
 
 // ── B4 · link do Meet ───────────────────────────────────────────────────────
-test("lembrete de 2h cria a sala que falta; 10min sem link levanta alerta pro time", async () => {
+test("lembrete de 2h cria a sala que falta; 10min sem link levanta alerta pro time #R-112", async () => {
   const repo = await world({
     leads: [{ id: "L1", name: "Marlos", phone: "5547991788462", stage: "Call agendada", callAt: "2026-08-19T12:00", callSetAt: ISO("2026-08-17T12:00:00Z") }],
     threads: [{ id: "5547991788462", phone: "5547991788462", leadId: "L1", saas: "leverads" }],
@@ -195,7 +195,7 @@ test("lembrete de 2h cria a sala que falta; 10min sem link levanta alerta pro ti
 });
 
 // ── A2 · resgate de no-show só depois do horário ────────────────────────────
-test("card em No show ANTES da hora marcada não recebe 'não te encontrei'", async () => {
+test("card em No show ANTES da hora marcada não recebe 'não te encontrei' #R-116", async () => {
   const repo = await world({
     leads: [{
       id: "L1", name: "Gostariademaisi", phone: "5519994463145", stage: "No show",
@@ -209,7 +209,7 @@ test("card em No show ANTES da hora marcada não recebe 'não te encontrei'", as
   assert.equal(wa.sent.length, 0, "o horário marcado ainda nem chegou");
 });
 
-test("resgate sai quando o horário já passou de verdade", async () => {
+test("resgate sai quando o horário já passou de verdade #R-116", async () => {
   const repo = await world({
     leads: [{
       id: "L1", name: "Michel", phone: "5534998946590", stage: "No show",
@@ -224,7 +224,7 @@ test("resgate sai quando o horário já passou de verdade", async () => {
   assert.match(wa.sent[0].text, /não te encontrei/);
 });
 
-test("2ª tentativa do no-show também passa pela higiene do nome e pela reserva", async () => {
+test("2ª tentativa do no-show também passa pela higiene do nome e pela reserva #R-116 #R-007", async () => {
   const repo = await world({
     leads: [{
       id: "L1", name: "PECAS", phone: "5566993361260", stage: "No show",
@@ -244,7 +244,7 @@ test("2ª tentativa do no-show também passa pela higiene do nome e pela reserva
 });
 
 // ── A9 · lead já está na conversa ───────────────────────────────────────────
-test("lead avisando que já está na sala carimba os lembretes restantes", async () => {
+test("lead avisando que já está na sala carimba os lembretes restantes #R-113", async () => {
   const repo = await world({
     leads: [{ id: "L1", name: "José", phone: "5532913540250", stage: "Call agendada", callAt: "2026-08-19T11:00", confirmLog: { at: "2026-08-19T11:00", "24h": "x" } }],
     threads: [{ id: "5532913540250", phone: "5532913540250", leadId: "L1", saas: "leverads" }],
@@ -256,7 +256,7 @@ test("lead avisando que já está na sala carimba os lembretes restantes", async
   assert.equal(lead.confirmLog["10min"], "na-conversa");
 });
 
-test("'não consigo entrar na sala' NÃO vira in-call: precisa de gente", async () => {
+test("'não consigo entrar na sala' NÃO vira in-call: precisa de gente #R-113", async () => {
   const repo = await world({
     leads: [{ id: "L1", name: "José", phone: "5532913540250", stage: "Call agendada", callAt: "2026-08-19T11:00", confirmLog: { at: "2026-08-19T11:00", "1h": ISO("2026-08-19T12:00:00Z") } }],
     threads: [{ id: "5532913540250", phone: "5532913540250", leadId: "L1", saas: "leverads" }],
@@ -267,7 +267,7 @@ test("'não consigo entrar na sala' NÃO vira in-call: precisa de gente", async 
 });
 
 // ── B1 · falha de envio alerta por contexto ─────────────────────────────────
-test("lembrete que falhou no dia da call alerta mesmo com alerta antigo no lead (caso Lucas/Andre)", async () => {
+test("lembrete que falhou no dia da call alerta mesmo com alerta antigo no lead (caso Lucas/Andre) #R-114", async () => {
   const repo = makeMemRepo();
   await repo.create("leads", {
     id: "L1", saas: "leverads", name: "Lucas", callAt: "2026-08-24T13:30",
@@ -288,7 +288,7 @@ test("lembrete que falhou no dia da call alerta mesmo com alerta antigo no lead 
   assert.equal((await repo.list("wa_alerts")).length, 1);
 });
 
-test("número em experimento da Meta vira flag de canal bloqueado (é caso de ligação)", async () => {
+test("número em experimento da Meta vira flag de canal bloqueado (é caso de ligação) #R-114", async () => {
   const repo = makeMemRepo();
   await repo.create("leads", { id: "L1", saas: "leverads", name: "Marcelo" });
   await repo.create("wa_threads", { id: "5531993355001", phone: "5531993355001", leadId: "L1", saas: "leverads" });
@@ -303,7 +303,7 @@ test("número em experimento da Meta vira flag de canal bloqueado (é caso de li
 });
 
 // ── B3 · retomada não sai em rajada idêntica ────────────────────────────────
-test("segundo toque: jitter por lead + teto por ciclo espalham o lote das 24h", async () => {
+test("segundo toque: jitter por lead + teto por ciclo espalham o lote das 24h #R-101", async () => {
   // 12 leads tocados no MESMO segundo, 25h atrás: sem jitter, os 12 sairiam juntos.
   const leads = Array.from({ length: 12 }, (_, i) => ({
     id: `L${i}`, name: `Lead${i}`, phone: `551199999${String(i).padStart(4, "0")}`,
@@ -317,7 +317,7 @@ test("segundo toque: jitter por lead + teto por ciclo espalham o lote das 24h", 
   assert.ok(wa.sent.length >= 1, "quem já passou do próprio atraso é tocado");
 });
 
-test("segundo toque sorteia entre as variações aprovadas do template", async () => {
+test("segundo toque sorteia entre as variações aprovadas do template #R-101", async () => {
   const leads = Array.from({ length: 6 }, (_, i) => ({
     id: `L${i}`, name: `Lead${i}`, phone: `551188888${String(i).padStart(4, "0")}`,
     stage: "Qualificando", createdAt: ISO("2026-08-15T11:00:00Z"),
@@ -336,7 +336,7 @@ test("segundo toque sorteia entre as variações aprovadas do template", async (
 });
 
 // ── A8 · horário ofertado fica reservado ────────────────────────────────────
-test("reserva de horário: some da oferta dos outros leads e volta quando expira ou o lead marca", async () => {
+test("reserva de horário: some da oferta dos outros leads e volta quando expira ou o lead marca #R-024", async () => {
   const repo = makeMemRepo();
   const slots = [{ at: "2026-08-20T10:00" }, { at: "2026-08-20T14:00" }];
   await holdSlots(repo, { saas: "leverads", leadId: "L1", slots, now: NOW });
@@ -397,7 +397,7 @@ const brainOf = (repo, fakes, extra = {}) => makeSdrBrain({
 // planos diferentes e o certo sai da escuta das dores. Na 2ª insistência o
 // robô explica o porquê e puxa pra call (não repete a parede nem chama gente
 // pra mandar valor pelo WhatsApp); gente só entra na 3ª.
-test("preço pela segunda vez: robô explica os planos e puxa pra call, sem repetir a parede (caso RT Eleven)", async () => {
+test("preço pela segunda vez: robô explica os planos e puxa pra call, sem repetir a parede (caso RT Eleven) #R-051", async () => {
   const repo = await brainWorld({
     messages: [
       { direction: "in", text: "Gostaria de saber o valor", at: ISO("2026-08-19T12:44:00Z") },
@@ -417,7 +417,7 @@ test("preço pela segunda vez: robô explica os planos e puxa pra call, sem repe
   assert.doesNotMatch(fakes.sent[0].text, /R\$|\d+ reais/, "sem número");
 });
 
-test("resposta que só requenta o que já foi dito não sai: vira handoff", async () => {
+test("resposta que só requenta o que já foi dito não sai: vira handoff #R-009", async () => {
   const repeticao = "Nosso especialista mostra esse fluxo funcionando na prática, qual fica melhor pra você?";
   const repo = await brainWorld({
     messages: [
@@ -432,7 +432,7 @@ test("resposta que só requenta o que já foi dito não sai: vira handoff", asyn
   assert.match((await repo.list("wa_alerts"))[0].text, /sem resposta nova/);
 });
 
-test("confirmação curta pode repetir: 'Perfeito' duas vezes não vira handoff", async () => {
+test("confirmação curta pode repetir: 'Perfeito' duas vezes não vira handoff #R-009", async () => {
   const repo = await brainWorld({
     messages: [
       { direction: "out", author: "sdr-bot", text: "Perfeito", at: ISO("2026-08-19T12:30:00Z") },
@@ -448,7 +448,7 @@ test("confirmação curta pode repetir: 'Perfeito' duas vezes não vira handoff"
 // ── A10 · resposta automática do lead não é ordem pro robô (caso Alexandre) ──
 const POS_VENDAS = "Olá! Você contatou o PÓS VENDAS. Deixe sua mensagem para agilizarmos o atendimento. Para *VENDAS* clique no link wa.me/+554135161828 e entre direto.";
 
-test("robô não repassa pro lead o link que veio da resposta automática dele", async () => {
+test("robô não repassa pro lead o link que veio da resposta automática dele #R-008", async () => {
   const repo = await brainWorld({
     lead: { name: "Alexandre" },
     messages: [
@@ -466,7 +466,7 @@ test("robô não repassa pro lead o link que veio da resposta automática dele",
   assert.ok((await repo.get("leads", "L1")).sdrLog.handoffAt);
 });
 
-test("o conteúdo da resposta automática não chega na IA, só o rótulo", async () => {
+test("o conteúdo da resposta automática não chega na IA, só o rótulo #R-008", async () => {
   const repo = await brainWorld({
     messages: [
       { direction: "out", author: "sdr-bot", text: "Oiii, tudo bem?", at: ISO("2026-08-19T12:41:00Z") },
@@ -485,7 +485,7 @@ test("o conteúdo da resposta automática não chega na IA, só o rótulo", asyn
   assert.ok(!linhas.some((t) => t.includes("PÓS VENDAS")), "nem o texto da ordem");
 });
 
-test("trava de redirecionamento pega também o telefone escrito por extenso", async () => {
+test("trava de redirecionamento pega também o telefone escrito por extenso #R-008", async () => {
   const repo = await brainWorld({
     messages: [{ direction: "in", text: "aqui é o pós-vendas", at: ISO("2026-08-19T12:59:00Z") }],
   });
@@ -495,7 +495,7 @@ test("trava de redirecionamento pega também o telefone escrito por extenso", as
   assert.equal(fakes.sent.length, 0);
 });
 
-test("pessoa dizendo 'esse número é do meu sócio' NÃO é tratada como robô: conversa segue", async () => {
+test("pessoa dizendo 'esse número é do meu sócio' NÃO é tratada como robô: conversa segue #R-008", async () => {
   const repo = await brainWorld({
     messages: [
       { direction: "out", author: "sdr-bot", text: "Oiii, tudo bem?", at: ISO("2026-08-19T12:40:00Z") },
@@ -508,7 +508,7 @@ test("pessoa dizendo 'esse número é do meu sócio' NÃO é tratada como robô:
   assert.equal(fakes.sent.length, 1);
 });
 
-test("resposta automática NO MEIO da conversa também não é respondida", async () => {
+test("resposta automática NO MEIO da conversa também não é respondida #R-008", async () => {
   const repo = await brainWorld({
     messages: [
       { direction: "in", text: "oi, quero saber mais", at: ISO("2026-08-19T12:30:00Z") },
@@ -522,7 +522,7 @@ test("resposta automática NO MEIO da conversa também não é respondida", asyn
   assert.equal(fakes.sent.length, 0);
 });
 
-test("sameSentence pega a mesma frase reescrita, mas não confunde frases diferentes", () => {
+test("sameSentence pega a mesma frase reescrita, mas não confunde frases diferentes #R-009", () => {
   assert.ok(sameSentence(
     "O investimento é de acordo com as necessidades da operação, primeiro entendemos o cenário",
     "O investimento é de acordo com as necessidades da operação, primeiro a gente entende o cenário",
@@ -530,7 +530,7 @@ test("sameSentence pega a mesma frase reescrita, mas não confunde frases difere
   assert.ok(!sameSentence("Consigo amanhã às 10h, fica bom?", "A LeverAds clona seus anúncios entre contas"));
 });
 
-test("mensagem nova do lead no meio do envio aborta o resto da fala", async () => {
+test("mensagem nova do lead no meio do envio aborta o resto da fala #R-092", async () => {
   const repo = await brainWorld({
     messages: [{ direction: "in", text: "quero entender melhor", at: ISO("2026-08-19T12:59:00Z") }],
   });
@@ -548,7 +548,7 @@ test("mensagem nova do lead no meio do envio aborta o resto da fala", async () =
   assert.equal(fakes.sent.length, 1, "só a parte que já tinha saído; o resto morre e o próximo disparo responde tudo");
 });
 
-test("bookCall carimba callSetAt (é o que segura a véspera precoce)", async () => {
+test("bookCall carimba callSetAt (é o que segura a véspera precoce) #R-035", async () => {
   const repo = await brainWorld({});
   const fakes = brainFakes({ decisions: [{ acao: "agendar", horario: "2026-08-20T09:00" }] });
   await repo.create("wa_messages", { id: "bmx", thread: "5541999990000", leadId: "L1", direction: "in", text: "pode ser 9h", at: ISO("2026-08-19T12:59:00Z") });

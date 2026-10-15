@@ -60,7 +60,7 @@ const tickOf = (repo, wa, at = NOW) => makeSdrRunner({ repo, whatsapp: wa, log: 
 const tplsOf = (wa) => wa.sent.filter((s) => s.kind === "template").map((s) => s.name);
 
 // ── FRIO: nunca respondeu ────────────────────────────────────────────────
-test("frio: encerramento no 5º dia do 1º toque, uma vez só", async () => {
+test("frio: encerramento no 5º dia do 1º toque, uma vez só #R-102", async () => {
   const repo = await world({
     messages: [{ id: "m1", direction: "out", author: "sdr-bot", text: "Oiii...", at: ISO("2026-08-13T12:00:00Z") }],
   });
@@ -75,7 +75,7 @@ test("frio: encerramento no 5º dia do 1º toque, uma vez só", async () => {
   assert.equal(tplsOf(wa).length, 1); // escada terminada não repete
 });
 
-test("frio: antes do 5º dia não sai nada", async () => {
+test("frio: antes do 5º dia não sai nada #R-102", async () => {
   const repo = await world({
     lead: { sdrLog: { firstTouchAt: ISO("2026-08-18T12:00:00Z"), firstTouchVia: "template" } },
     messages: [{ id: "m1", direction: "out", author: "sdr-bot", text: "Oiii...", at: ISO("2026-08-18T12:00:00Z") }],
@@ -86,7 +86,7 @@ test("frio: antes do 5º dia não sai nada", async () => {
 });
 
 // ── MORNO: respondeu e sumiu ─────────────────────────────────────────────
-test("morno: relógio conta da última mensagem DELE, e o 1º degrau é a retomada", async () => {
+test("morno: relógio conta da última mensagem DELE, e o 1º degrau é a retomada #R-102", async () => {
   const repo = await world({
     messages: [
       { id: "m1", direction: "out", author: "sdr-bot", text: "Oiii...", at: ISO("2026-08-13T12:00:00Z") },
@@ -102,7 +102,7 @@ test("morno: relógio conta da última mensagem DELE, e o 1º degrau é a retoma
   assert.equal(st.done, false); // ainda faltam 2 degraus
 });
 
-test("morno: lead voltou a falar e a escada REINICIA do zero", async () => {
+test("morno: lead voltou a falar e a escada REINICIA do zero #R-102", async () => {
   const repo = await world({
     lead: { sdrLog: { firstTouchAt: ISO("2026-08-13T12:00:00Z"), firstTouchVia: "template", ladder: { at: ISO("2026-08-10T12:00:00Z"), step: 2, warm: true, lastAt: ISO("2026-08-18T12:00:00Z") } } },
     messages: [
@@ -117,7 +117,7 @@ test("morno: lead voltou a falar e a escada REINICIA do zero", async () => {
   assert.equal((await repo.get("leads", "L1")).sdrLog.ladder.at, ISO("2026-08-16T12:00:00Z"));
 });
 
-test("morno: degrau do meio é a de novidades e leva o nome do SDR", async () => {
+test("morno: degrau do meio é a de novidades e leva o nome do SDR #R-102", async () => {
   const repo = await world({
     lead: { sdrLog: { firstTouchAt: ISO("2026-08-05T12:00:00Z"), firstTouchVia: "template", ladder: { at: ISO("2026-08-08T12:00:00Z"), step: 1, warm: true, lastAt: ISO("2026-08-11T12:00:00Z") } } },
     messages: [
@@ -136,7 +136,7 @@ test("morno: degrau do meio é a de novidades e leva o nome do SDR", async () =>
 // Raio-x de 17/09: "humano falou por último" calava o robô PRA SEMPRE (238
 // leads parados sem retomada nenhuma). Agora a fala humana vira a âncora do
 // silêncio: recente, segura; velha (3 dias do morno), a escada segue.
-test("humano falou depois da âncora há pouco: o robô espera", async () => {
+test("humano falou depois da âncora há pouco: o robô espera #R-102", async () => {
   const repo = await world({
     messages: [
       { id: "m0", direction: "in", text: "oi", at: ISO("2026-08-12T12:00:00Z") },
@@ -149,7 +149,7 @@ test("humano falou depois da âncora há pouco: o robô espera", async () => {
   assert.equal(tplsOf(wa).length, 0);
 });
 
-test("humano falou depois da âncora há dias: o silêncio conta da fala dele e a escada segue", async () => {
+test("humano falou depois da âncora há dias: o silêncio conta da fala dele e a escada segue #R-102", async () => {
   const repo = await world({
     messages: [
       { id: "m0", direction: "in", text: "oi", at: ISO("2026-08-12T12:00:00Z") },
@@ -165,7 +165,7 @@ test("humano falou depois da âncora há dias: o silêncio conta da fala dele e 
   assert.equal(st.warm, true);
 });
 
-test("mensagem do robô recente: o piso de 3 dias segura o degrau", async () => {
+test("mensagem do robô recente: o piso de 3 dias segura o degrau #R-102", async () => {
   const repo = await world({
     messages: [
       { id: "m1", direction: "out", author: "sdr-bot", text: "Oiii...", at: ISO("2026-08-13T12:00:00Z") },
@@ -177,7 +177,7 @@ test("mensagem do robô recente: o piso de 3 dias segura o degrau", async () => 
   assert.equal(tplsOf(wa).length, 0);
 });
 
-test("call marcada, ganho ou fora do expediente: escada parada", async () => {
+test("call marcada, ganho ou fora do expediente: escada parada #R-102", async () => {
   const msgs = [{ id: "m1", direction: "out", author: "sdr-bot", text: "Oiii...", at: ISO("2026-08-13T12:00:00Z") }];
   for (const lead of [{ callAt: "2026-08-25T10:00" }, { stage: "Nutrição" }]) {
     const repo = await world({ lead, messages: msgs });
@@ -191,7 +191,7 @@ test("call marcada, ganho ou fora do expediente: escada parada", async () => {
   assert.equal(tplsOf(wa).length, 0);
 });
 
-test("teto diário corta a escada e sobrevive no app_config", async () => {
+test("teto diário corta a escada e sobrevive no app_config #R-102", async () => {
   const repo = await world({ sdrBot: { ladderPerDay: 1 } });
   await repo.create("leads", {
     id: "L2", saas: "leverads", owner: "sdr", name: "Bruno Costa", phone: "41988880000",
@@ -205,7 +205,7 @@ test("teto diário corta a escada e sobrevive no app_config", async () => {
   assert.equal((await repo.get("app_config", "sdr_ladder_leverads")).sent, 1);
 });
 
-test("sem o template de encerramento aprovado, o degrau final espera", async () => {
+test("sem o template de encerramento aprovado, o degrau final espera #R-102", async () => {
   const repo = await world({
     messages: [{ id: "m1", direction: "out", author: "sdr-bot", text: "Oiii...", at: ISO("2026-08-13T12:00:00Z") }],
   });
@@ -216,7 +216,7 @@ test("sem o template de encerramento aprovado, o degrau final espera", async () 
 });
 
 // ── Corte pra Nutrição ───────────────────────────────────────────────────
-test("48h de silêncio depois do encerramento: card vai pra Nutrição", async () => {
+test("48h de silêncio depois do encerramento: card vai pra Nutrição #R-102", async () => {
   const repo = await world({
     lead: { sdrLog: { firstTouchAt: ISO("2026-08-13T12:00:00Z"), firstTouchVia: "template", ladder: { at: ISO("2026-08-13T12:00:00Z"), step: 1, done: true, warm: false, lastAt: ISO("2026-08-18T12:00:00Z") } } },
     messages: [{ id: "m1", direction: "out", author: "sdr-bot", text: "encerrando", at: ISO("2026-08-18T12:00:00Z") }],
@@ -233,7 +233,7 @@ test("48h de silêncio depois do encerramento: card vai pra Nutrição", async (
   assert.equal(acts[0].meta.to, "Nutrição");
 });
 
-test("respondeu depois do encerramento: card FICA e a escada reinicia", async () => {
+test("respondeu depois do encerramento: card FICA e a escada reinicia #R-102", async () => {
   const repo = await world({
     lead: { sdrLog: { firstTouchAt: ISO("2026-08-13T12:00:00Z"), firstTouchVia: "template", ladder: { at: ISO("2026-08-13T12:00:00Z"), step: 1, done: true, warm: false, lastAt: ISO("2026-08-18T12:00:00Z") } } },
     messages: [
@@ -246,7 +246,7 @@ test("respondeu depois do encerramento: card FICA e a escada reinicia", async ()
   assert.equal((await repo.get("leads", "L1")).stage, "Qualificando");
 });
 
-test("antes das 48h o card não cai", async () => {
+test("antes das 48h o card não cai #R-102", async () => {
   const repo = await world({
     lead: { sdrLog: { firstTouchAt: ISO("2026-08-13T12:00:00Z"), firstTouchVia: "template", ladder: { at: ISO("2026-08-13T12:00:00Z"), step: 1, done: true, warm: false, lastAt: ISO("2026-08-19T18:00:00Z") } } },
     messages: [{ id: "m1", direction: "out", author: "sdr-bot", text: "encerrando", at: ISO("2026-08-19T18:00:00Z") }],
@@ -256,7 +256,7 @@ test("antes das 48h o card não cai", async () => {
   assert.equal((await repo.get("leads", "L1")).stage, "Qualificando");
 });
 
-test("escada desligada: nada se move nem sai", async () => {
+test("escada desligada: nada se move nem sai #R-102", async () => {
   const repo = await world({
     sdrBot: { ladder: false },
     lead: { sdrLog: { firstTouchAt: ISO("2026-08-13T12:00:00Z"), firstTouchVia: "template", ladder: { at: ISO("2026-08-13T12:00:00Z"), step: 1, done: true, warm: false, lastAt: ISO("2026-08-18T12:00:00Z") } } },
@@ -270,7 +270,7 @@ test("escada desligada: nada se move nem sai", async () => {
 // A escada tem que alcançar quem entrou pela CAMPANHA de backlog: em 26/08 só
 // 41 dos 448 cards em Qualificando tinham firstTouchAt, os outros 364 só
 // tinham backlogRescueAt. Exigir o 1º toque deixava 9 em cada 10 de fora.
-test("lead sem 1º toque, só com carimbo da campanha, entra na escada", async () => {
+test("lead sem 1º toque, só com carimbo da campanha, entra na escada #R-102", async () => {
   const repo = await world({
     lead: { sdrLog: { backlogRescueAt: ISO("2026-08-13T12:00:00Z") } },
     messages: [{ id: "m1", direction: "out", author: "sdr-bot", text: "Vamos retomar...", at: ISO("2026-08-13T12:00:00Z") }],
@@ -281,14 +281,14 @@ test("lead sem 1º toque, só com carimbo da campanha, entra na escada", async (
   assert.equal((await repo.get("leads", "L1")).sdrLog.ladder.at, ISO("2026-08-13T12:00:00Z"));
 });
 
-test("lead que a gente NUNCA tocou fica fora da escada", async () => {
+test("lead que a gente NUNCA tocou fica fora da escada #R-102", async () => {
   const repo = await world({ lead: { sdrLog: {} } });
   const wa = makeWa();
   await tickOf(repo, wa);
   assert.equal(tplsOf(wa).length, 0);
 });
 
-test("carimbo mais recente manda: campanha depois do 1º toque reinicia a conta", async () => {
+test("carimbo mais recente manda: campanha depois do 1º toque reinicia a conta #R-102", async () => {
   const repo = await world({
     // 1º toque velho, campanha ontem: o encerramento conta do 1º toque (a
     // promessa é D+5 do 1º toque), mas o piso de 3 dias segura a rajada.
@@ -303,7 +303,7 @@ test("carimbo mais recente manda: campanha depois do 1º toque reinicia a conta"
 });
 
 // ── Starvation e régua de resposta (raio-x 30/09) ─────────────────────────
-test("escada alcança o lead vencido mesmo com 30 leads novos na frente da fila", async () => {
+test("escada alcança o lead vencido mesmo com 30 leads novos na frente da fila #R-102", async () => {
   const repo = await world({ messages: [{ id: "m1", direction: "out", author: "sdr-bot", text: "Oiii...", at: ISO("2026-08-13T12:00:00Z") }] });
   // 30 leads tocados ONTEM (nunca vencidos) na frente: antes o passe de 25 parava neles.
   for (let i = 0; i < 30; i++) {
@@ -318,7 +318,7 @@ test("escada alcança o lead vencido mesmo com 30 leads novos na frente da fila"
   assert.equal((await repo.get("leads", "L1")).sdrLog.ladder.done, true);
 });
 
-test("lead que só mandou a mensagem pronta do form é FRIO: encerramento no 5º dia, sem a retomada morna", async () => {
+test("lead que só mandou a mensagem pronta do form é FRIO: encerramento no 5º dia, sem a retomada morna #R-102", async () => {
   const repo = await world({ messages: [
     { id: "m0", direction: "in", text: "Oi, me chamo Rafael e quero saber mais sobre o Lever OEM. Minha operação: autopeças, 1 conta, Até 500 anúncios ativos.", at: ISO("2026-08-13T11:59:00Z") },
     { id: "m1", direction: "out", author: "sdr-bot", text: "Oiii Rafael, Manuela falando. Isso ajudaria na sua operação?", at: ISO("2026-08-13T12:00:00Z") },
@@ -331,7 +331,7 @@ test("lead que só mandou a mensagem pronta do form é FRIO: encerramento no 5º
   assert.equal(st.done, true);
 });
 
-test("morno que já levou o 2º toque não ouve a mesma retomada: degrau 0 é novidades e o encerramento vem em seguida", async () => {
+test("morno que já levou o 2º toque não ouve a mesma retomada: degrau 0 é novidades e o encerramento vem em seguida #R-102", async () => {
   const repo = await world({
     lead: { sdrLog: { firstTouchAt: ISO("2026-08-10T12:00:00Z"), firstTouchVia: "template", secondTouchAt: ISO("2026-08-11T12:00:00Z") } },
     messages: [
