@@ -394,10 +394,16 @@ Comandos disponíveis, executados na raiz:
 ```sh
 npm ci
 npm test -w packages/api
+npm run test:sdr
 node --test packages/api/test/routes.rollup.test.js
 npm test -w packages/web
 npm run build
 ```
+
+`npm run test:sdr` (menos de 1 s) é obrigatório antes de qualquer merge na `main`
+que toque `packages/api/src/sdr` ou `packages/api/src/integrations/anthropic.js`,
+porque push na `main` dispara o deploy (AGENTS.md); o `npm test` completo
+continua valendo.
 
 Instalar com `npm ci` quando for necessário preparar as dependências. A API usa
 `node:test` e testes com repositório em memória/Fastify inject; o teste web é

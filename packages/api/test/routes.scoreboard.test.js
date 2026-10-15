@@ -679,7 +679,12 @@ test("sem meta configurada a derivada cai nos benchmarks (75% × 33%)", async ()
 
 // O cartão de cada pessoa mostra AS METAS DA VAGA dela com o realizado no
 // período — é o que a Visão geral cobra, pessoa a pessoa.
-test("targets por PESSOA: metas da vaga com o realizado dela e a parte do rateio", async () => {
+test("targets por PESSOA: metas da vaga com o realizado dela e a parte do rateio", async (t) => {
+  // O placar recebe `now` (28/07, buildApp), mas o pace que dá o ticket médio
+  // (cachedPipelinePace em scoreboard.js) usa o relógio real: sem venda no mês
+  // anterior o ticket cai nos ganhos dos últimos 90 dias, e o ganho de 10/07 só
+  // está nessa janela com o relógio parado no mesmo 28/07.
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-07-28T12:00:00.000Z") });
   const { app, repo } = await buildApp();
   await repo.create("users", { id: "u_clo2", name: "Cida Closer", roles: ["closer"] });
   for (const [id, key, metric, target] of [

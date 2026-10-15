@@ -101,7 +101,12 @@ test("GET /api/gateways diz o que está ligado", async () => {
   await app.close();
 });
 
-test("link do lead pelo Asaas: paymentLink com externalReference = lead; o pagamento do link entra casado e paga o link", async () => {
+test("link do lead pelo Asaas: paymentLink com externalReference = lead; o pagamento do link entra casado e paga o link", async (t) => {
+  // Relógio no dia das fixtures (dateCreated 2026-10-12): o link nasce com
+  // createdAt = new Date() (recordPaymentLink) e o enrichPaymentLinks só casa
+  // pagamento POSTERIOR ao link (1 dia de folga no Asaas). Com o relógio real,
+  // o pagamento de 12/10 fica "antes do link" e o link volta "waiting".
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-10-12T15:00:00.000Z") });
   const repo = makeMemRepo();
   const { app, asaasFetch } = buildApp(repo, {
     asaasRoutes: {

@@ -1,13 +1,20 @@
 // Marcação pelo link de convite → integração no card (google/booking-sync.js).
 // Google Agenda simulado: cada leitura devolve as mudanças da fila `pages` e um
 // syncToken novo; 410 simula token vencido.
-import test from "node:test";
+import test, { afterEach, beforeEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import { makeBookingSync, recordBookingClick, phonesIn, emailKey } from "../src/google/booking-sync.js";
 import { listNotifications, markNotificationsRead, upsertNotification } from "../src/tasks/tasks-core.js";
 
 const NOW = new Date("2026-10-07T15:00:00.000Z"); // 12:00 em Brasília
+// Relógio parado em NOW pro arquivo inteiro: a fixture marca a integração em
+// 09/10/2026 e ela tem que continuar "por vir" em qualquer dia que a suíte rode.
+// O `now` entra no syncUser/linkEvent, mas o appointmentAt que carimba o
+// nextActionAt (booking-sync.js → lead-flow.js) usa o relógio real; sem isto,
+// depois de 09/10 o compromisso "já passou" e o nextActionAt some.
+beforeEach(() => mock.timers.enable({ apis: ["Date"], now: NOW }));
+afterEach(() => mock.timers.reset());
 const FUNNEL = [{ stage: "Call agendada", kind: "call" }, { stage: "Integração", kind: "integracao" }, { stage: "Ganho", kind: "ganho" }];
 
 function fakeCalendar() {
