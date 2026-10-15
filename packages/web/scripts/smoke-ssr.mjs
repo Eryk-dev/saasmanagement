@@ -691,6 +691,30 @@ try {
     failed++;
   }
 
+  // Confirmação da integração (15/10): "cliente confirmou" é toque de WhatsApp
+  // ANTES da integração e riscava a própria integração (sumia da fila). E é só
+  // uma confirmação: não atrasa, e sem confirmar sai da fila quando a
+  // integração começa.
+  try {
+    const { buildQueue, isLateItem, isRunningItem } = await server.ssrLoadModule("/src/screens/today.jsx");
+    const eq = (name, got, want) => { if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`${name}: ${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`); };
+    const cfg = { id: "leverads", funnel: [{ stage: "Ganho", kind: "ganho" }, { stage: "Integração", kind: "integracao" }] };
+    const M = 60000, agora = Date.now();
+    const lead = { id: "li", saas: "leverads", stage: "Integração", integrator: "eryk", integrationAt: new Date(agora + 30 * M).toISOString() };
+    const itens = (l) => buildQueue([l], [], cfg, "eryk").hoje.filter((i) => i.l?.id === l.id).map((i) => `${i.confirm ? "confirmar" : i.due?.type}:${i.done ? "feito" : "pendente"}`);
+    const confirmado = { ...lead, integrationConfirmed: true, lastActivityType: "whatsapp", lastActivityAt: new Date(agora - M).toISOString() };
+    eq("confirmar não risca a integração", itens(confirmado).sort(), ["confirmar:feito", "integração:pendente"]);
+    eq("toque depois da integração risca", itens({ ...confirmado, integrationAt: new Date(agora - 30 * M).toISOString(), lastActivityAt: new Date(agora - M).toISOString() }), ["confirmar:feito", "integração:feito"]);
+    eq("começou sem confirmar: a confirmação sai da fila", itens({ ...lead, integrationAt: new Date(agora - 5 * M).toISOString() }), ["integração:pendente"]);
+    const conf = { due: { t: agora - 90 * M, type: "confirm" }, confirm: true, confirmKind: "integracao", l: lead };
+    eq("confirmação da integração não atrasa", isLateItem(conf, agora), false);
+    eq("e segue aberta até a integração", isRunningItem(conf, agora), true);
+    console.log("✓ confirmacao-integracao-leve");
+  } catch (err) {
+    console.error(`✗ confirmacao-integracao-leve: ${err.message}`);
+    failed++;
+  }
+
   // Em andamento ≠ atrasada (07/10): a atividade das 9h às 9h01 está sendo
   // cumprida. Call/integração têm a duração (1h), consulta a dela, toque e
   // confirmação 30 min — a confirmação nunca além do horário da call.

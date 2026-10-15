@@ -343,13 +343,16 @@ function buildQueue(leads, consultas, saasCfg, person) {
     // 10h. Marcado como feito quando ele registra que o cliente confirmou. Só na
     // fila de UMA pessoa (igual à confirmação de call): no "time todo" o
     // compromisso da integração já aparece, e a linha extra viraria ruído.
+    // É só uma confirmação (15/10/2026): nunca fica atrasada (isLateItem) e,
+    // sem confirmar até a integração começar, sai da fila em vez de cobrar.
     const integT = l.integrationAt ? new Date(l.integrationAt).getTime() : NaN;
+    const integDone = !!l.integrationConfirmed || confirmStepDone(l, "2h", l.integrationAt);
     if (person && kind === "integracao" && Number.isFinite(integT) &&
-      integT >= startToday.getTime() && integT <= endToday.getTime()) {
+      integT >= startToday.getTime() && integT <= endToday.getTime() && (integDone || integT > nowMs)) {
       g.hoje.push({
         l, kind, phase, who, stage, group: "confirm",
         due: { t: integT - 120 * 60 * 1000, type: "confirm" },
-        done: !!l.integrationConfirmed || confirmStepDone(l, "2h", l.integrationAt), confirm: true, confirmKind: "integracao", confirmWindow: "2h",
+        done: integDone, confirm: true, confirmKind: "integracao", confirmWindow: "2h",
       });
     }
 
@@ -397,9 +400,13 @@ function buildQueue(leads, consultas, saasCfg, person) {
     cands.sort((a, b) => a.t - b.t);
     const due = cands[0] || null;
 
-    // Toque já registrado hoje = item cumprido (fica na fila, riscado).
+    // Toque já registrado hoje = item cumprido (fica na fila, riscado). Na
+    // integração, só o toque de DEPOIS do horário dela: o "cliente confirmou"
+    // de 2h antes também é toque, e riscava a integração antes de ela
+    // acontecer (sumia da fila ao confirmar, 15/10/2026).
     const done = due?.type !== "call" && due?.type !== "followup" && TOUCH_TYPES.has(l.lastActivityType) &&
-      l.lastActivityAt && new Date(l.lastActivityAt).toDateString() === todayStr;
+      l.lastActivityAt && new Date(l.lastActivityAt).toDateString() === todayStr &&
+      (due?.type !== "integração" || actedT >= due.t);
 
     // Grupo de prioridade (define a ordem e o rótulo da ação).
     const group = !due
@@ -1073,6 +1080,8 @@ const isApptType = (type) => type === "call" || type === "integração" || type 
 // do card vermelho da fila, do bloco "Próxima ação" e do alerta do topo.
 export function isLateItem(item, now = Date.now()) {
   if (!item?.due || item.done) return false;
+  // Confirmação da integração é só confirmação: não atrasa (15/10/2026).
+  if (item.confirmKind === "integracao") return false;
   if (item.due.type === "followup") return item.due.t < new Date(now).setHours(0, 0, 0, 0);
   return now >= runEndOf(item);
 }
@@ -1080,6 +1089,8 @@ export function isLateItem(item, now = Date.now()) {
 // Passou da hora e a janela ainda está aberta: âmbar, sem cobrar atraso.
 export function isRunningItem(item, now = Date.now()) {
   if (!item?.due || item.done || item.due.type === "followup") return false;
+  // Confirmação da integração: aberta até a integração (buildQueue a tira da fila).
+  if (item.confirmKind === "integracao") return item.due.t <= now;
   return item.due.t <= now && now < runEndOf(item);
 }
 
@@ -1103,8 +1114,10 @@ function QueueRow({ item, block, featured, ordem, selected = false, onScript, on
   let when;
   if (item.confirm && due) {
     // Confirmação: mostra a hora JÁ descontada (1h/10min antes da call). Passou
-    // da hora = "agora" em âmbar; fechou a janela = atrasada em vermelho.
+    // da hora = "agora" em âmbar; fechou a janela = atrasada em vermelho. A da
+    // integração, passada a hora, só lembra, em cinza, até a integração começar.
     when = late ? { pill: hhmmOf(due.t), note: "atrasada", tone: "neg" }
+      : due.t <= now && item.confirmKind === "integracao" ? { pill: hhmmOf(due.t), note: "antes da integração", tone: "mut" }
       : due.t <= now ? { pill: hhmmOf(due.t), note: "agora", tone: "warn" }
       : { pill: hhmmOf(due.t), note: untilNote(due.t, now), tone: "pos" };
   } else if (due?.type === "followup") {
