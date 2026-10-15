@@ -139,7 +139,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 
 - Origem: 2026-08-23, Leo (#755; mesmo dia em 08/10 (#1140))
 - Regra: O horário é escrito como a lista escreve ("amanhã às 9h", "quinta às 14h"), nunca recalculado de cabeça. Dois horários do mesmo dia levam o dia uma vez ("amanhã às 9h ou às 11h"); dias diferentes levam o dia em cada hora.
-- Vale em: estados todos; roteiro todos; executada por offer, guard (validador noInlineSlots)
+- Vale em: estados todos; roteiro todos; executada por offer, guard (validador slotInList)
 
 ### R-022 · Oferta espontânea: hoje e o próximo dia útil, mais cedo primeiro
 
@@ -169,7 +169,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 
 - Origem: 2026-10-08, Leo (#1140 (dois pares no mesmo minuto))
 - Regra: Uma resposta carrega no máximo uma oferta de horários, no fim. Pergunta solta de dia ao lado da oferta ("qual dia você prefere?") cai. Se outro disparo do robô já ofereceu depois que a decisão começou, a nossa oferta não sai por cima.
-- Vale em: estados todos; roteiro todos; executada por guard, offer (validador noInlineSlots)
+- Vale em: estados todos; roteiro todos; executada por guard, offer (validador oneOfferPerReply)
 
 ### R-027 · Número solto depois da oferta é hora
 

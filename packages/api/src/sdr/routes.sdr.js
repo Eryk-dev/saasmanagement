@@ -40,6 +40,30 @@ export function registerSdrRoutes(app, repo, { whatsapp: wa, anthropic = null } 
 
   // Uso da IA do robô por dia e por modelo (chamadas, tokens, latência), somado
   // pelo sdr-brain em app_config sdr_ai_usage_<saas>_<dia>. Últimos N dias.
+  // Auditoria do validador de saída (15/10): violações por regra e por
+  // caminho, divergências da sombra e amostras, somadas por dia pelo sdr-brain
+  // em app_config sdr_audit_<saas>_<dia>. Últimos N dias.
+  app.get("/api/sdr/audit", async (req) => {
+    const saas = String(req.query?.saas || "leverads");
+    const days = Math.min(90, Math.max(1, Number(req.query?.days) || 7));
+    const cutoff = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+    const prefix = `sdr_audit_${saas}_`;
+    const docs = (await repo.list("app_config")).filter((d) => String(d.id || "").startsWith(prefix) && String(d.day || "") >= cutoff).sort((a, b) => String(a.day).localeCompare(String(b.day)));
+    const sum = (into, from) => { for (const [k, v] of Object.entries(from || {})) into[k] = (into[k] || 0) + (Number(v) || 0); return into; };
+    const total = { decisions: 0, shadowDiff: 0, shadowSame: 0, byRule: {}, exemptByRule: {}, byPath: {}, byPathRule: {} };
+    const samples = [];
+    for (const d of docs) {
+      total.decisions += Number(d.decisions) || 0;
+      total.shadowDiff += Number(d.shadowDiff) || 0;
+      total.shadowSame += Number(d.shadowSame) || 0;
+      sum(total.byRule, d.byRule); sum(total.exemptByRule, d.exemptByRule); sum(total.byPath, d.byPath);
+      for (const [path, rules] of Object.entries(d.byPathRule || {})) total.byPathRule[path] = sum(total.byPathRule[path] || {}, rules);
+      samples.push(...(d.samples || []));
+    }
+    samples.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    return { saas, days, ...total, byDay: docs.map((d) => ({ day: d.day, decisions: d.decisions || 0, shadowDiff: d.shadowDiff || 0, violations: Object.values(d.byRule || {}).reduce((a, b) => a + b, 0) })), samples: samples.slice(0, 50) };
+  });
+
   app.get("/api/sdr/ai-usage", async (req) => {
     const saas = String(req.query?.saas || "leverads");
     const days = Math.min(90, Math.max(1, Number(req.query?.days) || 14));
