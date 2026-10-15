@@ -194,6 +194,10 @@ export function sdrBotConfig(product) {
     // esse tempo; chegou outra no meio, só a última responde, compilando a
     // rajada inteira numa resposta só.
     debounceSec: num(cfg.debounceSec, 20),
+    // Contrato da IA (15/10): "v2" = a IA escolhe horários por id e o motor
+    // escreve a oferta (sdr-prompt.js). Nasce "v1"; vira "v2" por PATCH depois
+    // do replay A/B, sem deploy; rollback é o mesmo PATCH.
+    offerContract: cfg.offerContract === "v2" ? "v2" : "v1",
     freshHours: num(cfg.freshHours, 24),                // lead mais velho que isso é fila humana
     templates: {
       // 1º toque escolhido pela DOR DE ORIGEM; o v2 genérico é o fallback

@@ -295,8 +295,21 @@ a M3 do roteiro OEM/Price diz "30/40 minutos" (R-070) e conta como `exempt`.
 As cenas de brain/humanizacao asseveram `shadowStats.shadowDiff` vazio; a troca
 pra enforce (PR5) é por `product.sdrBot.guardsMode` depois de 7 dias de sombra
 em produção. Corpus de cenas: `test/sdr-corpus/*.scene.js` + runner
-`sdr-corpus.test.js` sobre `test/helpers/sdr-world.js`. Próximas fases: oferta
-estruturada (contrato v2), enforce, prompt por estado.
+`sdr-corpus.test.js` sobre `test/helpers/sdr-world.js`.
+
+**Contrato v2 da IA (PR4, 15/10/2026):** `sdr-prompt.js` define o schema v2
+(`acao`, `partes` sem dia/hora, `oferecer`, `slotIds` com enum dos ids da lista,
+`email`, `motivoHumano`), a lista de horários com ids (`s1..sN`) e
+`draftFromAi`, que normaliza v1 e v2 no mesmo shape (`horario` vem do id
+escolhido). `sdrDecide` aceita `contract`; o cérebro passa
+`product.sdrBot.offerContract` ("v1" por padrão) e, em v2, escreve a oferta
+no fim da resposta pelo `offerLine` (ids escolhidos ou o par sugerido), antes
+da cadeia de travas, que continua valendo igual. A reserva de 30 min passa a
+ser dos horários realmente enviados e `sdrLog.lastOffer` guarda o que foi
+oferecido. Todas as cópias da frase da oferta no cérebro viraram `offerLine`.
+Troca pra v2 por PATCH na config depois do replay A/B (v1 × v2, mesmo conjunto
+de conversas, `invalidSlotPicks` → 0); rollback é o mesmo PATCH. Próximas
+fases: enforce do validador (PR5), prompt por estado (PR6).
 
 1. **Receita de produto:** `rollupProduct` deriva clientes, ARR e MRR de
    `customers`, excluindo os churnados segundo `churn.js`. Não usar os números

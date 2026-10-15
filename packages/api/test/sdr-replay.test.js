@@ -86,3 +86,23 @@ test("start é single-flight e recusa sem IA configurada #R-120", async () => {
   const replayOff = makeSdrReplay({ repo, anthropic: { configured: () => false }, now: () => NOW });
   assert.match(replayOff.start().error || "", /IA não configurada/);
 });
+
+test("replay: conjunto fixo (threadIds) e contrato v2 chegam na IA; a IA que escreve horário no texto é contada #R-120 #R-021", async () => {
+  const repo = await seed();
+  const contexts = [];
+  const anthropic = {
+    configured: () => true,
+    sdrDecide: async (ctx) => { contexts.push(ctx); return { acao: "responder", mensagens: ["Consigo amanhã às 9h, pode?"], mensagem: "Consigo amanhã às 9h, pode?", horario: "", oferecer: true, slotIds: [], email: "", motivoHumano: "" }; },
+  };
+  const replay = makeSdrReplay({ repo, anthropic, log: { warn: () => {} }, now: () => NOW });
+  const report = await replay.run({ saas: "leverads", threads: 10, turns: 3, contract: "v2", threadIds: ["5541922222222"] });
+  assert.equal(report.threads, 1);
+  assert.deepEqual(report.threadIds, ["5541922222222"]);
+  assert.equal(report.contract, "v2");
+  assert.ok(contexts.every((c) => c.contract === "v2"));
+  assert.equal(report.inlineSlotMentions, 1, "a IA escreveu dia/hora apesar do contrato");
+  assert.equal(report.offersWithSlots, 1);
+  const again = await replay.run({ saas: "leverads", threads: 10, turns: 3, threadIds: report.threadIds });
+  assert.deepEqual(again.threadIds, report.threadIds, "a mesma amostra roda de novo");
+  assert.equal(again.contract, "v1");
+});

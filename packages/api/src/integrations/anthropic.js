@@ -5,6 +5,7 @@
 // direto. Raw HTTP por fetch injetável, mesmo padrão do meta.js/google.js.
 // Env: OPENROUTER_API_KEY ou ANTHROPIC_API_KEY; modelo via AI_MODEL.
 import { collapseSameDay } from "../sdr/sdr-signals.js";
+import { schemaV2, slotIdsOf, slotLinesV2, draftFromAi } from "../sdr/sdr-prompt.js";
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "claude-opus-4-8";
@@ -944,11 +945,16 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
   // Decisão do SDR conversacional pra UMA mensagem recebida no WhatsApp.
   // Devolve ação fechada + texto; quem valida horário, trava preço e executa é
   // o motor (sdr-brain.js) — aqui é só a cabeça.
-  async function sdrDecide({ sdrName = "", lead = {}, digest = "", grade = "", stage = "", callAt = "", nowLabel = "", slots = [], conversation = [], pain = null, canGreet = true, gapMin = null, demoOffered = false, slotsOffered = false, firstReply = false, engaged = true, suggestedPair = [], requestedDate = false, offerDate = "", requestedEmpty = false, rescheduleStatus = "" }) {
+  async function sdrDecide({ sdrName = "", lead = {}, digest = "", grade = "", stage = "", callAt = "", nowLabel = "", slots = [], conversation = [], pain = null, canGreet = true, gapMin = null, demoOffered = false, slotsOffered = false, firstReply = false, engaged = true, suggestedPair = [], requestedDate = false, offerDate = "", requestedEmpty = false, rescheduleStatus = "", contract = "v1" }) {
     if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
     const t0 = Date.now();
+    // CONTRATO v2 (15/10): cada horário leva um id; a IA devolve ids em slotIds
+    // e o motor escreve a frase da oferta (sdr-prompt.js / sdr-offer.js).
+    const v2 = contract === "v2";
+    const slotsV2 = v2 ? slotIdsOf(slots) : slots;
+    const idOf = (slot) => slotsV2.find((s) => s.at === slot?.at)?.id || "";
     const slotLines = slots.length
-      ? slots.map((s) => `- ${s.at} (${s.label || s.at})`).join("\n")
+      ? (v2 ? slotLinesV2(slotsV2) : slots.map((s) => `- ${s.at} (${s.label || s.at})`).join("\n"))
       : "(nenhum horário livre na janela autorizada: não ofereça outra data por conta própria; pergunte qual outra data o cliente prefere, acao responder)";
     const convo = conversation.slice(-24).map((m) => `${m.who}: ${m.text}`).join("\n");
     const context = [
@@ -985,14 +991,18 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
         ? "HORÁRIOS JÁ OFERECIDOS nesta conversa e o lead ainda não escolheu: NÃO repita horários na sua resposta. Responda o que ele perguntou e, no máximo, pergunte curto se algum dos horários que você já passou encaixa (sem re-listar). Só cite horários específicos de novo se ele pedir outras opções ou disser que nenhum serve (aí use a lista atual)."
         : "",
       "",
-      "HORÁRIOS LIVRES, em ordem (é uma AMOSTRA dos próximos livres, não a agenda inteira; pra agendar/remarcar use SOMENTE valores desta lista, copiando exato; se o período que o lead pediu não aparece aqui, diga isso com honestidade em uma frase e ofereça o mais próximo da lista; NUNCA prometa ver outras opções nem confirmar depois):",
+      v2
+        ? "HORÁRIOS LIVRES, em ordem, cada um com o seu id (é uma AMOSTRA dos próximos livres, não a agenda inteira). Pra agendar/remarcar devolva em slotIds o id do horário que o lead escolheu. Pra OFERECER horário, devolva oferecer=true e até 2 ids (ou vazio: o sistema usa o PAR SUGERIDO); o sistema escreve a frase da oferta no fim da sua resposta, então NUNCA escreva dia nem hora nas partes. Se o período que o lead pediu não aparece aqui, diga isso com honestidade em uma frase e deixe oferecer=true com ids vazios; NUNCA prometa ver outras opções nem confirmar depois:"
+        : "HORÁRIOS LIVRES, em ordem (é uma AMOSTRA dos próximos livres, não a agenda inteira; pra agendar/remarcar use SOMENTE valores desta lista, copiando exato; se o período que o lead pediu não aparece aqui, diga isso com honestidade em uma frase e ofereça o mais próximo da lista; NUNCA prometa ver outras opções nem confirmar depois):",
       requestedEmpty
         ? `O PEDIDO DO CLIENTE (a partir de ${offerDate}) NÃO TEM VAGA. A lista abaixo são as ALTERNATIVAS mais próximas: diga em uma frase que o que ele pediu lotou e ofereça o PAR SUGERIDO pra ele escolher. NUNCA "vou verificar" nem "vou reservar e te confirmo". Só acao humano se ele recusar as alternativas e insistir.`
         : requestedDate
           ? `O CLIENTE PEDIU OUTRA DATA/PERÍODO. A lista foi limitada a esse pedido, começando em ${offerDate}. Não proponha dias fora dela; pedido de data ainda precisa da escolha do horário para agendar.`
           : `OFERTA ESPONTÂNEA: hoje (só o que já está na lista) e o próximo dia útil, mais cedo primeiro. Não ofereça dias posteriores por conta própria; sem vaga na lista, pergunte qual outra data ou período o cliente prefere.`,
       suggestedPair.length >= 2
-        ? `PAR SUGERIDO pra quando você oferecer DUAS opções (já espaçado em 2h+): ${suggestedPair[0].label || suggestedPair[0].at} (${suggestedPair[0].at}) ou ${suggestedPair[1].label || suggestedPair[1].at} (${suggestedPair[1].at}). Escrito no texto: "${collapseSameDay(`${suggestedPair[0].label || suggestedPair[0].at} ou ${suggestedPair[1].label || suggestedPair[1].at}`)}". Use este par; só fuja dele se o lead pedir um encaixe específico.`
+        ? (v2
+          ? `PAR SUGERIDO pra quando você oferecer DUAS opções (já espaçado em 2h+): ${idOf(suggestedPair[0])} (${suggestedPair[0].label || suggestedPair[0].at}) ou ${idOf(suggestedPair[1])} (${suggestedPair[1].label || suggestedPair[1].at}). Devolva oferecer=true com slotIds vazio pra usar este par; só escolha outros ids se o lead pedir um encaixe específico.`
+          : `PAR SUGERIDO pra quando você oferecer DUAS opções (já espaçado em 2h+): ${suggestedPair[0].label || suggestedPair[0].at} (${suggestedPair[0].at}) ou ${suggestedPair[1].label || suggestedPair[1].at} (${suggestedPair[1].at}). Escrito no texto: "${collapseSameDay(`${suggestedPair[0].label || suggestedPair[0].at} ou ${suggestedPair[1].label || suggestedPair[1].at}`)}". Use este par; só fuja dele se o lead pedir um encaixe específico.`)
         : "",
       slotLines,
       "",
@@ -1001,18 +1011,10 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
       "",
       "Decida a ação e o texto.",
     ].filter(Boolean).join("\n");
-    const r = await requestJson(context, { system: SDR_DECIDE_SYSTEM, schema: SDR_DECIDE_SCHEMA, schemaName: "sdr_decision" });
-    const p = r.parsed || {};
-    const mensagens = (Array.isArray(p.mensagens) ? p.mensagens : [p.mensagem]).map((m) => String(m || "").trim()).filter(Boolean).slice(0, 3);
-    return {
-      acao: ["responder", "agendar", "remarcar", "desmarcar", "humano", "silencio"].includes(p.acao) ? p.acao : "humano",
-      mensagens,
-      mensagem: mensagens.join("\n"),
-      horario: String(p.horario || ""),
-      email: String(p.email || ""),
-      motivoHumano: String(p.motivoHumano || ""),
-      usage: r.usage, model: r.model, ms: Date.now() - t0,
-    };
+    const r = await requestJson(context, v2
+      ? { system: SDR_DECIDE_SYSTEM, schema: schemaV2(slotsV2.map((s) => s.id)), schemaName: "sdr_decision_v2" }
+      : { system: SDR_DECIDE_SYSTEM, schema: SDR_DECIDE_SCHEMA, schemaName: "sdr_decision" });
+    return { ...draftFromAi(r.parsed || {}, { contract, slots: slotsV2 }), usage: r.usage, model: r.model, ms: Date.now() - t0 };
   }
 
   // Corrige uma resposta DIGITADA da prova de treinamento contra o gabarito.

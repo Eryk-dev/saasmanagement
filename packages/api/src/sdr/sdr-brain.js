@@ -34,7 +34,7 @@ import { transcribeInbound } from "../whatsapp/wa-transcribe.js";
 import { AFFILIATE_RX, DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, NO_INTEREST_RX, LEAD_MOBILE_RX, DENY_CALL_RX, PERIOD_ASK_RX, PRICE_ASK_RX, WAITING_ROOM_RX, OBJECTION_RX, OEM_NO_RX, bareHour, leadEngaged, lastInboundText, plainReply, requestsCancellation, rescheduleReply, classifyInbound } from "./sdr-intents.js";
 import { stateOf, HUMAN_MUTE_MS, GREETING_GAP_MS, DAILY_CAP } from "./sdr-state.js";
 import { PRICE_RX, REDIRECT_RX, DRY_REFUSAL_RX, FAKE_OFFER_RX, PROMISE_RX, SCHEDULE_ASK_Q_RX, DEVICE_ASK_RX, stripDuration, stripDeviceAsk, sameSentence, alreadySaid, makeDraft, validateDraft } from "./sdr-guards.js";
-import { reofferText } from "./sdr-offer.js";
+import { reofferText, offerLine, NO_SLOT_TEXT } from "./sdr-offer.js";
 // Compat: quem importava daqui continua funcionando (replay, testes).
 export { bareHour, DEMO_RX, PITCH_RX, PRICE_RX, stripDuration, stripDeviceAsk, sameSentence };
 // Sombra do estado (15/10): divergências entre stateOf e a conta do cérebro,
@@ -170,9 +170,7 @@ function priceExplainText(nome, { callAt, slots, slotsOffered, wnow }) {
   const motivo = `${oi} a gente tem planos diferentes, e qual faz sentido pra você depende da sua operação. Por isso o valor a gente só fecha na call, depois de ouvir o seu cenário, senão eu te passo um número que não é o seu.`;
   if (callAt) return `${motivo} Na nossa call de ${slotLabelFull(callAt, wnow)} o especialista já te mostra o plano certo e o valor.`;
   if (slotsOffered) return `${motivo} Qual dos horários que te passei fica melhor pra você?`;
-  if (slots.length >= 2) return `${motivo} Consigo ${slotLabel(slots[0].at, wnow)} ou ${slotLabel(slots[1].at, wnow)}, qual fica melhor pra você?`;
-  if (slots.length === 1) return `${motivo} Consigo ${slotLabel(slots[0].at, wnow)}, fica bom pra você?`;
-  return `${motivo} Qual período fica melhor pra você, manhã ou tarde?`;
+  return `${motivo} ${offerLine(slots, { wnow, empty: "periodo" })}`;
 }
 
 // A resposta é requentada? Compara com o que o robô JÁ mandou nesta conversa,
@@ -215,11 +213,7 @@ const SCRIPT_PRICE_TEXT = { oem: OEM_PRICE_TEXT, price: PRICE_PRICE_TEXT };
 // Resposta curta e positiva do lead ("sim", "pode ser", "ajudaria", "ok") que
 // move o roteiro; negativa, ressalva ou pedido de mudança fica com a IA.
 const oemVoc = (nome, word) => (nome ? `${word} ${nome}.` : `${word}.`);
-function oemOfferLine(pair, wnow) {
-  if (pair.length >= 2) return `Tenho agenda para ${slotLabel(pair[0].at, wnow)} ou ${slotLabel(pair[1].at, wnow)}. Qual funciona melhor para você?`;
-  if (pair.length === 1) return `Tenho agenda para ${slotLabel(pair[0].at, wnow)}. Funciona para você?`;
-  return "";
-}
+const oemOfferLine = (pair, wnow) => offerLine(pair, { style: "tenho-agenda", wnow });
 function oemScheduleParts(nome, pair, wnow) {
   return [
     `${oemVoc(nome, "Maravilha")} Pelo que você me passou no formulário, faz sentido te mostrar a plataforma. A demonstração é focada na operação de autopeças e principalmente em ganhar escala na criação dos anúncios com compatibilidade através do OEM.`,
@@ -705,10 +699,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     const suggestedPair = spreadPair(offerPool);
     // A oferta REAL do motor, pra onde cai qualquer oferta inventada, promessa
     // de "te confirmo" ou hora pedida que não existe.
-    const actualOffer = suggestedPair.length >= 2
-      ? `Consigo ${suggestedPair[0].label} ou ${suggestedPair[1].label}, qual fica melhor pra você?`
-      : suggestedPair.length ? `Consigo ${suggestedPair[0].label}, fica bom pra você?`
-        : "Não tenho horário disponível nesse dia. Qual outra data fica melhor pra você?";
+    const actualOffer = offerLine(suggestedPair, { wnow });
     // "quarta" / "amanhã" / "quarta 14/10": o dia de um YYYY-MM-DD no rótulo
     // do lead (pra dizer que o dia pedido lotou).
     const dayLabelOf = (ymdDay) => slotLabel(`${ymdDay}T09:00`, wnow).replace(/ às .*$/, "");
@@ -912,8 +903,8 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
         const offered = slotsOffered ? offeredSlotsIn(agendaMessages, SDR_AUTHOR).filter((s) => free.has(s.at)) : [];
         if (!(slotsOffered && acceptedSlot(lastInText, offered))) {
           const offer = slotsOffered && offered.length >= 2
-            ? `Fica melhor ${slotLabel(offered[0].at, wnow)} ou ${slotLabel(offered[1].at, wnow)}?`
-            : oemOfferLine(suggestedPair, wnow) || "Qual período fica melhor pra você, manhã ou tarde?";
+            ? offerLine(offered, { style: "fica-melhor", wnow })
+            : oemOfferLine(suggestedPair, wnow) || NO_SLOT_TEXT.periodo;
           await send([SCRIPT_PRICE_TEXT[script], offer], { kind: "roteiro", path: `${script}-preco` });
           if (aborted) return "abortado";
           await stamp(lead, { priceGuardAt: new Date(nowMs).toISOString() });
@@ -957,6 +948,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       offerDate,
       requestedEmpty,
       rescheduleStatus: reschedule?.status || "",
+      contract: cfg.offerContract,
     });
     // Quem respondeu e quanto custou: vai pro carimbo da thread e pro uso do dia.
     Object.assign(meta, { model: decision.model || "", usage: decision.usage || null, ms: decision.ms || 0, saas: product.id });
@@ -1087,10 +1079,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
         await send("Tudo bem, quando quiser remarcar é só me chamar", { path: "remarcacao-aguarda" });
         return "remarcacao-aguarda";
       }
-      const offer = suggestedPair.length >= 2
-        ? `Consigo ${suggestedPair[0].label} ou ${suggestedPair[1].label}, qual fica melhor pra você?`
-        : suggestedPair.length ? `Consigo ${suggestedPair[0].label}, fica bom pra você?`
-          : "Não tenho horário disponível nesse dia. Qual outra data fica melhor pra você?";
+      const offer = offerLine(suggestedPair, { wnow });
       await send(offer, { path: "remarcacao-oferta" });
       if (aborted) return "superseded";
       await stamp(lead, { reschedule: { ...reschedule, status: "offered" } });
@@ -1161,6 +1150,16 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // responder — com a trava de preço na frente de tudo, sobre o conjunto.
     const parts = (Array.isArray(decision.mensagens) && decision.mensagens.length
       ? decision.mensagens : [decision.mensagem]).map((t) => String(t || "").trim()).filter(Boolean);
+    // CONTRATO v2 (15/10): a IA escolheu horários por id (ou pediu pra oferecer
+    // o par sugerido) e o MOTOR escreve a oferta no fim, pelo único
+    // renderizador (sdr-offer.js). Daqui em diante a cadeia de travas vê uma
+    // oferta real, como sempre viu.
+    let offerSlots = suggestedPair;
+    if (cfg.offerContract === "v2" && decision.acao === "responder" && (decision.oferecer || decision.slotIds?.length)) {
+      const chosen = (decision.slots || []).filter((c) => slotList.some((x) => x.at === c.at));
+      offerSlots = chosen.length ? chosen : suggestedPair;
+      if (offerSlots.length) parts.push(offerLine(offerSlots, { wnow }));
+    }
     if (!parts.length) return "silencio";
     const rawParts = parts.slice();
     const sh = shadowOf(rawParts);
@@ -1252,11 +1251,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // resposta fala de horários "que te passei" — tira a frase e coloca a
     // oferta real no lugar (mesma régua determinística da trava de preço).
     if (!slotsOffered && parts.some((t) => FAKE_OFFER_RX.test(t))) {
-      const real = suggestedPair.length >= 2
-        ? `Consigo ${slotLabel(suggestedPair[0].at, wnow)} ou ${slotLabel(suggestedPair[1].at, wnow)}, qual fica melhor pra você?`
-        : offerPool.length
-          ? `Consigo ${slotLabel(offerPool[0].at, wnow)}, fica bom pra você?`
-          : "Qual período fica melhor pra você, manhã ou tarde?";
+      const real = suggestedPair.length >= 2 ? offerLine(suggestedPair, { wnow }) : offerPool.length ? offerLine(offerPool.slice(0, 1), { wnow }) : NO_SLOT_TEXT.periodo;
       const kept = parts.filter((t) => !FAKE_OFFER_RX.test(t));
       parts.length = 0;
       parts.push(...kept, real);
@@ -1309,9 +1304,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     if (!lead.callAt && suggestedPair.length && !PERIOD_ASK_RX.test(lastInText) && !DAY_WORD_RX.test(lastInText) && !HAS_HOUR_RX.test(lastInText)) {
       const idx = parts.findIndex(isOfferMsg);
       if (idx >= 0 && !parts[idx].includes(suggestedPair[0].label)) {
-        parts[idx] = suggestedPair.length >= 2
-          ? `Consigo ${suggestedPair[0].label} ou ${suggestedPair[1].label}, qual fica melhor pra você?`
-          : `Consigo ${suggestedPair[0].label}, fica bom pra você?`;
+        parts[idx] = offerLine(suggestedPair, { wnow });
         await stamp(lead, { earliestGuardAt: new Date(nowMs).toISOString() });
         log.info?.({ lead: lead.id, pair: meta.pair }, "sdr-brain: trava do mais cedo primeiro reescreveu a oferta");
       }
@@ -1327,13 +1320,9 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     if ((semSaida || diaSemHora) && !lead.callAt && engaged && INTEREST_RX.test(lastInText) && !FORM_MSG_RX.test(lastInText)) {
       // Já ofereceu antes: repesca com os horários ESCRITOS ("algum dos
       // horários que te passei" é a frase proibida do raio-x, item 4 do Leo).
-      const push = slotsOffered && suggestedPair.length >= 2
-        ? `Fica melhor ${suggestedPair[0].label} ou ${suggestedPair[1].label}?`
-        : suggestedPair.length >= 2
-          ? `Consigo ${slotLabel(suggestedPair[0].at, wnow)} ou ${slotLabel(suggestedPair[1].at, wnow)}, qual fica melhor pra você?`
-          : offerPool.length
-            ? `Consigo ${slotLabel(offerPool[0].at, wnow)}, fica bom pra você?`
-            : "Qual período costuma ser melhor pra você, manhã ou tarde?";
+      const push = slotsOffered && suggestedPair.length >= 2 ? offerLine(suggestedPair, { style: "fica-melhor", wnow })
+        : suggestedPair.length >= 2 ? offerLine(suggestedPair, { wnow })
+          : offerPool.length ? offerLine(offerPool.slice(0, 1), { wnow }) : NO_SLOT_TEXT["periodo-costuma"];
       if (parts.length >= 3) parts[2] = `${parts[2]} ${push}`;
       else parts.push(push);
       log.info?.({ lead: lead.id }, "sdr-brain: trava de beco emendou a oferta");
@@ -1361,8 +1350,12 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // Horário citado na resposta fica RESERVADO enquanto o lead decide: some da
     // oferta dos outros leads por 30 min (agenda-slots.js). Só quando a resposta
     // realmente ofereceu horário.
-    if (suggestedPair.length && parts.some((t) => SLOTS_RX.test(t))) {
-      await holdSlots(repo, { saas: product.id, leadId: lead.id, slots: suggestedPair, now: at }).catch(() => {});
+    // A reserva é dos horários realmente ENVIADOS (contrato v2 pode ter
+    // escolhido outros que o par); sdrLog.lastOffer guarda o que foi oferecido.
+    if (parts.some((t) => SLOTS_RX.test(t))) {
+      const sentSlots = offerSlots.length ? offerSlots : suggestedPair;
+      if (sentSlots.length) await holdSlots(repo, { saas: product.id, leadId: lead.id, slots: sentSlots, now: at }).catch(() => {});
+      await stamp(lead, { lastOffer: { at: new Date(nowMs).toISOString(), slots: sentSlots.map((x) => x.at) } }).catch(() => {});
     }
     return "responder";
   }
