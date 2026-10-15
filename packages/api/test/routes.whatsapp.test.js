@@ -707,3 +707,24 @@ test("client: createTemplate com cabeçalho de IMAGEM sobe a foto pelo upload re
   assert.ok(!calls2.some((u) => u.includes("debug_token")));
   assert.ok(calls2[0].includes("/APP1/uploads?"));
 });
+
+test("webhook POST: cartão de contato vira texto com nome e telefone; tipo desconhecido guarda o payload bruto", async () => {
+  const repo = makeMemRepo();
+  const app = await appWith(repo, fakeWa());
+  const contact = { entry: [{ changes: [{ value: { contacts: [{ profile: { name: "Daniel" } }], messages: [{
+    from: "5541988887777", id: "wamid.CT1", timestamp: "1720000000", type: "contacts",
+    contacts: [{ name: { formatted_name: "Rafael Sócio", first_name: "Rafael" }, phones: [{ phone: "+55 41 99999-1234", wa_id: "5541999991234", type: "CELL" }], emails: [{ email: "rafael@loja.com" }] }],
+  }] } }] }] };
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: contact });
+  const ct = await repo.get("wa_messages", "wamid.CT1");
+  assert.equal(ct.text, "👤 Rafael Sócio · +55 41 99999-1234 · rafael@loja.com");
+  assert.equal(ct.raw, undefined);
+  assert.equal((await repo.get("wa_threads", "5541988887777")).lastText, ct.text);
+
+  const unknown = { entry: [{ changes: [{ value: { messages: [{ from: "5541988887777", id: "wamid.UN1", timestamp: "1720000001", type: "order", order: { catalog_id: "c1" } }] } }] }] };
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: unknown });
+  const un = await repo.get("wa_messages", "wamid.UN1");
+  assert.equal(un.text, "[order]");
+  assert.equal(un.raw.order.catalog_id, "c1");
+  await app.close();
+});

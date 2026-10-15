@@ -37,9 +37,32 @@ function mediaOf(m) {
   return null;
 }
 
+// Cartão de contato compartilhado (type "contacts"): vira texto com nome,
+// telefones e e-mails — é o que o inbox mostra e o que o robô lê (15/10: o
+// Daniel mandou o contato do sócio e a tela só mostrou "[contacts]").
+function contactsText(m) {
+  const list = Array.isArray(m?.contacts) ? m.contacts : [];
+  const lines = list.map((c) => {
+    const name = c?.name?.formatted_name || [c?.name?.first_name, c?.name?.last_name].filter(Boolean).join(" ") || "";
+    const phones = (c?.phones || []).map((p) => p?.phone || (p?.wa_id ? `+${p.wa_id}` : "")).filter(Boolean);
+    const emails = (c?.emails || []).map((e) => e?.email).filter(Boolean);
+    const org = c?.org?.company || "";
+    return ["👤 " + (name || "contato"), ...phones, ...emails, org].filter(Boolean).join(" · ");
+  }).filter(Boolean);
+  return lines.length ? lines.join("\n") : "👤 contato";
+}
+
+// Tipo que bodyOf NÃO sabe traduzir: o payload bruto da Meta vai junto na
+// mensagem (campo `raw`), pra informação nunca se perder como o "[contacts]".
+const KNOWN_TYPES = new Set(["text", "image", "audio", "voice", "video", "document", "sticker", "location", "button", "interactive", "reaction", "contacts"]);
+function rawOf(m) {
+  return m && !KNOWN_TYPES.has(m.type) ? m : null;
+}
+
 // Texto legível pra tipos que a Fase 1 ainda não renderiza (mídia/áudio).
 function bodyOf(m) {
   if (m.text?.body) return m.text.body;
+  if (m.type === "contacts") return contactsText(m);
   // Resposta ao pedido de permissão de ligação (fluxo de qualificação).
   const perm = parsePermissionReply(m);
   if (perm) return perm === "accepted" ? "✅ topou receber a ligação" : "🚫 prefere não receber ligação";
@@ -167,7 +190,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
                 id: m.id, phone: m.from, direction: "in", text: bodyOf(m),
                 at: m.timestamp ? new Date(Number(m.timestamp) * 1000).toISOString() : undefined,
                 from: m.from, status: "received", contactName,
-                waPhoneId: inPhoneId, saasHint: owner?.id || "", media: mediaOf(m),
+                waPhoneId: inPhoneId, saasHint: owner?.id || "", media: mediaOf(m), raw: rawOf(m),
               });
               // Fluxo de permissão de ligação: 1º contato de lead conhecido →
               // pede pra ligar; resposta com fluxo aberto → alerta quente
