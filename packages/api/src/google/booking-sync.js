@@ -4,10 +4,14 @@
 // cliente convidado e a sala do Meet. Esta rotina lê as MUDANÇAS da agenda de
 // cada integrador com link cadastrado (leitura incremental por syncToken: sem
 // novidade, a resposta vem vazia) e liga o evento ao card:
-//   1. e-mail do convidado = e-mail do lead;
+//   1. e-mail do convidado = e-mail do lead (no Gmail, ponto e +tag não contam);
 //   2. telefone escrito na marcação = telefone do lead;
 //   3. o lead que clicou no link curto desse integrador nas últimas 48h
 //      (lead.bookingClick, gravado pelo /a/:id?l=…), se for um só.
+// Procura primeiro nos cards em Integração/Pós-venda; sem achar, nos cards em
+// Ganho (venda fechada que ainda não foi pra entrega), e esse card vai pra
+// Integração ao ligar (15/10/2026: o cliente marcou com o card em Ganho e a
+// marcação caiu no sino em vez da agenda).
 // Ligado, o card ganha integrationAt e usa a SALA DA MARCAÇÃO (eventId, link e
 // organizador = o integrador): o autoIntegrationMeet não cria outra e o espelho
 // da agenda pessoal não duplica o bloco. Remarcar ou cancelar na página do
@@ -17,8 +21,9 @@
 // nas 24h depois de um clique no link dela (quando a marcação é provável).
 
 import { toNaiveBrt } from "../crm/agenda-slots.js";
-import { appointmentAt, logActivity } from "../crm/lead-flow.js";
-import { kindOf } from "../crm/stages.js";
+import { appointmentAt, applyStageMove, logActivity } from "../crm/lead-flow.js";
+import { kindOf, stageByKind } from "../crm/stages.js";
+import { convertWonLead } from "../crm/won-lead.js";
 import { upsertNotification } from "../tasks/tasks-core.js";
 import { waMatchKey } from "../whatsapp/wa-store.js";
 import { syncPersonalCalendar } from "./google-user.js";
@@ -48,6 +53,21 @@ export async function recordBookingClick(repo, { userId, leadId, ua = "", now = 
   if (st) await repo.update("app_config", st.id, { lastClickAt: at });
   else await repo.create("app_config", { id: stateId(userId), lastClickAt: at });
   return true;
+}
+
+// E-mail comparável: caixa baixa; no Gmail, pontos e +tag não mudam a caixa de
+// entrada (fulano.silva@ = fulanosilva@), então não contam.
+export function emailKey(email) {
+  const e = String(email || "").trim().toLowerCase();
+  const at = e.lastIndexOf("@");
+  if (at < 1) return e;
+  let user = e.slice(0, at);
+  let domain = e.slice(at + 1);
+  if (domain === "gmail.com" || domain === "googlemail.com") {
+    user = user.split("+")[0].replace(/\./g, "");
+    domain = "gmail.com";
+  }
+  return `${user}@${domain}`;
 }
 
 // Telefones escritos no evento (o formulário da marcação pode pedir): sequências
@@ -116,7 +136,15 @@ export function makeBookingSync({ repo, googleUser: gu, google = null, fetch: f 
     };
     const next = appointmentAt(product, { ...lead, ...patch });
     if (next) patch.nextActionAt = next;
-    const fresh = await repo.update("leads", lead.id, patch);
+    let fresh = await repo.update("leads", lead.id, patch);
+    // Card em Ganho: marcar a integração é o passo da entrega, então ele vai
+    // pra Integração pelo mesmo applyStageMove do PATCH de etapa.
+    const to = kindOf(product, lead.stage) === "ganho" ? stageByKind(product, "integracao")?.stage || "" : "";
+    if (to && to !== lead.stage) {
+      const moved = await applyStageMove(repo, { lead: fresh, toStage: to, author: "cockpit", now });
+      fresh = await repo.update("leads", lead.id, { stage: to, ...moved });
+      try { await convertWonLead(repo, fresh); } catch { /* idempotente e best-effort, como no PATCH */ }
+    }
     // Sala aberta + gravação/transcrição (o resumo da integração depende disso).
     const code = (meetUrl.match(/meet\.google\.com\/([a-z0-9-]+)/i) || [])[1];
     if (code && google?.forUser) { try { await google.forUser(gu, user.id).configureSpace(code); } catch { /* best-effort */ } }
@@ -173,7 +201,9 @@ export function makeBookingSync({ repo, googleUser: gu, google = null, fetch: f 
     if (!items.length) return 0;
     const leads = await repo.list("leads");
     const products = new Map((await repo.list("products")).map((p) => [p.id, p]));
-    const inDelivery = (l) => ["integracao", "posvenda"].includes(kindOf(products.get(l.saas), l.stage));
+    const kind = (l) => kindOf(products.get(l.saas), l.stage);
+    const inDelivery = (l) => ["integracao", "posvenda"].includes(kind(l));
+    const pools = [leads.filter(inDelivery), leads.filter((l) => kind(l) === "ganho")];
     let known = null;
     let done = 0;
     for (const ev of items) {
@@ -190,19 +220,21 @@ export function makeBookingSync({ repo, googleUser: gu, google = null, fetch: f 
       known ||= await knownEventIds();
       if (known.has(ev.id)) continue;                                         // criado pelo cockpit
 
-      const emails = new Set(guests.map((a) => String(a.email).toLowerCase()));
+      const emails = new Set(guests.map((a) => emailKey(a.email)));
       const phones = new Set(phonesIn(`${ev.description || ""}\n${ev.location || ""}`));
-      const pool = leads.filter(inDelivery);
       const mine = (list) => (list.length > 1 ? list.filter((l) => l.integrator === user.id) : list);
-      let why = "email";
-      let hit = mine(pool.filter((l) => l.email && emails.has(String(l.email).toLowerCase())));
-      if (hit.length !== 1) { why = "telefone"; hit = mine(pool.filter((l) => l.phone && phones.has(waMatchKey(l.phone)))); }
-      if (hit.length !== 1) {
-        why = "clique";
-        hit = pool.filter((l) => {
-          const t = Date.parse(l.bookingClick?.at || "");
-          return l.bookingClick?.user === user.id && Number.isFinite(t) && t <= created + 10 * MIN && created - t <= CLICK_MATCH_MS;
-        });
+      const clicked = (l) => {
+        const t = Date.parse(l.bookingClick?.at || "");
+        return l.bookingClick?.user === user.id && Number.isFinite(t) && t <= created + 10 * MIN && created - t <= CLICK_MATCH_MS;
+      };
+      let why = "";
+      let hit = [];
+      for (const pool of pools) {
+        why = "email";
+        hit = mine(pool.filter((l) => l.email && emails.has(emailKey(l.email))));
+        if (hit.length !== 1) { why = "telefone"; hit = mine(pool.filter((l) => l.phone && phones.has(waMatchKey(l.phone)))); }
+        if (hit.length !== 1) { why = "clique"; hit = pool.filter(clicked); }
+        if (hit.length === 1) break;
       }
       const who = guests.map((a) => a.displayName || a.email).join(", ");
       const lead = hit.length === 1 ? hit[0] : null;
@@ -216,7 +248,10 @@ ${ev.description || ""}`)) continue;
         ? `${lead.name || who} marcou pelo seu link (${when}), mas o card já tem integração marcada: confira qual vale`
         : `${who} marcou ${when} pelo seu link de convite e não achei o card: toque para ligar a um card`;
       // Sem card: o aviso leva o evento, e o sino abre a escolha do card (linkEvent).
-      await notify(user.id, `booking-orphan:${ev.id}`, text, busy ? { screen: "today", lead: lead.id } : { screen: "today", booking: ev.id, bookingUser: user.id }, lead?.saas || "");
+      // `until` = início da marcação: até lá o aviso fica no topo do sino
+      // (listNotifications, tasks-core.js).
+      const link = busy ? { screen: "today", lead: lead.id } : { screen: "today", booking: ev.id, bookingUser: user.id, until: new Date(ev.start.dateTime).toISOString() };
+      await notify(user.id, `booking-orphan:${ev.id}`, text, link, lead?.saas || "");
       done++;
     }
     return done;

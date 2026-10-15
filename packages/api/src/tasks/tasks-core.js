@@ -528,10 +528,33 @@ export async function notifyEvents(repo, task, events, { by = ACTOR_API, users =
   for (const it of items) out.push(await upsertNotification(repo, { ...it, task: task.id, taskTitle: title, saas: task.saas || "", by }, { now }));
   return out;
 }
-export async function listNotifications(repo, user, { unread = false, limit = 50 } = {}) {
+// Marcação pelo link de convite que a rotina não ligou a card nenhum
+// (google/booking-sync.js, chave booking-orphan:<evento>): fica no topo da lista
+// enquanto ninguém liga, mesmo lida ou soterrada pelos avisos de tarefa (15/10/
+// 2026: o "marcar todas como lidas" e o corte nos 50 mais novos sumiram com a
+// marcação de um cliente pra integração do mesmo dia). Sai quando um card
+// passa a ter a marcação, quando o horário passa (link.until) ou, nos avisos
+// sem horário gravado, depois de 7 dias.
+const ORPHAN_BOOKING_MS = 7 * 24 * 3600 * 1000;
+async function pendingBookingNotices(repo, all, now = Date.now()) {
+  const out = [];
+  for (const n of all) {
+    const ev = n.link?.booking;
+    if (!ev || !String(n.key || "").startsWith("booking-orphan:")) continue;
+    const until = Date.parse(n.link.until || "");
+    if (Number.isFinite(until) ? until <= now : now - Date.parse(n.at || 0) > ORPHAN_BOOKING_MS) continue;
+    const linked = await repo.listWhere("leads", { integrationBookedEventId: ev }, { fields: [] }).catch(() => []);
+    if (!linked.length) out.push({ ...n, pinned: true });
+  }
+  return out;
+}
+export async function listNotifications(repo, user, { unread = false, limit = 50, now = Date.now() } = {}) {
   const all = (await repo.listWhere("notifications", { user })).sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")));
   const unreadCount = all.filter((n) => !n.read).length;
-  const items = (unread ? all.filter((n) => !n.read) : all).slice(0, Math.max(1, Math.min(200, num(limit) || 50)));
+  const pinned = unread ? [] : await pendingBookingNotices(repo, all, now);
+  const pinnedIds = new Set(pinned.map((n) => n.id));
+  const rest = (unread ? all.filter((n) => !n.read) : all).filter((n) => !pinnedIds.has(n.id));
+  const items = [...pinned, ...rest].slice(0, Math.max(1, Math.min(200, num(limit) || 50)));
   return { items, unread: unreadCount };
 }
 export async function markNotificationsRead(repo, user, { ids = [], all = false } = {}, { now = nowIso() } = {}) {

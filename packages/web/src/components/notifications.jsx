@@ -124,13 +124,14 @@ export function NotificationsBell() {
               </div>
             )}
             {list.map((n) => (
-              <button key={n.id} type="button" onClick={() => openItem(n)} className="notification-item" data-read={n.read || undefined}>
-                <span className="notification-dot" style={{ background: n.read ? "var(--line-2)" : DOT[n.type] || "var(--accent)" }} />
+              // Marcação sem card (pinned, tasks-core.js) segue acesa no topo até ser ligada.
+              <button key={n.id} type="button" onClick={() => openItem(n)} className="notification-item" data-read={(n.read && !n.pinned) || undefined}>
+                <span className="notification-dot" style={{ background: n.read && !n.pinned ? "var(--line-2)" : DOT[n.type] || "var(--accent)" }} />
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span className="notification-text">{n.text}</span>
                   <span className="notification-meta">
                     {(n.task || n.link?.screen) && <span className="notification-action">
-                      {n.link?.booking ? "Ligar a um card" : ACTION[n.type] || "Abrir"} →
+                      {n.link?.booking ? `Ligar a um card${n.pinned ? " · fixo até ligar" : ""}` : ACTION[n.type] || "Abrir"} →
                     </span>}
                     <span title={n.by === "api" ? "Cockpit" : displayName(n.by) || n.by}>{when(n.at)}{n.saas ? ` · ${n.saas}` : ""}</span>
                   </span>

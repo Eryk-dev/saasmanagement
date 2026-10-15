@@ -4,7 +4,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeBookingSync, recordBookingClick, phonesIn } from "../src/google/booking-sync.js";
+import { makeBookingSync, recordBookingClick, phonesIn, emailKey } from "../src/google/booking-sync.js";
+import { listNotifications, markNotificationsRead, upsertNotification } from "../src/tasks/tasks-core.js";
 
 const NOW = new Date("2026-10-07T15:00:00.000Z"); // 12:00 em Brasília
 const FUNNEL = [{ stage: "Call agendada", kind: "call" }, { stage: "Integração", kind: "integracao" }, { stage: "Ganho", kind: "ganho" }];
@@ -210,7 +211,7 @@ test("marcação sem card: o aviso leva o evento e ligar à mão usa a sala da m
   cal.queue.push([orphan]);
   await sync.syncUser(eryk, NOW);
   const [aviso] = await repo.list("notifications");
-  assert.deepEqual(aviso.link, { screen: "today", booking: "orf", bookingUser: "eryk" });
+  assert.deepEqual(aviso.link, { screen: "today", booking: "orf", bookingUser: "eryk", until: "2026-10-09T13:00:00.000Z" });
   assert.match(aviso.text, /toque para ligar a um card/);
 
   const r = await sync.linkEvent({ userId: "eryk", eventId: "orf", leadId: "ana", by: "leonardo", now: NOW });
@@ -234,4 +235,57 @@ test("ligar à mão não pisa em card que já tem outra integração por vir", a
   const r = await sync.linkEvent({ userId: "eryk", eventId: "orf2", leadId: "bia", now: NOW });
   assert.equal(r.code, 409);
   assert.equal((await repo.get("leads", "bia")).integrationAt, "2026-10-20T10:00");
+});
+
+test("e-mail do Gmail: ponto e +tag não contam", () => {
+  assert.equal(emailKey("Cristiano.Horcel@gmail.com"), "cristianohorcel@gmail.com");
+  assert.equal(emailKey("c.horcel+agenda@googlemail.com"), "chorcel@gmail.com");
+  assert.equal(emailKey("ana.prado@prado.com"), "ana.prado@prado.com", "fora do Gmail o ponto conta");
+});
+
+test("card em Ganho: a marcação liga (e-mail do Gmail com ponto) e o card vai pra Integração", async () => {
+  const { repo, cal, sync, eryk } = await setup();
+  await repo.create("leads", { id: "cris", saas: "leverads", name: "Cristiano", stage: "Ganho", integrator: "vitor", email: "cristianohorcel@gmail.com", integrationAt: "2026-07-20T11:00" });
+  cal.queue.push([booking({ id: "bkc", attendees: [{ email: "eryk@leverads.com.br", self: true }, { email: "cristiano.horcel@gmail.com" }] })]);
+  assert.equal(await sync.syncUser(eryk, NOW), 1);
+  const cris = await repo.get("leads", "cris");
+  assert.equal(cris.stage, "Integração");
+  assert.equal(cris.integrator, "eryk", "quem recebeu a marcação integra");
+  assert.equal(cris.integrationAt, "2026-10-09T10:00");
+  assert.equal(cris.integrationBookedEventId, "bkc");
+  const acts = (await repo.list("activities")).filter((a) => a.lead === "cris");
+  assert.ok(acts.some((a) => a.type === "stage" && a.meta?.from === "Ganho" && a.meta?.to === "Integração"));
+  assert.ok(acts.some((a) => a.meta?.event === "integration_booked" && a.meta.match === "email"));
+  assert.ok(!(await repo.list("notifications")).some((n) => /não achei o card/.test(n.text)));
+});
+
+test("mesmo e-mail na entrega e no Ganho: vale o card que já está na entrega", async () => {
+  const { repo, cal, sync, eryk } = await setup();
+  await repo.create("leads", { id: "ana-velha", saas: "leverads", name: "Ana Prado", stage: "Ganho", email: "ana@prado.com" });
+  cal.queue.push([booking()]);
+  await sync.syncUser(eryk, NOW);
+  assert.equal((await repo.get("leads", "ana")).integrationBookedEventId, "bk1");
+  assert.equal((await repo.get("leads", "ana-velha")).stage, "Ganho");
+});
+
+test("aviso de marcação sem card fica no topo do sino até alguém ligar, mesmo lido e soterrado", async () => {
+  const { repo, cal, eryk } = await setup();
+  const orphan = booking({ id: "orf", attendees: [{ email: "outro@mail.com" }] });
+  const sync = makeBookingSync({ repo, googleUser: { ...gu, getEvent: async () => orphan }, google, fetch: cal.fetch, log: { warn() {} } });
+  cal.queue.push([orphan]);
+  await sync.syncUser(eryk, NOW);
+  const [aviso] = await repo.list("notifications");
+  await markNotificationsRead(repo, "eryk", { all: true });
+  for (let i = 0; i < 60; i++) await upsertNotification(repo, { user: "eryk", type: "overdue", task: `t${i}`, text: `tarefa ${i}`, key: `k${i}` }, { now: new Date(NOW.getTime() + i * 1000).toISOString() });
+  const now = NOW.getTime() + 61_000;
+  await repo.update("notifications", aviso.id, { at: NOW.toISOString() }); // o mais velho da caixa
+  let list = await listNotifications(repo, "eryk", { now });
+  assert.equal(list.items.length, 50);
+  assert.equal(list.items[0].id, aviso.id, "no topo, apesar de lido e de 60 avisos mais novos");
+  assert.equal(list.items[0].pinned, true);
+  assert.ok(!(await listNotifications(repo, "eryk", { unread: true, now })).items.some((n) => n.id === aviso.id), "com o sino fechado (só não lidos) não aparece");
+  assert.ok(!(await listNotifications(repo, "eryk", { now: Date.parse(aviso.link.until) + 1 })).items.some((n) => n.id === aviso.id), "horário passou: sai do topo e da página");
+  await sync.linkEvent({ userId: "eryk", eventId: "orf", leadId: "bia", now: NOW });
+  list = await listNotifications(repo, "eryk", { now });
+  assert.ok(!list.items.some((n) => n.id === aviso.id), "ligado a um card, sai do topo");
 });
