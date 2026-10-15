@@ -166,10 +166,12 @@ const genId = (name) => `${name.slice(0, 2)}_${Date.now().toString(36)}${(idSeq 
 // único (docker-compose: um container `api`), então write-through basta. O TTL
 // é só rede de segurança pra escrita fora deste processo (psql, outra réplica).
 const CACHE_TTL_MS = 60_000;
-// Coleção grande demais não entra: form_events tem ~19k linhas / 10 MB, e
-// reparsear isso a cada chamada custaria mais CPU do que a leitura economiza.
-// Quem é grande assim deve usar listWhere (filtro no Postgres), não list().
-const CACHE_MAX_BYTES = 8 * 1024 * 1024;
+// Coleção grande demais não entra, só pra limitar memória: sem cache o parse é
+// o mesmo (o pg também entrega texto), mais a ida ao banco. Em 15/10/2026
+// wa_messages (11,7 MB) passou dos 8 MB antigos e cada insights/placar/pace
+// relia 29k linhas do Supabase (~300 ms + egress); activities (7,8 MB) vinha
+// logo atrás. form_events (~80k linhas) segue em listWhere, nunca em list().
+const CACHE_MAX_BYTES = 32 * 1024 * 1024;
 const CACHE_ON = process.env.COCKPIT_LIST_CACHE !== "0";
 const listCache = new Map(); // name -> { raw: string[], at: number }
 
