@@ -28,7 +28,9 @@ function concreteDate(year, month, day) {
 const NOT_A_REQUEST_RX = /te (?:falo|chamo|respondo|retorno)|(?:desde|comprei|comecei|vendi|vendeu)\b|quero saber mais sobre/;
 // Verbos e palavras que fazem de uma data um PEDIDO ("pode ser quarta?", "só
 // sexta", "sim, terça", "poderíamos passar amanhã?").
-const ASKED_RX = /\b(?:pode|posso|poderei|poderia|poderiamos|podia|podiamos|podemos|consigo|conseguimos|conseguiria|da|dava|daria|tem|teria|quero|prefiro|preferia|preciso|vamos|disponivel|disponibilidade|agendar|agendamento|marcar|remarcar|reuniao|call|horario|so|apenas|sim|ok|okay|beleza|bora|fechado|combinado|perfeito|certo|passar|deixar|deixa|mudar|trocar|ficar|fica|melhor|encaixa|encaixar|talvez|quem sabe|entao)\b/;
+// "como estaria sua agenda na sexta?" (Daniel, 15/10): perguntar pela nossa
+// agenda num dia É pedir esse dia.
+const ASKED_RX = /\b(?:pode|posso|poderei|poderia|poderiamos|podia|podiamos|podemos|consigo|conseguimos|conseguiria|da|dava|daria|tem|teria|quero|prefiro|preferia|preciso|vamos|disponivel|disponibilidade|agenda|agendar|agendamento|estaria|marcar|remarcar|reuniao|call|horario|so|apenas|sim|ok|okay|beleza|bora|fechado|combinado|perfeito|certo|passar|deixar|deixa|mudar|trocar|ficar|fica|melhor|encaixa|encaixar|talvez|quem sabe|entao)\b/;
 // Negação que RECUSA o que vem antes dela ("amanhã não consigo", "não posso
 // amanhã"). Dia citado DEPOIS dela com uma pista de alternativa no meio
 // ("não consigo, pode ser quarta") é o pedido, não a recusa.
@@ -38,7 +40,10 @@ const DAY_RX = /depois de amanha|amanha|\bhoje\b|\bhj\b|segunda(?:[- ]feira)?|te
 // Período do dia. "depois das 15h"/"a partir das 14h"/"antes das 11h" são
 // restrições de hora; "de manhã"/"à tarde"/"de noite" viram faixas.
 const HOUR_BOUND_RX = /\b(depois|apos|a partir|antes)\s+(?:d[aeo]s?|[ao]s?)\s*(\d{1,2})\s*(?:h\d{0,2}|hs|hrs|horas|:\d{2})?\b/;
-const PERIOD_RX = /\b(?:de|pela|a|na|no|de|do|da|no periodo da|no periodo de|periodo da|periodo de)?\s*\b(manha|tarde|noite)\b/;
+// Saudação ("olá, boa tarde", "boa noite") NÃO é pedido de período (15/10: o
+// "boa tarde" de ontem virou janela "à tarde" ancorada em ontem, e hoje o
+// robô disse que não tinha horário nenhum).
+const PERIOD_RX = /\b(?:de|pela|a|na|no|de|do|da|no periodo da|no periodo de|periodo da|periodo de)?\s*\b(?<!\bbo[am]\s)(manha|tarde|noite)\b/;
 const PERIODS = { manha: { fromHour: 6, toHour: 12 }, tarde: { fromHour: 12, toHour: 19 }, noite: { fromHour: 18, toHour: 21 } };
 const HAS_HOUR_RX = /\b\d{1,2}\s?h(\d{2})?\b|\b\d{1,2}:\d{2}\b/;
 // Restrição RELATIVA ao par que o robô acabou de oferecer (Leo, 13/10: o lead
@@ -231,6 +236,13 @@ export function sdrAgendaWindow(messages = [], now = wallNow(), { callAt = "" } 
     if (!requested) continue;
     if (lastDayOf(requested) < ymd(now)) { window = defaultWindow(now); continue; }
     window = requested;
+  }
+  // Pedido SÓ de período feito num dia anterior ("consigo à tarde", dito
+  // ontem): a preferência continua, o dia anda pra hoje. Antes a janela ficava
+  // ancorada no passado e sdrSlotsForLead devolvia lista vazia (15/10, Daniel).
+  if (window.periodOnly && window.startDate < ymd(now)) {
+    const start = isWeekend(now) ? wallFromNaive(addBusinessDaysNaive(ymd(now), 1)) : now;
+    window = { ...window, startDate: ymd(start) };
   }
   if (!window.requested && callAt && lastIn && HAS_HOUR_RX.test(normalize(lastIn.transcript || lastIn.text))) {
     const callDay = String(callAt).slice(0, 10);
