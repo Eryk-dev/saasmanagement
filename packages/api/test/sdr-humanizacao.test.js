@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import { makeSdrRunner, handleSdrInbound, greetName } from "../src/sdr/sdr-flow.js";
-import { makeSdrBrain, sameSentence } from "../src/sdr/sdr-brain.js";
+import { makeSdrBrain, sameSentence , shadowStats } from "../src/sdr/sdr-brain.js";
 import { flagFailedBotSend } from "../src/whatsapp/wa-call-flow.js";
 import { holdSlots, activeHolds, withoutHeld, releaseHolds } from "../src/crm/agenda-slots.js";
 
@@ -556,4 +556,11 @@ test("bookCall carimba callSetAt (é o que segura a véspera precoce) #R-035", a
   const lead = await repo.get("leads", "L1");
   assert.equal(lead.callAt, "2026-08-20T09:00");
   assert.equal(lead.callSetAt, NOW.toISOString());
+});
+
+// As cenas deste arquivo rodam em ordem; se stateOf tivesse calculado engaged,
+// slotsOffered, demoOffered, firstReply, canGreet, inCallWindow ou
+// awaitingReschedule diferente do cérebro em QUALQUER uma, estaria aqui.
+test("sombra do estado: nenhuma das cenas acima divergiu entre stateOf e a conta do cérebro #R-097", () => {
+  assert.deepEqual(shadowStats.factsDiff, []);
 });

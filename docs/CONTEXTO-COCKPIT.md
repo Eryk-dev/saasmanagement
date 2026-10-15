@@ -263,8 +263,22 @@ no robô = regra no rulebook + teste com a tag; conflito entre duas decisões
 (ex.: duração da conversa × roteiro OEM) é registrado em `except`/`conflicts`,
 nunca resolvido por acidente de roteamento. `sdr-acoplamento.test.js` faz
 gritar os acoplamentos por string (PITCH_RX × copy do 1º toque, dica do
-computador). Próximas fases: estado e intenção explícitos, validador único no
-`send()` (sombra → enforce por config), oferta estruturada, prompt por estado.
+computador).
+
+**Estado e intenção em sombra (PR2, 15/10/2026):** `sdr-state.js` (`stateOf`:
+estado da conversa por precedência, handoff → janela_da_call → call_marcada →
+pos_call → remarcacao_pendente → remarcacao_oferecida → oferta_feita → engajado
+→ descoberta → novo, mais os fatos `engaged`, `slotsOffered`, `demoOffered`,
+`firstReply`, `canGreet`, `inCallWindow`, `priceStep`…, só de `lead.sdrLog` +
+mensagens) e `sdr-intents.js` (`classifyInbound`: lista fechada de intenções
+em ordem de precedência + co-rótulos; todas as regex do lado do lead moram
+lá, cada uma com a forma de texto em que roda). O cérebro ainda faz a conta
+própria; `stateOf` e `classifyInbound` só vão pro carimbo `thread.brain`
+(`state`, `intent`, `facts`) e qualquer divergência vira `factsDiff` no
+carimbo, log e `shadowStats` (os testes de cena asseveram vazio). Tabelas:
+`sdr-state.test.js` (uma linha por estado) e `sdr-intents.test.js` (uma linha
+por frase real). Próximas fases: validador único no `send()` (sombra → enforce
+por config), oferta estruturada, prompt por estado.
 
 1. **Receita de produto:** `rollupProduct` deriva clientes, ARR e MRR de
    `customers`, excluindo os churnados segundo `churn.js`. Não usar os números
