@@ -135,3 +135,11 @@ export const AUTO_REPLY_RX = /agradece (o |pelo )?(seu )?contato|como podemos (t
 // Saudação PURA ("bom dia", "oi", "boa tarde!"), sem mais nada: em resposta a
 // um lembrete não confirma nem precisa de gente, é a conversa começando.
 export const GREETING_ONLY_RX = /^(?:(?:oi+|ol[aá]|opa|bom dia|boa tarde|boa noite|e a[ií]|tudo bem|tudo bom|td bem|bem)[!.,?\s]*){1,3}$/i;
+
+// ── Pitch / convite de demonstração JÁ saíram nesta conversa? ───────────────
+// Então NADA disso se repete (Leo, 22-23/08): capacidade já listada não se
+// re-lista, as mensagens seguintes referenciam curto e trazem só o novo. O
+// template do 1º toque também conta como pitch feito. PITCH_RX casa literais
+// da copy do 1º toque (sdr-flow.js): test/sdr-acoplamento.test.js vigia.
+export const DEMO_RX = /demonstra|mostrar (a |o )?(leverads|plataforma|ferramenta)|funcionando ao vivo/i;
+export const PITCH_RX = /t[íi]tulo de 200|part number|compatibilidade inteira|clonagem de an[úu]ncios|estoque, atendimento e edi[çc][ãa]o|gerenciar m[úu]ltiplas contas|lever price|custo, a margem e o imposto/i;

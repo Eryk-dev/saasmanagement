@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeSdrBrain, bookCall, stripDuration, stripDeviceAsk, PRICE_RX } from "../src/sdr/sdr-brain.js";
+import { makeSdrBrain, bookCall, stripDuration, stripDeviceAsk, PRICE_RX , shadowStats } from "../src/sdr/sdr-brain.js";
 
 // Relógio dos testes: quarta 19/08/2026, 10h BRT (13h UTC). Com o closer livre
 // o primeiro horário OFERTÁVEL é 09:00 do próximo dia útil.
@@ -1778,4 +1778,11 @@ test("trava da promessa: 'te confirmo em minutos' vira a agenda real; dia pedido
   await brainOf(repo2, fakes2).handleInbound({ message: { from: "5541999990000", text: ask.text, id: "m1" } });
   assert.equal(fakes2.sent.length, 1);
   assert.equal(fakes2.sent[0].text, "Quarta 26/08 já lotou, consigo amanhã às 9h ou às 11h, qual fica melhor pra você?");
+});
+
+// As cenas deste arquivo rodam em ordem; se stateOf tivesse calculado engaged,
+// slotsOffered, demoOffered, firstReply, canGreet, inCallWindow ou
+// awaitingReschedule diferente do cérebro em QUALQUER uma, estaria aqui.
+test("sombra do estado: nenhuma das cenas acima divergiu entre stateOf e a conta do cérebro #R-097", () => {
+  assert.deepEqual(shadowStats.factsDiff, []);
 });
