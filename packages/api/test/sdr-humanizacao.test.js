@@ -413,7 +413,7 @@ test("preço pela segunda vez: robô explica os planos e puxa pra call, sem repe
   assert.equal(fakes.sent.length, 1);
   assert.doesNotMatch(fakes.sent[0].text, /investimento é de acordo/, "não repete a parede");
   assert.match(fakes.sent[0].text, /planos diferentes/);
-  assert.match(fakes.sent[0].text, /só fecha na call/);
+  assert.match(fakes.sent[0].text, /só fecha na conversa com o especialista/);
   assert.doesNotMatch(fakes.sent[0].text, /R\$|\d+ reais/, "sem número");
 });
 

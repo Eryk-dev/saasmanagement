@@ -21,6 +21,7 @@ const KIND_LABEL = {
   redirect: "resposta com link/número descartada",
   repeticao: "robô sem resposta nova",
   "nega-call": "lead nega a conversa marcada",
+  desinteresse: "lead disse que não tem interesse / pediu pausa",
 };
 
 export function startSdrHandoffReminder(repo, {

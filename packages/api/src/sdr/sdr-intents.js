@@ -53,7 +53,10 @@ export const leadEngaged = (msgs) => msgs.some((m) => {
   return !FORM_MSG_RX.test(t) && (INTEREST_RX.test(t) || SCHEDULE_ASK_RX.test(t) || HAS_HOUR_RX.test(t));
 });
 // Pedido de dia/período do lead: aí a oferta pode pular a vaga de hoje.
-export const PERIOD_ASK_RX = /manh[ãa]|tarde|noite|depois d[ao]s|antes d[ao]s|a partir d[ao]s|depois d[eo]ss|antes d[eo]ss|mais cedo|semana que vem|outro dia|s[óo] (?:na |no )?(?:segunda|ter[çc]a|quarta|quinta|sexta)/i;
+// "boa tarde"/"bom dia"/"boa noite" é saudação, não período (R-032, caso Daniel
+// 15/10), e "amanhã" é dia, não "manhã": lookbehinds iguais aos do parser da
+// agenda (sdr-agenda.js). Sem isso a saudação desligava "mais cedo primeiro".
+export const PERIOD_ASK_RX = /(?<![\p{L}])(?<!\bbo[am]\s)(?:manh[ãa]|tarde|noite)|depois d[ao]s|antes d[ao]s|a partir d[ao]s|depois d[eo]ss|antes d[eo]ss|mais cedo|semana que vem|outro dia|s[óo] (?:na |no )?(?:segunda|ter[çc]a|quarta|quinta|sexta)/iu;
 // O LEAD pedindo preço (≠ PRICE_RX do cérebro, que pega VALOR dito por nós).
 export const PRICE_ASK_RX = /pre[çc]o|\bvalor(es)?\b|quanto (custa|fica|sai|é|e)\b|mensalidade|qual o (investimento|custo)|tabela de pre[çc]/i;
 // NÚMERO SOLTO depois da oferta é HORA (Leo, 08/10): "18" a "terça às 17h ou

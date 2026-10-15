@@ -396,7 +396,7 @@ test("preço pela 2ª vez: robô explica os planos e puxa pra call, sem número,
   assert.equal(fakes.sent.length, 1);
   const t = fakes.sent[0].text;
   assert.match(t, /planos diferentes/);
-  assert.match(t, /só fecha na call/);
+  assert.match(t, /só fecha na conversa com o especialista/);
   assert.ok(!PRICE_RX.test(t), `explicação sem valor: ${t}`);
   assert.match(t, /Consigo .* ou .*, qual fica melhor/, "puxa pra call com os 2 horários reais");
   assert.equal((await repo.list("wa_alerts")).length, 0, "2ª vez não chama gente");
@@ -417,7 +417,7 @@ test("preço pela 2ª vez com call já marcada: aponta pra call marcada em vez d
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Claro!" }] });
   const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "me passa o preço antes da call" } });
   assert.equal(r, "preco-explicado");
-  assert.match(fakes.sent[0].text, /Na nossa call de amanhã \(20\/08\) às 10h o especialista já te mostra o plano certo e o valor/);
+  assert.match(fakes.sent[0].text, /Na nossa conversa de amanhã \(20\/08\) às 10h o especialista já te mostra o plano certo e o valor/);
   assert.ok(!/Consigo/.test(fakes.sent[0].text));
 });
 
@@ -428,7 +428,7 @@ test("preço pela 3ª vez: gente assume, o alerta manda levar pra call e o robô
       { direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:30:00Z") },
       { direction: "out", author: "sdr-bot", text: "O investimento é de acordo com as necessidades da sua operação.", at: ISO("2026-08-19T12:31:00Z") },
       { direction: "in", text: "só me diz a faixa", at: ISO("2026-08-19T12:40:00Z") },
-      { direction: "out", author: "sdr-bot", text: "Te explico o porquê: a gente tem planos diferentes, por isso o valor a gente só fecha na call.", at: ISO("2026-08-19T12:41:00Z") },
+      { direction: "out", author: "sdr-bot", text: "Te explico o porquê: a gente tem planos diferentes, por isso o valor a gente só fecha na conversa com o especialista.", at: ISO("2026-08-19T12:41:00Z") },
       { direction: "in", text: "sem preço eu não marco nada", at: ISO("2026-08-19T12:59:00Z") },
     ],
   });
@@ -1683,7 +1683,7 @@ test("sem interesse / pediu pausa: acolhe, para e chama gente; escada de preço 
   const fakes2 = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Combinado Rafael", "Amanhã te chamo aqui então"] }] });
   const r2 = await brainOf(repo2, fakes2).handleInbound({ message: { from: "5541999990000", text: "vou ver com meu sócio e te falo", id: "m5" } });
   assert.equal(r2, "responder");
-  assert.doesNotMatch(fakes2.sent.map((s) => s.text).join(" "), /planos diferentes|só fecha na call/);
+  assert.doesNotMatch(fakes2.sent.map((s) => s.text).join(" "), /planos diferentes|só fecha na conversa com o especialista/);
   assert.ok(!(await repo2.get("leads", "L1")).sdrLog.priceExplainedAt);
 });
 

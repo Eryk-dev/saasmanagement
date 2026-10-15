@@ -165,11 +165,13 @@ function priceAfterBookingText(nome, { script = "" } = {}) {
 // raio-x de 17/09): o robô explica o PORQUÊ com honestidade e puxa pra call,
 // que é onde o preço existe. São planos diferentes, e o certo pra cada
 // operação sai da escuta das dores.
-function priceExplainText(nome, { callAt, slots, slotsOffered, wnow }) {
+function priceExplainText(nome, { callAt, slots, slotsOffered, offered = [], wnow }) {
   const oi = nome ? `Te explico o porquê ${nome}:` : "Te explico o porquê:";
-  const motivo = `${oi} a gente tem planos diferentes, e qual faz sentido pra você depende da sua operação. Por isso o valor a gente só fecha na call, depois de ouvir o seu cenário, senão eu te passo um número que não é o seu.`;
-  if (callAt) return `${motivo} Na nossa call de ${slotLabelFull(callAt, wnow)} o especialista já te mostra o plano certo e o valor.`;
-  if (slotsOffered) return `${motivo} Qual dos horários que te passei fica melhor pra você?`;
+  const motivo = `${oi} a gente tem planos diferentes, e qual faz sentido pra você depende da sua operação. Por isso o valor a gente só fecha na conversa com o especialista, depois de ouvir o seu cenário, senão eu te passo um número que não é o seu.`;
+  // "call" nunca chega ao lead (R-006) e "horários que te passei" é a frase
+  // proibida (R-025): a repescagem escreve os horários ofertados (15/10).
+  if (callAt) return `${motivo} Na nossa conversa de ${slotLabelFull(callAt, wnow)} o especialista já te mostra o plano certo e o valor.`;
+  if (slotsOffered && offered.length) return `${motivo} ${offerLine(offered, { style: "fica-melhor", wnow })}`;
   return `${motivo} ${offerLine(slots, { wnow, empty: "periodo" })}`;
 }
 
@@ -1018,7 +1020,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     if (insisting && !inCallWindow && !awaitingReschedule && !["agendar", "remarcar", "desmarcar"].includes(decision.acao)) {
       const iso = new Date(nowMs).toISOString();
       if (!lead.sdrLog?.priceExplainedAt) {
-        await send(priceExplainText(nome, { callAt: lead.callAt, slots: suggestedPair.length ? suggestedPair : offerPool.slice(0, 1), slotsOffered, wnow }), { path: "preco-explicado" });
+        await send(priceExplainText(nome, { callAt: lead.callAt, slots: suggestedPair.length ? suggestedPair : offerPool.slice(0, 1), slotsOffered, offered: slotsOffered ? offeredSlotsIn(agendaMessages, SDR_AUTHOR).filter((o) => slotList.some((x) => x.at === o.at)) : [], wnow }), { path: "preco-explicado" });
         await stamp(lead, { priceGuardAt: lead.sdrLog?.priceGuardAt || iso, priceExplainedAt: iso });
         return "preco-explicado";
       }
@@ -1075,7 +1077,11 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     if (awaitingReschedule) {
       const reply = rescheduleReply(lastInText, wnow);
       if (reply !== "accepted") {
+        // Já acolheu uma vez ("tudo bem, quando quiser remarcar…") e o lead
+        // disse não de novo: cala (R-009, 15/10: a frase saía 2 a 4 vezes).
+        const jaAcolheu = reschedule.status === "declined" && msgs.some((m) => m.direction === "out" && m.author === SDR_AUTHOR && /quando quiser remarcar/i.test(m.text || ""));
         if (reply === "declined") await stamp(lead, { reschedule: { ...reschedule, status: "declined" } });
+        if (jaAcolheu) return "remarcacao-aguarda";
         await send("Tudo bem, quando quiser remarcar é só me chamar", { path: "remarcacao-aguarda" });
         return "remarcacao-aguarda";
       }
@@ -1163,6 +1169,35 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     if (!parts.length) return "silencio";
     const rawParts = parts.slice();
     const sh = shadowOf(rawParts);
+    // ENFORCE (15/10): com product.sdrBot.guardsMode = "enforce" o validador
+    // manda (mesma semântica da cadeia legada, provada pela sombra); os efeitos
+    // (carimbos, alertas, log) são aplicados DEPOIS do envio. A cadeia legada
+    // abaixo segue valendo em "audit" até o legado sair do código.
+    if (cfg.guardsMode === "enforce" && sh) {
+      const applyEffects = async () => {
+        for (const e of sh.effects || []) {
+          try {
+            if (e.type === "stamp") await stamp(lead, e.patch);
+            else if (e.type === "alert") await raiseAlert(repo, thread, { text: e.text });
+            else if (e.type === "log") log[e.level || "info"]?.({ lead: lead.id, ...(e.data || {}) }, e.msg);
+          } catch { /* efeito é best-effort */ }
+        }
+      };
+      meta.shadow = { same: true, fired: sh.fired, mode: "enforce" };
+      const finalParts = sh.draft.parts.map((x) => x.text);
+      if (finalParts.length) {
+        await send(finalParts, { kind: "ia", path: sh.draft.stop ? sh.draft.stop.result : "responder" });
+        if (aborted) return "abortado";
+      }
+      await applyEffects();
+      if (sh.draft.stop) return sh.draft.stop.result;
+      if (finalParts.some((t) => SLOTS_RX.test(t))) {
+        const sentSlots = offerSlots.length ? offerSlots : suggestedPair;
+        if (sentSlots.length) await holdSlots(repo, { saas: product.id, leadId: lead.id, slots: sentSlots, now: at }).catch(() => {});
+        await stamp(lead, { lastOffer: { at: new Date(nowMs).toISOString(), slots: sentSlots.map((x) => x.at) } }).catch(() => {});
+      }
+      return "responder";
+    }
     // TRAVA DE PREÇO (1ª vez): a IA citou valor → sai a resposta oficial no
     // lugar. A 2ª e a 3ª insistência já foram tratadas pela escada lá em cima.
     if (PRICE_RX.test(parts.join(" "))) {

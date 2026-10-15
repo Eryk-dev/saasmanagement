@@ -8,7 +8,7 @@ const PITCH = "Oiii Rafael, tudo bem? A LeverAds faz clonagem de anúncios entre
 
 export default [
   {
-    id: "C-R006-01", title: "explicação de preço (2ª vez) do motor diz 'call' pro lead: auditoria registra R-006",
+    id: "C-R006-01", title: "explicação de preço (2ª vez) do motor: sem 'call' e sem 'horários que te passei' (repesca com os horários ofertados)",
     rules: ["R-006", "R-051"],
     world: {
       lead: { sdrLog: { priceGuardAt: ISO("2026-08-19T12:40:00Z") } },
@@ -22,10 +22,10 @@ export default [
     },
     ai: [{ acao: "responder", mensagens: ["Depende do plano"] }],
     inbounds: ["mas me dá uma ideia do valor"],
-    expect: { result: "preco-explicado", sent: [/Te explico o porquê/, /horários que te passei/], audit: { rules: ["R-006"], notRules: ["R-050"] } },
+    expect: { result: "preco-explicado", sent: [/Te explico o porquê/, /Fica melhor amanhã às 9h ou às 11h\?/], notSent: [/\bcall\b/, /horários que te passei/], audit: { notRules: ["R-006", "R-050", "R-029"] } },
   },
   {
-    id: "C-R009-01", title: "'não' repetido na remarcação: o motor manda a mesma frase de novo e a auditoria registra R-009",
+    id: "C-R009-01", title: "'não' repetido na remarcação: acolheu uma vez, na segunda cala (sem repetir a frase)",
     rules: ["R-009", "R-036"],
     world: {
       lead: { sdrLog: { reschedule: { status: "declined", at: ISO("2026-08-19T12:35:00Z"), afterMessageId: "m3" } } },
@@ -40,7 +40,7 @@ export default [
       ],
     },
     inbounds: ["não, obrigado"],
-    expect: { result: "remarcacao-aguarda", sent: [/quando quiser remarcar é só me chamar/], audit: { rules: ["R-009"] } },
+    expect: { result: "remarcacao-aguarda", notSent: [/quando quiser remarcar é só me chamar/] },
   },
   {
     id: "C-R060-01", title: "M3 do roteiro OEM diz '30/40 minutos': conta como isenta (decisão do Leo, 15/10), não como violação",

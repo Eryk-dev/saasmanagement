@@ -308,8 +308,22 @@ da cadeia de travas, que continua valendo igual. A reserva de 30 min passa a
 ser dos horários realmente enviados e `sdrLog.lastOffer` guarda o que foi
 oferecido. Todas as cópias da frase da oferta no cérebro viraram `offerLine`.
 Troca pra v2 por PATCH na config depois do replay A/B (v1 × v2, mesmo conjunto
-de conversas, `invalidSlotPicks` → 0); rollback é o mesmo PATCH. Próximas
-fases: enforce do validador (PR5), prompt por estado (PR6).
+de conversas, `invalidSlotPicks` → 0); rollback é o mesmo PATCH.
+
+**Enforce do validador (PR5, 15/10/2026):** `product.sdrBot.guardsMode`
+("audit" por padrão, "enforce" por PATCH): em enforce o validador manda no
+caminho da IA (texto final + desfecho + efeitos aplicados depois do envio), com
+a MESMA semântica da cadeia legada (`sdr-enforce.test.js` roda as cenas nos
+dois modos e exige texto, desfecho e carimbos iguais); a cadeia legada só sai
+do código depois de duas semanas em enforce. Textos fixos do motor que violavam
+regras do Leo corrigidos: a explicação de preço (2ª vez) não diz "call" nem
+"horários que te passei" (repesca com os horários ofertados, R-006/R-025); o
+"não" repetido na remarcação cala em vez de repetir a frase (R-009); o aviso
+de handoff rotula `desinteresse`. `PERIOD_ASK_RX` ganhou os lookbehinds do
+parser ("boa tarde" e "amanhã" não são período), então a saudação não desliga
+mais "mais cedo primeiro" (R-032/R-022). Critério pra ligar enforce em produção:
+7 dias de sombra com `shadowDiff` < 3% das decisões (GET /api/sdr/audit).
+Próxima fase: prompt por estado (PR6).
 
 1. **Receita de produto:** `rollupProduct` deriva clientes, ARR e MRR de
    `customers`, excluindo os churnados segundo `churn.js`. Não usar os números
