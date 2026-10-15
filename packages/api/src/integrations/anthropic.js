@@ -642,6 +642,16 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
   // renovado a cada uso), pagando uma fração. Modelos OpenAI via OpenRouter
   // cacheiam sozinhos o prefixo; pra eles o system segue string.
   const cachedSystem = (system) => [{ type: "text", text: system, cache_control: { type: "ephemeral" } }];
+  // A API da Anthropic (output_config.format.schema) recusa maxItems/minItems
+  // em arrays (400 em 15/10 no A/B com Claude); o OpenRouter aceita. O teto
+  // de itens continua garantido na normalização (draftFromAi corta em 3/2).
+  const anthropicSchema = (node) => {
+    if (Array.isArray(node)) return node.map(anthropicSchema);
+    if (!node || typeof node !== "object") return node;
+    const out = {};
+    for (const [k, v] of Object.entries(node)) { if (k === "maxItems" || k === "minItems") continue; out[k] = anthropicSchema(v); }
+    return out;
+  };
   function buildRequest(userContent, { system, schema, schemaName, maxTokens = 16000 }) {
     if (openrouter) {
       const claudeViaRouter = /^anthropic\//i.test(modelId);
@@ -677,7 +687,7 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
         max_tokens: maxTokens,
         thinking: { type: "adaptive" },
         system: cachedSystem(system),
-        output_config: { format: { type: "json_schema", schema } },
+        output_config: { format: { type: "json_schema", schema: anthropicSchema(schema) } },
         messages: [{ role: "user", content: userContent }],
       },
     };
