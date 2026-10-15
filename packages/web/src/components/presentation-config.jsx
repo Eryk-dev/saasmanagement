@@ -4,6 +4,7 @@ import { api } from "../lib/api.js";
 import { SelectPopover } from "./select-popover.jsx";
 import { Checkbox } from "./form-controls.jsx";
 import { Choice } from "./plan-editor.jsx";
+import { useAttribution, leadPain } from "../lib/pains.js";
 import { calcOferta, deckChoices } from "../../../api/src/shared/deck-offer.js";
 
 // Informações da apresentação no card de Atividades (06/10/2026). Era a tela
@@ -19,6 +20,50 @@ const { useEffect, useRef, useState } = React;
 const SAVE_DELAY = 600;
 const brl = (n) => "R$ " + Math.round(Number(n) || 0).toLocaleString("pt-BR");
 const PERIODOS = [{ value: "anual", label: "Anual · 12×" }, { value: "semestral", label: "Semestral · 6×" }];
+
+// Linha de produto que o anúncio vendia, com a MESMA régua da tela zero do
+// deck (proposals/proposal-catalog.js, lineOf): dor [PRICE] ou form do Price
+// = Lever Price; dor [OEM], form do OEM ou nicho de autopeças = Lever OEM; o
+// resto é Lever Ads. É a origem, não o que o closer escolheu no plano.
+const LINE_NAMES = { oem: "Lever OEM", ads: "Lever Ads", price: "Lever Price" };
+export function originLineOf(lead, painCode) {
+  const code = String(painCode || lead?.sourcePain || "").toUpperCase();
+  const form = String(lead?.formProduct || "");
+  // Nicho com a mesma leitura de lib/segments.js (acento e grafia livres).
+  const niche = String((Array.isArray(lead?.niche) ? lead.niche[0] : lead?.niche) || "")
+    .normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
+  if (code === "PRICE" || form === "price") return "price";
+  if (code === "OEM" || form === "oem" || /auto\s*-?\s*pe[cç]as?/.test(niche)) return "oem";
+  return "ads";
+}
+
+// De onde o lead veio, no alto das Informações da apresentação (Leo, 15/10/2026):
+// o anúncio (utm.content resolvido pelo catálogo de atribuição, com o código
+// de dor no nome) e o produto que esse anúncio vendia. O closer abre a call
+// sabendo o que o lead clicou, sem ir até a ficha do pipeline.
+export function LeadOriginRow({ lead, saasCfg }) {
+  const cat = useAttribution(lead?.saas, !!lead?.utm);
+  const utm = lead?.utm || {};
+  const pain = leadPain(lead, cat, saasCfg?.painMap);
+  const adName = utm.content ? (cat?.ads?.[String(utm.content)]?.name || String(utm.content)) : "";
+  const source = adName || utm.source || lead?.source || "";
+  const line = originLineOf(lead, pain?.code);
+  return (
+    <div className="deck-origin" role="group" aria-label="Origem do lead">
+      <div className="deck-cfg-field">
+        <span className="kicker">Anúncio</span>
+        <span className="deck-origin-value" title={adName || undefined}>{source || "sem anúncio · entrada direta"}</span>
+      </div>
+      <div className="deck-cfg-field">
+        <span className="kicker">Produto de origem</span>
+        <span className="deck-origin-value">
+          {LINE_NAMES[line]}
+          {pain ? <span className="deck-origin-pain"> · [{pain.code}] {pain.label}</span> : null}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export function PresentationConfig({ lead }) {
   const url = lead.proposal_edit_url;

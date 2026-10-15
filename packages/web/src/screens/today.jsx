@@ -28,7 +28,7 @@ import { resolveScript, scriptTokens, scriptChecklist, isNoShowStage, confirmati
 import { CLOSED_PLANS, withLegacyOption, closedPlanLabel, dealProductLabel, closingPlansOf, paymentPickerValue, paymentPatchOf } from "../lib/payments.js";
 import { LeadSendActions, useLeadProposalActions } from "../components/lead-send-actions.jsx";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
-import { PresentationConfig } from "../components/presentation-config.jsx";
+import { PresentationConfig, LeadOriginRow } from "../components/presentation-config.jsx";
 import { followupContacts, followupDueDay, followupNextContact, followupStepOf, followupDayOf, localDayStart, dayStartIso, nextFollowupDay, todayBrt, FOLLOWUP_STEPS, FOLLOWUP_CHANNELS } from "../lib/followup.js";
 import { FollowupContactBlock, DayPicker, defaultFollowupDay } from "../components/followup-contact.jsx";
 import { summaryReason } from "../components/customer-meeting.jsx";
@@ -1811,6 +1811,7 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
           </LeadSection>
           <div className="today-script-columns">
             <LeadSection title="Informações da apresentação" className="today-presentation">
+              <LeadOriginRow lead={l} saasCfg={saasCfg} />
               {l.proposal_edit_url && !preview ? <>
                 <PresentationConfig key={l.proposal_edit_url} lead={l} />
               </> : <p className="today-script-hint">{preview ? "A configuração da apresentação aparece aqui na atividade do lead." : "Prepare a proposta pelo botão Proposta no WhatsApp para preencher pedidos, ticket médio, produtos e plano aqui. A configuração continua disponível na apresentação."}</p>}

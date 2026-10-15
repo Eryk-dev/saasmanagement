@@ -2,6 +2,9 @@
    do deck de slides com as peças do cockpit (.inp, SelectPopover, Checkbox,
    Choice) e os tokens do tema, no lugar do iframe da página pública. */
 .deck-cfg { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.deck-origin { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 12px; min-width: 0; }
+.deck-origin-value { font-size: 12.5px; font-weight: 600; color: var(--fg-1); overflow-wrap: anywhere; line-height: 1.35; }
+.deck-origin-pain { font-weight: 400; color: var(--fg-3); }
 .deck-cfg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
 .deck-cfg-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .deck-cfg-field .inp { width: 100%; min-width: 0; box-sizing: border-box; height: 30px; font-size: 12.5px; }
