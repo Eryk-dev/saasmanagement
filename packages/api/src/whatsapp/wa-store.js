@@ -90,7 +90,7 @@ export async function linkThreadToLead(repo, tid, lead) {
 // Grava uma mensagem e atualiza o thread. Idempotente por id (a Meta re-entrega
 // o webhook). Resolve o lead pelo telefone se leadId não veio. Retorna o id da
 // mensagem, ou null se foi deduplicada.
-export async function recordMessage(repo, { id, phone, direction, text = "", at, status = "", from = "", author = "", leadId, saas, contactName = "", waPhoneId = "", saasHint = "", media = null }) {
+export async function recordMessage(repo, { id, phone, direction, text = "", at, status = "", from = "", author = "", leadId, saas, contactName = "", waPhoneId = "", saasHint = "", media = null, raw = null }) {
   const rawTid = digits(phone || from);
   if (!rawTid) return null;
   // Casa com a thread JÁ existente pela chave NORMALIZADA (tolerante ao 9 e ao
@@ -139,6 +139,9 @@ export async function recordMessage(repo, { id, phone, direction, text = "", at,
     // /api/whatsapp/media/:id). `kind`/`mime`/`filename` bastam pra UI decidir;
     // `captioned` = a bolha mostra a mídia E o texto (template com foto no header).
     ...(media && media.id ? { media: { kind: media.kind || "", id: String(media.id), mime: media.mime || "", filename: media.filename || "", ...(media.captioned ? { captioned: true } : {}) } } : {}),
+    // Tipo que ainda não traduzimos: o payload bruto da Meta fica guardado pra
+    // ninguém perder informação (o texto mostra só "[tipo]").
+    ...(raw ? { raw } : {}),
   });
 
   const prev = existingThread;
