@@ -85,7 +85,7 @@ test("isShortYes é o 'sim' curto do roteiro: sem pergunta, preço, dia, hora ou
   for (const t of ["sim, quanto custa?", "sim mas só na quarta", "pode ser às 10h", "talvez", "sim, quero saber mais sobre a LeverAds. Minha operação: moda", "sim sim sim sim sim sim sim sim sim"]) assert.ok(!isShortYes(t), t);
 });
 
-// Dívida visível (R-032, 15/10): "boa tarde" ainda casa PERIOD_ASK_RX como
-// co-rótulo, o que desliga a trava "mais cedo primeiro" do cérebro. O parser
-// da agenda já ignora (#1150); a regex do cérebro ainda não. Entra no PR3.
-test.todo("'Olá, boa tarde' não leva o co-rótulo period_ask #R-032 (PR3)");
+test("saudação não é período, e 'amanhã' é dia (não 'manhã'): PERIOD_ASK_RX com os lookbehinds do parser #R-032 #R-022", () => {
+  for (const t of ["Olá, boa tarde", "Bom dia!", "boa noite", "te retorno amanhã", "Amanhã pode ser"]) assert.ok(!classifyInbound(t).all.has("period_ask"), t);
+  for (const t of ["pode ser de manhã", "à tarde fica melhor", "só depois das 15h", "mais tarde", "semana que vem", "prefiro de noite"]) assert.ok(classifyInbound(t).all.has("period_ask"), t);
+});

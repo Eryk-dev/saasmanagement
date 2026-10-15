@@ -198,6 +198,10 @@ export function sdrBotConfig(product) {
     // escreve a oferta (sdr-prompt.js). Nasce "v1"; vira "v2" por PATCH depois
     // do replay A/B, sem deploy; rollback é o mesmo PATCH.
     offerContract: cfg.offerContract === "v2" ? "v2" : "v1",
+    // Validador de saída (sdr-guards.js): "audit" conta e a cadeia legada manda;
+    // "enforce" o validador manda (mesma semântica, provada pela sombra). Troca
+    // e rollback por PATCH, sem deploy.
+    guardsMode: cfg.guardsMode === "enforce" ? "enforce" : "audit",
     freshHours: num(cfg.freshHours, 24),                // lead mais velho que isso é fila humana
     templates: {
       // 1º toque escolhido pela DOR DE ORIGEM; o v2 genérico é o fallback
