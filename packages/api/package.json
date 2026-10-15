@@ -8,6 +8,7 @@
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "test": "node --test",
+    "test:sdr": "node --test test/sdr-*.test.js test/anthropic.sdr-*.test.js test/agenda-slots.test.js test/fronteiras-dominio.test.js",
     "seed": "node src/platform/seed-cli.js",
     "seed:clear": "node src/platform/seed-cli.js --clear",
     "seed:leverads-questions": "node src/platform/seed-cli.js --leverads-questions"

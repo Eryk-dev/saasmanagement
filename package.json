@@ -17,6 +17,8 @@
     "start:api": "npm run start -w packages/api",
     "start:mcp": "npm run start -w packages/mcp",
     "build": "npm run build -w packages/web",
+    "test": "npm test -w packages/api",
+    "test:sdr": "npm run test:sdr -w packages/api",
     "seed": "npm run seed -w packages/api",
     "seed:clear": "npm run seed:clear -w packages/api"
   },
