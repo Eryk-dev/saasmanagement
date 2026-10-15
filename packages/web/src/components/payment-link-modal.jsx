@@ -4,6 +4,7 @@ import { waLink } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, CLOSED_PLAN_TITLE as PLAN_TITLE, withLegacyOption, DEAL_PRODUCTS_ACTIVE, dealProductLabel, dealProductsOf, paymentPickerValue, paymentPatchOf, gatewaysOn, gatewayLabel } from "../lib/payments.js";
 import { ProductOptions, PaymentMethodSelect } from "./lead-blocks.jsx";
+import { useConfirmLink } from "./confirm-link-modal.jsx";
 
 // Modal do LINK DE PAGAMENTO — o MESMO em todo lugar que gera link: atalho do
 // card do lead (deal.jsx) e tela "Links de pagamento", que abre ele já com o
@@ -177,6 +178,8 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved, onBusyChange
   const [err, setErr] = React.useState(null);
   const [copied, setCopied] = React.useState(false);
   const wa = waLink(doc.phone);
+  // Pop-up com o valor antes de gerar (Leo, 15/10): nada sai sem conferir.
+  const [confirmEl, askLink] = useConfirmLink();
 
   // Título acompanha produto e plano até o closer mexer nele na mão.
   function pickPlan(p) {
@@ -194,6 +197,8 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved, onBusyChange
     if (!(value > 0)) { setErr("Informe o valor da cobrança."); return; }
     const contractValue = Number(String(contract).replace(",", "."));
     if (gateway === "appmax" && !/^https:\/\/\S+$/i.test(pasted.trim())) { setErr("Cole o link de pagamento criado no painel da Appmax (https://…)."); return; }
+    if (!(await askLink({ amount: value, installments: Number(installments) || 0, gateway, title: title.trim(), who: doc.name, pasted: gateway === "appmax" }))) return;
+    if (submitting.current) return;
     submitting.current = true; setBusy(true); onBusyChange(true); setErr(null);
     try {
       const r = isLead
@@ -359,6 +364,7 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved, onBusyChange
       </div>
 
       {err && <div role="alert" className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
+      {confirmEl}
 
       {url && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "10px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", minWidth: 0 }}>

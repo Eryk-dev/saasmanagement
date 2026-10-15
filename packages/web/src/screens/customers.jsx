@@ -9,6 +9,7 @@ import { PageHead, Card, Pill, Segmented, FilterTab } from "../components/viz.js
 import { AvisoTopo, BarraFiltros } from "../components/story.jsx";
 import { Modal, Drawer } from "../components/overlay.jsx";
 import { ManualPaidModal } from "../components/manual-paid-modal.jsx";
+import { useConfirmLink } from "../components/confirm-link-modal.jsx";
 import { EmptyState, PrimaryButton, MoreMenu } from "../atoms.jsx";
 import { Icon } from "./tasks/icons.jsx";
 import { milestonesFor, nextMilestone, tenureLabel, dueLabel } from "../lib/milestones.js";
@@ -1380,12 +1381,15 @@ function CustomerPeek(props) {
     catch(error){setFeedback({error:true,text:error.message||'Não foi possível criar o rascunho.'});}
     finally{setBusy(null);}
   }
+  const [confirmEl, askLink] = useConfirmLink();
   async function chargeNext() {
     if(busy||!pending.length)return;
     if(!window.SEED?.CONFIG?.mp?.configured){setOperation('money');return;}
+    const invoice=pending[0];
+    if(!invoice.mpInitPoint && !(await askLink({ amount: invoice.amount, who: customer.name, title: invoice.title || "" }))) return;
     setBusy('charge');setFeedback(null);
     try {
-      const invoice=pending[0], url=invoice.mpInitPoint||(await api.invoiceMpLink(invoice.id)).url;
+      const url=invoice.mpInitPoint||(await api.invoiceMpLink(invoice.id)).url;
       try{await navigator.clipboard.writeText(url);setFeedback({text:'Link da próxima cobrança copiado.'});}
       catch{window.prompt('Link de pagamento:',url);}
     }catch(error){setFeedback({error:true,text:error.message||'Não foi possível gerar o link.'});}
@@ -1438,6 +1442,7 @@ function CustomerPeek(props) {
       </div>
     </Drawer>
     {operation&&<CustomerModal key={operation} {...props} operation={operation} onOperation={setOperation} onClose={()=>setOperation(null)}/>}
+    {confirmEl}
   </>, document.body);
 }
 
@@ -1622,9 +1627,12 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
     try { await navigator.clipboard.writeText(url); flashFin(okMsg); }
     catch { window.prompt("Link de pagamento:", url); }
   }
+  const [confirmLinkEl, askLink] = useConfirmLink();
   async function saveCharge() {
     const amount = Number(chVal);
     if (!(amount > 0) || chSaving) return;
+    if (!(await askLink({ amount, installments: Number(chInst) || 0, gateway: defaultGateway(), title: chTitle.trim(), who: customer.name }))) return;
+    if (chSaving) return;
     setChSaving(true);
     try {
       const r = await api.createCharge(customer.id, {
@@ -1640,6 +1648,7 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
   // já tem ou gera na hora.
   async function invoiceLink(inv) {
     if (inv.mpInitPoint) return copyLink(inv.mpInitPoint, "link da fatura copiado");
+    if (!(await askLink({ amount: inv.amount, gateway: defaultGateway(), title: inv.title || "", who: customer.name }))) return;
     try {
       const r = await api.invoiceMpLink(inv.id, { gateway: defaultGateway() });
       await copyLink(r.url, `link criado no ${gatewayLabel(r.gateway)} e copiado`);
@@ -2185,6 +2194,7 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
         )}
         </div>
         )}
+        {confirmLinkEl}
     </Modal>
   );
 }
