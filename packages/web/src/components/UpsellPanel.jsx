@@ -2,6 +2,7 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { dealProductsOf } from "../lib/payments.js";
 import { allUsers, currentUser, displayName } from "../lib/users.js";
+import { useConfirmLink } from "./confirm-link-modal.jsx";
 
 // Painel "registrar upsell" da ficha do cliente (Clientes → popup). Mesma
 // família do painel de churn: uma faixa inset logo abaixo do cabeçalho.
@@ -62,8 +63,12 @@ export function UpsellPanel({ customer, product, mpOn, onDone, onCancel }) {
   const amountN = Number(amount) || 0;
   const canSave = !!item && !saving && soldBy && amountN > 0;
 
+  const [confirmLinkEl, askLink] = useConfirmLink();
   async function save() {
     if (!canSave) return;
+    // Upsell com link: pop-up com o valor antes de gerar (Leo, 15/10).
+    if (payment === "link" && !(await askLink({ amount: amountN, installments: Number(inst) || 0, title: item, who: customer.name }))) return;
+    if (saving) return;
     setSaving(true); setErr("");
     try {
       const r = await api.customerUpsell(customer.id, {
@@ -148,6 +153,7 @@ export function UpsellPanel({ customer, product, mpOn, onDone, onCancel }) {
         </button>
       </div>
       {err && <div className="mono" style={{ fontSize: 10.5, color: "var(--neg)" }}>{err}</div>}
+      {confirmLinkEl}
     </div>
   );
 }

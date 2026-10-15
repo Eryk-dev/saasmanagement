@@ -7,6 +7,7 @@ import { chromeBtnStyleSmall } from "../lib/ui.js";
 import { EmptyState, PrimaryButton, MoreMenu } from "../atoms.jsx";
 import { Modal } from "../components/overlay.jsx";
 import { ManualPaidModal } from "../components/manual-paid-modal.jsx";
+import { useConfirmLink } from "../components/confirm-link-modal.jsx";
 import { Segmented } from "../components/viz.jsx";
 import { mpMethodLabel, MP_SUB_STATUS, CYCLE_LABEL, annualized as annualizedPrice } from "../lib/payments.js";
 // Assinaturas (fase 5) — Cockpit como system-of-record de billing: assinaturas,
@@ -142,17 +143,22 @@ function SubscriptionsScreen({ saasId, compact = false }) {
   function pay(inv) { setPaying(inv); }
   // Link de pagamento da fatura (checkout MP, avulso): copia o que já existe ou
   // gera um. O pagamento baixa a fatura sozinho (external_reference = fatura).
+  const [confirmLinkEl, askLink] = useConfirmLink();
   async function invLink(inv) {
     const copy = async (url, msg) => {
       try { await navigator.clipboard.writeText(url); flash(msg); }
       catch { window.prompt("Link de pagamento:", url); }
     };
     if (inv.mpInitPoint) return copy(inv.mpInitPoint, "link da fatura copiado");
-    try {
-      const r = await api.invoiceMpLink(inv.id);
-      if (r.url) await copy(r.url, "link criado e copiado — manda pro cliente; a baixa é automática");
-      await load();
-    } catch (err) { flash(`MP: ${err.message}`); }
+    // Pop-up com o valor antes de gerar (Leo, 15/10).
+    if (!(await askLink({ amount: inv.amount, title: inv.title || "", who: customerName(inv.customer) }))) return;
+    await perform(inv.id, async () => {
+      try {
+        const r = await api.invoiceMpLink(inv.id);
+        if (r.url) await copy(r.url, "link criado e copiado — manda pro cliente; a baixa é automática");
+        await load();
+      } catch (err) { flash(`MP: ${err.message}`); }
+    });
   }
   // Copia o link de autorização do MP de uma assinatura ANTIGA (a recorrência
   // não é mais vendida desde 10/09/2026: o servidor não cria preapproval novo).
@@ -226,7 +232,7 @@ function SubscriptionsScreen({ saasId, compact = false }) {
             return <div className="customers-billing-row" style={{gridTemplateColumns:cols}} key={i.id}>
               <strong>{customerName(i.customer)}</strong><span>{i.title||({renewal:"renovação",prorata:"pró-rata",upsell:"upsell",manual:"manual"})[i.kind]||i.kind}{i.status==="paid"&&mpMethodLabel(i)&&<small>{mpMethodLabel(i)}</small>}</span>
               <b>{money(i.amount||0)}</b><span>{fmtDate(i.dueDate)}</span><span><span className={`chip ${status.cls}`}>{status.label}</span></span>
-              <div className="customers-billing-actions">{i.status!=="paid"&&<button disabled={!!busy} onClick={()=>perform(i.id,()=>pay(i))}>{busy===i.id?"Baixando…":"Dar baixa"}</button>}{i.status!=="paid"&&mpConfigured&&<MoreMenu items={[{label:i.mpInitPoint?"Copiar link de pagamento":"Gerar link no MP",onClick:()=>perform(i.id,()=>invLink(i))}]}/>}</div>
+              <div className="customers-billing-actions">{i.status!=="paid"&&<button disabled={!!busy} onClick={()=>perform(i.id,()=>pay(i))}>{busy===i.id?"Baixando…":"Dar baixa"}</button>}{i.status!=="paid"&&mpConfigured&&<MoreMenu items={[{label:i.mpInitPoint?"Copiar link de pagamento":"Gerar link no MP",onClick:()=>invLink(i)}]}/>}</div>
             </div>;
           }) : subs.map(sub=>{const status=SUB_STATUS[sub.status]||{label:sub.status,cls:""};return <div className="customers-billing-row" style={{gridTemplateColumns:cols}} key={sub.id}>
             <strong>{customerName(sub.customer)}</strong><span>{planName(sub.plan)}</span><span>{CYCLE_LABEL[sub.cycle]||sub.cycle}</span><b>{money(sub.price||0)}</b><b>{money(annualized(sub))}</b><span><span className={`chip ${status.cls}`}>{status.label}</span></span>
@@ -250,6 +256,7 @@ function SubscriptionsScreen({ saasId, compact = false }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      {confirmLinkEl}
       <div style={{ padding: "12px var(--pad-x)", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {!saasId && SAAS.length > 1 && (
