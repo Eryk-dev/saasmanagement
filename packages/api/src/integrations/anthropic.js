@@ -5,7 +5,7 @@
 // direto. Raw HTTP por fetch injetável, mesmo padrão do meta.js/google.js.
 // Env: OPENROUTER_API_KEY ou ANTHROPIC_API_KEY; modelo via AI_MODEL.
 import { collapseSameDay } from "../sdr/sdr-signals.js";
-import { schemaV2, slotIdsOf, slotLinesV2, draftFromAi } from "../sdr/sdr-prompt.js";
+import { schemaV2, slotIdsOf, slotLinesV2, draftFromAi, buildCoreV2, buildUserV2 } from "../sdr/sdr-prompt.js";
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "claude-opus-4-8";
@@ -945,12 +945,15 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
   // Decisão do SDR conversacional pra UMA mensagem recebida no WhatsApp.
   // Devolve ação fechada + texto; quem valida horário, trava preço e executa é
   // o motor (sdr-brain.js) — aqui é só a cabeça.
-  async function sdrDecide({ sdrName = "", lead = {}, digest = "", grade = "", stage = "", callAt = "", nowLabel = "", slots = [], conversation = [], pain = null, canGreet = true, gapMin = null, demoOffered = false, slotsOffered = false, firstReply = false, engaged = true, suggestedPair = [], requestedDate = false, offerDate = "", requestedEmpty = false, rescheduleStatus = "", contract = "v1" }) {
+  async function sdrDecide({ sdrName = "", lead = {}, digest = "", grade = "", stage = "", callAt = "", nowLabel = "", slots = [], conversation = [], pain = null, canGreet = true, gapMin = null, demoOffered = false, slotsOffered = false, firstReply = false, engaged = true, suggestedPair = [], requestedDate = false, offerDate = "", requestedEmpty = false, rescheduleStatus = "", contract = "v1", promptVersion = "v1", state = "", script = "clone", facts = {} }) {
     if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
     const t0 = Date.now();
     // CONTRATO v2 (15/10): cada horário leva um id; a IA devolve ids em slotIds
     // e o motor escreve a frase da oferta (sdr-prompt.js / sdr-offer.js).
-    const v2 = contract === "v2";
+    // PROMPT v2 (15/10): núcleo estável + bloco por estado (sdr-prompt.js);
+    // exige o contrato v2 (ids). Atrás de product.sdrBot.promptVersion.
+    const promptV2 = promptVersion === "v2";
+    const v2 = contract === "v2" || promptV2;
     const slotsV2 = v2 ? slotIdsOf(slots) : slots;
     const idOf = (slot) => slotsV2.find((s) => s.at === slot?.at)?.id || "";
     const slotLines = slots.length
@@ -1011,6 +1014,11 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
       "",
       "Decida a ação e o texto.",
     ].filter(Boolean).join("\n");
+    if (promptV2) {
+      const userV2 = buildUserV2({ sdrName, nowLabel, lead, digest, grade, stage, pain, callAt, state: state || (callAt ? "call_marcada" : "descoberta"), script, facts, canGreet, gapMin, slots: slotsV2, suggestedPair, requestedDate, offerDate, requestedEmpty, conversation });
+      const r2 = await requestJson(userV2, { system: buildCoreV2(), schema: schemaV2(slotsV2.map((s) => s.id)), schemaName: "sdr_decision_v2" });
+      return { ...draftFromAi(r2.parsed || {}, { contract: "v2", slots: slotsV2 }), usage: r2.usage, model: r2.model, ms: Date.now() - t0, promptVersion: "v2" };
+    }
     const r = await requestJson(context, v2
       ? { system: SDR_DECIDE_SYSTEM, schema: schemaV2(slotsV2.map((s) => s.id)), schemaName: "sdr_decision_v2" }
       : { system: SDR_DECIDE_SYSTEM, schema: SDR_DECIDE_SCHEMA, schemaName: "sdr_decision" });

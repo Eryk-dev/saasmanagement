@@ -8,7 +8,8 @@ import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { RULES, STATES, SCRIPTS, LAYERS, CATEGORIES, activeRules, ruleById, rulesFor, promptBlockFor, renderPlaybook } from "../src/sdr/sdr-rules.js";
+import { RULES, STATES, SCRIPTS, LAYERS, CATEGORIES, activeRules, ruleById, rulesFor, promptBlockFor, promptCoreRules, renderPlaybook } from "../src/sdr/sdr-rules.js";
+import { buildCoreV2, FORBIDDEN_IN_PROMPT } from "../src/sdr/sdr-prompt.js";
 
 const TEST_DIR = fileURLToPath(new URL("./", import.meta.url));
 const DOC = fileURLToPath(new URL("../../../docs/SDR-PLAYBOOK-LEVERADS.md", import.meta.url));
@@ -17,12 +18,6 @@ const SELF = "sdr-rulebook.test.js";
 // Regras ativas que AINDA não têm teste nem cena. Cada entrada precisa de um
 // motivo e do PR que vai cobrir. Regra com tag em teste não pode ficar aqui.
 const PENDING_COVERAGE = {
-  "R-002": "estilo da Manuela: regra de prompt, coberta pelo teste de prompt por estado (PR6)",
-  "R-012": "'não sei' abre qualificação: cena do corpus (PR3) com a IA fake",
-  "R-014": "estoque por SKU: regra de prompt, teste de prompt por estado (PR6)",
-  "R-015": "dúvida técnica vira demo: regra de prompt, teste de prompt por estado (PR6)",
-  "R-018": "objeções com resposta oficial: regra de prompt, teste de prompt por estado (PR6)",
-  "R-019": "ponte antes da primeira oferta: cena do corpus (PR3) + métrica bridgeBeforeSlots do replay",
 };
 
 function tagsInTests() {
@@ -90,7 +85,29 @@ test("rulebook: rulesFor filtra por estado, roteiro e camada; promptBlockFor só
   assert.ok(rulesFor({ layer: "guard" }).every((r) => r.layers.includes("guard")));
   assert.ok(!rulesFor({}).some((r) => r.status === "revoked"), "revogadas não entram");
   const bloco = promptBlockFor("call_marcada", "clone");
-  assert.ok(bloco.includes(ruleById("R-038").statement), "objeção depois de marcar entra no bloco de call_marcada");
-  assert.ok(!bloco.includes(ruleById("R-027").statement), "número solto (oferta_feita) não entra em call_marcada");
-  assert.ok(!bloco.includes(ruleById("R-070").statement), "roteiro OEM não entra no clone");
+  assert.ok(bloco.includes(ruleById("R-038").prompt), "objeção depois de marcar entra no bloco de call_marcada");
+  assert.ok(!bloco.includes(ruleById("R-027").prompt), "número solto (oferta_feita) não entra em call_marcada");
+  assert.ok(!bloco.includes(ruleById("R-071").prompt), "roteiro Price não entra no clone");
+  assert.ok(promptBlockFor("engajado", "price").includes(ruleById("R-071").prompt), "roteiro Price entra no script price");
+});
+
+// O prompt v2 nasce do rulebook: regras universais no núcleo (cacheado), as
+// específicas no bloco do estado. Limites: bloco ≤ 500 palavras; núcleo entre
+// 1.500 e 3.200 palavras e byte a byte igual em duas chamadas; nenhuma das
+// frases que eram contradição aparece em lugar nenhum.
+test("prompt v2: toda regra de prompt tem texto curto pra IA; blocos por estado ≤ 500 palavras; núcleo estável e sem as frases proibidas", () => {
+  const words = (s) => String(s || "").split(/\s+/).filter(Boolean).length;
+  const semPrompt = activeRules().filter((r) => r.layers.includes("prompt") && !r.prompt && !["R-002", "R-013", "R-014", "R-016", "R-018", "R-070", "R-072"].includes(r.id)).map((r) => r.id);
+  assert.deepEqual(semPrompt, [], "regra de prompt sem campo prompt (ou sem bloco escrito à mão no núcleo)");
+  for (const st of STATES) for (const sc of SCRIPTS) {
+    const bloco = promptBlockFor(st, sc);
+    assert.ok(words(bloco) <= 500, `bloco ${st}/${sc} com ${words(bloco)} palavras`);
+    for (const f of FORBIDDEN_IN_PROMPT) assert.ok(!bloco.includes(f), `bloco ${st}/${sc} contém "${f}"`);
+  }
+  const core = buildCoreV2();
+  assert.equal(core, buildCoreV2(), "núcleo byte a byte igual");
+  assert.ok(words(core) >= 1500 && words(core) <= 3200, `núcleo com ${words(core)} palavras`);
+  for (const f of FORBIDDEN_IN_PROMPT) assert.ok(!core.includes(f), `núcleo contém "${f}"`);
+  assert.ok(promptCoreRules().every((r) => core.includes(r.prompt)), "toda regra universal está no núcleo");
+  assert.ok(!/\bNUNCA:/.test(core), "sem o 'NUNCA:' de 12 cláusulas");
 });

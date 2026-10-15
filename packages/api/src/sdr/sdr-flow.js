@@ -202,6 +202,10 @@ export function sdrBotConfig(product) {
     // "enforce" o validador manda (mesma semântica, provada pela sombra). Troca
     // e rollback por PATCH, sem deploy.
     guardsMode: cfg.guardsMode === "enforce" ? "enforce" : "audit",
+    // Prompt da IA (15/10): "v2" = núcleo estável + bloco por estado gerado do
+    // rulebook (implica o contrato v2). Nasce "v1"; vira "v2" por PATCH depois
+    // do replay A/B e do canário nos leads internos.
+    promptVersion: cfg.promptVersion === "v2" ? "v2" : "v1",
     freshHours: num(cfg.freshHours, 24),                // lead mais velho que isso é fila humana
     templates: {
       // 1º toque escolhido pela DOR DE ORIGEM; o v2 genérico é o fallback

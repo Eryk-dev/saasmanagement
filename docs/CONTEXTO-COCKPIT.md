@@ -323,7 +323,26 @@ de handoff rotula `desinteresse`. `PERIOD_ASK_RX` ganhou os lookbehinds do
 parser ("boa tarde" e "amanhã" não são período), então a saudação não desliga
 mais "mais cedo primeiro" (R-032/R-022). Critério pra ligar enforce em produção:
 7 dias de sombra com `shadowDiff` < 3% das decisões (GET /api/sdr/audit).
-Próxima fase: prompt por estado (PR6).
+
+**Prompt v2 por estado (PR6, 15/10/2026):** `product.sdrBot.promptVersion`
+("v1" por padrão, "v2" por PATCH; implica o contrato v2). Em v2 o system é o
+NÚCLEO estável de `sdr-prompt.js` (`buildCoreV2`: identidade, pitches,
+estoque, foco pela dor, tom da Manuela, exemplos no contrato v2, FAQ de
+objeções, as regras universais do rulebook renderizadas de `prompt` e o
+contrato de saída; byte a byte igual em toda chamada, cacheável) e o turno do
+usuário é `buildUserV2`: fatos, `VOCÊ ESTÁ EM: <estado>` + `promptBlockFor`
+(só as regras do estado/roteiro, ≤ 500 palavras), agenda com ids e a conversa.
+Cada regra de prompt do rulebook tem o campo `prompt` (frase curta pra IA);
+regras universais vão no núcleo, específicas no bloco do estado. As 10
+contradições do v1 foram resolvidas (duração e copy do roteiro fora, exemplo
+sem valor, frase-reflexo fora, saudação liberada em `novo`, remarcação pendente
+sem agenda, preço do OEM é do sistema, dia sem hora corrigido, ponte + oferta
+em 2 balões). O meta-teste do rulebook exige `prompt` em toda regra de prompt,
+bloco ≤ 500 palavras, núcleo estável e nenhuma frase de `FORBIDDEN_IN_PROMPT`.
+Replay: `promptVersion`, `contract`, `threadIds` (mesma amostra), métricas de
+estilo (`style`) e decisões por estado (`byState`). Troca pra v2: replay A/B
+(v1 × v2, mesmo conjunto, mesmo modelo) sem regra pior + canário nos leads
+internos; depois a comparação de modelos com o mesmo conjunto.
 
 1. **Receita de produto:** `rollupProduct` deriva clientes, ARR e MRR de
    `customers`, excluindo os churnados segundo `churn.js`. Não usar os números

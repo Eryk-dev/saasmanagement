@@ -106,3 +106,23 @@ test("replay: conjunto fixo (threadIds) e contrato v2 chegam na IA; a IA que esc
   assert.deepEqual(again.threadIds, report.threadIds, "a mesma amostra roda de novo");
   assert.equal(again.contract, "v1");
 });
+
+test("replay: promptVersion v2 leva estado/roteiro/fatos pra IA e o relatório traz estilo e decisões por estado #R-120", async () => {
+  const repo = await seed();
+  const contexts = [];
+  const anthropic = {
+    configured: () => true,
+    sdrDecide: async (ctx) => { contexts.push(ctx); return { acao: "responder", mensagens: ["Olá! Que bom", "Na nossa call te mostro"], mensagem: "Olá! Que bom\nNa nossa call te mostro", horario: "", oferecer: true, slotIds: [], email: "", motivoHumano: "", promptVersion: "v2" }; },
+  };
+  const replay = makeSdrReplay({ repo, anthropic, log: { warn: () => {} }, now: () => NOW });
+  const report = await replay.run({ saas: "leverads", threads: 10, turns: 3, promptVersion: "v2" });
+  assert.equal(report.promptVersion, "v2");
+  assert.equal(report.contract, "v2", "prompt v2 implica contrato v2");
+  assert.ok(contexts.every((c) => c.promptVersion === "v2" && typeof c.state === "string" && c.facts));
+  assert.ok(Object.values(report.byState).reduce((a, b) => a + b, 0) === report.turns);
+  assert.equal(report.style.balloons, report.turns * 2);
+  assert.equal(report.style.forbiddenTokens, report.turns * 2, "'Olá!' e 'call' são tokens proibidos");
+  assert.equal(report.style.responderWithQuestion, report.turns, "oferecer=true conta como próximo passo");
+  assert.equal(report.byRule["R-006"], report.turns, "'call' pro lead é violação da R-006 em todo turno");
+  assert.ok(report.violations >= report.turns);
+});

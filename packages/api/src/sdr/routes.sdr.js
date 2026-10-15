@@ -30,6 +30,7 @@ export function registerSdrRoutes(app, repo, { whatsapp: wa, anthropic = null } 
       tag: String(req.body?.tag || "").slice(0, 40),
       // A/B do contrato v2 e conjunto fixo de conversas (15/10).
       contract: req.body?.contract === "v2" ? "v2" : "",
+      promptVersion: req.body?.promptVersion === "v2" ? "v2" : "",
       threadIds: Array.isArray(req.body?.threadIds) ? req.body.threadIds.map(String).slice(0, 60) : [],
     });
     if (r.busy) return reply.code(409).send({ error: "já tem uma bateria rodando — acompanhe pelo GET" });
