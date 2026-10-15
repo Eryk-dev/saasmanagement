@@ -28,6 +28,9 @@ const WEEKDAYS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "
 const REFLEX_RX = /algum\s+d(os|esses|aqueles)\s+hor[áa]rios|hor[áa]rios?\s+que\s+(eu\s+)?(te\s+)?(passei|mandei|enviei)/i;
 const VERIFY_RX = /vou (verificar|confirmar|checar|ver) (com|isso|aqui|junto)|deixa eu (confirmar|verificar) com (o|a) (time|especialista|equipe)/i;
 const BRIDGE_RX = /google meet|ao vivo/i;
+// Dia + hora escrito no texto (no contrato v2 a IA NÃO deve escrever: quem
+// escreve a oferta é o motor; aqui conta quantas vezes ela escreveu mesmo assim).
+const SLOT_TEXT_RX = /(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta) às \d{1,2}h/i;
 
 export const docIdOf = (tag) => (tag ? `${DOC_ID}_${String(tag).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 40)}` : DOC_ID);
 
@@ -58,7 +61,10 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
   // Seleciona as conversas: com lead vinculado, com ida E volta, mais recentes
   // primeiro. Um turno = uma mensagem do lead que TEVE resposta real do time
   // (é o que dá o par "robô teria feito X · o time fez Y").
-  async function pickThreads(saas, maxThreads) {
+  // `threadIds`: conjunto FIXO de conversas (A/B entre contratos, prompts ou
+  // modelos com a mesma entrada); vazio = as mais recentes.
+  async function pickThreads(saas, maxThreads, threadIds = []) {
+    const only = new Set(threadIds.map(String));
     const [threads, messages, leads] = await Promise.all([
       repo.list("wa_threads"), repo.list("wa_messages"), repo.list("leads"),
     ]);
@@ -69,7 +75,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
       byThread.get(m.thread).push(m);
     }
     return threads
-      .filter((t) => t.leadId && leadById.has(t.leadId) && (!saas || (t.saas || leadById.get(t.leadId)?.saas) === saas))
+      .filter((t) => t.leadId && leadById.has(t.leadId) && (!saas || (t.saas || leadById.get(t.leadId)?.saas) === saas) && (!only.size || only.has(String(t.id))))
       .map((t) => {
         const msgs = (byThread.get(t.id) || []).slice().sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
         return { thread: t, lead: leadById.get(t.leadId), msgs };
@@ -79,7 +85,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
       .slice(0, maxThreads);
   }
 
-  async function run({ saas = "leverads", threads: maxThreads = 25, turns: turnsPerThread = 3, model = "", tag = "" } = {}) {
+  async function run({ saas = "leverads", threads: maxThreads = 25, turns: turnsPerThread = 3, model = "", tag = "", contract = "", threadIds = [] } = {}) {
     const ai = model && typeof anthropic?.clone === "function" ? anthropic.clone({ model }) : anthropic;
     const docId = docIdOf(tag);
     const startedAt = now().toISOString();
@@ -87,11 +93,13 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
     const p2 = (n) => String(n).padStart(2, "0");
     const nowLabel = `${WEEKDAYS[wnow.getUTCDay()]}, ${p2(wnow.getUTCDate())}/${p2(wnow.getUTCMonth() + 1)}, ${wnow.getUTCHours()}h${p2(wnow.getUTCMinutes())} (hora de Brasília)`;
     const product = await repo.get("products", saas);
-    const picked = await pickThreads(saas, Math.min(60, Math.max(1, maxThreads)));
+    const picked = await pickThreads(saas, Math.min(60, Math.max(1, maxThreads)), threadIds);
 
     const report = {
-      saas, startedAt, model: model || ai?.model || "", tag,
+      saas, startedAt, model: model || ai?.model || "", tag, contract: contract || "v1",
+      threadIds: picked.map((x) => x.thread.id), // pra repetir a MESMA amostra noutra rodada
       threads: picked.length, turns: 0, errors: 0,
+      inlineSlotMentions: 0,      // v2: a IA escreveu dia/hora no texto apesar do contrato
       actions: { responder: 0, agendar: 0, remarcar: 0, desmarcar: 0, humano: 0, silencio: 0 },
       priceGuardHits: 0,          // respostas da IA com valor (a trava de preço trocaria: preço só na call)
       invalidSlotPicks: 0,        // agendar com horário fora da lista (o motor re-oferta)
@@ -153,6 +161,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
             suggestedPair: spreadPair(wholeHourSlots(slotList)),
             slotsOffered,
             firstReply: !msgs.slice(0, i).some((x) => x.direction === "out"),
+            ...(contract ? { contract } : {}),
           });
           report.actions[d.acao] = (report.actions[d.acao] || 0) + 1;
           if ((d.acao === "agendar" || d.acao === "remarcar")) {
@@ -164,7 +173,8 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
           if (REFLEX_RX.test(text)) report.reflexPhrase++;
           if (VERIFY_RX.test(text)) report.verifyLater++;
           if (d.acao === "responder" && text && !text.includes("?")) report.noQuestion++;
-          const offered = /(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta) às \d{1,2}h/i.test(text);
+          if (contract === "v2" && SLOT_TEXT_RX.test(text)) report.inlineSlotMentions++;
+          const offered = SLOT_TEXT_RX.test(text) || (contract === "v2" && (d.oferecer || (d.slotIds || []).length > 0));
           if (offered) { report.offersWithSlots++; if (!slotsOffered && BRIDGE_RX.test(text)) report.bridgeBeforeSlots++; }
           chars += text.length;
           if (d.usage) for (const k of ["in", "out", "cacheRead", "cacheWrite"]) report.usage[k] += Number(d.usage[k]) || 0;
@@ -178,7 +188,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
               leadMsg: String(m.text || "").slice(0, 220),
               real: String(realNext.text || "").slice(0, 220),
               realAuthor: realNext.author === SDR_AUTHOR ? "sdr-bot" : realNext.author || "",
-              bot: { acao: d.acao, mensagem: text.slice(0, 260), horario: d.horario || "", motivoHumano: d.motivoHumano || "" },
+              bot: { acao: d.acao, mensagem: text.slice(0, 260), horario: d.horario || "", motivoHumano: d.motivoHumano || "", ...(contract === "v2" ? { oferecer: !!d.oferecer, slotIds: d.slotIds || [] } : {}) },
             });
           }
         } catch (err) {
