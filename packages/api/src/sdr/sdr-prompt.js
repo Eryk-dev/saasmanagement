@@ -121,7 +121,7 @@ REGRAS QUE VALEM SEMPRE:
 
 const CORE_TAIL = `
 
-CONTRATO DE SAÍDA: você devolve só o JSON pedido. acao (responder, agendar, remarcar, desmarcar, humano, silencio); partes (os balões, em sequência, SEM dia nem hora); oferecer (true quando a resposta termina com a oferta de horários: o sistema escolhe e escreve a frase da oferta, no jeito da Manuela, sempre no fim); slotIds (ids da lista: em agendar/remarcar o id escolhido; em responder com oferecer, até 2 ids ou vazio pra o par sugerido); email; motivoHumano.`;
+CONTRATO DE SAÍDA: você devolve só o JSON pedido. acao (responder, agendar, remarcar, desmarcar, humano, silencio); partes (os balões, em sequência, SEM dia nem hora); oferecer (true quando a resposta termina com a oferta de horários: o sistema escolhe e escreve a frase da oferta, no jeito da Manuela, sempre no fim); slotIds (ids da lista: em agendar/remarcar o id escolhido; em responder com oferecer, até 2 ids ou vazio pra o par sugerido); email; motivoHumano. Com oferecer=true, NENHUMA parte termina em pergunta: a única pergunta da resposta é a da oferta, que o sistema escreve (A/B de 15/10: duas perguntas na mesma resposta era o erro mais comum).`;
 
 let coreCache = "";
 export function buildCoreV2() {
@@ -178,6 +178,9 @@ export function buildUserV2({ sdrName = "", nowLabel = "", lead = {}, digest = "
     greet,
     "",
     `VOCÊ ESTÁ EM: ${state} (${STATE_DESC[state] || ""}). FATOS: pitch já feito ${yn(facts.demoOffered)} · horários já oferecidos ${yn(facts.slotsOffered)} · lead engajou ${yn(facts.engaged)} · pediu preço nesta mensagem ${yn(facts.askingNow)}${script !== "clone" ? ` · roteiro ${script}` : ""}.`,
+    !facts.engaged && !callAt && !["handoff", "janela_da_call", "pos_call", "remarcacao_pendente", "remarcacao_oferecida"].includes(state)
+      ? "O LEAD AINDA NÃO ENGAJOU (não disse que a ferramenta ajudaria nem pediu horário): oferecer=false e slotIds vazio nesta resposta. Faça ou complete a descoberta com UMA pergunta; o sistema descarta horário oferecido antes disso."
+      : "",
     "O que vale agora:",
     promptBlockFor(state, script) || "- (nenhuma regra específica deste estado: valem as regras do núcleo)",
     ...agenda,

@@ -95,6 +95,8 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
   async function run({ saas = "leverads", threads: maxThreads = 25, turns: turnsPerThread = 3, model = "", tag = "", contract = "", threadIds = [], promptVersion = "" } = {}) {
     const ai = model && typeof anthropic?.clone === "function" ? anthropic.clone({ model }) : anthropic;
     const docId = docIdOf(tag);
+    // Contrato efetivo: prompt v2 implica o contrato v2 (métricas e amostras).
+    const effContract = contract || (promptVersion === "v2" ? "v2" : "");
     const startedAt = now().toISOString();
     const wnow = wallNow(now());
     const p2 = (n) => String(n).padStart(2, "0");
@@ -193,7 +195,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
           // contrato v2, a oferta que o motor escreveria.
           try {
             const pair = spreadPair(wholeHourSlots(slotList));
-            const audited = (contract === "v2" || promptVersion === "v2") && d.acao === "responder" && (d.oferecer || (d.slotIds || []).length)
+            const audited = effContract === "v2" && d.acao === "responder" && (d.oferecer || (d.slotIds || []).length)
               ? [...parts, offerLine((d.slots || []).length ? d.slots : pair, { wnow })] : parts;
             const v = validateDraft(makeDraft(audited, "ia"), { nome: lead.name || "", script: st.script, msgs: msgs.slice(0, i + 1), callAt: "", slotList, offerPool: wholeHourSlots(slotList), suggestedPair: pair, requestedDate, offerDate, requestedEmpty: false, hourReply: false, engaged: st.facts.engaged, slotsOffered, inCallWindow: false, lastInText: String(m.transcript || m.text || ""), wnow, discoveryQuestion: "Isso ajudaria na sua operação hoje?", dayLabelOf: (x) => x, nowIso: now().toISOString(), inboundText: String(m.text || ""), priceDeferral: "" }, { mode: "audit" });
             for (const x of v.violations) { if (x.exempt) continue; report.violations++; report.byRule[x.rule] = (report.byRule[x.rule] || 0) + 1; }
@@ -204,8 +206,8 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
           if (REFLEX_RX.test(text)) report.reflexPhrase++;
           if (VERIFY_RX.test(text)) report.verifyLater++;
           if (d.acao === "responder" && text && !text.includes("?")) report.noQuestion++;
-          if (contract === "v2" && SLOT_TEXT_RX.test(text)) report.inlineSlotMentions++;
-          const offered = SLOT_TEXT_RX.test(text) || (contract === "v2" && (d.oferecer || (d.slotIds || []).length > 0));
+          if (effContract === "v2" && SLOT_TEXT_RX.test(text)) report.inlineSlotMentions++;
+          const offered = SLOT_TEXT_RX.test(text) || (effContract === "v2" && (d.oferecer || (d.slotIds || []).length > 0));
           if (offered) { report.offersWithSlots++; if (!slotsOffered && BRIDGE_RX.test(text)) report.bridgeBeforeSlots++; }
           chars += text.length;
           if (d.usage) for (const k of ["in", "out", "cacheRead", "cacheWrite"]) report.usage[k] += Number(d.usage[k]) || 0;
@@ -219,7 +221,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
               leadMsg: String(m.text || "").slice(0, 220),
               real: String(realNext.text || "").slice(0, 220),
               realAuthor: realNext.author === SDR_AUTHOR ? "sdr-bot" : realNext.author || "",
-              bot: { acao: d.acao, mensagem: text.slice(0, 260), horario: d.horario || "", motivoHumano: d.motivoHumano || "", ...(contract === "v2" ? { oferecer: !!d.oferecer, slotIds: d.slotIds || [] } : {}) },
+              bot: { acao: d.acao, mensagem: text.slice(0, 260), horario: d.horario || "", motivoHumano: d.motivoHumano || "", ...(effContract === "v2" ? { oferecer: !!d.oferecer, slotIds: d.slotIds || [] } : {}) },
             });
           }
         } catch (err) {

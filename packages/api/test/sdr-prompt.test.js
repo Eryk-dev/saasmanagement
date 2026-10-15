@@ -131,3 +131,25 @@ test("núcleo v2 carrega as regras de prompt escritas à mão: tom da Manuela, '
   assert.ok(core.includes("Já uso Bling/Upseller/ERP") && core.includes("Amazon/Magalu/TikTok"), "R-018 objeções");
   assert.ok(promptBlockFor("engajado", "clone").includes(ruleById("R-019").prompt), "R-019 ponte no estado engajado");
 });
+
+test("A/B de 15/10: com oferecer=true a pergunta é só a da oferta; lead não engajado recebe a ordem enfática de oferecer=false #R-003 #R-011", () => {
+  assert.ok(buildCoreV2().includes("Com oferecer=true, NENHUMA parte termina em pergunta"));
+  const base = { sdrName: "Manuela", nowLabel: "x", lead: { name: "Rafael" }, slots: SLOTS, suggestedPair: [SLOTS[0], SLOTS[1]], conversation: [] };
+  assert.ok(buildUserV2({ ...base, state: "descoberta", facts: { engaged: false } }).includes("O LEAD AINDA NÃO ENGAJOU"));
+  assert.ok(!buildUserV2({ ...base, state: "engajado", facts: { engaged: true } }).includes("O LEAD AINDA NÃO ENGAJOU"));
+  assert.ok(!buildUserV2({ ...base, state: "call_marcada", callAt: "2026-08-20T10:00", facts: { engaged: false } }).includes("O LEAD AINDA NÃO ENGAJOU"));
+});
+
+test("API da Anthropic: o schema vai sem maxItems/minItems (recusados em output_config), OpenRouter segue com eles #R-120", async () => {
+  const calls = [];
+  const fetch = async (url, init) => { calls.push({ url, body: JSON.parse(init.body) }); return { status: 200, json: async () => ({ model: "claude-x", usage: {}, content: [{ type: "text", text: JSON.stringify({ acao: "responder", partes: ["oi"], oferecer: false, slotIds: [], email: "", motivoHumano: "" }) }] }) }; };
+  const ai = makeAnthropic({ fetch, apiKey: "sk-ant-test", model: "claude-x" });
+  const d = await ai.sdrDecide({ ...CTX, contract: "v2" });
+  const schema = calls[0].body.output_config.format.schema;
+  assert.equal(JSON.stringify(schema).includes("maxItems"), false);
+  assert.deepEqual(schema.properties.slotIds.items.enum, ["s1", "s2", "s3"], "enum continua");
+  assert.deepEqual(d.mensagens, ["oi"]);
+  const { calls: rc, ai: router } = fakeRouter({ acao: "responder", partes: ["oi"], oferecer: false, slotIds: [], email: "", motivoHumano: "" });
+  await router.sdrDecide({ ...CTX, contract: "v2" });
+  assert.equal(rc[0].body.response_format.json_schema.schema.properties.partes.maxItems, 3, "OpenRouter mantém maxItems");
+});

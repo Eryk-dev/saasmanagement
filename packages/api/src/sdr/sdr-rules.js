@@ -72,7 +72,7 @@ export const RULES = [
   R({ id: "R-003", cat: "identidade", title: "Rajada curta: até 3 balões, uma ideia e uma pergunta por vez",
     origin: { date: "2026-08-23", by: "Leo", ref: "#766; orçamento de 3 partes/900 chars no motor" },
     statement: "Resposta direta é um balão só; raciocínio maior quebra em 2 ou 3 balões curtos (mediana de 9 palavras). Responde primeiro o que o lead perguntou, curto, e só depois avança um passo. Uma pergunta por resposta; a resposta de ação termina em pergunta ou próximo passo.",
-    prompt: "Resposta direta é um balão só; raciocínio maior vai em 2 ou 3 balões curtos. Responda primeiro o que o lead perguntou, curto, e só depois avance um passo. Uma pergunta por resposta; resposta de acao responder termina em pergunta ou próximo passo.",
+    prompt: "Resposta direta é um balão só; raciocínio maior vai em 2 ou 3 balões curtos. Responda primeiro o que o lead perguntou, curto, e só depois avance um passo. Uma pergunta por resposta: com oferecer=true a pergunta é a da oferta (o sistema escreve), então as suas partes não terminam em pergunta; sem oferta, a resposta de acao responder termina em uma pergunta ou próximo passo.",
     layers: ["prompt", "guard"], guard: "budget" }),
   R({ id: "R-004", cat: "identidade", title: "Saudação só depois de 6h de silêncio",
     origin: { date: "2026-08-23", by: "Leo", ref: "#743" },
