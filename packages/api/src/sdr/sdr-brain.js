@@ -541,7 +541,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
         // varredura tentou de novo — uma vez só, nunca em loop.
         const prev = thread?.brain;
         const retried = !!(prev && prev.msgId === message.id && (prev.retried || prev.action === "error"));
-        if (thread) await repo.update("wa_threads", thread.id, { brain: { msgId: message.id, action: action || "gate", at: now().toISOString(), ...(meta.model ? { model: meta.model, usage: meta.usage || null, ms: meta.ms || 0 } : {}), ...(meta.slots ? { slots: meta.slots, pair: meta.pair } : {}), ...(meta.state ? { state: meta.state, intent: meta.intent, facts: meta.facts, ...(meta.factsDiff ? { factsDiff: meta.factsDiff } : {}) } : {}), ...(meta.audit ? { audit: meta.audit } : {}), ...(meta.shadow ? { shadow: meta.shadow } : {}), ...(meta.error ? { error: meta.error } : {}), ...(retried ? { retried: true } : {}) } });
+        if (thread) await repo.update("wa_threads", thread.id, { brain: { msgId: message.id, action: action || "gate", at: now().toISOString(), ...(meta.model ? { model: meta.model, usage: meta.usage || null, ms: meta.ms || 0, promptVersion: meta.promptVersion || "v1", contract: meta.contract || "v1" } : {}), ...(meta.slots ? { slots: meta.slots, pair: meta.pair } : {}), ...(meta.state ? { state: meta.state, intent: meta.intent, facts: meta.facts, ...(meta.factsDiff ? { factsDiff: meta.factsDiff } : {}) } : {}), ...(meta.audit ? { audit: meta.audit } : {}), ...(meta.shadow ? { shadow: meta.shadow } : {}), ...(meta.error ? { error: meta.error } : {}), ...(retried ? { retried: true } : {}) } });
         if (meta.model) await bumpAiUsage(thread?.saas || meta.saas || "", meta);
         if (meta.audit) await bumpAudit(thread?.saas || meta.saas || "", { meta, thread, action, msgId: message.id });
       } catch { /* carimbo é best-effort: sem ele a varredura só tenta de novo */ }
@@ -928,6 +928,8 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       await send(`Tranquilo${nome ? ` ${nome}` : ""}, sem problemas. Se fizer sentido retomar mais pra frente, é só me chamar aqui`, { path: "desinteresse" });
       return aborted ? "abortado" : "desinteresse";
     }
+    // Prompt v2 exige o contrato v2 (a IA escolhe horários por id).
+    const offerContract = cfg.promptVersion === "v2" ? "v2" : cfg.offerContract;
     const decision = await anthropic.sdrDecide({
       sdrName: firstName((await repo.get("users", lead.owner).catch(() => null))?.name),
       lead: { name: nome, company: lead.company, email: lead.email, niche: lead.niche },
@@ -950,10 +952,14 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       offerDate,
       requestedEmpty,
       rescheduleStatus: reschedule?.status || "",
-      contract: cfg.offerContract,
+      contract: offerContract,
+      promptVersion: cfg.promptVersion,
+      state: st.state,
+      script: st.script,
+      facts: { demoOffered, slotsOffered, engaged, firstReply, askingNow: PRICE_ASK_RX.test(lastInText) },
     });
     // Quem respondeu e quanto custou: vai pro carimbo da thread e pro uso do dia.
-    Object.assign(meta, { model: decision.model || "", usage: decision.usage || null, ms: decision.ms || 0, saas: product.id });
+    Object.assign(meta, { model: decision.model || "", usage: decision.usage || null, ms: decision.ms || 0, saas: product.id, promptVersion: decision.promptVersion || cfg.promptVersion, contract: offerContract });
 
     // E-mail capturado na mensagem entra no cadastro (o convite do Meet usa).
     if (decision.email && /.+@.+\..+/.test(decision.email) && !lead.email) {
@@ -1161,7 +1167,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // renderizador (sdr-offer.js). Daqui em diante a cadeia de travas vê uma
     // oferta real, como sempre viu.
     let offerSlots = suggestedPair;
-    if (cfg.offerContract === "v2" && decision.acao === "responder" && (decision.oferecer || decision.slotIds?.length)) {
+    if (offerContract === "v2" && decision.acao === "responder" && (decision.oferecer || decision.slotIds?.length)) {
       const chosen = (decision.slots || []).filter((c) => slotList.some((x) => x.at === c.at));
       offerSlots = chosen.length ? chosen : suggestedPair;
       if (offerSlots.length) parts.push(offerLine(offerSlots, { wnow }));

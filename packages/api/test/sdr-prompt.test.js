@@ -75,3 +75,59 @@ test("sdrDecide v1 segue byte a byte como antes (sem ids, schema antigo) #R-120"
   assert.ok(!user.includes("s1 ·"));
   assert.equal(d.horario, "2026-08-20T09:00");
 });
+
+// ── Prompt v2: núcleo + bloco por estado ─────────────────────────────────────
+import { buildCoreV2, buildUserV2, STATE_DESC } from "../src/sdr/sdr-prompt.js";
+import { promptBlockFor, ruleById } from "../src/sdr/sdr-rules.js";
+
+test("prompt v2: o turno do usuário traz estado, fatos, regras do estado, agenda com ids e a conversa; remarcação pendente fica sem agenda #R-011 #R-025 #R-036", () => {
+  const base = { sdrName: "Manuela", nowLabel: "quarta, 19/08, 10h00 (hora de Brasília)", lead: { name: "Rafael", niche: "autopecas" }, digest: "3 contas", pain: { code: "B", label: "Conta banida", mode: "clone" }, slots: SLOTS, suggestedPair: [SLOTS[0], SLOTS[1]], conversation: [{ who: "LEAD", text: "sim" }] };
+  const u = buildUserV2({ ...base, state: "oferta_feita", facts: { demoOffered: true, slotsOffered: true, engaged: true, askingNow: false } });
+  assert.ok(u.includes(`VOCÊ ESTÃ EM: oferta_feita`.replace("Ã", "Á")), "estado");
+  assert.ok(u.includes("FATOS: pitch já feito sim · horários já oferecidos sim · lead engajou sim · pediu preço nesta mensagem não"));
+  assert.ok(u.includes(ruleById("R-025").prompt) && !u.includes(ruleById("R-011").prompt), "regras do estado certo");
+  assert.ok(u.includes("- s1 · 2026-08-20T09:00 · amanhã às 9h") && u.includes("PAR SUGERIDO (já espaçado em 2h+): s1 (amanhã às 9h) ou s2 (amanhã às 11h)."));
+  assert.ok(u.includes("AUTOPEÇAS") && u.includes("LEAD: sim") && u.includes("Decida a ação e o texto."));
+  const novo = buildUserV2({ ...base, state: "novo", canGreet: false, gapMin: 3, facts: {} });
+  assert.ok(novo.includes("SAUDAÇÃO: liberada (primeira resposta sua)"), "estado novo sempre libera a saudação (C4)");
+  assert.ok(novo.includes(ruleById("R-011").prompt));
+  const rem = buildUserV2({ ...base, state: "remarcacao_pendente", facts: {} });
+  assert.ok(!rem.includes("HORÁRIOS LIVRES") && !rem.includes("nenhum horário livre"), "remarcação pendente não recebe agenda (C5)");
+  assert.ok(rem.includes(STATE_DESC.remarcacao_pendente));
+  const price = buildUserV2({ ...base, state: "engajado", script: "price", facts: {} });
+  assert.ok(price.includes("roteiro price") && price.includes(ruleById("R-071").prompt));
+});
+
+test("sdrDecide com promptVersion v2: system é o núcleo estável, user é o bloco por estado, contrato v2 forçado #R-120 #R-020", async () => {
+  const { calls, ai } = fakeRouter({ acao: "responder", partes: ["Que bom Rafael"], oferecer: true, slotIds: [], email: "", motivoHumano: "" });
+  const d = await ai.sdrDecide({ ...CTX, promptVersion: "v2", state: "engajado", script: "clone", facts: { demoOffered: true, engaged: true } });
+  const body = calls[0].body;
+  assert.equal(body.messages[0].content.replace("\nResponda SOMENTE com o JSON pedido, sem texto fora dele.", ""), buildCoreV2(), "system = núcleo");
+  const user = body.messages[1].content;
+  assert.ok(user.includes("VOCÊ ESTÁ EM: engajado") && user.includes(ruleById("R-019").prompt));
+  assert.equal(body.response_format.json_schema.name, "sdr_decision_v2");
+  assert.deepEqual([d.acao, d.oferecer, d.promptVersion], ["responder", true, "v2"]);
+  const again = await ai.sdrDecide({ ...CTX, promptVersion: "v2", state: "oferta_feita", facts: {} });
+  assert.equal(calls[1].body.messages[0].content, body.messages[0].content, "núcleo idêntico entre chamadas (cache)");
+  assert.ok(calls[1].body.messages[1].content.includes("VOCÊ ESTÁ EM: oferta_feita"));
+  assert.ok(again.model);
+});
+
+test("prompt v2 resolve as contradições do v1: sem duração, sem valor de exemplo, sem frase-reflexo, sem copy do roteiro #R-060 #R-050 #R-025 #R-070", () => {
+  const core = buildCoreV2();
+  assert.ok(!/20 minutos|30\/40 minutos|2\.000 no semestre|que te passei|Mantemos as 9h/.test(core));
+  assert.ok(!core.includes("Maravilha Nome. Pelo que você me passou no formulário"), "copy do roteiro é do sistema, saiu do prompt");
+  assert.ok(core.includes("Ah que pena, hoje não dá então"), "exemplo de dia sem hora corrigido");
+  assert.ok(core.includes("CONTRATO DE SAÍDA"));
+  for (const st of Object.keys(STATE_DESC)) assert.ok(!promptBlockFor(st).includes("que te passei"), st);
+});
+
+test("núcleo v2 carrega as regras de prompt escritas à mão: tom da Manuela, 'não sei', estoque, dúvida técnica, objeções, ponte #R-002 #R-012 #R-014 #R-015 #R-018 #R-019", () => {
+  const core = buildCoreV2();
+  assert.ok(core.includes("Oiii Nome, tudo bem?") && core.includes("nome SEM vírgula"), "R-002 tom da Manuela");
+  assert.ok(promptBlockFor("descoberta", "clone").includes(ruleById("R-012").prompt) && promptBlockFor("novo", "clone").includes(ruleById("R-012").prompt), "R-012 'não sei' nos estados novo e descoberta");
+  assert.ok(core.includes("SINCRONIZA o estoque entre os anúncios que têm o mesmo SKU"), "R-014 estoque");
+  assert.ok(core.includes(ruleById("R-015").prompt), "R-015 dúvida técnica");
+  assert.ok(core.includes("Já uso Bling/Upseller/ERP") && core.includes("Amazon/Magalu/TikTok"), "R-018 objeções");
+  assert.ok(promptBlockFor("engajado", "clone").includes(ruleById("R-019").prompt), "R-019 ponte no estado engajado");
+});

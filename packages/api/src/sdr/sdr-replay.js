@@ -21,6 +21,10 @@ import { slotLabel, wallNow, spreadPair, wholeHourSlots } from "../crm/agenda-sl
 import { sdrSlotsForLead } from "./sdr-agenda.js";
 import { leadDigest, leadPainFocus, SDR_AUTHOR } from "./sdr-flow.js";
 import { PRICE_RX } from "./sdr-brain.js";
+import { stateOf } from "./sdr-state.js";
+import { PRICE_ASK_RX } from "./sdr-intents.js";
+import { validateDraft, makeDraft } from "./sdr-guards.js";
+import { offerLine } from "./sdr-offer.js";
 
 export const DOC_ID = "sdr_replay";
 const WEEKDAYS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
@@ -30,6 +34,9 @@ const VERIFY_RX = /vou (verificar|confirmar|checar|ver) (com|isso|aqui|junto)|de
 const BRIDGE_RX = /google meet|ao vivo/i;
 // Dia + hora escrito no texto (no contrato v2 a IA NÃO deve escrever: quem
 // escreve a oferta é o motor; aqui conta quantas vezes ela escreveu mesmo assim).
+// Estilo (15/10): tokens que a Manuela nunca usa.
+const FORBIDDEN_TOKEN_RX = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]|—|\.\.\.|…|\bOl[áa](?![\p{L}])|\bcall\b|\*\*/u;
+const GREETING_RX = /^(?:oi+|ol[áa]|opa|bom dia|boa tarde|boa noite)\b/i;
 const SLOT_TEXT_RX = /(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta) às \d{1,2}h/i;
 
 export const docIdOf = (tag) => (tag ? `${DOC_ID}_${String(tag).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 40)}` : DOC_ID);
@@ -85,7 +92,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
       .slice(0, maxThreads);
   }
 
-  async function run({ saas = "leverads", threads: maxThreads = 25, turns: turnsPerThread = 3, model = "", tag = "", contract = "", threadIds = [] } = {}) {
+  async function run({ saas = "leverads", threads: maxThreads = 25, turns: turnsPerThread = 3, model = "", tag = "", contract = "", threadIds = [], promptVersion = "" } = {}) {
     const ai = model && typeof anthropic?.clone === "function" ? anthropic.clone({ model }) : anthropic;
     const docId = docIdOf(tag);
     const startedAt = now().toISOString();
@@ -93,13 +100,21 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
     const p2 = (n) => String(n).padStart(2, "0");
     const nowLabel = `${WEEKDAYS[wnow.getUTCDay()]}, ${p2(wnow.getUTCDate())}/${p2(wnow.getUTCMonth() + 1)}, ${wnow.getUTCHours()}h${p2(wnow.getUTCMinutes())} (hora de Brasília)`;
     const product = await repo.get("products", saas);
+    const humanIds = new Set((await repo.list("users")).map((u) => u.id));
     const picked = await pickThreads(saas, Math.min(60, Math.max(1, maxThreads)), threadIds);
 
     const report = {
-      saas, startedAt, model: model || ai?.model || "", tag, contract: contract || "v1",
+      saas, startedAt, model: model || ai?.model || "", tag, contract: contract || (promptVersion === "v2" ? "v2" : "v1"), promptVersion: promptVersion || "v1",
       threadIds: picked.map((x) => x.thread.id), // pra repetir a MESMA amostra noutra rodada
       threads: picked.length, turns: 0, errors: 0,
       inlineSlotMentions: 0,      // v2: a IA escreveu dia/hora no texto apesar do contrato
+      // Estilo da Manuela (15/10): o que o A/B de prompt tem que preservar.
+      style: { balloons: 0, words: 0, shortBalloons: 0, responderTotal: 0, responderWithQuestion: 0, forbiddenTokens: 0, greetingWhenHot: 0 },
+      byState: {},
+      // Violações por regra do rulebook no texto da IA (validador em modo audit,
+      // 15/10): o que o A/B de prompt/modelo compara.
+      byRule: {},
+      violations: 0,
       actions: { responder: 0, agendar: 0, remarcar: 0, desmarcar: 0, humano: 0, silencio: 0 },
       priceGuardHits: 0,          // respostas da IA com valor (a trava de preço trocaria: preço só na call)
       invalidSlotPicks: 0,        // agendar com horário fora da lista (o motor re-oferta)
@@ -139,6 +154,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
           text: String(x.text || "").slice(0, 500) || "[mensagem]",
         }));
         const slotsOffered = msgs.slice(0, i).some((x) => x.direction === "out" && /(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo) às \d{1,2}h/i.test(x.text || ""));
+        const st = stateOf({ lead, msgs: msgs.slice(0, i + 1), now: now(), product, humanIds });
         try {
           const { slots, requested: requestedDate, startDate: offerDate } = await sdrSlotsForLead(repo, { lead, saas, now: wnow, limit: 0, messages: msgs.slice(0, i + 1) });
           const slotList = slots.map((s) => ({ ...s, label: slotLabel(s.at, wnow) }));
@@ -162,13 +178,28 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
             slotsOffered,
             firstReply: !msgs.slice(0, i).some((x) => x.direction === "out"),
             ...(contract ? { contract } : {}),
+            ...(promptVersion === "v2" ? { promptVersion: "v2", state: st.state, script: st.script, facts: { demoOffered, slotsOffered, engaged: st.facts.engaged, firstReply: st.facts.firstReply, askingNow: PRICE_ASK_RX.test(m.transcript || m.text || "") } } : {}),
           });
+          report.byState[st.state] = (report.byState[st.state] || 0) + 1;
           report.actions[d.acao] = (report.actions[d.acao] || 0) + 1;
           if ((d.acao === "agendar" || d.acao === "remarcar")) {
             if (slotList.some((s) => s.at === d.horario)) bookedHere = true;
             else report.invalidSlotPicks++;
           }
           const text = String(d.mensagem || "");
+          const parts = Array.isArray(d.mensagens) && d.mensagens.length ? d.mensagens : text ? [text] : [];
+          for (const b of parts) { report.style.balloons++; const w = b.split(/\s+/).filter(Boolean).length; report.style.words += w; if (w <= 15) report.style.shortBalloons++; if (FORBIDDEN_TOKEN_RX.test(b)) report.style.forbiddenTokens++; }
+          // AUDITORIA DA RESPOSTA (sdr-guards.js, só check): texto da IA mais, no
+          // contrato v2, a oferta que o motor escreveria.
+          try {
+            const pair = spreadPair(wholeHourSlots(slotList));
+            const audited = (contract === "v2" || promptVersion === "v2") && d.acao === "responder" && (d.oferecer || (d.slotIds || []).length)
+              ? [...parts, offerLine((d.slots || []).length ? d.slots : pair, { wnow })] : parts;
+            const v = validateDraft(makeDraft(audited, "ia"), { nome: lead.name || "", script: st.script, msgs: msgs.slice(0, i + 1), callAt: "", slotList, offerPool: wholeHourSlots(slotList), suggestedPair: pair, requestedDate, offerDate, requestedEmpty: false, hourReply: false, engaged: st.facts.engaged, slotsOffered, inCallWindow: false, lastInText: String(m.transcript || m.text || ""), wnow, discoveryQuestion: "Isso ajudaria na sua operação hoje?", dayLabelOf: (x) => x, nowIso: now().toISOString(), inboundText: String(m.text || ""), priceDeferral: "" }, { mode: "audit" });
+            for (const x of v.violations) { if (x.exempt) continue; report.violations++; report.byRule[x.rule] = (report.byRule[x.rule] || 0) + 1; }
+          } catch (err) { log.warn?.({ err: err.message }, "sdr-replay: auditoria falhou"); }
+          if (d.acao === "responder" && parts.length) { report.style.responderTotal++; if (parts.some((b) => b.includes("?")) || d.oferecer) report.style.responderWithQuestion++; }
+          if (parts.length && GREETING_RX.test(parts[0]) && !(gapMin == null || gapMin >= 360)) report.style.greetingWhenHot++;
           if (text && PRICE_RX.test(text)) report.priceGuardHits++;
           if (REFLEX_RX.test(text)) report.reflexPhrase++;
           if (VERIFY_RX.test(text)) report.verifyLater++;
