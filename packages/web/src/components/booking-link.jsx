@@ -1,10 +1,13 @@
 import React from "react";
 import { userById, displayName } from "../lib/users.js";
-import { stageKind } from "../lib/funnel.js";
+import { stageByKind } from "../lib/funnel.js";
+import { bookingCandidates, sentAgo } from "../lib/booking-candidates.js";
 import { Modal } from "./overlay.jsx";
 import { waLink } from "../lib/ui.js";
 import { bookingInviteText } from "../lib/wa-copy.js";
 import { api } from "../lib/api.js";
+
+export { bookingCandidates, sentAgo };
 
 // Link de convite da agenda de quem vai atender (07/10/2026): cada pessoa
 // cadastra o seu em Configurações → Integrações (users.bookingUrl), e aqui ele
@@ -23,14 +26,6 @@ export function bookingShareUrl(userId, saas, what = "integracao", leadId = "") 
   const base = import.meta.env?.VITE_API_BASE || (typeof window !== "undefined" && window.location?.origin) || "";
   const q = new URLSearchParams({ ...(saas ? { s: saas } : {}), t: what, ...(leadId ? { l: leadId } : {}) });
   return `${base}/a/${encodeURIComponent(userId)}?${q}`;
-}
-
-// "há 5 min" / "há 2h" / "há 3 dias" desde o envio do link.
-export function sentAgo(iso, now = Date.now()) {
-  const t = Date.parse(iso || "");
-  if (!Number.isFinite(t)) return "";
-  const min = Math.max(0, Math.round((now - t) / 60000));
-  return min < 60 ? `há ${min} min` : min < 48 * 60 ? `há ${Math.round(min / 60)}h` : `há ${Math.round(min / 1440)} dias`;
 }
 
 const btn = {
@@ -85,48 +80,46 @@ export function BookingLinkActions({ lead, userId }) {
   );
 }
 
-// ── Ligar à mão a marcação sem card (07/10/2026) ────────────────────────────
-// O cliente marcou pelo link de convite e a rotina não achou o card (link do
-// Google mandado direto, e-mail/telefone diferentes). O aviso do sino abre esta
-// janela: os cards em Integração/Pós-venda de quem recebeu a marcação (os que
-// estão "aguardando o cliente marcar" primeiro) e um clique liga, com a sala da
-// marcação, sem esbarrar na trava de horário da grade.
-const deliveryKinds = new Set(["integracao", "posvenda"]);
-function statusOf(l, now = Date.now()) {
-  const at = l.integrationAt ? new Date(l.integrationAt) : null;
-  if (at && Number.isFinite(at.getTime()) && at.getTime() > now) {
-    return { rank: 2, text: `integração ${at.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` };
-  }
-  if (l.integrationLinkSentAt) return { rank: 0, text: `link enviado ${sentAgo(l.integrationLinkSentAt, now)} · aguardando marcar` };
-  return { rank: 1, text: "sem horário marcado" };
-}
-export function bookingCandidates(leads, saasList, userId, query = "", now = Date.now()) {
-  const q = String(query || "").trim().toLowerCase();
-  const cfg = (id) => (saasList || []).find((s) => s.id === id);
-  return (leads || [])
-    .filter((l) => deliveryKinds.has(stageKind(cfg(l.saas), l.stage)) && (!l.integrator || l.integrator === userId))
-    .filter((l) => !q || [l.name, l.company, l.email, l.phone].some((v) => String(v || "").toLowerCase().includes(q)))
-    .map((l) => ({ l, st: statusOf(l, now) }))
-    .sort((a, b) => a.st.rank - b.st.rank || String(a.l.name || "").localeCompare(String(b.l.name || "")));
-}
-
+// Janela do aviso do sino: ligar à mão a marcação sem card (regra da lista em
+// lib/booking-candidates.js).
 export function BookingLinkModal({ eventId, userId, text = "", onClose }) {
   const [query, setQuery] = React.useState("");
   const [busy, setBusy] = React.useState("");
   const [error, setError] = React.useState("");
   const rows = bookingCandidates(window.SEED?.LEADS, window.SEED?.SAAS, userId, query);
-  async function link(lead) {
+  // Card fora da entrega: liga PRIMEIRO (a ligação já passa o card pra quem
+  // recebeu a marcação; se a marcação foi cancelada ou é de outro card, nada se
+  // move) e só então move pra Integração pelo PATCH de etapa, o mesmo do funil
+  // (histórico, fechamento, cliente e briefing de passagem).
+  async function link({ l: lead, move }) {
     if (busy) return;
     setBusy(lead.id); setError("");
     try {
       await api.linkBooking(eventId, { user: userId, leadId: lead.id });
-      window.toast?.(`Marcação ligada ao card de ${lead.name || "cliente"}`, "pos");
-      onClose();
     } catch (err) {
       setError(err.message || "Não foi possível ligar a marcação");
       setBusy("");
+      return;
     }
+    const cfg = (window.SEED?.SAAS || []).find((s) => s.id === lead.saas);
+    const to = move ? stageByKind(cfg, "integracao") : "";
+    if (to) {
+      try {
+        await api.update("leads", lead.id, { stage: to, stageSince: new Date().toISOString() });
+      } catch {
+        window.toast?.(`Marcação ligada ao card de ${lead.name || "cliente"}, mas o card não foi pra ${to} · mova pelo funil`, "warn");
+        onClose();
+        return;
+      }
+    }
+    window.toast?.(`Marcação ligada ao card de ${lead.name || "cliente"}${to ? ` e o card foi pra ${to}` : ""}`, "pos");
+    onClose();
   }
+  // O que acontece com o card ao ligar, na linha de cada um.
+  const rowText = ({ l, st, move, otherIntegrator }) => [
+    move ? `${l.stage || "sem etapa"} → vai pra Integração` : st.text,
+    otherIntegrator ? `integra: ${displayName(otherIntegrator) || otherIntegrator} → passa pra ${displayName(userId) || "quem recebeu"}` : "",
+  ].filter(Boolean).join(" · ");
   return (
     <Modal onClose={onClose} fechavel={!busy} label="ligar marcação a um card" largura={480} padding={16} painelStyle={{ padding: 18 }}>
       <div style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700 }}>Ligar a marcação a um card</div>
@@ -134,19 +127,19 @@ export function BookingLinkModal({ eventId, userId, text = "", onClose }) {
       <input className="inp" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="buscar por nome, empresa, e-mail ou telefone…"
         aria-label="Buscar card" autoFocus style={{ width: "100%", marginTop: 12, borderRadius: 999, padding: "0 12px" }} />
       <div role="list" style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10, maxHeight: "min(50dvh, 420px)", overflowY: "auto" }}>
-        {rows.length === 0 && <div className="mono dim" style={{ fontSize: 12, padding: "10px 2px" }}>nenhum card em Integração de {displayName(userId) || "quem integra"}{query ? " com essa busca" : ""}</div>}
-        {rows.map(({ l, st }) => (
+        {rows.length === 0 && <div className="mono dim" style={{ fontSize: 12, padding: "10px 2px" }}>{query ? "nenhum card com essa busca" : `nenhum card em Integração de ${displayName(userId) || "quem integra"} · busque o cliente pelo nome, e-mail ou telefone`}</div>}
+        {rows.map((row) => { const { l, st } = row; return (
           <div key={l.id} role="listitem" style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", border: "1px solid var(--line-1)", borderRadius: 14 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name || "cliente"}{l.company ? <span style={{ fontWeight: 400, color: "var(--fg-3)" }}> · {l.company}</span> : null}</div>
-              <div className="mono" style={{ fontSize: 10.5, color: st.rank === 0 ? "var(--warn)" : "var(--fg-3)", marginTop: 2 }}>{st.text}</div>
+              <div className="mono" style={{ fontSize: 10.5, color: st.rank === 0 && !row.move ? "var(--warn)" : "var(--fg-3)", marginTop: 2 }}>{rowText(row)}</div>
             </div>
-            <button type="button" onClick={() => link(l)} disabled={!!busy} aria-label={`Ligar a ${l.name || "cliente"}`}
+            <button type="button" onClick={() => link(row)} disabled={!!busy} aria-label={`Ligar a ${l.name || "cliente"}`}
               style={{ ...btn, background: "var(--btn-bg)", color: "var(--btn-fg)", border: 0, fontWeight: 600 }}>
               {busy === l.id ? "ligando…" : "ligar"}
             </button>
           </div>
-        ))}
+        ); })}
       </div>
       {error && <div role="alert" style={{ marginTop: 10, fontSize: 12, color: "var(--neg)" }}>{error}</div>}
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
