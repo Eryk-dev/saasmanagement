@@ -564,3 +564,11 @@ test("bookCall carimba callSetAt (é o que segura a véspera precoce) #R-035", a
 test("sombra do estado: nenhuma das cenas acima divergiu entre stateOf e a conta do cérebro #R-097", () => {
   assert.deepEqual(shadowStats.factsDiff, []);
 });
+
+// O validador (sdr-guards.js) rodou em enforce sobre o texto cru da IA em cada
+// cena acima e o resultado foi comparado com a cadeia legada do cérebro: se
+// uma única cena divergisse (texto ou desfecho), estaria aqui.
+test("sombra do validador: nenhuma das cenas acima divergiu entre sdr-guards e a cadeia legada #R-003 #R-009 #R-020 #R-022 #R-026 #R-028 #R-029 #R-030 #R-031 #R-050 #R-060 #R-061", () => {
+  assert.deepEqual(shadowStats.shadowDiff, []);
+});
+

@@ -277,8 +277,26 @@ própria; `stateOf` e `classifyInbound` só vão pro carimbo `thread.brain`
 (`state`, `intent`, `facts`) e qualquer divergência vira `factsDiff` no
 carimbo, log e `shadowStats` (os testes de cena asseveram vazio). Tabelas:
 `sdr-state.test.js` (uma linha por estado) e `sdr-intents.test.js` (uma linha
-por frase real). Próximas fases: validador único no `send()` (sombra → enforce
-por config), oferta estruturada, prompt por estado.
+por frase real).
+
+**Validador único em sombra (PR3, 15/10/2026):** `sdr-guards.js` tem os 15
+validadores de saída como funções puras (`check`/`fix` + efeitos), na ordem da
+cadeia legada do bloco `responder`, mais três só de auditoria (palavra "call",
+mais de uma pergunta, orçamento de balões); `sdr-offer.js` é o único lugar que
+escreve a frase da oferta (`offerLine`, estilos consigo/lotou/fica-melhor/
+tenho-agenda/desculpa). No cérebro, TODO texto que sai (IA, roteiro, confirmação,
+transição pra humano, trava) passa por `validateDraft(..., {mode:"audit"})`
+dentro do `send()`, com `kind` e `path` por caminho; no caminho da IA o texto
+cru também passa em `enforce` e o resultado é comparado com a cadeia legada
+(`thread.brain.shadow.same`). Carimbo `thread.brain.audit/shadow`, doc diário
+`app_config sdr_audit_<saas>_<dia>` (byRule, exemptByRule, byPath, byPathRule,
+shadowDiff, samples ≤ 200) e `GET /api/sdr/audit?days=7`. Exceção declarada:
+a M3 do roteiro OEM/Price diz "30/40 minutos" (R-070) e conta como `exempt`.
+As cenas de brain/humanizacao asseveram `shadowStats.shadowDiff` vazio; a troca
+pra enforce (PR5) é por `product.sdrBot.guardsMode` depois de 7 dias de sombra
+em produção. Corpus de cenas: `test/sdr-corpus/*.scene.js` + runner
+`sdr-corpus.test.js` sobre `test/helpers/sdr-world.js`. Próximas fases: oferta
+estruturada (contrato v2), enforce, prompt por estado.
 
 1. **Receita de produto:** `rollupProduct` deriva clientes, ARR e MRR de
    `customers`, excluindo os churnados segundo `churn.js`. Não usar os números

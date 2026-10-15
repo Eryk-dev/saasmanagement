@@ -18,7 +18,6 @@ const SELF = "sdr-rulebook.test.js";
 // motivo e do PR que vai cobrir. Regra com tag em teste não pode ficar aqui.
 const PENDING_COVERAGE = {
   "R-002": "estilo da Manuela: regra de prompt, coberta pelo teste de prompt por estado (PR6)",
-  "R-006": "palavra call: validador noCallWord entra em sombra no PR3, cena no corpus",
   "R-012": "'não sei' abre qualificação: cena do corpus (PR3) com a IA fake",
   "R-014": "estoque por SKU: regra de prompt, teste de prompt por estado (PR6)",
   "R-015": "dúvida técnica vira demo: regra de prompt, teste de prompt por estado (PR6)",
