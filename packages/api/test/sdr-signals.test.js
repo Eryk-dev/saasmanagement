@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { collapseSameDay, expandSameDay, offeredSlotsIn, acceptedSlot, isOfferMsg } from "../src/sdr/sdr-signals.js";
 
 // Leo, 08/10: dois horários do mesmo dia levam o dia uma vez só.
-test("collapseSameDay: mesmo dia, dia uma vez; dias diferentes ficam como estão", () => {
+test("collapseSameDay: mesmo dia, dia uma vez; dias diferentes ficam como estão #R-021", () => {
   assert.equal(collapseSameDay("Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?"), "Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?");
   assert.equal(collapseSameDay("Consigo segunda às 9h ou segunda às 13h"), "Consigo segunda às 9h ou às 13h");
   assert.equal(collapseSameDay("sexta 04/09 às 10h ou sexta 04/09 às 14h30"), "sexta 04/09 às 10h ou às 14h30");
@@ -14,7 +14,7 @@ test("collapseSameDay: mesmo dia, dia uma vez; dias diferentes ficam como estão
   assert.ok(isOfferMsg("Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?"));
 });
 
-test("offeredSlotsIn lê a oferta com o dia uma vez; acceptedSlot entende número solto e recusa hora ambígua", () => {
+test("offeredSlotsIn lê a oferta com o dia uma vez; acceptedSlot entende número solto e recusa hora ambígua #R-021 #R-027", () => {
   const offered = offeredSlotsIn([{ direction: "out", author: "sdr-bot", at: "2026-10-02T11:07:00Z", text: "Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?" }]);
   assert.deepEqual(offered.map((s) => s.at), ["2026-10-03T09:00", "2026-10-03T11:00"]);
   assert.equal(acceptedSlot("11", offered)?.at, "2026-10-03T11:00");

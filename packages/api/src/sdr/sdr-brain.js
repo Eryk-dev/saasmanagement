@@ -42,8 +42,8 @@ const GREETING_GAP_MS = 6 * HOUR; // conversa parada há menos disso = SEM sauda
 // disso se repete (Leo, 22-23/08): capacidade já listada não se re-lista, as
 // mensagens seguintes referenciam curto e trazem só o novo. O template do 1º
 // toque também conta como pitch feito.
-const DEMO_RX = /demonstra|mostrar (a |o )?(leverads|plataforma|ferramenta)|funcionando ao vivo/i;
-const PITCH_RX = /t[íi]tulo de 200|part number|compatibilidade inteira|clonagem de an[úu]ncios|estoque, atendimento e edi[çc][ãa]o|gerenciar m[úu]ltiplas contas|lever price|custo, a margem e o imposto/i;
+export const DEMO_RX = /demonstra|mostrar (a |o )?(leverads|plataforma|ferramenta)|funcionando ao vivo/i;
+export const PITCH_RX = /t[íi]tulo de 200|part number|compatibilidade inteira|clonagem de an[úu]ncios|estoque, atendimento e edi[çc][ãa]o|gerenciar m[úu]ltiplas contas|lever price|custo, a margem e o imposto/i;
 // Horário já oferecido não se repete enquanto o lead não escolher (Leo,
 // 23/08): a re-oferta a cada resposta soa insistente (e o modelo ainda
 // rotulava o dia errado ao re-citar de cabeça).

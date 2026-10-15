@@ -79,7 +79,7 @@ const brainOf = (repo, ai, wa = makeWa()) => makeSdrBrain({ repo, whatsapp: wa, 
 const tickOf = (repo, wa, at = NOW) => makeSdrRunner({ repo, whatsapp: wa, log: { warn: () => {} }, now: () => at }).tick();
 
 // ── Passo zero: cliente de IA ───────────────────────────────────────────────
-test("anthropic: system vai como bloco cacheado, uso é normalizado, clone troca só o modelo", async () => {
+test("anthropic: system vai como bloco cacheado, uso é normalizado, clone troca só o modelo #R-097 #R-120", async () => {
   const bodies = [];
   const fetch = async (url, init) => {
     bodies.push({ url, body: JSON.parse(init.body) });
@@ -103,7 +103,7 @@ test("anthropic: system vai como bloco cacheado, uso é normalizado, clone troca
   assert.equal(bodies[0].body.model, "claude-a");
 });
 
-test("anthropic via OpenRouter: modelo OpenAI mantém system string; uso vem de prompt/completion_tokens", async () => {
+test("anthropic via OpenRouter: modelo OpenAI mantém system string; uso vem de prompt/completion_tokens #R-097", async () => {
   let sent = null;
   const fetch = async (url, init) => {
     sent = JSON.parse(init.body);
@@ -116,7 +116,7 @@ test("anthropic via OpenRouter: modelo OpenAI mantém system string; uso vem de 
 });
 
 // ── Passo zero no cérebro: carimbo de modelo/uso + 1º toque pela IA ─────────
-test("brain: 1ª resposta da IA carimba firstTouchAt (via brain), thread.brain leva modelo/uso e o dia soma", async () => {
+test("brain: 1ª resposta da IA carimba firstTouchAt (via brain), thread.brain leva modelo/uso e o dia soma #R-097", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "Oi, quero saber mais", at: ISO("2026-08-19T12:59:00Z") }] });
   const ai = fakeAi([{ acao: "responder", mensagens: ["Oiii Rafael, tudo bem?", "Isso ajudaria na sua operação?"] }]);
   await brainOf(repo, ai).handleInbound({ message: { from: THREAD.id, text: "Oi, quero saber mais", id: "m1" } });
@@ -139,7 +139,7 @@ test("brain: 1ª resposta da IA carimba firstTouchAt (via brain), thread.brain l
   assert.equal((await repo.get("app_config", "sdr_ai_usage_leverads_2026-08-19")).calls, 2);
 });
 
-test("brain: handoff e 1ª resposta na mesma decisão preservam os dois carimbos", async () => {
+test("brain: handoff e 1ª resposta na mesma decisão preservam os dois carimbos #R-080 #R-097", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "vocês são robô?", at: ISO("2026-08-19T12:59:00Z") }] });
   await brainOf(repo, fakeAi([{ acao: "humano", mensagens: ["Já te passo pra uma pessoa do time"], motivoHumano: "perguntou se é robô" }])).handleInbound({ message: { from: THREAD.id, text: "vocês são robô?", id: "m1" } });
   const log = (await repo.get("leads", "L1")).sdrLog;
@@ -148,7 +148,7 @@ test("brain: handoff e 1ª resposta na mesma decisão preservam os dois carimbos
 });
 
 // ── Escada e 2º toque alcançam quem só falou com a IA ───────────────────────
-test("2º toque: a mensagem do form ANTES do 1º toque não conta como resposta; depois dele, conta", async () => {
+test("2º toque: a mensagem do form ANTES do 1º toque não conta como resposta; depois dele, conta #R-101", async () => {
   const mk = (inAt) => world({
     sdrBot: { secondTouch: true, firstTouch: true },
     lead: { sdrLog: { firstTouchAt: ISO("2026-08-18T12:30:00Z"), firstTouchVia: "brain" }, createdAt: ISO("2026-08-18T12:00:00Z") },
@@ -169,7 +169,7 @@ test("2º toque: a mensagem do form ANTES do 1º toque não conta como resposta;
   assert.equal(wa2.sent.length, 0);
 });
 
-test("migração: lead que só conversou com a IA ganha firstTouchAt da 1ª mensagem do robô, uma vez", async () => {
+test("migração: lead que só conversou com a IA ganha firstTouchAt da 1ª mensagem do robô, uma vez #R-101", async () => {
   const repo = await world({ messages: [
     { direction: "in", text: "oi", at: ISO("2026-08-10T12:00:00Z") },
     { direction: "out", author: "sdr-bot", text: "Oiii", at: ISO("2026-08-10T12:05:00Z") },
@@ -185,7 +185,7 @@ test("migração: lead que só conversou com a IA ganha firstTouchAt da 1ª mens
 });
 
 // ── Confirmação com ação e link ─────────────────────────────────────────────
-test("reminderText: 2h leva o link e a dica do computador, sem perguntar por onde entra (Leo, 17/09); sem link, pede o ok; 10min sem link pede o ok", () => {
+test("reminderText: 2h leva o link e a dica do computador, sem perguntar por onde entra (Leo, 17/09); sem link, pede o ok; 10min sem link pede o ok #R-061 #R-112", () => {
   const t2h = reminderText("2h", { nome: "Rafael", quando: "hoje às 14h", link: "https://meet.google.com/x" });
   assert.match(t2h, /link pra entrar é este: https:\/\/meet\.google\.com\/x\. Se for entrar pelo celular, vale ter um computador por perto/);
   assert.match(t2h, /Me confirma por aqui que está tudo certo\?$/);
@@ -195,7 +195,7 @@ test("reminderText: 2h leva o link e a dica do computador, sem perguntar por ond
   assert.doesNotMatch(reminderText("10min", { nome: "", quando: "", link: "" }), /Te espero lá/);
 });
 
-test("lembrete de 2h com janela fechada e sala criada sai pelo template COM link", async () => {
+test("lembrete de 2h com janela fechada e sala criada sai pelo template COM link #R-112", async () => {
   const repo = await world({
     sdrBot: { reminders: true },
     lead: { stage: "Call agendada", callAt: "2026-08-20T10:00", closer: "pl", callUrl: "https://meet.google.com/abc-defg", createdAt: ISO("2026-08-10T10:00:00Z") },
@@ -227,7 +227,7 @@ test("lembrete de 2h com janela fechada e sala criada sai pelo template COM link
   assert.equal(wa2.sent.find((s) => s.kind === "template").name, "sdr_lembrete_conversa");
 });
 
-test("positiva ao lembrete recebe o link em seguida, uma vez; humano que já mandou o link cala o robô", async () => {
+test("positiva ao lembrete recebe o link em seguida, uma vez; humano que já mandou o link cala o robô #R-112", async () => {
   const at = "2026-08-20T10:00";
   const mk = (extra = []) => world({
     sdrBot: { reminders: true },
@@ -256,7 +256,7 @@ test("positiva ao lembrete recebe o link em seguida, uma vez; humano que já man
 });
 
 // ── Replay por modelo ───────────────────────────────────────────────────────
-test("replay: model/tag rodam com o clone, gravam doc próprio com uso e latência, e runs() lista", async () => {
+test("replay: model/tag rodam com o clone, gravam doc próprio com uso e latência, e runs() lista #R-120", async () => {
   const repo = await world({ messages: [
     { direction: "in", text: "quanto custa?", at: ISO("2026-08-18T12:00:00Z") },
     { direction: "out", author: "sdr", text: "a partir de 497", at: ISO("2026-08-18T12:05:00Z") },

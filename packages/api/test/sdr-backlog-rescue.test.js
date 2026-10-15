@@ -45,7 +45,7 @@ async function world({ leads = [], threads = [], sdrBot = {} } = {}) {
 
 const tickAt = (repo, wa, when = NOW) => makeSdrRunner({ repo, whatsapp: wa, log: { warn: () => {} }, now: () => when }).tick();
 
-test("lote da meia hora: Qualificando mais novo primeiro, Nutrição usa o template de novidades, quota persiste", async () => {
+test("lote da meia hora: Qualificando mais novo primeiro, Nutrição usa o template de novidades, quota persiste #R-103", async () => {
   const repo = await world({
     sdrBot: { backlogRescuePerBatch: 2 },
     leads: [
@@ -76,7 +76,7 @@ test("lote da meia hora: Qualificando mais novo primeiro, Nutrição usa o templ
   assert.equal((await repo.get("leads", "N1")).stage, "Nutrição", "card não se move no envio");
 });
 
-test("fora da janela (almoço), fim de semana e atividade recente: nada sai", async () => {
+test("fora da janela (almoço), fim de semana e atividade recente: nada sai #R-103", async () => {
   const lead = { id: "L1", name: "Eva", phone: "41911110005", stage: "Qualificando", createdAt: ISO("2026-08-10T10:00:00Z"), stageSince: ISO("2026-08-10T10:00:00Z") };
   // Almoço de segunda (12h10 BRT = 15h10 UTC).
   const repo1 = await world({ leads: [lead] });
@@ -98,7 +98,7 @@ test("fora da janela (almoço), fim de semana e atividade recente: nada sai", as
   assert.equal(wa3.sent.length, 0);
 });
 
-test("saúde do número em risco pausa a campanha; sem template aprovado, nada sai", async () => {
+test("saúde do número em risco pausa a campanha; sem template aprovado, nada sai #R-103", async () => {
   const lead = { id: "L1", name: "Gil", phone: "41911110006", stage: "Qualificando", createdAt: ISO("2026-08-10T10:00:00Z"), stageSince: ISO("2026-08-10T10:00:00Z") };
   const repo = await world({ leads: [lead] });
   // Número SINALIZADO pela Meta: pausa. (Violação antiga da CONTA não pausa.)
@@ -116,7 +116,7 @@ test("saúde do número em risco pausa a campanha; sem template aprovado, nada s
   assert.equal(wa2.sent.length, 0, "sem template aprovado");
 });
 
-test("DISJUNTOR: taxa de falha alta nas últimas 2h pausa a campanha e levanta alerta", async () => {
+test("DISJUNTOR: taxa de falha alta nas últimas 2h pausa a campanha e levanta alerta #R-103", async () => {
   const lead = { id: "L1", name: "Gil", phone: "41911110006", stage: "Qualificando", createdAt: ISO("2026-08-10T10:00:00Z"), stageSince: ISO("2026-08-10T10:00:00Z") };
   const repo = await world({ leads: [lead] });
   // 20 mensagens do robô na última hora, 5 falhadas = 25% (limiar 15%).
@@ -135,7 +135,7 @@ test("DISJUNTOR: taxa de falha alta nas últimas 2h pausa a campanha e levanta a
   assert.ok(await repo.get("app_config", "sdr_backlog_breaker_leverads"));
 });
 
-test("amostra pequena não aciona o disjuntor (um azar isolado não derruba a campanha)", async () => {
+test("amostra pequena não aciona o disjuntor (um azar isolado não derruba a campanha) #R-103", async () => {
   const lead = { id: "L1", name: "Gil", phone: "41911110006", stage: "Qualificando", createdAt: ISO("2026-08-10T10:00:00Z"), stageSince: ISO("2026-08-10T10:00:00Z") };
   const repo = await world({ leads: [lead] });
   // 4 mensagens, 2 falhas = 50%, mas amostra < 20: segue enviando.
@@ -150,7 +150,7 @@ test("amostra pequena não aciona o disjuntor (um azar isolado não derruba a ca
   assert.equal(wa.sent.length, 1);
 });
 
-test("ordem por engajamento: quem já respondeu alguma vez sai antes do lead frio", async () => {
+test("ordem por engajamento: quem já respondeu alguma vez sai antes do lead frio #R-103", async () => {
   const repo = await world({
     sdrBot: { backlogRescuePerBatch: 1 },
     leads: [

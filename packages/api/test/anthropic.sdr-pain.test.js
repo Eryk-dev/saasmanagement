@@ -29,7 +29,7 @@ async function decideWith(lead) {
   return { userMsg, system: sysOf(sentBody) };
 }
 
-test("sdrDecide sem dor: lead de autopeças recebe a instrução do OEM como segundo benefício", async () => {
+test("sdrDecide sem dor: lead de autopeças recebe a instrução do OEM como segundo benefício #R-013", async () => {
   const { userMsg, system } = await decideWith({ name: "Cyro", niche: "autopecas" });
   assert.match(userMsg, /Sem dor de origem registrada, mas o lead é de AUTOPEÇAS/);
   assert.match(userMsg, /OEM como segundo benefício/);
@@ -37,7 +37,7 @@ test("sdrDecide sem dor: lead de autopeças recebe a instrução do OEM como seg
   assert.match(system, /Sem dor registrada.*EXCEÇÃO AUTOPEÇAS vale aqui também/s);
 });
 
-test("sdrDecide sem dor: outro nicho segue na apresentação geral, sem puxar o OEM", async () => {
+test("sdrDecide sem dor: outro nicho segue na apresentação geral, sem puxar o OEM #R-013", async () => {
   const { userMsg } = await decideWith({ name: "Bia", niche: "moda" });
   assert.match(userMsg, /Sem dor de origem registrada: apresentação geral da plataforma\./);
   assert.doesNotMatch(userMsg, /segundo benefício/);

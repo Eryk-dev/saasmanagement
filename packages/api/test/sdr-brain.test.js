@@ -76,14 +76,14 @@ const brainOf = (repo, fakes) => makeSdrBrain({
 
 const INBOUND = { message: { from: "5541999990000", text: "quanto custa?" } };
 
-test("chave conversation desligada: o cérebro nem chama a IA", async () => {
+test("chave conversation desligada: o cérebro nem chama a IA #R-090", async () => {
   const repo = await world({ sdrBot: { conversation: false }, messages: [{ direction: "in", text: "oi", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes();
   assert.equal(await brainOf(repo, fakes).handleInbound(INBOUND), null);
   assert.equal(fakes.calls.length, 0);
 });
 
-test("responder: manda o texto da IA com autoria sdr-bot e contexto completo (agenda + conversa)", async () => {
+test("responder: manda o texto da IA com autoria sdr-bot e contexto completo (agenda + conversa) #R-001", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "como funciona?", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "A gente clona seus anúncios entre contas. Consigo te mostrar ao vivo, qual período fica melhor?" }] });
   const r = await brainOf(repo, fakes).handleInbound(INBOUND);
@@ -100,7 +100,7 @@ test("responder: manda o texto da IA com autoria sdr-bot e contexto completo (ag
   assert.equal(ctx.sdrName, "Manuela");
 });
 
-test("firstReply: conversa sem NENHUMA mensagem nossa liga a descoberta; template já enviado desliga", async () => {
+test("firstReply: conversa sem NENHUMA mensagem nossa liga a descoberta; template já enviado desliga #R-011", async () => {
   // Lead escreveu primeiro (clique do form): descoberta antes de agendar.
   const repo = await world({ messages: [{ direction: "in", text: "Oi, quero saber mais sobre a LeverAds", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Isso ajudaria na sua operação?" }] });
@@ -117,7 +117,7 @@ test("firstReply: conversa sem NENHUMA mensagem nossa liga a descoberta; templat
   assert.equal(fakes2.calls[0].firstReply, false);
 });
 
-test("walk-in: conversa sem lead vira card preenchido pelo prefill e o robô atende", async () => {
+test("walk-in: conversa sem lead vira card preenchido pelo prefill e o robô atende #R-094", async () => {
   const repo = await world({ messages: [] });
   // Conversa de um número DESCONHECIDO (sem lead): só thread + mensagem dele.
   await repo.create("wa_threads", { id: "5532988887777", phone: "5532988887777", saas: "leverads", name: "José Larino Souza" });
@@ -143,7 +143,7 @@ test("walk-in: conversa sem lead vira card preenchido pelo prefill e o robô ate
   assert.equal(fakes.sent.length, 1);
 });
 
-test("walk-in: cliente da casa e robô de loja NÃO viram lead", async () => {
+test("walk-in: cliente da casa e robô de loja NÃO viram lead #R-094", async () => {
   const repo = await world({ messages: [] });
   await repo.create("customers", { id: "C1", name: "Cliente", phone: "41911112222" });
   await repo.create("wa_threads", { id: "5541911112222", phone: "5541911112222", saas: "leverads", name: "Cliente" });
@@ -158,7 +158,7 @@ test("walk-in: cliente da casa e robô de loja NÃO viram lead", async () => {
   assert.equal(fakes.calls.length, 0);
 });
 
-test("auto-atendimento de loja na 1ª resposta: silêncio, sem gastar IA", async () => {
+test("auto-atendimento de loja na 1ª resposta: silêncio, sem gastar IA #R-008", async () => {
   const repo = await world({ messages: [
     { direction: "out", author: "sdr-bot", text: "Oiii, Rafael. Isso ajudaria na sua operação?", at: ISO("2026-08-19T12:58:00Z") },
     { direction: "in", text: "MAF Imports agradece seu contato. Como podemos ajudar? Para facilitar informe os 7 últimos números do chassi.", at: ISO("2026-08-19T12:59:00Z") },
@@ -173,7 +173,7 @@ test("auto-atendimento de loja na 1ª resposta: silêncio, sem gastar IA", async
   assert.equal(await brainOf(repo, fakes2).handleInbound({ message: { from: "5541999990000", text: "oi, tem interesse sim", id: "mX" } }), "responder");
 });
 
-test("remarcar: confirmação CURTA, sem repetir sócio e lembrete", async () => {
+test("remarcar: confirmação CURTA, sem repetir sócio e lembrete #R-035", async () => {
   const repo = await world({
     lead: { stage: "Call agendada", callAt: "2026-08-19T16:00", email: "r@x.com", callUrl: "https://meet.google.com/abc", closer: "pl" },
     messages: [{ direction: "in", text: "pode remarcar para amanhã às 9h?", at: ISO("2026-08-19T12:59:00Z") }],
@@ -186,7 +186,7 @@ test("remarcar: confirmação CURTA, sem repetir sócio e lembrete", async () =>
   assert.equal((await repo.get("leads", "L1")).callAt, SLOT1);
 });
 
-test("trava de beco: interesse respondido sem pergunta ganha a oferta do par; adiamento não", async () => {
+test("trava de beco: interesse respondido sem pergunta ganha a oferta do par; adiamento não #R-031", async () => {
   // Caso Daniel: "Opa sim" → afirmação solta. O motor emenda a oferta.
   const repo = await world({ messages: [
     { direction: "out", author: "sdr-bot", text: "Isso ajudaria na sua operação?", at: ISO("2026-08-19T12:50:00Z") },
@@ -218,7 +218,7 @@ test("trava de beco: interesse respondido sem pergunta ganha a oferta do par; ad
   assert.ok(!/qual fica melhor/.test(fakes3.sent[0].text));
 });
 
-test("oferta fantasma: 'os horários que te passei' sem ter passado vira a oferta real", async () => {
+test("oferta fantasma: 'os horários que te passei' sem ter passado vira a oferta real #R-029", async () => {
   // Caso Gabriel (25/08): retomada é template SEM horário, e a IA respondeu
   // citando horários que nunca existiram.
   const repo = await world({ messages: [
@@ -247,7 +247,7 @@ test("oferta fantasma: 'os horários que te passei' sem ter passado vira a ofert
   assert.match(fakes2.sent.at(-1).text, /Consigo .*às \d/, "entra a oferta de verdade");
 });
 
-test("horário JÁ oferecido antes: a referência é legítima e passa", async () => {
+test("horário JÁ oferecido antes: a referência é legítima e passa #R-029", async () => {
   const repo = await world({ messages: [
     { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor?", at: ISO("2026-08-19T12:00:00Z") },
     { direction: "in", text: "vou ver aqui", at: ISO("2026-08-19T12:59:00Z") },
@@ -258,7 +258,7 @@ test("horário JÁ oferecido antes: a referência é legítima e passa", async (
   assert.equal((await repo.get("leads", "L1")).sdrLog?.fakeOfferGuardAt, undefined);
 });
 
-test("dia solto sem hora vira oferta concreta (o mais cedo primeiro)", async () => {
+test("dia solto sem hora vira oferta concreta (o mais cedo primeiro) #R-031", async () => {
   const repo = await world({ messages: [
     { direction: "out", author: "sdr-bot", text: "Isso ajudaria na sua operação?", at: ISO("2026-08-19T12:50:00Z") },
     { direction: "in", text: "sim, ajudaria", at: ISO("2026-08-19T12:59:00Z") },
@@ -271,7 +271,7 @@ test("dia solto sem hora vira oferta concreta (o mais cedo primeiro)", async () 
   assert.match(fakes.sent.map((x) => x.text).join(" "), /amanhã às 9h/);
 });
 
-test("resposta que já traz hora não é mexida", async () => {
+test("resposta que já traz hora não é mexida #R-031", async () => {
   const repo = await world({ messages: [
     { direction: "in", text: "sim, quero", at: ISO("2026-08-19T12:59:00Z") },
   ] });
@@ -281,7 +281,7 @@ test("resposta que já traz hora não é mexida", async () => {
   assert.match(fakes.sent[0].text, /amanhã às 9h ou às 11h/);
 });
 
-test("afiliado da Shopee: robô não agenda, desmarca o que estava marcado e chama gente", async () => {
+test("afiliado da Shopee: robô não agenda, desmarca o que estava marcado e chama gente #R-016", async () => {
   // Caso Judite (25/08): marcou call, depois disse que era afiliada, e o robô
   // manteve o horário "pro especialista avaliar".
   const repo = await world({
@@ -303,7 +303,7 @@ test("afiliado da Shopee: robô não agenda, desmarca o que estava marcado e cha
   assert.notEqual(await brainOf(repo, fakes2).handleInbound({ message: { from: "5541999990000", text: "entendi" } }), "afiliado");
 });
 
-test("vendedor com conta própria na Shopee NÃO é confundido com afiliado", async () => {
+test("vendedor com conta própria na Shopee NÃO é confundido com afiliado #R-016", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "tenho loja própria na shopee e no ML, pode ser às 10h", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
   const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "tenho loja própria na shopee e no ML, pode ser às 10h" } });
@@ -311,7 +311,7 @@ test("vendedor com conta própria na Shopee NÃO é confundido com afiliado", as
   assert.equal((await repo.get("leads", "L1")).callAt, SLOT1);
 });
 
-test("horário preenchido no meio do caminho: pede desculpa e diz que outro cliente pegou", async () => {
+test("horário preenchido no meio do caminho: pede desculpa e diz que outro cliente pegou #R-028", async () => {
   // Caso Gabriel (25/08): escolheu um horário que NÓS oferecemos e ouviu
   // "Esse horário não consigo" seco.
   const repo = await world({ messages: [
@@ -328,7 +328,7 @@ test("horário preenchido no meio do caminho: pede desculpa e diz que outro clie
   assert.ok((await repo.get("leads", "L1")).sdrLog.slotTakenGuardAt);
 });
 
-test("re-oferta determinística (horário inventado pela IA) também pede desculpa", async () => {
+test("re-oferta determinística (horário inventado pela IA) também pede desculpa #R-020 #R-028", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "pode ser 9h", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: "2026-08-19T09:00" }] });
   assert.equal(await brainOf(repo, fakes).handleInbound(INBOUND), "reoferta");
@@ -336,7 +336,7 @@ test("re-oferta determinística (horário inventado pela IA) também pede descul
   assert.match(fakes.sent[0].text, /amanhã às 9h/);
 });
 
-test("oferta só em hora cheia; hora quebrada só quando o LEAD pede", async () => {
+test("oferta só em hora cheia; hora quebrada só quando o LEAD pede #R-023", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "sim, quero ver", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Perfeito" }] });
   await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "sim, quero ver" } });
@@ -349,7 +349,7 @@ test("oferta só em hora cheia; hora quebrada só quando o LEAD pede", async () 
   assert.ok(fakes.calls[0].slots.some((s) => s.at.endsWith(":30")), "lista completa mantém meia hora");
 });
 
-test("lead que pede hora quebrada é agendado nela", async () => {
+test("lead que pede hora quebrada é agendado nela #R-023", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "consigo só 13h30", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: "2026-08-20T13:30" }] });
   const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "consigo só 13h30" } });
@@ -357,7 +357,7 @@ test("lead que pede hora quebrada é agendado nela", async () => {
   assert.equal((await repo.get("leads", "L1")).callAt, "2026-08-20T13:30");
 });
 
-test("trava de preço: resposta da IA com valor vira o desvio com autoridade (sem número)", async () => {
+test("trava de preço: resposta da IA com valor vira o desvio com autoridade (sem número) #R-050", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "O plano parte de R$ 299 por mês, fechado?" }] });
   const r = await brainOf(repo, fakes).handleInbound(INBOUND);
@@ -369,7 +369,7 @@ test("trava de preço: resposta da IA com valor vira o desvio com autoridade (se
   assert.ok((await repo.get("leads", "L1")).sdrLog.priceGuardAt);
 });
 
-test("PRICE_RX: pega valor escrito de todo jeito e deixa passar contagem de anúncios, minutos e hora", () => {
+test("PRICE_RX: pega valor escrito de todo jeito e deixa passar contagem de anúncios, minutos e hora #R-050", () => {
   for (const t of ["R$ 299", "299 reais", "a partir de 300", "1.500 por mês", "custa 2 mil reais", "12x de 250",
     "quinhentos reais", "10% de desconto", "no plano Escala", "sai por R$ 1.200,00", "fica em torno de 800,00", "R$ mil"]) {
     assert.ok(PRICE_RX.test(t), `devia travar: ${t}`);
@@ -380,7 +380,7 @@ test("PRICE_RX: pega valor escrito de todo jeito e deixa passar contagem de anú
   }
 });
 
-test("preço pela 2ª vez: robô explica os planos e puxa pra call, sem número, sem gente e sem prometer valor por aqui", async () => {
+test("preço pela 2ª vez: robô explica os planos e puxa pra call, sem número, sem gente e sem prometer valor por aqui #R-051", async () => {
   const repo = await world({
     lead: { sdrLog: { priceGuardAt: ISO("2026-08-19T12:31:00Z") } },
     messages: [
@@ -405,7 +405,7 @@ test("preço pela 2ª vez: robô explica os planos e puxa pra call, sem número,
   assert.ok(!lead.sdrLog.handoffAt);
 });
 
-test("preço pela 2ª vez com call já marcada: aponta pra call marcada em vez de oferecer horário", async () => {
+test("preço pela 2ª vez com call já marcada: aponta pra call marcada em vez de oferecer horário #R-051", async () => {
   const repo = await world({
     lead: { stage: "Call agendada", callAt: "2026-08-20T10:00", sdrLog: { priceGuardAt: ISO("2026-08-19T12:31:00Z") } },
     messages: [
@@ -421,7 +421,7 @@ test("preço pela 2ª vez com call já marcada: aponta pra call marcada em vez d
   assert.ok(!/Consigo/.test(fakes.sent[0].text));
 });
 
-test("preço pela 3ª vez: gente assume, o alerta manda levar pra call e o robô não promete valor por aqui", async () => {
+test("preço pela 3ª vez: gente assume, o alerta manda levar pra call e o robô não promete valor por aqui #R-051", async () => {
   const repo = await world({
     lead: { sdrLog: { priceGuardAt: ISO("2026-08-19T12:31:00Z"), priceExplainedAt: ISO("2026-08-19T12:41:00Z") } },
     messages: [
@@ -445,7 +445,7 @@ test("preço pela 3ª vez: gente assume, o alerta manda levar pra call e o robô
   assert.ok(lead.sdrLog.handoffAt && lead.sdrLog.priceHandoffAt);
 });
 
-test("lead pede preço e escolhe horário na mesma mensagem: agendar vence a escada de preço", async () => {
+test("lead pede preço e escolhe horário na mesma mensagem: agendar vence a escada de preço #R-034 #R-051", async () => {
   const repo = await world({
     lead: { sdrLog: { priceGuardAt: ISO("2026-08-19T12:31:00Z") } },
     messages: [
@@ -461,7 +461,7 @@ test("lead pede preço e escolhe horário na mesma mensagem: agendar vence a esc
 });
 
 
-test("agendar com horário da lista: card vai pra etapa de call pelo caminho canônico, com confirmação comprovada e Meet automático", async () => {
+test("agendar com horário da lista: card vai pra etapa de call pelo caminho canônico, com confirmação comprovada e Meet automático #R-035", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "pode ser 9h", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
   const r = await brainOf(repo, fakes).handleInbound(INBOUND);
@@ -483,7 +483,7 @@ test("agendar com horário da lista: card vai pra etapa de call pelo caminho can
   assert.deepEqual(fakes.meets, ["L1"]);
 });
 
-test("agendar com horário INVENTADO: nada é marcado, re-oferta determinística", async () => {
+test("agendar com horário INVENTADO: nada é marcado, re-oferta determinística #R-020", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "pode ser 9h", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: "2026-08-19T09:00" }] });
   const r = await brainOf(repo, fakes).handleInbound(INBOUND);
@@ -494,7 +494,7 @@ test("agendar com horário INVENTADO: nada é marcado, re-oferta determinística
   assert.match(fakes.sent[0].text, /amanhã às 9h/);
 });
 
-test("humano: alerta quente + transição curta, e o robô fica calado até gente falar", async () => {
+test("humano: alerta quente + transição curta, e o robô fica calado até gente falar #R-080", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "esse part number 123 puxa?", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "humano", motivoHumano: "dúvida técnica de part number", mensagem: "Boa! Vou chamar nosso especialista de autopeças aqui pra te responder certinho." }] });
   const brain = brainOf(repo, fakes);
@@ -509,7 +509,7 @@ test("humano: alerta quente + transição curta, e o robô fica calado até gent
   assert.equal(fakes.calls.length, 1, "a IA não é chamada de novo no handoff pendente");
 });
 
-test("gente falou há pouco na conversa: o robô não fala por cima", async () => {
+test("gente falou há pouco na conversa: o robô não fala por cima #R-080", async () => {
   const repo = await world({
     messages: [
       { direction: "out", author: "leonardo", text: "deixa comigo", at: ISO("2026-08-19T12:30:00Z") },
@@ -521,14 +521,14 @@ test("gente falou há pouco na conversa: o robô não fala por cima", async () =
   assert.equal(fakes.calls.length, 0);
 });
 
-test("e-mail que aparece na mensagem entra no cadastro do lead", async () => {
+test("e-mail que aparece na mensagem entra no cadastro do lead #R-096", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "meu email é rafa@loja.com.br", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Perfeito, convite indo!", email: "rafa@loja.com.br" }] });
   await brainOf(repo, fakes).handleInbound(INBOUND);
   assert.equal((await repo.get("leads", "L1")).email, "rafa@loja.com.br");
 });
 
-test("teto diário por conversa: depois de 15 mensagens do robô, vira handoff com alerta", async () => {
+test("teto diário por conversa: depois de 15 mensagens do robô, vira handoff com alerta #R-082", async () => {
   const many = Array.from({ length: 15 }, (_, i) => ({
     direction: "out", author: "sdr-bot", text: "msg " + i, at: ISO(`2026-08-19T0${Math.min(9, i % 10)}:0${i % 6}:00Z`),
   }));
@@ -539,7 +539,7 @@ test("teto diário por conversa: depois de 15 mensagens do robô, vira handoff c
   assert.equal((await repo.list("wa_alerts")).length, 1);
 });
 
-test("remarcar: callAt antigo já passado vai pro histórico e o GPS segue o horário novo", async () => {
+test("remarcar: callAt antigo já passado vai pro histórico e o GPS segue o horário novo #R-035", async () => {
   const repo = await world({
     lead: { stage: "Call agendada", callAt: "2026-08-18T10:00", closer: "pl", callConfirmed: true },
     messages: [{ direction: "in", text: "consegui não, pode ser 9h amanhã?", at: ISO("2026-08-19T12:59:00Z") }],
@@ -555,7 +555,7 @@ test("remarcar: callAt antigo já passado vai pro histórico e o GPS segue o hor
   assert.equal(lead.nextActionAt, new Date("2026-08-20T09:00:00-03:00").toISOString());
 });
 
-test("desmarcar: call sai da agenda de verdade, Meet cancelado, time avisado e pergunta antes de oferecer horários", async () => {
+test("desmarcar: call sai da agenda de verdade, Meet cancelado, time avisado e pergunta antes de oferecer horários #R-036", async () => {
   // Caso 24/08: lead avisou que não ia conseguir, o robô aceitou de boca,
   // deixou o callAt de pé e o lembrete de 1h ainda disparou depois.
   const repo = await world({
@@ -586,7 +586,7 @@ test("desmarcar: call sai da agenda de verdade, Meet cancelado, time avisado e p
   assert.match(alerts[0].text, /Desmarcou a call de hoje \(19\/08\) às 16h/);
 });
 
-test("desmarcar sem call marcada: nada a cancelar, a resposta segue o fluxo comum", async () => {
+test("desmarcar sem call marcada: nada a cancelar, a resposta segue o fluxo comum #R-036", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "hoje não consigo falar", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "desmarcar", mensagem: "Tranquilo, quando ficar bom me chama aqui" }] });
   const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "hoje não consigo falar" } });
@@ -596,7 +596,7 @@ test("desmarcar sem call marcada: nada a cancelar, a resposta segue o fluxo comu
   assert.equal((await repo.list("wa_alerts")).length, 0);
 });
 
-test("lead fora da região do SDR (ganho) ou com opt-out: o cérebro não age", async () => {
+test("lead fora da região do SDR (ganho) ou com opt-out: o cérebro não age #R-090", async () => {
   const repo1 = await world({ lead: { stage: "Ganho", customerId: "c1" }, messages: [{ direction: "in", text: "oi", at: ISO("2026-08-19T12:59:00Z") }] });
   const f1 = makeFakes();
   assert.equal(await brainOf(repo1, f1).handleInbound(INBOUND), null);
@@ -606,7 +606,7 @@ test("lead fora da região do SDR (ganho) ou com opt-out: o cérebro não age", 
   assert.equal(f1.calls.length + f2.calls.length, 0);
 });
 
-test("IA quebrada não derruba nada: vira log + um alerta espaçado", async () => {
+test("IA quebrada não derruba nada: vira log + um alerta espaçado #R-095", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "oi", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes();
   fakes.anthropic.sdrDecide = async () => { throw new Error("provider caiu"); };
@@ -617,7 +617,7 @@ test("IA quebrada não derruba nada: vira log + um alerta espaçado", async () =
   assert.equal((await repo.list("wa_alerts")).length, 1, "alerta de erro não empilha (janela de 6h)");
 });
 
-test("bookCall direto: exige etapa de call no funil", async () => {
+test("bookCall direto: exige etapa de call no funil #R-035", async () => {
   const repo = makeMemRepo();
   await repo.create("products", { id: "x", funnel: [{ stage: "Novo", kind: "novo" }] });
   const product = await repo.get("products", "x");
@@ -625,7 +625,7 @@ test("bookCall direto: exige etapa de call no funil", async () => {
   await assert.rejects(() => bookCall(repo, { lead, product, at: "2026-08-19T12:00", closer: "c" }), /funil sem etapa de call/);
 });
 
-test("nota de voz é transcrita antes da decisão: áudio com horário vira agendamento", async () => {
+test("nota de voz é transcrita antes da decisão: áudio com horário vira agendamento #R-093", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "🎤 áudio", media: { kind: "audio", id: "MID1", mime: "audio/ogg" }, at: ISO("2026-08-19T12:59:00Z") }] });
   await repo.create("wa_media", { id: "m1", mime: "audio/ogg", data: Buffer.from("a".repeat(2048)).toString("base64") });
   const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
@@ -642,7 +642,7 @@ test("nota de voz é transcrita antes da decisão: áudio com horário vira agen
   assert.equal(msg.transcript, "pode ser 9h então");
 });
 
-test("sem transcrição configurada, o áudio segue como áudio (e o prompt manda pra humano)", async () => {
+test("sem transcrição configurada, o áudio segue como áudio (e o prompt manda pra humano) #R-093 #R-081", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "🎤 áudio", media: { kind: "audio", id: "MID1" }, at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "humano", motivoHumano: "áudio sem transcrição" }] });
   const transcriber = { configured: () => false, transcribe: async () => { throw new Error("não chega aqui"); } };
@@ -654,7 +654,7 @@ test("sem transcrição configurada, o áudio segue como áudio (e o prompt mand
   assert.match(fakes.calls[0].conversation.at(-1).text, /áudio/);
 });
 
-test("modo teste: com conversationTest, a IA conversa com lead INTERNO; lead real fica de fora", async () => {
+test("modo teste: com conversationTest, a IA conversa com lead INTERNO; lead real fica de fora #R-090", async () => {
   const repo = await world({
     sdrBot: { conversation: false, conversationTest: true },
     lead: { internal: true },
@@ -682,7 +682,7 @@ test("modo teste: com conversationTest, a IA conversa com lead INTERNO; lead rea
   assert.equal(await brainOf(repo3, f3).handleInbound(INBOUND), null);
 });
 
-test("dor de origem chega na IA com o foco certo (clone × OEM)", async () => {
+test("dor de origem chega na IA com o foco certo (clone × OEM) #R-013", async () => {
   const repo = await world({
     lead: { sourcePain: "B" },
     messages: [{ direction: "in", text: "oi", at: ISO("2026-08-19T12:59:00Z") }],
@@ -700,7 +700,7 @@ test("dor de origem chega na IA com o foco certo (clone × OEM)", async () => {
   assert.equal(f2.calls[0].pain.mode, "oem");
 });
 
-test("saudação com timer de 6h: conversa quente proíbe 'Oi' de novo; fria libera", async () => {
+test("saudação com timer de 6h: conversa quente proíbe 'Oi' de novo; fria libera #R-004", async () => {
   // Quente: última troca 2 min antes da mensagem nova.
   const repo = await world({
     messages: [
@@ -725,7 +725,7 @@ test("saudação com timer de 6h: conversa quente proíbe 'Oi' de novo; fria lib
   assert.equal(f2.calls[0].canGreet, true);
 });
 
-test("convite de demonstração não se repete: a IA recebe o aviso quando ele já saiu", async () => {
+test("convite de demonstração não se repete: a IA recebe o aviso quando ele já saiu #R-005", async () => {
   const repo = await world({
     messages: [
       { direction: "out", author: "sdr-bot", text: "Posso te mostrar a ferramenta funcionando ao vivo na segunda?", at: ISO("2026-08-19T12:50:00Z") },
@@ -742,7 +742,7 @@ test("convite de demonstração não se repete: a IA recebe o aviso quando ele j
   assert.equal(f2.calls[0].demoOffered, false);
 });
 
-test("rajada de mensagens: só o disparo da ÚLTIMA responde, lendo a conversa inteira", async () => {
+test("rajada de mensagens: só o disparo da ÚLTIMA responde, lendo a conversa inteira #R-091", async () => {
   const repo = await world({
     messages: [
       { direction: "in", text: "olá", at: ISO("2026-08-19T12:58:50Z") },
@@ -763,7 +763,7 @@ test("rajada de mensagens: só o disparo da ÚLTIMA responde, lendo a conversa i
   assert.equal(convo.at(-1).text, "me ajudaria sim");
 });
 
-test("o template do 1º toque conta como pitch feito: a IA recebe a proibição de re-listar", async () => {
+test("o template do 1º toque conta como pitch feito: a IA recebe a proibição de re-listar #R-005", async () => {
   const repo = await world({
     messages: [
       { direction: "out", author: "sdr-bot", text: "Oiii, Rafael. A LeverAds cria o anúncio completo da sua autopeça só com o OEM (part number): fotos, título de 200 caracteres, descrição e compatibilidade inteira. Isso ajudaria?", at: ISO("2026-08-19T12:50:00Z") },
@@ -775,7 +775,7 @@ test("o template do 1º toque conta como pitch feito: a IA recebe a proibição 
   assert.equal(fakes.calls[0].demoOffered, true, "pitch do template detectado, mesmo sem a palavra demonstração");
 });
 
-test("horário já oferecido não se repete: a IA recebe o aviso quando a agenda já foi passada", async () => {
+test("horário já oferecido não se repete: a IA recebe o aviso quando a agenda já foi passada #R-025", async () => {
   const repo = await world({
     messages: [
       { direction: "out", author: "sdr-bot", text: "Consigo te mostrar na segunda às 9h ou às 9h30, qual fica melhor?", at: ISO("2026-08-19T12:50:00Z") },
@@ -792,7 +792,7 @@ test("horário já oferecido não se repete: a IA recebe o aviso quando a agenda
   assert.equal(f2.calls[0].slotsOffered, false);
 });
 
-test("resposta longa quebra em até 3 envios em sequência; direta segue em um só", async () => {
+test("resposta longa quebra em até 3 envios em sequência; direta segue em um só #R-003", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "me explica tudo", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Boa! Te explico rapidinho.", "Você digita o OEM e recebe o anúncio pronto.", "Quer ver ao vivo?"] }] });
   await brainOf(repo, fakes).handleInbound(INBOUND);
@@ -803,7 +803,7 @@ test("resposta longa quebra em até 3 envios em sequência; direta segue em um s
   assert.equal(out.length, 3, "cada parte vira uma mensagem separada na conversa");
 });
 
-test("confirmação de agendamento enxuta: sem re-descrever a demo e sem pedir e-mail", async () => {
+test("confirmação de agendamento enxuta: sem re-descrever a demo e sem pedir e-mail #R-035", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "pode ser 13h", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
   await brainOf(repo, fakes).handleInbound(INBOUND);
@@ -816,7 +816,7 @@ test("confirmação de agendamento enxuta: sem re-descrever a demo e sem pedir e
   assert.ok(!/e-mail/.test(text), "não pede e-mail (vem do formulário)");
 });
 
-test("digitando… aparece pro lead enquanto a IA pensa e entre as partes", async () => {
+test("digitando… aparece pro lead enquanto a IA pensa e entre as partes #R-095", async () => {
   const repo = await world({ messages: [{ id: "in9", direction: "in", text: "me explica", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Parte um.", "Parte dois."] }] });
   const typed = [];
@@ -827,7 +827,7 @@ test("digitando… aparece pro lead enquanto a IA pensa e entre as partes", asyn
   assert.equal(fakes.sent.length, 2);
 });
 
-test("confirmação avisa do convite por e-mail SÓ quando o card tem e-mail", async () => {
+test("confirmação avisa do convite por e-mail SÓ quando o card tem e-mail #R-035 #R-096", async () => {
   const repo = await world({
     lead: { email: "rafa@loja.com.br" },
     messages: [{ direction: "in", text: "pode ser 13h", at: ISO("2026-08-19T12:59:00Z") }],
@@ -843,7 +843,7 @@ test("confirmação avisa do convite por e-mail SÓ quando o card tem e-mail", a
 // poller retoma o que ficou sem carimbo.
 const TID = "5541999990000";
 
-test("carimbo: toda mensagem tratada deixa id + ação em thread.brain (inclusive silêncio)", async () => {
+test("carimbo: toda mensagem tratada deixa id + ação em thread.brain (inclusive silêncio) #R-097", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "ok", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "silencio" }] });
   const r = await brainOf(repo, fakes).handleInbound({ message: { from: TID, text: "ok", id: "m1" } });
@@ -854,7 +854,7 @@ test("carimbo: toda mensagem tratada deixa id + ação em thread.brain (inclusiv
   assert.equal(t.brain.at, NOW.toISOString());
 });
 
-test("carimbo: disparo superado pela rajada NÃO carimba (quem carimba é o disparo da última mensagem)", async () => {
+test("carimbo: disparo superado pela rajada NÃO carimba (quem carimba é o disparo da última mensagem) #R-097", async () => {
   const repo = await world({ messages: [
     { direction: "in", text: "oi tudo bem", at: ISO("2026-08-19T12:58:00Z") },
     { direction: "in", text: "sim como faço?", at: ISO("2026-08-19T12:59:00Z") },
@@ -866,7 +866,7 @@ test("carimbo: disparo superado pela rajada NÃO carimba (quem carimba é o disp
   assert.equal(fakes.calls.length, 0);
 });
 
-test("varredura: mensagem recebida há 3 min sem carimbo é retomada sem debounce e respondida", async () => {
+test("varredura: mensagem recebida há 3 min sem carimbo é retomada sem debounce e respondida #R-091", async () => {
   const repo = await world({ messages: [
     { direction: "out", author: "sdr-bot", text: "Oiii Vinicius, tudo bem?", at: ISO("2026-08-19T12:56:00Z") },
     { direction: "in", text: "sim como faço?", at: ISO("2026-08-19T12:57:00Z") },
@@ -889,7 +889,7 @@ test("varredura: mensagem recebida há 3 min sem carimbo é retomada sem debounc
   assert.equal(fakes.calls.length, 1);
 });
 
-test("varredura: ignora mensagem fresca (o webhook ainda está tratando), já carimbada, velha demais ou com a vez do lado de cá", async () => {
+test("varredura: ignora mensagem fresca (o webhook ainda está tratando), já carimbada, velha demais ou com a vez do lado de cá #R-091", async () => {
   const mk = async (patch) => {
     const repo = await world({ messages: [{ direction: "in", text: "sim", at: ISO("2026-08-19T12:57:00Z") }] });
     await repo.update("wa_threads", TID, { lastDir: "in", lastAt: ISO("2026-08-19T12:57:00Z"), lastText: "sim", lastInId: "m1", ...patch });
@@ -903,7 +903,7 @@ test("varredura: ignora mensagem fresca (o webhook ainda está tratando), já ca
   assert.deepEqual((await mk({ lastInId: "" })).done, [], "thread antiga sem lastInId");
 });
 
-test("varredura: gates continuam valendo na retomada (humano falou há pouco = robô calado, mas carimba)", async () => {
+test("varredura: gates continuam valendo na retomada (humano falou há pouco = robô calado, mas carimba) #R-091", async () => {
   const repo = await world({ messages: [
     { direction: "out", author: "sdr", text: "Oi, sou a Manuela", at: ISO("2026-08-19T12:50:00Z") },
     { direction: "in", text: "oi Manuela", at: ISO("2026-08-19T12:57:00Z") },
@@ -916,7 +916,7 @@ test("varredura: gates continuam valendo na retomada (humano falou há pouco = r
   assert.equal((await repo.get("wa_threads", TID)).brain.msgId, "m2");
 });
 
-test("mesma mensagem em tratamento (IA lenta): segundo disparo é ignorado, sem resposta dupla", async () => {
+test("mesma mensagem em tratamento (IA lenta): segundo disparo é ignorado, sem resposta dupla #R-091", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "sim como faço?", at: ISO("2026-08-19T12:57:00Z") }] });
   await repo.update("wa_threads", TID, { lastDir: "in", lastAt: ISO("2026-08-19T12:57:00Z"), lastText: "sim como faço?", lastInId: "m1" });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Perfeito, qual período fica melhor?" }, { acao: "responder", mensagem: "Perfeito, qual período fica melhor?" }] });
@@ -935,7 +935,7 @@ test("mesma mensagem em tratamento (IA lenta): segundo disparo é ignorado, sem 
 
 
 // ── Ajustes do Leo, 17/09 ────────────────────────────────────────────────────
-test("trava de duração: '20 minutos' sai da conversa; o '5 minutos' do pitch OEM fica", async () => {
+test("trava de duração: '20 minutos' sai da conversa; o '5 minutos' do pitch OEM fica #R-060", async () => {
   assert.equal(stripDuration("É uma conversa de 20 minutos no Google Meet, nosso especialista roda um código OEM seu ao vivo"), "É uma conversa no Google Meet, nosso especialista roda um código OEM seu ao vivo");
   assert.match(stripDuration("Dura cerca de 20 minutos Juan, te espero hoje às 10h então?"), /^A duração vai de acordo com o que você quiser ver Juan, te espero hoje às 10h então\?$/);
   assert.equal(stripDuration("A LeverAds cria o anúncio em menos de 5 minutos, quer ver na demonstração?"), "A LeverAds cria o anúncio em menos de 5 minutos, quer ver na demonstração?");
@@ -954,7 +954,7 @@ test("trava de duração: '20 minutos' sai da conversa; o '5 minutos' do pitch O
   assert.ok(!fakes.sent.some((s) => /minutos/.test(s.text)));
 });
 
-test("celular × computador: a pergunta 'celular ou computador?' sai; lead no celular ouve a dica do computador por perto", async () => {
+test("celular × computador: a pergunta 'celular ou computador?' sai; lead no celular ouve a dica do computador por perto #R-061", async () => {
   assert.equal(stripDeviceAsk("Perfeito, te espero às 13h. Você vai entrar pelo celular ou pelo computador?"), "Perfeito, te espero às 13h.");
   const lead = { stage: "Call agendada", callAt: "2026-08-19T16:00", closer: "pl" };
   const repo = await world({ lead, messages: [
@@ -978,7 +978,7 @@ test("celular × computador: a pergunta 'celular ou computador?' sai; lead no ce
   assert.deepEqual(fakes2.sent.map((s) => s.text), ["Perfeito Pedro, te espero às 16h"]);
 });
 
-test("lead nega a conversa marcada: gente confere; o robô só avisa que vai confirmar (callAt em UTC é lido no relógio BRT)", async () => {
+test("lead nega a conversa marcada: gente confere; o robô só avisa que vai confirmar (callAt em UTC é lido no relógio BRT) #R-037", async () => {
   // Caso Renan (16/09): callAt gravado "…T13:00:00.000Z" (= 10h BRT). O lembrete dizia 13h.
   const repo = await world({ lead: { stage: "Call agendada", callAt: "2026-08-19T13:00:00.000Z", closer: "pl" }, messages: [
     { direction: "out", author: "sdr-bot", text: "Oi Rafael! Está tudo certo pra nossa conversa hoje às 13h?", at: ISO("2026-08-19T11:17:00Z") },
@@ -993,7 +993,7 @@ test("lead nega a conversa marcada: gente confere; o robô só avisa que vai con
   assert.ok((await repo.get("leads", "L1")).sdrLog.handoffAt);
 });
 
-test("descoberta antes do horário: a mensagem do form não é interesse; oferta e agendamento esperam o lead responder", async () => {
+test("descoberta antes do horário: a mensagem do form não é interesse; oferta e agendamento esperam o lead responder #R-011", async () => {
   const form = "Oi, me chamo Eduardo e quero saber mais sobre o Lever Ads. Minha operação: Autopeças, 1 conta contas, Até 500 anúncios ativos.";
   const repo = await world({ messages: [
     { direction: "out", author: "sdr-bot", text: "Consegue me dizer se hoje você replica esses anúncios manualmente?", at: ISO("2026-08-12T12:00:00Z") },
@@ -1030,7 +1030,7 @@ test("descoberta antes do horário: a mensagem do form não é interesse; oferta
   assert.equal(fakes3.sent.at(-1).text, "Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?");
 });
 
-test("mais cedo primeiro: oferta que pula a primeira vaga de amanhã sem o lead pedir é reescrita com o par sugerido", async () => {
+test("mais cedo primeiro: oferta que pula a primeira vaga de amanhã sem o lead pedir é reescrita com o par sugerido #R-022", async () => {
   const msgs = [
     { direction: "out", author: "sdr-bot", text: "Isso ajudaria na sua operação?", at: ISO("2026-08-19T12:50:00Z") },
     { direction: "in", text: "Ajudaria sim", at: ISO("2026-08-19T12:59:00Z") },
@@ -1054,7 +1054,7 @@ test("mais cedo primeiro: oferta que pula a primeira vaga de amanhã sem o lead 
   assert.equal(fakes2.sent[1].text, "Consigo amanhã às 14h ou às 16h, qual fica melhor pra você?");
 });
 
-test("horário já oferecido = só oferta de verdade: lembrete e confirmação com hora não contam", async () => {
+test("horário já oferecido = só oferta de verdade: lembrete e confirmação com hora não contam #R-025", async () => {
   const repo = await world({ lead: { stage: "Call agendada", callAt: "2026-08-19T16:00", closer: "pl" }, messages: [
     { direction: "out", author: "sdr-bot", text: "Perfeito Rafael, agendado então pra hoje (19/08) às 16h. Te chamo aqui um pouco antes com o lembrete!", at: ISO("2026-08-19T11:00:00Z") },
     { direction: "out", author: "sdr-bot", text: "Oi Rafael! Está tudo certo pra nossa conversa hoje às 16h?", at: ISO("2026-08-19T12:00:00Z") },
@@ -1073,7 +1073,7 @@ test("horário já oferecido = só oferta de verdade: lembrete e confirmação c
   assert.equal(fakes2.calls[0].slotsOffered, true);
 });
 
-test("gente escreveu no meio da fala do robô: o resto das partes é descartado", async () => {
+test("gente escreveu no meio da fala do robô: o resto das partes é descartado #R-092", async () => {
   const repo = await world({ messages: [
     { direction: "out", author: "sdr-bot", text: "Isso ajudaria na sua operação?", at: ISO("2026-08-19T12:50:00Z") },
     { direction: "in", text: "Ajudaria sim", at: ISO("2026-08-19T12:59:00Z") },
@@ -1090,7 +1090,7 @@ test("gente escreveu no meio da fala do robô: o resto das partes é descartado"
   assert.equal(fakes.sent.length, 1);
 });
 
-test("agenda SDR: sem pedido do lead, modelo não oferece nem agenda D+2, mesmo com amanhã cheio", async () => {
+test("agenda SDR: sem pedido do lead, modelo não oferece nem agenda D+2, mesmo com amanhã cheio #R-022", async () => {
   for (const decision of [
     { acao: "agendar", horario: "2026-08-21T14:00" },
     { acao: "responder", mensagem: "Consigo sexta às 14h, pode ser?" },
@@ -1108,7 +1108,7 @@ test("agenda SDR: sem pedido do lead, modelo não oferece nem agenda D+2, mesmo 
   }
 });
 
-test("agenda SDR: pedido de sexta persiste quando o cliente escolhe a hora na mensagem seguinte", async () => {
+test("agenda SDR: pedido de sexta persiste quando o cliente escolhe a hora na mensagem seguinte #R-032", async () => {
   const repo = await world({ messages: [
     { direction: "in", text: "Só consigo sexta, tem às 14h?", at: ISO("2026-08-19T12:55:00Z") },
     { direction: "out", author: "sdr-bot", text: "Consigo sexta às 14h ou sexta às 16h, qual fica melhor?", at: ISO("2026-08-19T12:57:00Z") },
@@ -1120,7 +1120,7 @@ test("agenda SDR: pedido de sexta persiste quando o cliente escolhe a hora na me
   assert.ok(fakes.calls[0].slots.every((s) => s.at.startsWith("2026-08-21T")));
 });
 
-test("agenda SDR: áudio pedindo data posterior libera só o dia transcrito antes de montar a lista", async () => {
+test("agenda SDR: áudio pedindo data posterior libera só o dia transcrito antes de montar a lista #R-032 #R-093", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "🎤 áudio", media: { kind: "audio", id: "MID1", mime: "audio/ogg" }, at: ISO("2026-08-19T12:59:00Z") }] });
   await repo.create("wa_media", { id: "m1", mime: "audio/ogg", data: Buffer.from("a".repeat(2048)).toString("base64") });
   const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: "2026-08-21T14:00" }] });
@@ -1134,7 +1134,7 @@ test("agenda SDR: áudio pedindo data posterior libera só o dia transcrito ante
   assert.equal((await repo.get("leads", "L1")).callAt, "2026-08-21T14:00");
 });
 
-test("agenda SDR: pedido de sexta não autoriza agendar segunda por conta própria", async () => {
+test("agenda SDR: pedido de sexta não autoriza agendar segunda por conta própria #R-032", async () => {
   const repo = await world({ messages: [
     { direction: "in", text: "Pode ser sexta às 14h?", at: ISO("2026-08-19T12:59:00Z") },
   ] });
@@ -1152,7 +1152,7 @@ const rescheduleMessages = (reply) => [
   { direction: "in", text: reply, at: ISO("2026-08-19T12:59:00Z") },
 ];
 
-test("cancelamento explícito prevalece sobre oferta ou silêncio da IA e não reserva outro horário", async () => {
+test("cancelamento explícito prevalece sobre oferta ou silêncio da IA e não reserva outro horário #R-036", async () => {
   for (const text of ["Pode cancelar o agendamento", "não vou poder comparecer", "Hoje não consigo participar", "Não poderei estar presente", "quero desmarcar a call"]) {
     const repo = await world({ lead: { stage: "Call agendada", callAt: SLOT1, closer: "pl" }, messages: [
       { direction: "in", text, at: ISO("2026-08-19T12:59:00Z") },
@@ -1169,7 +1169,7 @@ test("cancelamento explícito prevalece sobre oferta ou silêncio da IA e não r
   }
 });
 
-test("sim à remarcação oferece horários atuais e não confirma uma nova call sozinho", async () => {
+test("sim à remarcação oferece horários atuais e não confirma uma nova call sozinho #R-036", async () => {
   const repo = await world({ lead: { sdrLog: { reschedule: RESCHEDULE_PENDING } }, messages: rescheduleMessages("Sim, gostaria") });
   const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
   assert.equal(await brainOf(repo, fakes).handleInbound(INBOUND), "remarcacao-oferta");
@@ -1184,7 +1184,7 @@ test("sim à remarcação oferece horários atuais e não confirma uma nova call
   assert.ok(holds.every((h) => h.at.startsWith("2026-08-20T")));
 });
 
-test("não ou resposta ambígua não libera horários, mesmo com interesse antigo e IA tentando agendar", async () => {
+test("não ou resposta ambígua não libera horários, mesmo com interesse antigo e IA tentando agendar #R-036", async () => {
   for (const text of ["Não quero remarcar", "Agora não, obrigado", "Não sei ainda", "Obrigado", "Ok", "Quero saber o preço", "Gostaria de saber como funciona"]) {
     const repo = await world({ lead: { sdrLog: { reschedule: RESCHEDULE_PENDING } }, messages: rescheduleMessages(text) });
     const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
@@ -1195,7 +1195,7 @@ test("não ou resposta ambígua não libera horários, mesmo com interesse antig
   }
 });
 
-test("consentimento por áudio oferece horários e guarda estado mesmo em outra instância do robô", async () => {
+test("consentimento por áudio oferece horários e guarda estado mesmo em outra instância do robô #R-036", async () => {
   const messages = rescheduleMessages("");
   messages.at(-1).media = { kind: "audio", id: "MID1" };
   const repo = await world({ lead: { sdrLog: { reschedule: RESCHEDULE_PENDING } }, messages });
@@ -1210,7 +1210,7 @@ test("consentimento por áudio oferece horários e guarda estado mesmo em outra 
   assert.ok(!(await repo.get("leads", "L1")).callAt);
 });
 
-test("sem vaga após o sim, pergunta outra data sem abrir dias posteriores sozinho", async () => {
+test("sem vaga após o sim, pergunta outra data sem abrir dias posteriores sozinho #R-036", async () => {
   const repo = await world({ lead: { sdrLog: { reschedule: RESCHEDULE_PENDING } }, messages: rescheduleMessages("Quero sim") });
   await repo.create("agenda_blocks", { id: "full", user: "pl", recur: "once", date: "2026-08-20", allDay: true });
   const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: "2026-08-21T14:00" }] });
@@ -1220,7 +1220,7 @@ test("sem vaga após o sim, pergunta outra data sem abrir dias posteriores sozin
   assert.ok(!(await repo.get("leads", "L1")).callAt);
 });
 
-test("escolha de horário depois do consentimento agenda e encerra o estado de remarcação", async () => {
+test("escolha de horário depois do consentimento agenda e encerra o estado de remarcação #R-036", async () => {
   const messages = rescheduleMessages("Pode ser amanhã às 9h");
   messages[2].text = "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor?";
   const repo = await world({ lead: { sdrLog: { reschedule: { ...RESCHEDULE_PENDING, status: "offered" } } }, messages });
@@ -1232,7 +1232,7 @@ test("escolha de horário depois do consentimento agenda e encerra o estado de r
   assert.deepEqual(fakes.meets, ["L1"]);
 });
 
-test("não querer cancelar e dificuldade com link não cancelam o compromisso", async () => {
+test("não querer cancelar e dificuldade com link não cancelam o compromisso #R-036", async () => {
   for (const text of ["Não quero cancelar a reunião", "Não vou cancelar", "Não consigo acessar o link"] ) {
     const repo = await world({ lead: { stage: "Call agendada", callAt: SLOT1 }, messages: [{ direction: "in", text, at: ISO("2026-08-19T12:59:00Z") }] });
     const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Vou te ajudar por aqui" }] });
@@ -1242,7 +1242,7 @@ test("não querer cancelar e dificuldade com link não cancelam o compromisso", 
   }
 });
 
-test("recusa persistida continua sem oferta até o cliente pedir para remarcar", async () => {
+test("recusa persistida continua sem oferta até o cliente pedir para remarcar #R-036", async () => {
   const declined = { ...RESCHEDULE_PENDING, status: "declined" };
   const repo = await world({ lead: { sdrLog: { reschedule: declined } }, messages: rescheduleMessages("Obrigado") });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Consigo amanhã às 9h, pode ser?" }] });
@@ -1257,7 +1257,7 @@ test("recusa persistida continua sem oferta até o cliente pedir para remarcar",
   assert.ok(!(await repo2.get("leads", "L1")).callAt);
 });
 
-test("aviso de ausência por áudio cancela e pergunta se quer remarcar, sem horários", async () => {
+test("aviso de ausência por áudio cancela e pergunta se quer remarcar, sem horários #R-036", async () => {
   const repo = await world({ lead: { stage: "Call agendada", callAt: SLOT1 }, messages: [
     { direction: "in", media: { kind: "audio", id: "MID1" }, at: ISO("2026-08-19T12:59:00Z") },
   ] });
@@ -1277,7 +1277,7 @@ test("aviso de ausência por áudio cancela e pergunta se quer remarcar, sem hor
 // ── Erro na execução: carimbo com o motivo e UMA retentativa pela varredura (raio-x 30/09) ─
 
 const TID_ERR = "5541999990000";
-test("decisão que morre na execução grava o erro no carimbo e a varredura tenta de novo uma vez", async () => {
+test("decisão que morre na execução grava o erro no carimbo e a varredura tenta de novo uma vez #R-091 #R-095", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "muito", at: ISO("2026-08-19T12:57:00Z") }] });
   await repo.update("wa_threads", TID_ERR, { lastDir: "in", lastAt: ISO("2026-08-19T12:57:00Z"), lastText: "muito", lastInId: "m1" });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Perfeito, qual período fica melhor?" }, { acao: "responder", mensagem: "Perfeito, qual período fica melhor?" }] });
@@ -1300,7 +1300,7 @@ test("decisão que morre na execução grava o erro no carimbo e a varredura ten
   assert.deepEqual(await brain.resumeStalled(), []);
 });
 
-test("erro na retentativa não vira loop: segunda falha fica carimbada e a varredura não insiste", async () => {
+test("erro na retentativa não vira loop: segunda falha fica carimbada e a varredura não insiste #R-091", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "sim", at: ISO("2026-08-19T12:57:00Z") }] });
   await repo.update("wa_threads", TID_ERR, { lastDir: "in", lastAt: ISO("2026-08-19T12:57:00Z"), lastText: "sim", lastInId: "m1" });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Perfeito?" }, { acao: "responder", mensagem: "Perfeito?" }, { acao: "responder", mensagem: "Perfeito?" }] });
@@ -1313,7 +1313,7 @@ test("erro na retentativa não vira loop: segunda falha fica carimbada e a varre
   assert.equal(fakes.calls.length, 2);
 });
 
-test("teto diário: com alerta há menos de 24h não repete o alerta; com alerta velho, avisa de novo", async () => {
+test("teto diário: com alerta há menos de 24h não repete o alerta; com alerta velho, avisa de novo #R-082", async () => {
   const many = Array.from({ length: 15 }, (_, i) => ({ direction: "out", author: "sdr-bot", text: "msg " + i, at: ISO(`2026-08-19T0${Math.min(9, i % 10)}:0${i % 6}:00Z`) }));
   const mk = async (capAlertAt) => world({
     lead: { sdrLog: { capAlertAt, handoffAt: capAlertAt } },
@@ -1329,7 +1329,7 @@ test("teto diário: com alerta há menos de 24h não repete o alerta; com alerta
 
 // ── Raio-x 30/09: hoje na oferta, janela da call, aceite + preço, objeção, motivo do handoff ─
 
-test("hoje entra na oferta espontânea com 2h de folga (10h BRT → primeiro horário hoje às 13h)", async () => {
+test("hoje entra na oferta espontânea com 2h de folga (10h BRT → primeiro horário hoje às 13h) #R-022", async () => {
   const repo = await world({ todayFree: true, messages: [
     { direction: "out", author: "sdr-bot", text: "Oiii Rafael. Isso ajudaria na sua operação?", at: ISO("2026-08-19T12:50:00Z") },
     { direction: "in", text: "ajudaria sim", at: ISO("2026-08-19T12:59:00Z") },
@@ -1344,7 +1344,7 @@ test("hoje entra na oferta espontânea com 2h de folga (10h BRT → primeiro hor
   assert.match(fakes.sent[0].text, /hoje às 13h ou às 15h/);
 });
 
-test("pedido do lead sem vaga: a IA recebe requestedEmpty e as alternativas da janela normal", async () => {
+test("pedido do lead sem vaga: a IA recebe requestedEmpty e as alternativas da janela normal #R-032", async () => {
   const repo = await world({ messages: [
     { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?", at: ISO("2026-08-19T12:50:00Z") },
     { direction: "in", text: "Amanhã não consigo. Teria que ser sexta", at: ISO("2026-08-19T12:59:00Z") },
@@ -1360,7 +1360,7 @@ test("pedido do lead sem vaga: a IA recebe requestedEmpty e as alternativas da j
   assert.ok(ctx.slots.length && ctx.slots.every((s) => s.at.startsWith("2026-08-20T")), "alternativas de amanhã");
 });
 
-test("janela da call: teto e escada de preço não disparam a minutos da call; lead sozinho na sala recebe resposta na hora, alerta e aviso pro closer", async () => {
+test("janela da call: teto e escada de preço não disparam a minutos da call; lead sozinho na sala recebe resposta na hora, alerta e aviso pro closer #R-039", async () => {
   const many = Array.from({ length: 15 }, (_, i) => ({ direction: "out", author: "sdr-bot", text: "msg " + i, at: ISO(`2026-08-19T0${Math.min(9, i % 10)}:0${i % 6}:00Z`) }));
   // Call hoje às 10h BRT (13:00Z); NOW = 13:00Z.
   const repo = await world({
@@ -1389,7 +1389,7 @@ test("janela da call: teto e escada de preço não disparam a minutos da call; l
   assert.equal((await repo.get("leads", "L1")).sdrLog.handoffAt, undefined);
 });
 
-test("aceite + pergunta de preço na mesma mensagem: trava o horário primeiro e cola o desvio de preço na confirmação", async () => {
+test("aceite + pergunta de preço na mesma mensagem: trava o horário primeiro e cola o desvio de preço na confirmação #R-034", async () => {
   const repo = await world({ messages: [
     { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?", at: ISO("2026-08-19T12:50:00Z") },
     { direction: "in", text: "Pode ser as 9h. E qual o valor do serviço?", at: ISO("2026-08-19T12:59:00Z") },
@@ -1406,7 +1406,7 @@ test("aceite + pergunta de preço na mesma mensagem: trava o horário primeiro e
   assert.ok(lead.sdrLog.priceGuardAt);
 });
 
-test("aceite sem dizer qual + preço: desvio e pergunta 'qual dos dois', sem perder a oferta", async () => {
+test("aceite sem dizer qual + preço: desvio e pergunta 'qual dos dois', sem perder a oferta #R-034", async () => {
   const repo = await world({ messages: [
     { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?", at: ISO("2026-08-19T12:50:00Z") },
     { direction: "in", text: "Certo. E qual valor dos serviços", at: ISO("2026-08-19T12:59:00Z") },
@@ -1419,7 +1419,7 @@ test("aceite sem dizer qual + preço: desvio e pergunta 'qual dos dois', sem per
   assert.equal((await repo.get("leads", "L1")).callAt, undefined);
 });
 
-test("objeção depois de marcar não é silêncio: alerta pra gente responder, uma vez por horário", async () => {
+test("objeção depois de marcar não é silêncio: alerta pra gente responder, uma vez por horário #R-038", async () => {
   const repo = await world({
     lead: { stage: "Call agendada", callAt: SLOT1, closer: "pl" },
     messages: [{ direction: "in", text: "entendi, entao, na verdade acho que nao vou utilizar muito, ja uso upseller que faz tudo isso", at: ISO("2026-08-19T12:59:00Z") }],
@@ -1432,7 +1432,7 @@ test("objeção depois de marcar não é silêncio: alerta pra gente responder, 
   assert.ok((await repo.get("leads", "L1")).sdrLog.preCallObjectionAt);
 });
 
-test("handoff carimba o motivo (handoffKind) e a frase da IA (handoffWhy)", async () => {
+test("handoff carimba o motivo (handoffKind) e a frase da IA (handoffWhy) #R-080", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "quero falar com uma pessoa", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "humano", mensagem: "Claro, já chamo alguém do time aqui", motivoHumano: "Lead pediu atendimento humano" }] });
   assert.equal(await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "quero falar com uma pessoa" } }), "humano");
@@ -1448,7 +1448,7 @@ test("handoff carimba o motivo (handoffKind) e a frase da IA (handoffWhy)", asyn
 
 const OEM_M1 = "Oiii Rafael, tudo bem? Recebemos aqui seu interesse, com o Lever OEM você digita o código e recebe o anúncio completo, com fotos, título de 200 caracteres, descrição e compatibilidade, pronto para revisar e publicar no Mercado Livre e Shopee. Isso ajudaria na sua operação?";
 
-test("roteiro OEM · M2: 'sim' à abordagem vira convite + par de horários, sem gastar IA", async () => {
+test("roteiro OEM · M2: 'sim' à abordagem vira convite + par de horários, sem gastar IA #R-070", async () => {
   const repo = await world({ lead: { sourcePain: "OEM" }, messages: [
     { direction: "out", author: "sdr-bot", text: OEM_M1, at: ISO("2026-08-19T12:50:00Z") },
     { direction: "in", text: "Sim", at: ISO("2026-08-19T12:59:00Z") },
@@ -1471,7 +1471,7 @@ test("roteiro OEM · M2: 'sim' à abordagem vira convite + par de horários, sem
   assert.equal(f2.calls.length, 1);
 });
 
-test("roteiro OEM · M3: horário escolhido reserva a call e pergunta pela presença (3 balões, com a duração do roteiro)", async () => {
+test("roteiro OEM · M3: horário escolhido reserva a call e pergunta pela presença (3 balões, com a duração do roteiro) #R-070 #R-060", async () => {
   const repo = await world({ lead: { sourcePain: "OEM" }, messages: [
     { direction: "out", author: "sdr-bot", text: OEM_M1, at: ISO("2026-08-19T12:40:00Z") },
     { direction: "in", text: "Sim", at: ISO("2026-08-19T12:45:00Z") },
@@ -1490,7 +1490,7 @@ test("roteiro OEM · M3: horário escolhido reserva a call e pergunta pela prese
   assert.equal(fakes.sent[2].text, "Vou deixar esse horário reservado para você. Posso contar com sua presença?");
 });
 
-test("roteiro OEM · M4: 'sim' à presença vira o compromisso (computador, decisor, lembrete); o 'ok' seguinte é silêncio", async () => {
+test("roteiro OEM · M4: 'sim' à presença vira o compromisso (computador, decisor, lembrete); o 'ok' seguinte é silêncio #R-070 #R-017 #R-084", async () => {
   const repo = await world({
     lead: { sourcePain: "OEM", stage: "Call agendada", callAt: SLOT1, closer: "pl", sdrLog: { presenceAskedFor: SLOT1 } },
     messages: [
@@ -1525,7 +1525,7 @@ test("roteiro OEM · M4: 'sim' à presença vira o compromisso (computador, deci
   assert.equal(f2.calls.length, 1);
 });
 
-test("roteiro OEM · preço depois da abordagem: resposta oficial + o par de horários, uma vez, sem IA", async () => {
+test("roteiro OEM · preço depois da abordagem: resposta oficial + o par de horários, uma vez, sem IA #R-072", async () => {
   const repo = await world({ lead: { sourcePain: "OEM" }, messages: [
     { direction: "out", author: "sdr-bot", text: OEM_M1, at: ISO("2026-08-19T12:50:00Z") },
     { direction: "in", text: "qual o valor?", at: ISO("2026-08-19T12:59:00Z") },
@@ -1559,7 +1559,7 @@ test("roteiro OEM · preço depois da abordagem: resposta oficial + o par de hor
 
 const PRICE_M1 = "Oiii Rafael, tudo bem? Recebemos aqui seu interesse, com o Lever Price você cadastra uma vez só o custo, a margem e o imposto de cada produto e, a partir daí, tudo acontece de forma automática: a plataforma confere seus anúncios no Mercado Livre 24 horas por dia, a cada minuto, mantém seu lucro dentro do esperado e ainda coloca seus produtos nas melhores promoções do ML: relâmpago, campanhas como Black Friday e 10.10, rebate e, quando não tem nenhuma delas, cria a promoção do vendedor pra seu anúncio nunca ficar fora de oferta. Isso ajudaria na sua operação?";
 
-test("roteiro PRICE · M2: 'sim' à abordagem vira convite com o DRE + par de horários, sem IA e sem repetir o pitch", async () => {
+test("roteiro PRICE · M2: 'sim' à abordagem vira convite com o DRE + par de horários, sem IA e sem repetir o pitch #R-071", async () => {
   const repo = await world({ lead: { sourcePain: "PRICE", niche: "moda" }, messages: [
     { direction: "out", author: "sdr-bot", text: PRICE_M1, at: ISO("2026-08-19T12:50:00Z") },
     { direction: "in", text: "Sim", at: ISO("2026-08-19T12:59:00Z") },
@@ -1577,7 +1577,7 @@ test("roteiro PRICE · M2: 'sim' à abordagem vira convite com o DRE + par de ho
   assert.equal(log.oemScriptAt, undefined);
 });
 
-test("roteiro PRICE · M3: horário escolhido reserva em 2 balões e pergunta pela presença; M4 é a mesma do OEM", async () => {
+test("roteiro PRICE · M3: horário escolhido reserva em 2 balões e pergunta pela presença; M4 é a mesma do OEM #R-071", async () => {
   const repo = await world({ lead: { sourcePain: "PRICE" }, messages: [
     { direction: "out", author: "sdr-bot", text: PRICE_M1, at: ISO("2026-08-19T12:40:00Z") },
     { direction: "in", text: "Sim", at: ISO("2026-08-19T12:45:00Z") },
@@ -1610,7 +1610,7 @@ test("roteiro PRICE · M3: horário escolhido reserva em 2 balões e pergunta pe
   assert.equal((await repo2.get("leads", "L1")).sdrLog.presenceConfirmedFor, SLOT1);
 });
 
-test("roteiro PRICE · preço depois da abordagem: fala do volume de anúncios, sem número, e leva o par de horários", async () => {
+test("roteiro PRICE · preço depois da abordagem: fala do volume de anúncios, sem número, e leva o par de horários #R-072 #R-071", async () => {
   const repo = await world({ lead: { sourcePain: "PRICE" }, messages: [
     { direction: "out", author: "sdr-bot", text: PRICE_M1, at: ISO("2026-08-19T12:50:00Z") },
     { direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:59:00Z") },
@@ -1649,7 +1649,7 @@ test("roteiro PRICE · preço depois da abordagem: fala do volume de anúncios, 
 
 // ── Ajustes do Leo, 08/10 (prints do dia) ───────────────────────────────────
 
-test("sem interesse / pediu pausa: acolhe, para e chama gente; escada de preço antiga NÃO responde preço (caso Laion)", async () => {
+test("sem interesse / pediu pausa: acolhe, para e chama gente; escada de preço antiga NÃO responde preço (caso Laion) #R-083", async () => {
   // Dois pedidos de preço antigos (já respondidos) e agora "não tenho mais interesse".
   const history = [
     { direction: "in", text: "quanto custa?", at: ISO("2026-08-19T11:30:00Z") },
@@ -1687,7 +1687,7 @@ test("sem interesse / pediu pausa: acolhe, para e chama gente; escada de preço 
   assert.ok(!(await repo2.get("leads", "L1")).sdrLog.priceExplainedAt);
 });
 
-test("uma oferta por resposta: a trava que emenda a oferta real não deixa dois pares de horários saírem (print de 15:10)", async () => {
+test("uma oferta por resposta: a trava que emenda a oferta real não deixa dois pares de horários saírem (print de 15:10) #R-026", async () => {
   const repo = await world({ messages: [
     { direction: "out", author: "sdr-bot", text: "Oiii Rafael, tudo bem? Recebi seu diagnóstico aqui. Isso ajudaria na sua operação?", at: ISO("2026-08-19T12:50:00Z") },
     { direction: "in", text: "ajudaria sim", at: ISO("2026-08-19T12:59:00Z") },
@@ -1706,7 +1706,7 @@ test("uma oferta por resposta: a trava que emenda a oferta real não deixa dois 
   assert.equal(fakes.sent.length, 2);
 });
 
-test("oferta em dobro entre processos: outro disparo do robô já ofereceu horários, a nossa oferta não sai por cima", async () => {
+test("oferta em dobro entre processos: outro disparo do robô já ofereceu horários, a nossa oferta não sai por cima #R-026 #R-092", async () => {
   const repo = await world({ messages: [
     { direction: "out", author: "sdr-bot", text: "Oiii Rafael, tudo bem? Recebi seu diagnóstico aqui. Isso ajudaria na sua operação?", at: ISO("2026-08-19T12:50:00Z") },
     { direction: "in", text: "ajudaria sim", at: ISO("2026-08-19T12:59:00Z") },
@@ -1727,7 +1727,7 @@ test("oferta em dobro entre processos: outro disparo do robô já ofereceu horá
   assert.equal(fakes.sent.length, 0, "a segunda oferta não sai");
 });
 
-test("número solto depois da oferta é hora: '11' agenda às 11h; hora que não existe diz isso e re-oferece o par", async () => {
+test("número solto depois da oferta é hora: '11' agenda às 11h; hora que não existe diz isso e re-oferece o par #R-027", async () => {
   const offer = { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?", at: ISO("2026-08-19T12:50:00Z") };
   const repo = await world({ messages: [offer, { direction: "in", text: "11", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Consigo amanhã às 9h ou às 13h, qual fica melhor pra você?", "Qual dia você prefere?"] }] });
@@ -1748,7 +1748,7 @@ test("número solto depois da oferta é hora: '11' agenda às 11h; hora que não
   assert.equal((await repo2.get("leads", "L1")).callAt, undefined);
 });
 
-test("oferta escrita com o dia uma vez é lida de volta: aceite + preço trava o segundo horário", async () => {
+test("oferta escrita com o dia uma vez é lida de volta: aceite + preço trava o segundo horário #R-021", async () => {
   const repo = await world({ messages: [
     { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?", at: ISO("2026-08-19T12:50:00Z") },
     { direction: "in", text: "Pode ser as 11h. E qual o valor do serviço?", at: ISO("2026-08-19T12:59:00Z") },
@@ -1759,7 +1759,7 @@ test("oferta escrita com o dia uma vez é lida de volta: aceite + preço trava o
   assert.equal((await repo.get("leads", "L1")).callAt, "2026-08-20T11:00");
 });
 
-test("trava da promessa: 'te confirmo em minutos' vira a agenda real; dia pedido lotado diz que lotou e oferece o par (caso Tiago)", async () => {
+test("trava da promessa: 'te confirmo em minutos' vira a agenda real; dia pedido lotado diz que lotou e oferece o par (caso Tiago) #R-030", async () => {
   const ask = { direction: "in", text: "Quarta feira que vem fica bom?", at: ISO("2026-08-19T12:59:00Z") };
   const promise = { acao: "responder", mensagens: ["Consigo ver um horário na quarta-feira que vem e te confirmo em minutos"] };
   const repo = await world({ messages: [ask] });

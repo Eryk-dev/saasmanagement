@@ -33,7 +33,7 @@ async function seed() {
   return repo;
 }
 
-test("replay: roda as conversas reais, conta as ações e grava o relatório em app_config", async () => {
+test("replay: roda as conversas reais, conta as ações e grava o relatório em app_config #R-120", async () => {
   const repo = await seed();
   const decisions = [
     { acao: "responder", mensagem: "Consigo te mostrar ao vivo, qual período?" },
@@ -68,7 +68,7 @@ test("replay: roda as conversas reais, conta as ações e grava o relatório em 
   assert.deepEqual(doc.progress, { done: 2, total: 2 });
 });
 
-test("replay: erro numa decisão não derruba a bateria (conta e segue)", async () => {
+test("replay: erro numa decisão não derruba a bateria (conta e segue) #R-120", async () => {
   const repo = await seed();
   let i = 0;
   const anthropic = {
@@ -81,7 +81,7 @@ test("replay: erro numa decisão não derruba a bateria (conta e segue)", async 
   assert.equal(report.turns, 3);
 });
 
-test("start é single-flight e recusa sem IA configurada", async () => {
+test("start é single-flight e recusa sem IA configurada #R-120", async () => {
   const repo = await seed();
   const replayOff = makeSdrReplay({ repo, anthropic: { configured: () => false }, now: () => NOW });
   assert.match(replayOff.start().error || "", /IA não configurada/);

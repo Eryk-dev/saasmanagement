@@ -5,25 +5,25 @@ import { SDR_TEMPLATES } from "../src/sdr/sdr-templates.leverads.js";
 
 // Autopeças com dor de gestão (A-E) ouve clonagem + OEM juntos (Leo, 23/08);
 // outros nichos seguem só na clonagem, e dor OEM não duplica o assunto.
-test("firstTouchText: autopeças com dor A-E fala de clonagem E de OEM", () => {
+test("firstTouchText: autopeças com dor A-E fala de clonagem E de OEM #R-013", () => {
   const t = firstTouchText({ nome: "Carlos", sdrName: "Manuela", resumo: "3 a 5 contas · autopeças", pain: { code: "E", mode: "clone" }, niche: "autopecas" });
   assert.match(t, /clonagem/);
   assert.match(t, /código OEM/);
 });
 
-test("firstTouchText: outro nicho com dor A-E não puxa OEM; dor OEM não duplica", () => {
+test("firstTouchText: outro nicho com dor A-E não puxa OEM; dor OEM não duplica #R-013", () => {
   const semOem = firstTouchText({ nome: "Ana", resumo: "2 contas · moda", pain: { code: "A", mode: "clone" }, niche: "moda" });
   assert.ok(!/OEM/.test(semOem));
   const oem = firstTouchText({ nome: "Zé", resumo: "1 conta · autopeças", pain: { code: "OEM", mode: "oem" }, niche: "autopecas" });
   assert.equal((oem.match(/OEM/g) || []).length, 1, "dor OEM cita OEM uma vez só");
 });
 
-test("isAutoPecas aceita variações de escrita", () => {
+test("isAutoPecas aceita variações de escrita #R-013", () => {
   assert.ok(isAutoPecas("autopecas") && isAutoPecas("Auto Peças") && isAutoPecas("autopeças"));
   assert.ok(!isAutoPecas("moda") && !isAutoPecas(""));
 });
 
-test("leadPainFocus: dor OEM fora de autopeças cai pra clonagem; autopeças e nicho vazio mantêm OEM", () => {
+test("leadPainFocus: dor OEM fora de autopeças cai pra clonagem; autopeças e nicho vazio mantêm OEM #R-013", () => {
   const product = { painMap: { OEM: "Anunciar pelo OEM", A: "Subir anúncios" } };
   assert.equal(leadPainFocus(product, { sourcePain: "OEM", niche: "eletronicos" }).mode, "clone");
   assert.equal(leadPainFocus(product, { sourcePain: "OEM", niche: "autopecas" }).mode, "oem");
@@ -34,7 +34,7 @@ test("leadPainFocus: dor OEM fora de autopeças cai pra clonagem; autopeças e n
 // Dor [PRICE] (Leo, 07/10): precificação vale em qualquer nicho, então não
 // passa pela cerca de autopeças do OEM — e não entra no roteiro fixo do OEM,
 // que é gateado em mode === "oem"); desde 08/10 ela TEM roteiro fixo próprio.
-test("leadPainFocus: dor PRICE vira modo price em qualquer nicho", () => {
+test("leadPainFocus: dor PRICE vira modo price em qualquer nicho #R-013", () => {
   const product = { painMap: { PRICE: "Preço desatualizado" } };
   for (const niche of ["autopecas", "moda", undefined]) {
     const f = leadPainFocus(product, { sourcePain: "PRICE", niche });
@@ -46,7 +46,7 @@ test("leadPainFocus: dor PRICE vira modo price em qualquer nicho", () => {
 // Roteiro Lever Price (copy do Leo, 08/10): abordagem fixa no molde do OEM,
 // sem nome do SDR nem resumo; pitch completo (cadastro único, automático 24h a
 // cada minuto, promoções nomeadas, promoção do vendedor como fallback).
-test("firstTouchText: dor PRICE usa a abordagem fixa do roteiro, sem clonagem nem OEM", () => {
+test("firstTouchText: dor PRICE usa a abordagem fixa do roteiro, sem clonagem nem OEM #R-013 #R-071", () => {
   const t = firstTouchText({ nome: "Rafa", sdrName: "Manuela", resumo: "autopeças · 5 mil anúncios", pain: { code: "PRICE", mode: "price" }, niche: "autopecas" });
   assert.equal(t, firstTouchPriceText({ nome: "Rafa" }));
   assert.match(t, /^Oiii Rafa, tudo bem\? Recebemos aqui seu interesse, com o Lever Price você cadastra uma vez só o custo, a margem e o imposto/);
@@ -62,7 +62,7 @@ test("firstTouchText: dor PRICE usa a abordagem fixa do roteiro, sem clonagem ne
   assert.match(firstTouchPriceText({ nome: "" }), /^Oiii, tudo bem\?/);
 });
 
-test("reminderText: lead de PRICE tem a manhã própria; 2h e 10min dividem o texto do OEM", () => {
+test("reminderText: lead de PRICE tem a manhã própria; 2h e 10min dividem o texto do OEM #R-073", () => {
   const manha = reminderText("manha", { nome: "Rafa", quando: "hoje às 11h", link: "", script: "price" });
   assert.equal(manha, priceMorningParts("Rafa", "hoje às 11h").join(" "));
   assert.match(manha, /^Bom dia Rafa, tudo bom\? Temos um horário reservado para hoje às 11h, tudo certo\? Na reunião vamos te mostrar na prática como o Lever Price cuida do preço e das promoções/);
@@ -76,7 +76,7 @@ test("reminderText: lead de PRICE tem a manhã própria; 2h e 10min dividem o te
   assert.ok(!/Lever Price/.test(reminderText("manha", { nome: "Rafa", quando: "hoje às 11h", link: "" })));
 });
 
-test("templates: o roteiro Price tem a abordagem e a manhã próprias, com o corpo igual ao texto do motor", () => {
+test("templates: o roteiro Price tem a abordagem e a manhã próprias, com o corpo igual ao texto do motor #R-071 #R-073", () => {
   const byName = Object.fromEntries(SDR_TEMPLATES.map((t) => [t.name, t]));
   const m1 = byName.sdr_primeiro_toque_price;
   assert.ok(m1 && m1.category === "MARKETING");

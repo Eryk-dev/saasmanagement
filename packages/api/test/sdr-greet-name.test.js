@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { greetName } from "../src/sdr/sdr-flow.js";
 
 // Nome grudado do form (raio-x 30/09): "Entendi BrenoHenrique", "Oiii, Joãogabriel".
-test("greetName: nome grudado do form separa na troca de caixa e fica com o primeiro", () => {
+test("greetName: nome grudado do form separa na troca de caixa e fica com o primeiro #R-007", () => {
   assert.equal(greetName("BrenoHenrique"), "Breno");
   assert.equal(greetName("CarlosEduardo"), "Carlos");
   assert.equal(greetName("JoãoGabriel"), "João");
