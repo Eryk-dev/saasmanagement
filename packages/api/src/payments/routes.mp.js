@@ -412,21 +412,30 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, asaas, appmax, dis
       });
       const contractValue = Math.round(Number(req.body?.contractValue) * 100) / 100;
       const paymentMethod = String(req.body?.paymentMethod || "").trim();
+      // LEAD JÁ GANHO não tem a venda reescrita pelo link (16/10/2026, caso
+      // Auto Parts SP): o closer gerou pelo card um link de upsell (Price
+      // R$ 5.990) e o produto/valor do fechamento original (OEM R$ 2.760)
+      // foram sobrescritos — a venda de agosto mudou de valor no placar e a
+      // tela de Clientes somou o upsell duas vezes (contrato + fatura de
+      // upsell). Depois do Ganho, a venda é fato do lead: link novo é cobrança
+      // avulsa (upsell/cobrança da ficha) e só carimba os campos do link.
+      const alreadyWon = !!(lead.customerId || lead.wonAt);
       const updated = await repo.update("leads", lead.id, {
         mpChargeUrl: pref.url || null, mpChargeAmount: amount,
         mpChargeTitle: title, mpChargeAt: new Date().toISOString(),
         // Que tipo de link é o ÚLTIMO gerado (a tela e o card mostram isso)
         // e por qual gateway.
         mpChargeKind: "once", mpChargeGateway: gateway,
-        ...(plan ? { planClosed: plan } : {}),
-        ...(dealProduct ? { dealProduct } : {}),
-        ...(contractValue > 0 ? { amount: contractValue } : {}),
-        ...(paymentMethod ? { paymentMethod } : {}),
+        ...(!alreadyWon && plan ? { planClosed: plan } : {}),
+        ...(!alreadyWon && dealProduct ? { dealProduct } : {}),
+        ...(!alreadyWon && contractValue > 0 ? { amount: contractValue } : {}),
+        ...(!alreadyWon && paymentMethod ? { paymentMethod } : {}),
       });
       await logActivity(repo, {
         saas: lead.saas || "", lead: lead.id, type: "note",
         text: `Link de pagamento criado${gateway !== "mp" ? ` no ${gatewayLabel(gateway)}` : ""}: R$ ${amount.toFixed(2).replace(".", ",")} (${title})`
-          + (contractValue > 0 && contractValue !== amount ? ` · contrato R$ ${contractValue.toFixed(2).replace(".", ",")}` : ""),
+          + (!alreadyWon && contractValue > 0 && contractValue !== amount ? ` · contrato R$ ${contractValue.toFixed(2).replace(".", ",")}` : "")
+          + (alreadyWon ? " · cobrança avulsa (lead já ganho: a venda original fica como está)" : ""),
         author: req.authUser?.id || "system",
       });
       // Recibo da geração pro histórico da tela de links (o lead só guarda o

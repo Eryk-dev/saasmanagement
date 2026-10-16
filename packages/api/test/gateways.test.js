@@ -101,6 +101,42 @@ test("GET /api/gateways diz o que está ligado", async () => {
   await app.close();
 });
 
+test("link gerado no card de lead JÁ GANHO não reescreve a venda (produto, plano, valor, meio)", async () => {
+  const repo = makeMemRepo();
+  const { app } = buildApp(repo, { asaasRoutes: { "POST /v3/paymentLinks": { id: "pl_9", url: "https://www.asaas.com/c/pl9" } } });
+  await seed(repo);
+  await repo.update("leads", "l1", {
+    stage: "Ganho", wonAt: "2026-08-27T12:18:52.932Z", customerId: "c1",
+    dealProduct: "oem", planClosed: "anual", amount: 2760, paymentMethod: "cartao12x",
+  });
+  const res = await app.inject({
+    method: "POST", url: "/api/leads/l1/mp/link",
+    payload: { gateway: "asaas", amount: 5990, contractValue: 5990, product: "price_essencial", plan: "anual", paymentMethod: "pix", title: "Lever Price · Essencial · Anual" },
+  });
+  assert.equal(res.statusCode, 200, res.body);
+  const lead = await repo.get("leads", "l1");
+  assert.equal(lead.amount, 2760, "o valor da venda original fica");
+  assert.equal(lead.dealProduct, "oem");
+  assert.equal(lead.planClosed, "anual");
+  assert.equal(lead.paymentMethod, "cartao12x");
+  assert.equal(lead.mpChargeAmount, 5990, "o link em si é carimbado");
+  assert.equal(lead.mpChargeUrl, "https://www.asaas.com/c/pl9");
+  const note = (await repo.list("activities")).find((a) => a.lead === "l1" && a.type === "note");
+  assert.match(note.text, /cobrança avulsa/);
+
+  // Lead AINDA aberto: o link do fechamento continua gravando a venda, como antes.
+  await repo.create("leads", { id: "l2", name: "Aberto", saas: "leverads", stage: "Call", email: "l2@x.com" });
+  const r2 = await app.inject({
+    method: "POST", url: "/api/leads/l2/mp/link",
+    payload: { gateway: "asaas", amount: 2760, contractValue: 2760, product: "oem", plan: "anual", paymentMethod: "cartao12x" },
+  });
+  assert.equal(r2.statusCode, 200, r2.body);
+  const l2 = await repo.get("leads", "l2");
+  assert.equal(l2.amount, 2760);
+  assert.equal(l2.dealProduct, "oem");
+  assert.equal(l2.paymentMethod, "cartao12x");
+});
+
 test("link do lead pelo Asaas: paymentLink com externalReference = lead; o pagamento do link entra casado e paga o link", async (t) => {
   // Relógio no dia das fixtures (dateCreated 2026-10-12): o link nasce com
   // createdAt = new Date() (recordPaymentLink) e o enrichPaymentLinks só casa
