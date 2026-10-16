@@ -814,7 +814,10 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
     // Integração DESMARCADA (integrationAt limpo): o convite sai da agenda do
     // organizador e do cliente e os campos da sala zeram — a próxima marcação
     // nasce com sala nova, igual à call desmarcada.
-    if (collection === "leads" && "integrationAt" in req.body && !updated.integrationAt && cancelIntegrationMeet) {
+    // Também quando foi o movimento de etapa que limpou (applyStageMove:
+    // card saiu da região de venda com integração futura) — o campo chega
+    // pelo `patch`, não pelo body.
+    if (collection === "leads" && ("integrationAt" in req.body || "integrationAt" in patch) && !updated.integrationAt && cancelIntegrationMeet) {
       try { await cancelIntegrationMeet(updated.id); } catch { /* fail-open */ }
     }
     // Consulta remarcada, cancelada ou reatribuída → re-espelha na agenda

@@ -246,6 +246,17 @@ export async function applyStageMove(repo, { lead, toStage, patch = {}, author =
     // deixá-la marcada é o que fazia o mesmo lead ocupar duas horas na agenda.
     // Vale nos dois sentidos — ver clearRivalAppointment.
     Object.assign(out, clearRivalAppointment(lead, patch, kind, now));
+    // Card saindo da região de venda (Ganho/Integração/pós-venda) pra uma
+    // etapa aberta com a integração ainda no FUTURO: essa reunião não vai
+    // acontecer (foi marcada errado ou a venda caiu), e deixá-la gravada era o
+    // que mantinha o lead na Agenda do integrador depois do card ter mudado de
+    // coluna (caso Morales, 16/10/2026). Integração que JÁ aconteceu fica: é
+    // história. O PATCH limpa o Meet e o espelho pessoal ao ver o campo vazio.
+    if (!SOLD_KINDS.has(kind) && patch.integrationAt == null
+      && appointmentAhead("integrationAt", lead?.integrationAt, now)) {
+      out.integrationAt = "";
+      out.integrationConfirmed = false;
+    }
     // Follow-up em 4 contatos: entrar na etapa recomeça a sequência no
     // Contato 1, marcado num DIA (o que veio no patch, ou hoje + o prazo do
     // Contato 1). Sem horário: não ocupa agenda de ninguém.
