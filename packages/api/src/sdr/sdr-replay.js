@@ -196,7 +196,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
           try {
             const pair = spreadPair(wholeHourSlots(slotList));
             const audited = effContract === "v2" && d.acao === "responder" && (d.oferecer || (d.slotIds || []).length)
-              ? [...parts, offerLine((d.slots || []).length ? d.slots : pair, { wnow })] : parts;
+              ? [...(parts.length > 1 && /\?\s*$/.test(parts[parts.length - 1]) ? parts.slice(0, -1) : parts), offerLine((d.slots || []).length ? d.slots : pair, { wnow })] : parts; // mesma régua do cérebro (R-003)
             const v = validateDraft(makeDraft(audited, "ia"), { nome: lead.name || "", script: st.script, msgs: msgs.slice(0, i + 1), callAt: "", slotList, offerPool: wholeHourSlots(slotList), suggestedPair: pair, requestedDate, offerDate, requestedEmpty: false, hourReply: false, engaged: st.facts.engaged, slotsOffered, inCallWindow: false, lastInText: String(m.transcript || m.text || ""), wnow, discoveryQuestion: "Isso ajudaria na sua operação hoje?", dayLabelOf: (x) => x, nowIso: now().toISOString(), inboundText: String(m.text || ""), priceDeferral: "" }, { mode: "audit" });
             for (const x of v.violations) { if (x.exempt) continue; report.violations++; report.byRule[x.rule] = (report.byRule[x.rule] || 0) + 1; }
           } catch (err) { log.warn?.({ err: err.message }, "sdr-replay: auditoria falhou"); }

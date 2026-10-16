@@ -1170,6 +1170,10 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     if (offerContract === "v2" && decision.acao === "responder" && (decision.oferecer || decision.slotIds?.length)) {
       const chosen = (decision.slots || []).filter((c) => slotList.some((x) => x.at === c.at));
       offerSlots = chosen.length ? chosen : suggestedPair;
+      // UMA PERGUNTA SÓ (R-003, A/B de 15/10): a pergunta da resposta é a da
+      // oferta. Parte do modelo terminando em "?" cai quando há outra parte;
+      // sozinha, fica (o lead precisa de algum texto antes da oferta).
+      if (offerSlots.length && parts.length > 1 && /\?\s*$/.test(parts[parts.length - 1])) parts.pop();
       if (offerSlots.length) parts.push(offerLine(offerSlots, { wnow }));
     }
     if (!parts.length) return "silencio";

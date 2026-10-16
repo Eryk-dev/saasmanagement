@@ -58,4 +58,20 @@ export default [
     inbounds: ["Opa sim"],
     expect: { result: "responder", sent: [/^Consigo amanhã às 9h ou às 11h, qual fica melhor pra você\?$/], notSent: [/sexta/] },
   },
+  {
+    id: "C-V2-07", title: "oferecer=true com a parte do modelo terminando em pergunta: a pergunta cai e fica só a da oferta (uma pergunta por resposta)",
+    rules: ["R-003", "R-021"],
+    world: after(pitched),
+    ai: [{ acao: "responder", mensagens: ["Que bom Rafael, o especialista mostra ao vivo", "Quer ver funcionando?"], oferecer: true, slotIds: [], slots: [] }],
+    inbounds: ["Opa sim"],
+    expect: { result: "responder", sent: [/^Que bom Rafael, o especialista mostra ao vivo$/, /^Consigo amanhã às 9h ou às 11h, qual fica melhor pra você\?$/], notSent: [/Quer ver funcionando/], audit: { notRules: ["R-003"] } },
+  },
+  {
+    id: "C-V2-08", title: "oferecer=true com uma parte só, em pergunta: fica (o lead precisa de texto antes da oferta)",
+    rules: ["R-003"],
+    world: after(pitched),
+    ai: [{ acao: "responder", mensagens: ["Quer ver funcionando ao vivo?"], oferecer: true, slotIds: [], slots: [] }],
+    inbounds: ["Opa sim"],
+    expect: { result: "responder", sent: [/^Quer ver funcionando ao vivo\?$/, /^Consigo amanhã às 9h ou às 11h, qual fica melhor pra você\?$/] },
+  },
 ];
