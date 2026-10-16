@@ -472,6 +472,40 @@ test("call que JÁ ACONTECEU continua no card ao virar follow-up (é história)"
   assert.equal((await repo.get("leads", lead.id)).callAt, passada);
 });
 
+test("card puxado da Integração pra etapa aberta larga a integração FUTURA (sai da agenda)", async () => {
+  const { app, repo } = await buildApp();
+  const integBrt = brtOf(Date.now() + 5 * 3600e3);
+  const lead = (await app.inject({
+    method: "POST", url: "/api/leads",
+    payload: { name: "Morales", saas: "leverads", stage: "Integração", integrationAt: integBrt, integrator: "eryk", closer: "leonardo" },
+  })).json();
+  assert.equal((await repo.get("leads", lead.id)).integrationAt, integBrt);
+  await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { stage: "Qualificando" } });
+  const depois = await repo.get("leads", lead.id);
+  assert.equal(depois.stage, "Qualificando");
+  assert.equal(depois.integrationAt, "", "integração marcada errado sai do card e da agenda");
+  assert.equal(depois.integrationConfirmed, false);
+});
+
+test("integração que JÁ aconteceu fica no card ao sair da Integração; e Ganho ↔ Integração mantém a marcada", async () => {
+  const { app, repo } = await buildApp();
+  const passada = brtOf(Date.now() - 26 * 3600e3);
+  const lead = (await app.inject({
+    method: "POST", url: "/api/leads",
+    payload: { name: "Feita", saas: "leverads", stage: "Integração", integrationAt: passada, integrator: "eryk" },
+  })).json();
+  await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { stage: "Follow-up" } });
+  assert.equal((await repo.get("leads", lead.id)).integrationAt, passada);
+
+  const futura = brtOf(Date.now() + 48 * 3600e3);
+  const lead2 = (await app.inject({
+    method: "POST", url: "/api/leads",
+    payload: { name: "Vendido", saas: "leverads", stage: "Integração", integrationAt: futura, integrator: "eryk" },
+  })).json();
+  await app.inject({ method: "PATCH", url: `/api/leads/${lead2.id}`, payload: { stage: "Ganho" } });
+  assert.equal((await repo.get("leads", lead2.id)).integrationAt, futura, "voltar pro Ganho não desmarca a integração");
+});
+
 test("marcar follow-up pelo drawer limpa a call futura, sem mexer na etapa", async () => {
   const { app, repo } = await buildApp();
   const callBrt = brtOf(Date.now() + 26 * 3600e3);
