@@ -12,35 +12,55 @@ import { MANUAL_PAY_METHODS } from "../lib/payments.js";
 //     — Financeiro → Resumo.
 // `target` = { kind: "link" | "invoice" | "confirm", id, amount, title, targetName }.
 // `link` continua aceito (compatibilidade com a tela de Links).
+//
+// 17/10/2026 (Leo): o VALOR recebido é editável e o dinheiro pode ter entrado
+// em mais de uma vez — cada linha tem data, meio e valor; o servidor grava as
+// partes na prova (paidProof.payments), a fatura passa a valer o total que
+// entrou (o combinado fica em originalAmount) e o caixa conta cada parte na
+// sua data. Pro link (sem fatura própria) continua uma entrada só.
 
 const { useState } = React;
 const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const inputStyle = { height: 36, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, width: "100%" };
 const field = { display: "flex", flexDirection: "column", gap: 4 };
 const today = () => new Date().toISOString().slice(0, 10);
+const num = (v) => { const n = Number(String(v ?? "").replace(/\./g, "").replace(",", ".")); return Number.isFinite(n) ? n : 0; };
+const r2 = (n) => Math.round(n * 100) / 100;
 
 const COPY = {
-  link: { titulo: "Marcar como pago", botao: "marcar como pago", nota: "vale pra dinheiro que entrou FORA deste link. Pagamento pelo próprio link o Mercado Pago confirma sozinho. Fica registrado na timeline quem marcou." },
-  invoice: { titulo: "Dar baixa com prova", botao: "dar baixa", nota: "dinheiro que entrou fora do Mercado Pago (PIX direto, boleto no banco, dinheiro). Sem data e meio a baixa não vale: é o que separa recebido de suposição." },
+  link: { titulo: "Marcar como pago", botao: "marcar como pago", nota: "vale pra dinheiro que entrou FORA deste link. Pagamento pelo próprio link o gateway confirma sozinho. Fica registrado na timeline quem marcou." },
+  invoice: { titulo: "Dar baixa com prova", botao: "dar baixa", nota: "dinheiro que entrou fora dos gateways (PIX direto, boleto no banco, dinheiro). Sem data e meio a baixa não vale: é o que separa recebido de suposição." },
   confirm: { titulo: "Confirmar recebimento", botao: "confirmar", nota: "essa fatura nasceu paga no fechamento à vista e ninguém provou o dinheiro. Confirmando com data e meio, ela sai de presumido e entra no recebido." },
 };
 
 function ManualPaidModal({ link, target, onClose, onDone }) {
   const t = target || (link ? { kind: "link", id: link.id, amount: link.amount, title: link.title, targetName: link.targetName } : null);
-  const [at, setAt] = useState(t?.at ? String(t.at).slice(0, 10) : today());
-  const [method, setMethod] = useState(t?.method || "pix");
+  const multi = t?.kind !== "link";
+  const [rows, setRows] = useState(() => [{ at: t?.at ? String(t.at).slice(0, 10) : today(), method: t?.method || "pix", amount: t?.amount != null ? String(Number(t.amount).toFixed(2)).replace(".", ",") : "", note: "" }]);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const copy = COPY[t?.kind] || COPY.invoice;
+  const total = r2(rows.reduce((a, r) => a + num(r.amount), 0));
+  const combinado = r2(Number(t?.amount) || 0);
+  const difere = multi && Math.abs(total - combinado) >= 0.01;
+  const setRow = (i, patch) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const addRow = () => setRows((rs) => {
+    const falta = r2(combinado - total);
+    return [...rs, { at: today(), method: "pix", amount: falta > 0 ? String(falta.toFixed(2)).replace(".", ",") : "", note: "" }];
+  });
+  const removeRow = (i) => setRows((rs) => rs.filter((_, j) => j !== i));
 
   const submitting = React.useRef(false);
   async function confirm() {
     if (submitting.current || !t) return;
+    if (multi && rows.some((r) => !(num(r.amount) > 0))) { setError("Informe o valor de cada pagamento."); return; }
     submitting.current = true;
     setBusy(true); setError(null);
     try {
-      const body = { at, method, note: note.trim() };
+      const body = multi
+        ? { payments: rows.map((r) => ({ at: r.at, method: r.method, amount: num(r.amount), note: r.note.trim() })), note: note.trim() }
+        : { at: rows[0].at, method: rows[0].method, note: note.trim() };
       const r = t.kind === "link" ? await api.payPaymentLink(t.id, body)
         : t.kind === "confirm" ? await api.confirmInvoice(t.id, body)
         : await api.payInvoice(t.id, body);
@@ -53,27 +73,51 @@ function ManualPaidModal({ link, target, onClose, onDone }) {
   }
 
   return (
-    <Modal onClose={onClose} fechavel={!busy} label={copy.titulo} largura={420}
+    <Modal onClose={onClose} fechavel={!busy} label={copy.titulo} largura={multi ? 560 : 420}
       painelStyle={{ padding: "20px 22px", display: "flex", flexDirection: "column", gap: 12 }}>
         <div>
           <div style={{ fontSize: 15, fontWeight: 600 }}>{copy.titulo}</div>
           <div className="mono dim" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.5 }}>
-            <span style={{ color: "var(--fg-1)", fontWeight: 600 }}>{BRL.format(Number(t?.amount) || 0)}</span>
+            <span style={{ color: "var(--fg-1)", fontWeight: 600 }}>{BRL.format(combinado)}</span>
             {t?.title ? ` · ${t.title}` : ""}{t?.targetName ? ` · ${t.targetName}` : ""}
+            {multi ? " · valor combinado" : ""}
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <label style={field}>
-            <span className="kicker">Quando entrou</span>
-            <input type="date" value={at} max={today()} onChange={(e) => setAt(e.target.value)} style={{ ...inputStyle, fontFamily: "var(--mono)" }} />
-          </label>
-          <label style={field}>
-            <span className="kicker">Como entrou</span>
-            <select value={method} onChange={(e) => setMethod(e.target.value)} style={inputStyle}>
-              {MANUAL_PAY_METHODS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-            </select>
-          </label>
-        </div>
+
+        {rows.map((r, i) => (
+          <div key={i} style={{ display: "grid", gridTemplateColumns: multi ? "1fr 1fr 110px 28px" : "1fr 1fr", gap: 8, alignItems: "end" }}>
+            <label style={field}>
+              <span className="kicker">{rows.length > 1 ? `Quando entrou (${i + 1})` : "Quando entrou"}</span>
+              <input type="date" value={r.at} max={today()} onChange={(e) => setRow(i, { at: e.target.value })} style={{ ...inputStyle, fontFamily: "var(--mono)" }} />
+            </label>
+            <label style={field}>
+              <span className="kicker">Como entrou</span>
+              <select value={r.method} onChange={(e) => setRow(i, { method: e.target.value })} style={inputStyle}>
+                {MANUAL_PAY_METHODS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+              </select>
+            </label>
+            {multi && (
+              <label style={field}>
+                <span className="kicker">Valor (R$)</span>
+                <input type="text" inputMode="decimal" value={r.amount} onChange={(e) => setRow(i, { amount: e.target.value })} placeholder="0,00"
+                  style={{ ...inputStyle, fontFamily: "var(--mono)", textAlign: "right" }} />
+              </label>
+            )}
+            {multi && (
+              <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1} aria-label={`Remover pagamento ${i + 1}`} className="dim"
+                style={{ height: 36, fontSize: 15, opacity: rows.length === 1 ? 0.3 : 1 }}>✕</button>
+            )}
+          </div>
+        ))}
+        {multi && (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" onClick={addRow} style={{ fontSize: 12.5, fontWeight: 600, color: "var(--accent)" }}>+ outro pagamento</button>
+            <span className="mono" style={{ fontSize: 12, color: difere ? "var(--warn)" : "var(--fg-3)" }}>
+              recebido {BRL.format(total)}{difere ? ` · ${total < combinado ? "faltam" : "a mais"} ${BRL.format(Math.abs(combinado - total))} · a fatura passa a valer o recebido` : " · igual ao combinado"}
+            </span>
+          </div>
+        )}
+
         <label style={field}>
           <span className="kicker">Observação</span>
           <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="opcional: comprovante, quem confirmou…"

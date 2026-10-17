@@ -346,11 +346,20 @@ export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
   async function manualPay(req, reply, inv, { confirm = false } = {}) {
     const { error, value } = validateManualPaid(req.body || {});
     if (error) return reply.code(400).send({ error });
-    const amount = req.body?.amount != null && req.body.amount !== "" ? Number(req.body.amount) : null;
-    if (amount != null && !(amount > 0)) return reply.code(400).send({ error: "valor recebido inválido" });
+    const amount = value.amount ?? null;
     const by = req.authUser?.id || "api";
-    const paidProof = { kind: "manual", at: value.at, method: value.method, note: value.note, by, markedAt: new Date().toISOString(), ...(amount != null ? { amount } : {}), ...(confirm ? { confirmedFrom: "closing" } : {}) };
-    const paid = await repo.update("invoices", inv.id, { status: "paid", paidAt: value.at, paidMethod: value.method, paidProof });
+    const paidProof = {
+      kind: "manual", at: value.at, method: value.method, note: value.note, by, markedAt: new Date().toISOString(),
+      ...(amount != null ? { amount } : {}), ...(value.payments ? { payments: value.payments } : {}), ...(confirm ? { confirmedFrom: "closing" } : {}),
+    };
+    // Valor RECEBIDO diferente do combinado (desconto, entrada parcial, troco):
+    // a fatura passa a valer o que entrou — é o que o caixa soma — e o
+    // combinado fica em originalAmount pra ninguém perder o histórico.
+    const diff = amount != null && Math.abs(amount - (Number(inv.amount) || 0)) >= 0.01;
+    const paid = await repo.update("invoices", inv.id, {
+      status: "paid", paidAt: value.at, paidMethod: value.method, paidProof,
+      ...(diff ? { amount, originalAmount: inv.originalAmount ?? inv.amount } : {}),
+    });
     if (inv.subscription) {
       const stillOverdue = (await repo.list("invoices"))
         .some((i) => i.subscription === inv.subscription && i.id !== inv.id && i.status === "overdue");

@@ -78,3 +78,40 @@ test("pagamento do MP de valor exato confirma a presumida sozinho (vira prova mp
   assert.deepEqual([fin.receber.recebidosMes, fin.receber.presumido.n, fin.dre.receita.renewal], [5964, 0, 5964]);
   await app.close();
 });
+
+test("pay/confirm com VÁRIOS pagamentos: valor recebido vira o da fatura (combinado em originalAmount) e o caixa conta cada parte na sua data", async () => {
+  const { app, repo } = await build();
+  await repo.create("invoices", { id: "i9", saas: "leverads", customer: "c1", amount: 8396, status: "open", dueDate: "2026-09-10" });
+  const bad = await app.inject({ method: "POST", url: "/api/invoices/i9/pay", payload: { payments: [{ at: "2026-09-12", method: "pix" }] } });
+  assert.equal(bad.statusCode, 400);
+  assert.match(bad.json().error, /valor recebido/);
+  const ok = await app.inject({ method: "POST", url: "/api/invoices/i9/pay", payload: {
+    note: "entrada + restante",
+    payments: [{ at: "2026-10-03", method: "boleto", amount: 4000, note: "restante" }, { at: "2026-09-12", method: "pix", amount: 4000 }],
+  } });
+  assert.equal(ok.statusCode, 200, ok.body);
+  const inv = await repo.get("invoices", "i9");
+  assert.equal(inv.status, "paid");
+  assert.equal(inv.amount, 8000, "a fatura passa a valer o recebido");
+  assert.equal(inv.originalAmount, 8396);
+  assert.equal(inv.paidAt, "2026-10-03T15:00:00.000Z", "data da baixa = última parte");
+  assert.equal(inv.paidProof.amount, 8000);
+  assert.equal(inv.paidProof.payments.length, 2);
+  assert.equal(inv.paidProof.payments[0].at, "2026-09-12T15:00:00.000Z", "partes ordenadas pela data");
+  const set = (await app.inject({ url: "/api/fin/leverads?month=2026-09" })).json();
+  const out = (await app.inject({ url: "/api/fin/leverads?month=2026-10" })).json();
+  assert.equal(set.receber.recebidosMes, 4000);
+  assert.equal(out.receber.recebidosMes, 4000);
+  // Confirmar presumida com valor menor (desconto) — uma parte só, valor editado.
+  await repo.create("invoices", { id: "i10", saas: "leverads", customer: "c1", amount: 1000, status: "paid", paidAt: "2026-09-01T12:00:00.000Z", periodStart: "2026-09-01T12:00:00.000Z", dueDate: "2026-09-01T12:00:00.000Z", paidProof: { kind: "closing", at: "2026-09-01T12:00:00.000Z" } });
+  const conf = await app.inject({ method: "POST", url: "/api/invoices/i10/confirm", payload: { payments: [{ at: "2026-09-02", method: "pix", amount: 900 }] } });
+  assert.equal(conf.statusCode, 200, conf.body);
+  const i10 = await repo.get("invoices", "i10");
+  assert.equal(i10.amount, 900);
+  assert.equal(i10.originalAmount, 1000);
+  assert.equal(i10.paidProof.confirmedFrom, "closing");
+  const set2 = (await app.inject({ url: "/api/fin/leverads?month=2026-09" })).json();
+  assert.equal(set2.receber.recebidosMes, 4900);
+  assert.equal(set2.receber.presumido.n, 0);
+  await app.close();
+});
