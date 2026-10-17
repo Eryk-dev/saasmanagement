@@ -210,7 +210,17 @@ test("cliente ANTIGO do faturado mensal ganha o cronograma na reedição: renova
   const renewals = invoices.filter((i) => i.kind === "renewal");
   assert.equal(renewals.length, 1, "aberta e inicial auto-paga (paidAt = dueDate) saem; a paga de verdade fica");
   assert.equal(renewals[0].paidAt, "2026-07-15T09:00:00.000Z");
-  const parc = invoices.filter((i) => i.kind === "installment");
-  assert.equal(parc.length, 10);
+  // A renovação paga É a parcela 1: o cronograma segue da 2 à 10 com o que
+  // falta (17/10/2026 — antes redividia os 11.000 em 10 parcelas de novo).
+  const parc = invoices.filter((i) => i.kind === "installment").sort((a, b) => a.installmentN - b.installmentN);
+  assert.equal(parc.length, 9, "10 parcelas no contrato, 1 já paga pela renovação");
   assert.equal(sum(parc), 11000, "cronograma cobra o contrato menos o R$ 1.000 que já entrou");
+  assert.equal(parc[0].installmentN, 2);
+  assert.equal(parc[0].installmentOf, 10);
+  assert.equal(parc[8].installmentN, 10);
+  assert.equal(parc[0].title, "Parcela 2/10 · boleto faturado");
+  // Rodar de novo sem mudança não refaz o cronograma (mesmas faturas).
+  await syncWonLeadDeal(repo, lead);
+  const again = (await repo.list("invoices")).filter((i) => i.customer === customer.id && i.kind === "installment").map((i) => i.id).sort();
+  assert.deepEqual(again, parc.map((i) => i.id).sort());
 });
