@@ -2,7 +2,7 @@
 // tick do motor. CRUD cru de plans/subscriptions/invoices fica no CRUD genérico
 // (routes.js), que já sincroniza o ARR nas mutações de assinatura.
 
-import { computeChange, runBilling, syncCustomerArr, initSubscription, annualized } from "./billing.js";
+import { computeChange, runBilling, syncCustomerArr, initSubscription, annualized, createInstallmentSchedule } from "./billing.js";
 import { closedPlanToCycle, CYCLE_MONTHS } from "../shared/plan-cycles.js";
 import { PLAN_PRODUCTS } from "../shared/plan-resources.js";
 import { kindOf, stageByKind, firstStage } from "../crm/stages.js";
@@ -356,9 +356,28 @@ export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
     // a fatura passa a valer o que entrou — é o que o caixa soma — e o
     // combinado fica em originalAmount pra ninguém perder o histórico.
     const diff = amount != null && Math.abs(amount - (Number(inv.amount) || 0)) >= 0.01;
+    // ENTRADA + restante parcelado: a fatura vira a entrada (paga) e o que
+    // falta nasce como cronograma de parcelas em aberto, preso ao mesmo
+    // cliente/assinatura — "a receber" mostra as parcelas, o caixa só a entrada.
+    let schedule = [];
+    if (value.remainder) {
+      const combinado = Number(inv.originalAmount ?? inv.amount) || 0;
+      const entrada = amount ?? combinado;
+      const restante = Math.round((combinado - entrada) * 100) / 100;
+      if (!(restante > 0)) return reply.code(400).send({ error: "restante parcelado: o valor recebido já cobre o combinado — não sobra nada pra parcelar" });
+      const METHOD_OF = { boleto: "boleto", pix: "pix_parcelado", cartao: "cartao_recorrente" };
+      schedule = await createInstallmentSchedule(repo, {
+        customerId: inv.customer, saas: inv.saas || "", subscription: inv.subscription || "",
+        total: restante, installments: value.remainder.installments, startAt: `${value.remainder.firstDue}T12:00:00.000Z`,
+        method: METHOD_OF[value.remainder.method] || "",
+      });
+      paidProof.remainder = { total: restante, installments: value.remainder.installments, firstDue: value.remainder.firstDue, method: value.remainder.method, invoices: schedule.map((i) => i.id) };
+      for (const i of schedule) await repo.update("invoices", i.id, { title: `${i.title} · restante de ${inv.title || "entrada"}`.slice(0, 120), entradaOf: inv.id }, { silent: true });
+    }
     const paid = await repo.update("invoices", inv.id, {
       status: "paid", paidAt: value.at, paidMethod: value.method, paidProof,
       ...(diff ? { amount, originalAmount: inv.originalAmount ?? inv.amount } : {}),
+      ...(value.remainder ? { title: `${inv.title ? `${inv.title} · ` : ""}entrada` .slice(0, 120) } : {}),
     });
     if (inv.subscription) {
       const stillOverdue = (await repo.list("invoices"))
@@ -374,7 +393,7 @@ export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
       const customer = paid.customer ? await repo.get("customers", paid.customer) : null;
       await discord.invoicePaid({ invoice: paid, customerName: customer?.name, via: confirm ? "confirmação" : "baixa manual" });
     }
-    return paid;
+    return schedule.length ? { ...paid, schedule } : paid;
   }
 
   app.post("/api/invoices/:id/pay", async (req, reply) => {

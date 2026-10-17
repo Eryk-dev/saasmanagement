@@ -120,7 +120,24 @@ function parseAt(raw, now) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return new Date(`${raw}T12:00:00-03:00`); // dia BRT, meio-dia
   return new Date(raw);
 }
+// `remainder` (17/10/2026): cliente pagou uma ENTRADA e parcelou o resto —
+// { installments, firstDue (YYYY-MM-DD), method }. O servidor baixa a fatura
+// pelo valor da entrada e cria o cronograma do restante (combinado − entrada).
+export const REMAINDER_METHODS = new Set(["boleto", "pix", "cartao", "transferencia", "outro"]);
+function parseRemainder(raw, now) {
+  if (!raw || typeof raw !== "object") return { value: null };
+  const installments = Math.round(Number(raw.installments) || 0);
+  if (installments < 1 || installments > 36) return { error: "restante parcelado: informe de 1 a 36 parcelas" };
+  const firstDue = str(raw.firstDue, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(firstDue)) return { error: "restante parcelado: informe o vencimento da 1ª parcela (AAAA-MM-DD)" };
+  const method = str(raw.method, 40).toLowerCase() || "boleto";
+  if (!REMAINDER_METHODS.has(method)) return { error: "restante parcelado: meio inválido (boleto, pix, cartao, transferencia ou outro)" };
+  return { value: { installments, firstDue, method } };
+}
 export function validateManualPaid(body = {}, now = new Date()) {
+  const rem = parseRemainder(body.remainder, now);
+  if (rem.error) return { error: rem.error };
+  const withRem = (value) => (rem.value ? { value: { ...value, remainder: rem.value } } : { value });
   const list = Array.isArray(body.payments) ? body.payments : null;
   if (list) {
     if (!list.length) return { error: "informe pelo menos um pagamento" };
@@ -138,7 +155,7 @@ export function validateManualPaid(body = {}, now = new Date()) {
     payments.sort((a, b) => a.at.localeCompare(b.at));
     const last = payments[payments.length - 1];
     const total = Math.round(payments.reduce((a, p) => a + p.amount, 0) * 100) / 100;
-    return { value: { at: last.at, method: payments.every((p) => p.method === last.method) ? last.method : last.method, note: str(body.note, 300), amount: total, payments } };
+    return withRem({ at: last.at, method: last.method, note: str(body.note, 300), amount: total, payments });
   }
   const method = str(body.method, 40).toLowerCase();
   if (!MANUAL_METHODS.has(method)) return { error: "diga como o dinheiro entrou (pix, boleto, cartao, transferencia, dinheiro ou outro)" };
@@ -151,7 +168,7 @@ export function validateManualPaid(body = {}, now = new Date()) {
     if (!(amount > 0)) return { error: "valor recebido inválido" };
     value.amount = amount;
   }
-  return { value };
+  return withRem(value);
 }
 
 // Link + status do dinheiro. Cada pagamento é atribuído a UM link só (gerar o
