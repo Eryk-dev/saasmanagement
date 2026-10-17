@@ -115,3 +115,35 @@ test("pay/confirm com VÁRIOS pagamentos: valor recebido vira o da fatura (combi
   assert.equal(set2.receber.presumido.n, 0);
   await app.close();
 });
+
+test("entrada + restante parcelado: a fatura vira a entrada paga e o resto nasce como parcelas mensais em aberto", async () => {
+  const { app, repo } = await build();
+  await repo.create("invoices", { id: "i20", saas: "leverads", customer: "c1", amount: 4200, kind: "upsell", title: "Lever Price · Essencial · Anual", status: "open", dueDate: "2026-10-14" });
+  const bad = await app.inject({ method: "POST", url: "/api/invoices/i20/pay", payload: { payments: [{ at: "2026-10-15", method: "pix", amount: 4200 }], remainder: { installments: 3, firstDue: "2026-11-15", method: "boleto" } } });
+  assert.equal(bad.statusCode, 400);
+  assert.match(bad.json().error, /já cobre/);
+  const ok = await app.inject({ method: "POST", url: "/api/invoices/i20/pay", payload: { payments: [{ at: "2026-10-15", method: "pix", amount: 600 }], remainder: { installments: 3, firstDue: "2026-11-15", method: "boleto" } } });
+  assert.equal(ok.statusCode, 200, ok.body);
+  assert.equal(ok.json().schedule.length, 3);
+  const inv = await repo.get("invoices", "i20");
+  assert.equal(inv.status, "paid");
+  assert.equal(inv.amount, 600);
+  assert.equal(inv.originalAmount, 4200);
+  assert.match(inv.title, /entrada$/);
+  assert.equal(inv.paidProof.remainder.total, 3600);
+  assert.equal(inv.paidProof.remainder.invoices.length, 3);
+  const parc = (await repo.list("invoices")).filter((i) => i.entradaOf === "i20").sort((a, b) => a.installmentN - b.installmentN);
+  assert.equal(parc.length, 3);
+  assert.deepEqual(parc.map((i) => i.amount), [1200, 1200, 1200]);
+  assert.deepEqual(parc.map((i) => String(i.dueDate).slice(0, 10)), ["2026-11-15", "2026-12-15", "2027-01-15"]);
+  assert.equal(parc[0].status, "open");
+  assert.match(parc[0].title, /Parcela 1\/3 · boleto faturado · restante de/);
+  const fin = (await app.inject({ url: "/api/fin/leverads?month=2026-10" })).json();
+  assert.equal(fin.receber.recebidosMes, 600, "só a entrada entrou no caixa");
+  assert.equal(fin.receber.emAberto.total, 3600, "o restante está a receber");
+  await repo.create("invoices", { id: "i21", saas: "leverads", customer: "c1", amount: 1000, status: "open", dueDate: "2026-10-14" });
+  const many = await app.inject({ method: "POST", url: "/api/invoices/i21/pay", payload: { payments: [{ at: "2026-10-15", method: "pix", amount: 100 }], remainder: { installments: 40, firstDue: "2026-11-15" } } });
+  assert.equal(many.statusCode, 400);
+  assert.match(many.json().error, /1 a 36/);
+  await app.close();
+});

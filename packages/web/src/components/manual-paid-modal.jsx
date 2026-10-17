@@ -38,12 +38,20 @@ function ManualPaidModal({ link, target, onClose, onDone }) {
   const multi = t?.kind !== "link";
   const [rows, setRows] = useState(() => [{ at: t?.at ? String(t.at).slice(0, 10) : today(), method: t?.method || "pix", amount: t?.amount != null ? String(Number(t.amount).toFixed(2)).replace(".", ",") : "", note: "" }]);
   const [note, setNote] = useState("");
+  // Entrada + restante parcelado: liga quando o recebido fica abaixo do
+  // combinado e o cliente vai pagar o resto em parcelas.
+  const [parcelar, setParcelar] = useState(false);
+  const [nParc, setNParc] = useState(2);
+  const [firstDue, setFirstDue] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); });
+  const [remMethod, setRemMethod] = useState("boleto");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const copy = COPY[t?.kind] || COPY.invoice;
   const total = r2(rows.reduce((a, r) => a + num(r.amount), 0));
   const combinado = r2(Number(t?.amount) || 0);
   const difere = multi && Math.abs(total - combinado) >= 0.01;
+  const falta = r2(combinado - total);
+  const podeParcelar = multi && falta >= 0.01;
   const setRow = (i, patch) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const addRow = () => setRows((rs) => {
     const falta = r2(combinado - total);
@@ -59,7 +67,8 @@ function ManualPaidModal({ link, target, onClose, onDone }) {
     setBusy(true); setError(null);
     try {
       const body = multi
-        ? { payments: rows.map((r) => ({ at: r.at, method: r.method, amount: num(r.amount), note: r.note.trim() })), note: note.trim() }
+        ? { payments: rows.map((r) => ({ at: r.at, method: r.method, amount: num(r.amount), note: r.note.trim() })), note: note.trim(),
+          ...(podeParcelar && parcelar ? { remainder: { installments: Number(nParc) || 1, firstDue, method: remMethod } } : {}) }
         : { at: rows[0].at, method: rows[0].method, note: note.trim() };
       const r = t.kind === "link" ? await api.payPaymentLink(t.id, body)
         : t.kind === "confirm" ? await api.confirmInvoice(t.id, body)
@@ -113,8 +122,39 @@ function ManualPaidModal({ link, target, onClose, onDone }) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <button type="button" onClick={addRow} style={{ fontSize: 12.5, fontWeight: 600, color: "var(--accent)" }}>+ outro pagamento</button>
             <span className="mono" style={{ fontSize: 12, color: difere ? "var(--warn)" : "var(--fg-3)" }}>
-              recebido {BRL.format(total)}{difere ? ` · ${total < combinado ? "faltam" : "a mais"} ${BRL.format(Math.abs(combinado - total))} · a fatura passa a valer o recebido` : " · igual ao combinado"}
+              recebido {BRL.format(total)}{difere ? ` · ${total < combinado ? "faltam" : "a mais"} ${BRL.format(Math.abs(combinado - total))}${parcelar && podeParcelar ? "" : " · a fatura passa a valer o recebido"}` : " · igual ao combinado"}
             </span>
+          </div>
+        )}
+        {podeParcelar && (
+          <div style={{ padding: "10px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, cursor: "pointer" }}>
+              <input type="checkbox" checked={parcelar} onChange={(e) => setParcelar(e.target.checked)} />
+              foi uma <b>entrada</b>: o restante ({BRL.format(falta)}) ficou parcelado
+            </label>
+            {parcelar && (
+              <div style={{ display: "grid", gridTemplateColumns: "90px 1fr 1fr", gap: 8 }}>
+                <label style={field}>
+                  <span className="kicker">Parcelas</span>
+                  <select value={nParc} onChange={(e) => setNParc(e.target.value)} style={inputStyle}>
+                    {Array.from({ length: 36 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}x · {BRL.format(r2(falta / n))}</option>)}
+                  </select>
+                </label>
+                <label style={field}>
+                  <span className="kicker">1º vencimento</span>
+                  <input type="date" value={firstDue} onChange={(e) => setFirstDue(e.target.value)} style={{ ...inputStyle, fontFamily: "var(--mono)" }} />
+                </label>
+                <label style={field}>
+                  <span className="kicker">Meio combinado</span>
+                  <select value={remMethod} onChange={(e) => setRemMethod(e.target.value)} style={inputStyle}>
+                    {MANUAL_PAY_METHODS.filter((m) => m.id !== "dinheiro").map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                  </select>
+                </label>
+                <div className="mono dim" style={{ gridColumn: "1 / -1", fontSize: 10.5 }}>
+                  a fatura vira a entrada (paga) e nascem {Number(nParc) || 1} parcela{Number(nParc) > 1 ? "s" : ""} em aberto, mensais a partir do 1º vencimento; elas aparecem em A receber e na ficha do cliente
+                </div>
+              </div>
+            )}
           </div>
         )}
 
