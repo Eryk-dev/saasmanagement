@@ -327,17 +327,20 @@ export async function syncWonLeadDeal(repo, lead) {
     try {
       const n = closedInstallments(lead);
       const subId = subs[0]?.id || "";
-      let alreadyPaid = 0;
+      let alreadyPaid = 0, paidRenewals = 0;
       if (n && subId) {
         for (const inv of (await repo.list("invoices")).filter((i) => i.subscription === subId && i.kind === "renewal")) {
           if (inv.status !== "paid" || (!inv.mpPaymentId && inv.paidAt === inv.dueDate)) await repo.remove("invoices", inv.id);
-          else alreadyPaid += Number(inv.amount) || 0;
+          else { alreadyPaid += Number(inv.amount) || 0; paidRenewals++; }
         }
       }
+      // Renovação paga de verdade É a 1ª (2ª…) parcela: o cronograma continua
+      // dela em diante, com as parcelas que FALTAM — não redivide o resto em N.
       await syncClosedInstallments(repo, {
         customerId: customer.id, saas: lead.saas, subscription: subId,
         total: Math.max(0, (Number(lead.amount) || 0) - alreadyPaid),
-        installments: n, startAt: lead.wonAt || customer.startedAt, method: lead.paymentMethod,
+        installments: Math.max(0, n - paidRenewals), firstN: paidRenewals + 1, totalN: n,
+        startAt: lead.wonAt || customer.startedAt, method: lead.paymentMethod,
       });
     } catch { /* cronograma é best-effort — nunca quebra o espelho */ }
   }

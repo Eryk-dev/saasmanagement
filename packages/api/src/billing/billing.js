@@ -176,24 +176,31 @@ export async function createInstallmentSchedule(repo, { customerId, saas, subscr
 // está; as abertas/vencidas são refeitas: o que falta receber (total − pagas)
 // redividido nas parcelas restantes. installments=0 (virou à vista/cartão) só
 // remove as abertas.
-export async function syncClosedInstallments(repo, { customerId, saas, subscription = "", total, installments, startAt, method = "" }, now = new Date()) {
+//
+// `firstN`/`totalN` (17/10/2026): quando mensalidades JÁ PAGAS fora do
+// cronograma (renovação do desenho antigo, paga de verdade) contam como as
+// primeiras parcelas, `installments` é o que FALTA, `firstN` o nº da próxima e
+// `totalN` o total do contrato — senão o que faltava era redividido em N
+// parcelas de novo (Phillype: 12× 640,75 em vez de 11× 699).
+export async function syncClosedInstallments(repo, { customerId, saas, subscription = "", total, installments, startAt, method = "", firstN = 1, totalN }, now = new Date()) {
   if (!customerId) return;
   const all = (await repo.list("invoices")).filter((i) => i.customer === customerId && i.kind === "installment");
   const paid = all.filter((i) => i.status === "paid");
   const open = all.filter((i) => i.status !== "paid");
   const n = Math.max(0, Math.round(Number(installments) || 0));
+  const ofN = Math.max(n, Math.round(Number(totalN) || 0)) || n;
   const remainingN = Math.max(0, n - paid.length);
   const paidSum = paid.reduce((a, i) => a + (Number(i.amount) || 0), 0);
   const remaining = Math.round(((Number(total) || 0) - paidSum) * 100) / 100;
   // Nada mudou de verdade? Não regrava (regravar acorda o SSE de todo mundo).
   const openSum = open.reduce((a, i) => a + (Number(i.amount) || 0), 0);
   if (open.length === remainingN && Math.abs(openSum - remaining) < 0.005
-    && (!all.length || Number(all[0].installmentOf) === n)) return;
+    && (!all.length || Number(all[0].installmentOf) === ofN)) return;
   for (const i of open) await repo.remove("invoices", i.id);
   if (remainingN > 0 && remaining > 0) {
     await createInstallmentSchedule(repo, {
       customerId, saas, subscription, total: remaining, installments: remainingN,
-      startAt, method, startN: paid.length + 1, of: n,
+      startAt, method, startN: firstN + paid.length, of: ofN,
     }, now);
   }
 }
