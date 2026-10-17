@@ -222,17 +222,40 @@ async function matchByPhone(repo, phone) {
 // `noRegress`: gateway que entrega evento por evento (Appmax; redelivery do
 // Asaas) pode mandar um "pendente" velho depois do "pago" — aprovado não
 // volta pra pendente por isso (estorno/chargeback/cancelado continuam valendo).
-export async function ingestMirrorPayment(repo, input, { discord, log, extra, prev: prevGiven, noRegress = false } = {}) {
+//
+// `input.mirrorId`: id do doc quando o gateway tem chave melhor que o id do
+// pagamento (Asaas: nº da fatura). Doc legado gravado pelo id do pagamento
+// migra pro id novo na primeira passada (vínculo preservado).
+export async function ingestMirrorPayment(repo, input, { discord, log, extra, prev: prevGiven, noRegress = false, rules } = {}) {
   const base = { ...input };
   const gateway = gatewayOf(base);
   base.gateway = gateway;
   const mpId = String(base.mpId);
-  const mirrorId = mirrorIdOf(gateway, mpId);
-  const prev = prevGiven !== undefined ? prevGiven : await repo.get("mp_payments", mirrorId);
+  const legacyId = mirrorIdOf(gateway, mpId);
+  const mirrorId = String(base.mirrorId || legacyId);
+  delete base.mirrorId;
+  let prev = prevGiven !== undefined ? prevGiven : await repo.get("mp_payments", mirrorId);
+  let legacy = null;
+  if (!prev && mirrorId !== legacyId) {
+    legacy = await repo.get("mp_payments", legacyId);
+    prev = legacy;
+  }
   if (noRegress && prev?.status === "approved" && (base.status === "pending" || base.status === "in_process")) {
     base.status = prev.status;
     base.statusDetail = prev.statusDetail || base.statusDetail;
     base.dateApproved = prev.dateApproved || base.dateApproved;
+  }
+  // Classificação dita por HUMANO (manual) ou por regra aprendida nunca
+  // regride pra API/heurística: o tick reclassifica tudo a cada passada.
+  if (prev && (prev.kindSource === "manual" || prev.kindSource === "rule")) {
+    Object.assign(base, { kind: prev.kind, direction: prev.direction || base.direction, kindSource: prev.kindSource, classV: prev.classV ?? base.classV, ...(prev.finRuleId ? { finRuleId: prev.finRuleId } : {}) });
+  } else if (gateway === "mp" && SALE_KINDS.has(base.kind)) {
+    // Regra `interna` por banco de origem (PIX da própria casa vindo do Asaas,
+    // por exemplo): marca antes de qualquer casamento — dinheiro interno não
+    // vincula cliente nem baixa fatura.
+    const list = rules || rulesFor(await repo.list("fin_rules").catch(() => []), "");
+    const r = list.find((x) => x.action === "interna" && ruleMatches(x, base));
+    if (r) Object.assign(base, { kind: "interna", direction: "in", kindSource: "rule", finRuleId: r.id });
   }
   const isSale = SALE_KINDS.has(base.kind);
 
@@ -272,6 +295,17 @@ export async function ingestMirrorPayment(repo, input, { discord, log, extra, pr
   }
 
   const invoices = await repo.list("invoices");
+  // Placeholder do import manual (inv_<nº>) virou o id real do pagamento: a
+  // fatura baixada pelo placeholder passa a apontar pro id real — cashIn
+  // continua contando UMA vez e o /unpay reconhece o pagamento.
+  if (prev?.mpId && String(prev.mpId) !== mpId) {
+    for (const inv of invoices.filter((i) => String(i.mpPaymentId || "") === String(prev.mpId))) {
+      const patched = { mpPaymentId: mpId, ...(inv.paidProof ? { paidProof: { ...inv.paidProof, mpPaymentId: mpId } } : {}) };
+      await repo.update("invoices", inv.id, patched, { silent: true });
+      Object.assign(inv, patched);
+    }
+    log?.info?.({ mirrorId, from: prev.mpId, to: mpId }, "espelho: id do pagamento migrado");
+  }
   const alreadySettled = invoices.find((i) => i.mpPaymentId === mpId) || null;
   if (alreadySettled && !link.invoice) {
     link.invoice = alreadySettled.id;
@@ -389,7 +423,13 @@ export async function ingestMirrorPayment(repo, input, { discord, log, extra, pr
   const doc = { ...base, ...link, ...extra, ...(payerMismatch ? { payerMismatch: true } : {}) };
   const KEYS = Object.keys(doc);
   let saved;
-  if (!prev) saved = await repo.create("mp_payments", { id: mirrorId, ...doc, syncedAt: new Date().toISOString() });
+  if (legacy) {
+    // Migra o doc legado (id do pagamento) pro id novo (nº da fatura),
+    // carregando o que o legado tinha a mais (finIgnored, vínculo manual…).
+    const { id: _omit, ...rest } = legacy;
+    saved = await repo.create("mp_payments", { ...rest, id: mirrorId, ...doc, syncedAt: new Date().toISOString() });
+    await repo.remove("mp_payments", legacyId).catch(() => {});
+  } else if (!prev) saved = await repo.create("mp_payments", { id: mirrorId, ...doc, syncedAt: new Date().toISOString() });
   else if (!sameDoc(prev, doc, KEYS)) saved = await repo.update("mp_payments", mirrorId, { ...doc, syncedAt: new Date().toISOString() });
   else saved = prev;
 
@@ -424,6 +464,7 @@ export async function ingestMirrorPayment(repo, input, { discord, log, extra, pr
 
   return {
     payment: saved,
+    created: !prev,
     matched: !!(link.customer || link.lead),
     settledNow: settledNow?.id || null,
     alreadySettled: alreadySettled?.id || null,
@@ -443,7 +484,10 @@ export async function applyFinRulesToPending(repo, { saas, discord, log } = {}) 
     if (p.status !== "approved" || p.customer || p.finIgnored || (p.kind && !SALE_KINDS.has(p.kind))) continue;
     const rule = rules.find((r) => ruleMatches(r, p));
     if (!rule) continue;
-    if (rule.action === "desconsiderar") {
+    if (rule.action === "interna") {
+      if (p.kindSource === "manual") continue;
+      await repo.update("mp_payments", p.id, { kind: "interna", direction: "in", kindSource: "rule", finRuleId: rule.id }, { silent: true });
+    } else if (rule.action === "desconsiderar") {
       await repo.update("mp_payments", p.id, { finIgnored: true, finIgnoredReason: rule.reason || "regra", finRuleId: rule.id }, { silent: true });
     } else {
       const customer = await repo.get("customers", rule.customer).catch(() => null);
