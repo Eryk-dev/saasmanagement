@@ -109,17 +109,49 @@ export const bucketOf = (status) =>
 // Baixa MANUAL do link: o cliente pagou por fora (PIX direto, boleto na mão,
 // dinheiro) e alguém marca na tela. Guarda data, forma, nota e quem marcou.
 export const MANUAL_METHODS = new Set(["pix", "boleto", "cartao", "transferencia", "dinheiro", "outro"]);
+//
+// `payments: [{ at, method, amount, note }]` (17/10/2026): o dinheiro pode ter
+// entrado em MAIS de uma vez (entrada + restante, dois PIX, meios diferentes).
+// Cada parte tem data, meio e valor; o total vira `amount` da prova e a data
+// da baixa é a da ÚLTIMA parte. Sem `payments`, vale o formato antigo
+// (at/method/note + amount opcional).
+function parseAt(raw, now) {
+  if (!raw) return now;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return new Date(`${raw}T12:00:00-03:00`); // dia BRT, meio-dia
+  return new Date(raw);
+}
 export function validateManualPaid(body = {}, now = new Date()) {
+  const list = Array.isArray(body.payments) ? body.payments : null;
+  if (list) {
+    if (!list.length) return { error: "informe pelo menos um pagamento" };
+    const payments = [];
+    for (const [i, p] of list.entries()) {
+      const method = str(p?.method, 40).toLowerCase();
+      if (!MANUAL_METHODS.has(method)) return { error: `pagamento ${i + 1}: diga como o dinheiro entrou (pix, boleto, cartao, transferencia, dinheiro ou outro)` };
+      const at = parseAt(str(p?.at, 40), now);
+      if (!Number.isFinite(at.getTime())) return { error: `pagamento ${i + 1}: data inválida` };
+      if (at.getTime() > now.getTime() + 86_400_000) return { error: `pagamento ${i + 1}: data no futuro` };
+      const amount = Math.round((Number(p?.amount) || 0) * 100) / 100;
+      if (!(amount > 0)) return { error: `pagamento ${i + 1}: valor recebido inválido` };
+      payments.push({ at: at.toISOString(), method, amount, note: str(p?.note, 300) });
+    }
+    payments.sort((a, b) => a.at.localeCompare(b.at));
+    const last = payments[payments.length - 1];
+    const total = Math.round(payments.reduce((a, p) => a + p.amount, 0) * 100) / 100;
+    return { value: { at: last.at, method: payments.every((p) => p.method === last.method) ? last.method : last.method, note: str(body.note, 300), amount: total, payments } };
+  }
   const method = str(body.method, 40).toLowerCase();
   if (!MANUAL_METHODS.has(method)) return { error: "diga como o dinheiro entrou (pix, boleto, cartao, transferencia, dinheiro ou outro)" };
-  const raw = str(body.at, 40);
-  let at;
-  if (!raw) at = now;
-  else if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) at = new Date(`${raw}T12:00:00-03:00`); // dia BRT, meio-dia
-  else at = new Date(raw);
+  const at = parseAt(str(body.at, 40), now);
   if (!Number.isFinite(at.getTime())) return { error: "data do pagamento inválida" };
   if (at.getTime() > now.getTime() + 86_400_000) return { error: "data do pagamento no futuro" };
-  return { value: { at: at.toISOString(), method, note: str(body.note, 300) } };
+  const value = { at: at.toISOString(), method, note: str(body.note, 300) };
+  if (body.amount != null && body.amount !== "") {
+    const amount = Math.round((Number(body.amount) || 0) * 100) / 100;
+    if (!(amount > 0)) return { error: "valor recebido inválido" };
+    value.amount = amount;
+  }
+  return { value };
 }
 
 // Link + status do dinheiro. Cada pagamento é atribuído a UM link só (gerar o

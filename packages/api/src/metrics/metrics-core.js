@@ -450,8 +450,15 @@ export function cashIn({ customers = [], invoices = [], mpPayments = [], saas, i
       presumido.items.push({ id: i.id, customer: i.customer, amount: Number(i.amount) || 0, paidAt: i.paidAt, kind: i.kind || "renewal" });
       continue;
     }
-    if (!inWin(i.paidAt)) continue;
-    add(i.customer, Number(i.amount) || 0, i.kind || "manual", { kind: i.kind || "manual", at: i.paidAt, amount: Number(i.amount) || 0, customer: i.customer, invoice: i.id, proof });
+    // Baixa em VÁRIAS entradas (paidProof.payments): cada parte conta na
+    // própria data — entrada em setembro e restante em outubro caem cada um
+    // no seu mês, não tudo na data da última.
+    const parts = Array.isArray(i.paidProof?.payments) && i.paidProof.payments.length > 1
+      ? i.paidProof.payments : [{ at: i.paidAt, amount: Number(i.amount) || 0 }];
+    for (const part of parts) {
+      if (!inWin(part.at)) continue;
+      add(i.customer, Number(part.amount) || 0, i.kind || "manual", { kind: i.kind || "manual", at: part.at, amount: Number(part.amount) || 0, customer: i.customer, invoice: i.id, proof, ...(parts.length > 1 ? { part: true } : {}) });
+    }
   }
   return { total: round2(total), byCustomer, byKind, presumido, items };
 }
