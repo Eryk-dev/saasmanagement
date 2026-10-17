@@ -9,7 +9,7 @@ import { allUsers } from "../lib/users.js";
 import { mpMethodLabel, gatewayShort } from "../lib/payments.js";
 import { ManualPaidModal } from "../components/manual-paid-modal.jsx";
 import { PagamentosLista, KIND_LABEL, kindOf } from "./finance.jsx";
-import { SECTOR_CATS, SECTOR_LABEL, PAY_CAT_LABEL, catLabel, money, mesCurto, mesLongo } from "../lib/fin-cats.js";
+import { SECTOR_CATS, SECTOR_LABEL, PAY_CAT_LABEL, catLabel, money, mesCurto, mesLongo, paidViaLabel, FIN_ACCOUNT_LABEL } from "../lib/fin-cats.js";
 
 // As abas do Financeiro (12/10/2026 — quatro, um mês, uma régua de caixa):
 //   Resumo      — pendências com prazo no topo, a foto do mês (recebido pela
@@ -292,7 +292,7 @@ export function ResumoTab({ product, month, onTab, onMonth }) {
         )}
         {fin.conciliacao.pendentes.n > 0 && (
           <AvisoTopo navy={fin.receber.vencidas.n === 0 && fin.tiles.vencidos.n === 0} tom="info"
-            titulo={`${int(fin.conciliacao.pendentes.n)} ${fin.conciliacao.pendentes.n === 1 ? "entrada sem dono" : "entradas sem dono"} no Mercado Pago`}
+            titulo={`${int(fin.conciliacao.pendentes.n)} ${fin.conciliacao.pendentes.n === 1 ? "entrada sem dono" : "entradas sem dono"} nos gateways`}
             nota={`${money(fin.conciliacao.pendentes.total)} esperando cliente ou motivo`}
             acao={{ label: "conciliar", onClick: () => onTab?.("conciliacao") }}
           />
@@ -322,6 +322,7 @@ export function ResumoTab({ product, month, onTab, onMonth }) {
 
       <div className="finance-summary-grid">
         <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+          <CaixaCard caixa={fin.caixa} product={product} reload={reload} />
           <FluxoCard fluxo={fin.fluxo} previsto={fin.previsto} month={month} onMonth={onMonth} />
           <GastosCard setores={{ ...S, cogs }} recebidosMes={fin.receber.recebidosMes} month={month} />
         </div>
@@ -354,6 +355,60 @@ export function ResumoTab({ product, month, onTab, onMonth }) {
           onDone={async () => { setConfirming(null); window.toast?.("recebimento confirmado", "pos"); await reload(); }} />,
         document.body)}
     </div>
+  );
+}
+
+// ── Caixa por conta ──────────────────────────────────────────────────────────
+// Retrato dos saldos das contas da casa (fin-accounts.js). O cockpit não vê
+// saque do MP nem extrato dos bancos por API: o saldo é lançado à mão com a
+// data, e a reserva (POTS, BTG investimento) fica separada do disponível.
+function CaixaCard({ caixa, product, reload }) {
+  const [editing, setEditing] = useState(null); // id da conta em edição
+  const [val, setVal] = useState(""), [asOf, setAsOf] = useState(""), [busy, setBusy] = useState(false), [err, setErr] = useState(null);
+  const contas = caixa?.contas || [];
+  const abrir = (c) => { setEditing(c.id); setVal(c.balance == null ? "" : String(c.balance)); setAsOf(c.asOf || new Date().toISOString().slice(0, 10)); setErr(null); };
+  const salvar = async () => {
+    const n = Number(String(val).replace(/\./g, "").replace(",", "."));
+    if (!Number.isFinite(n)) { setErr("saldo inválido"); return; }
+    setBusy(true); setErr(null);
+    try { await api.finAccountBalance(product.id, editing, { balance: n, asOf }); setEditing(null); await reload(); }
+    catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  };
+  const dmyShort = (d) => (d ? `${String(d).slice(8, 10)}/${String(d).slice(5, 7)}` : "");
+  return (
+    <Card title="Caixa por conta" hint="saldo lançado à mão com a data do extrato · contas da casa (todos os produtos) · reserva fora do disponível">
+      <div style={{ padding: "6px var(--inset-x) 16px", display: "flex", flexDirection: "column" }}>
+        {contas.map((c) => (
+          <div key={c.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "7px 0", borderBottom: "1px solid var(--line-faint)", fontSize: 12.5, flexWrap: "wrap" }}>
+            <span style={{ flex: 1, minWidth: 160 }}>
+              {c.label}
+              <span className="dim" style={{ display: "block", fontSize: 11 }}>{c.kind === "inv" ? "reserva" : "disponível"}{c.asOf ? ` · saldo de ${dmyShort(c.asOf)}` : " · sem saldo lançado"}{c.note ? ` · ${c.note}` : ""}</span>
+            </span>
+            {editing === c.id ? (
+              <span style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                <input aria-label={`Saldo de ${c.label}`} value={val} onChange={(e) => setVal(e.target.value)} placeholder="0,00" style={{ ...inp, width: 120, textAlign: "right" }} />
+                <input aria-label="Data do saldo" type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} style={{ ...inp, width: 150 }} />
+                <button onClick={salvar} disabled={busy} style={btnPri}>salvar</button>
+                <button onClick={() => setEditing(null)} className="dim" style={{ fontSize: 12, fontWeight: 600 }}>cancelar</button>
+              </span>
+            ) : (
+              <>
+                <span className="tnum" style={{ fontWeight: 650, whiteSpace: "nowrap", color: c.balance == null ? "var(--fg-4)" : "var(--fg-1)" }}>{c.balance == null ? "—" : money(c.balance)}</span>
+                <button onClick={() => abrir(c)} style={{ color: "var(--accent)", fontSize: 12, fontWeight: 600 }}>ajustar</button>
+              </>
+            )}
+          </div>
+        ))}
+        {err && <div role="alert" style={{ fontSize: 12, color: "var(--neg)", marginTop: 6 }}>{err}</div>}
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 10, fontSize: 12.5 }}>
+          <span><span className="kicker">disponível</span> <b className="tnum">{money(caixa?.disponivel || 0)}</b></span>
+          <span><span className="kicker">reserva</span> <b className="tnum">{money(caixa?.reserva || 0)}</b></span>
+          <span><span className="kicker">total</span> <b className="tnum">{money(caixa?.total || 0)}</b></span>
+          {caixa && caixa.informadas < contas.length && <span className="dim">{int(contas.length - caixa.informadas)} conta{contas.length - caixa.informadas === 1 ? "" : "s"} sem saldo lançado</span>}
+        </div>
+      </div>
+    </Card>
   );
 }
 
@@ -443,6 +498,21 @@ export function ConciliacaoTab({ product, month }) {
     try {
       await api.update("mp_payments", p.id, { finIgnored: true, finIgnoredReason: motivo[p.id] || "outro" });
       if (querLembrar(p)) { try { await criarRegra(p, "desconsiderar", { reason: motivo[p.id] || "outro" }); } catch(e){setNote({ok:false,text:`Pagamento desconsiderado; regra não criada: ${e.message}`});await reload();await loadAll();return;} }
+      await reload(); await loadAll();
+    } catch (e) { setNote({ ok: false, text: e.message }); }
+  };
+  // Transferência da própria casa (ex.: PIX vindo da conta do Asaas): marca
+  // interna à mão — o poller respeita (kindSource manual) — e, com "lembrar"
+  // e banco de origem conhecido, vira regra pro próximo PIX desse banco.
+  const marcarInterna = async (p) => {
+    try {
+      await api.update("mp_payments", p.id, { kind: "interna", direction: "in", kindSource: "manual" });
+      const bank = String(p.payerBank || "").trim();
+      if (lembrar[p.id] !== false && bank.length >= 4) {
+        try { await api.create("fin_rules", { saas: product.id, matchField: "payerBank", matchValue: bank, action: "interna", createdAt: new Date().toISOString() }); }
+        catch (e) { setNote({ ok: false, text: `Marcado como interno; regra não criada: ${e.message}` }); await reload(); await loadAll(); return; }
+      }
+      setNote({ ok: true, text: bank.length >= 4 && lembrar[p.id] !== false ? "marcado como interno · regra criada: PIX desse banco já entra como interna" : "marcado como interno" });
       await reload(); await loadAll();
     } catch (e) { setNote({ ok: false, text: e.message }); }
   };
@@ -584,11 +654,12 @@ export function ConciliacaoTab({ product, month }) {
                     {IGNORE_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
                   </select>
                   <button onClick={() => run(()=>desconsiderar(p))} disabled={!motivo[p.id]} style={{ ...btn, opacity: motivo[p.id] ? 1 : .55 }}>Desconsiderar</button>
-                  {best && (
-                    <label title={`A regra casa por ${best[2]}. Próximo pagamento desse pagador é resolvido sozinho.`}
+                  <button onClick={() => run(()=>marcarInterna(p))} style={btn} title={`Dinheiro da própria casa (transferência entre contas${p.payerBank ? `, vindo de ${p.payerBank}` : ""}): sai do recebido e da fila. Com "lembrar" marcado, todo PIX desse banco entra como interno.`}>É interno</button>
+                  {(best || String(p.payerBank || "").length >= 4) && (
+                    <label title={best ? `A regra casa por ${best[2]}. Próximo pagamento desse pagador é resolvido sozinho.` : `Sem identidade do pagador: "lembrar" só vale pra marcar como interno todo PIX vindo de ${p.payerBank}.`}
                       style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--fg-2)", cursor: "pointer" }}>
-                      <input type="checkbox" checked={querLembrar(p)} onChange={(e) => setLembrar((s) => ({ ...s, [p.id]: e.target.checked }))} />
-                      lembrar deste pagador
+                      <input type="checkbox" checked={lembrar[p.id] !== false} onChange={(e) => setLembrar((s) => ({ ...s, [p.id]: e.target.checked }))} />
+                      {best ? "lembrar deste pagador" : "lembrar deste banco"}
                     </label>
                   )}
                 </div>
@@ -656,7 +727,7 @@ export function ConciliacaoTab({ product, month }) {
               <div key={r.id} style={{ display: "flex", gap: 10, alignItems: "baseline", padding: "7px 0", borderBottom: "1px solid var(--line-faint)", fontSize: 12.5, flexWrap: "wrap" }}>
                 <span style={{ flex: 1, minWidth: 200 }}>
                   <b>{r.matchValue}</b>
-                  <span className="dim"> ({r.matchField === "payerDoc" ? "documento" : r.matchField === "payerEmail" ? "e-mail" : "nome"}) → {r.action === "vincular" ? `cliente ${customers.find((c) => c.id === r.customer)?.name || r.customer}` : `desconsiderar (${r.reason || "outro"})`}</span>
+                  <span className="dim"> ({r.matchField === "payerDoc" ? "documento" : r.matchField === "payerEmail" ? "e-mail" : r.matchField === "payerBank" ? "banco de origem" : "nome"}) → {r.action === "vincular" ? `cliente ${customers.find((c) => c.id === r.customer)?.name || r.customer}` : r.action === "interna" ? "movimentação interna" : `desconsiderar (${r.reason || "outro"})`}</span>
                 </span>
                 <span className="dim tnum" style={{ fontSize: 11.5 }}>{int(r.autoCount || 0)} aplicações</span>
                 <button onClick={() => run(()=>excluirRegra(r))} className="dim" style={{ fontSize: 12, fontWeight: 600 }}>excluir</button>
@@ -768,7 +839,7 @@ function PayableRow({ p, fin, reload, showPerson = true }) {
             p.recurring ? "recorrente" : p.templateId ? "da recorrência" : null,
             p.source === "payroll" ? "folha pela Remuneração" : null,
             p.amountManual ? "valor revisado à mão" : null,
-            p.paidVia === "mp" ? (p.autoMatched ? "baixada sozinha pela saída do MP" : "baixada pela saída do MP") : null,
+            paidViaLabel(p) || null,
           ].filter(Boolean).join(" · ")}
         </span>
         {p.payroll && (
@@ -1039,7 +1110,7 @@ export function FolhaTab({ product, month }) {
                           <span style={{ flex: 1, minWidth: 140 }}>{p.description}<span className="dim"> · {catLabel(p.category)}{p.source === "payroll" ? " · folha" : ""}{p.amountManual ? " · revisado" : ""}</span></span>
                           <span className="tnum" style={{ fontWeight: 650 }}>{money(p.amount)}</span>
                           {p.status === "paga"
-                            ? <Pill tone="pos">pago {dmyFull(String(p.paidAt || "").slice(0, 10))}{p.paidVia === "mp" ? " · MP" : ""}</Pill>
+                            ? <Pill tone="pos">pago {dmyFull(String(p.paidAt || "").slice(0, 10))}{p.paidVia === "mp" ? " · MP" : p.paidVia === "bank" && FIN_ACCOUNT_LABEL[p.paidAccount] ? ` · ${FIN_ACCOUNT_LABEL[p.paidAccount]}` : ""}</Pill>
                             : p.dueDate && p.dueDate < fin.today ? <Pill tone="neg">vencida {dmyFull(p.dueDate)}</Pill> : <Pill>vence {dmyFull(p.dueDate)}</Pill>}
                         </div>
                       ))}

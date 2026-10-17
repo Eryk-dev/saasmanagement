@@ -397,6 +397,8 @@ export const api = {
   payrollGenerate: (saas, month) => req("POST", `/api/comp/payroll/${saas}/${month}/generate`, {}),
   // Aplica as regras de conciliação aprendidas nas pendências.
   finRulesApply: (saas) => req("POST", `/api/fin/${saas}/rules/apply`, {}),
+  // Caixa por conta: saldo lançado à mão de uma conta da casa.
+  finAccountBalance: (saas, account, body) => req("PUT", `/api/fin/${saas}/bank/accounts/${account}`, body),
   // Mídia social: métricas do perfil, histórico e publicação orgânica (IG/FB).
   socialSummary: (saas, days) => req("GET", `/api/social/summary?saas=${encodeURIComponent(saas)}${days ? `&days=${days}` : ""}`),
   // Só a contagem líquida de novos seguidores (~24h) + o @ do perfil, pro aviso

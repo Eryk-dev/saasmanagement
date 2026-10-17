@@ -29,6 +29,7 @@ import { normalizeRuleValue, ruleMatches, rulesFor } from "./fin-rules.js";
 import { ensurePayables, missingInstances } from "./payables.js";
 import { round2, syncMpOutflows } from "./mp-outflow.js";
 import { autoMatchOutflows } from "./outflow-match.js";
+import { readFinAccounts, writeFinAccount, caixaOf } from "./fin-accounts.js";
 
 export { ensurePayables, normalizeRuleValue };
 
@@ -109,10 +110,11 @@ export function registerFinRoutes(app, repo, { mp, asaas, discord } = {}) {
     const today = dayKey(new Date());
     const window = monthsBack(month, 6);
 
-    const [allPayables, allInvoices, allExpenses, allInsights, allLeads, allCustomers, allMp, allRules, allMovs] = await Promise.all([
+    const [allPayables, allInvoices, allExpenses, allInsights, allLeads, allCustomers, allMp, allRules, allMovs, finAccounts] = await Promise.all([
       repo.list("payables"), repo.list("invoices"), repo.list("expenses"),
       repo.list("ad_insights"), repo.list("leads"), repo.list("customers"),
       repo.list("mp_payments"), repo.list("fin_rules"), repo.list("mp_movements"),
+      readFinAccounts(repo),
     ]);
     const payables = allPayables.filter((p) => p.saas === product.id);
     const invoices = allInvoices.filter((i) => i.saas === product.id);
@@ -240,6 +242,9 @@ export function registerFinRoutes(app, repo, { mp, asaas, discord } = {}) {
 
     return {
       month, today,
+      // Caixa por conta (fin-accounts.js): saldos lançados por conta, com a
+      // data do retrato; disponível × reserva. Global da casa, não do produto.
+      caixa: caixaOf(finAccounts),
       payables: payables
         .filter((p) => p.month === month || (p.status !== "paga" && p.dueDate && p.dueDate < today))
         .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate))),
@@ -290,6 +295,21 @@ export function registerFinRoutes(app, repo, { mp, asaas, discord } = {}) {
         despesasMes, resultado: round2(recebidosMes - despesasMes),
       },
     };
+  });
+
+  // Saldo de uma conta da casa (Caixa por conta). Body { balance, asOf, note }.
+  app.put("/api/fin/:saas/bank/accounts/:account", async (req, reply) => {
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "produto não encontrado" });
+    try {
+      const cfg = await writeFinAccount(repo, req.params.account, {
+        balance: req.body?.balance, asOf: req.body?.asOf || new Date().toISOString().slice(0, 10),
+        note: req.body?.note, source: req.body?.source || "manual", updatedBy: req.authUser?.id || "api",
+      });
+      return { ok: true, caixa: caixaOf(cfg) };
+    } catch (err) {
+      return reply.code(err.statusCode || 400).send({ error: err.message });
+    }
   });
 
   // Materializa as contas a pagar recorrentes do mês (e dos 5 anteriores, a

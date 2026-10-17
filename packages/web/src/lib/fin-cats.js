@@ -50,3 +50,13 @@ export const shiftMonth = (mk, delta) => {
   const d = new Date(y, m - 1 + delta, 15);
   return monthKeyOf(d);
 };
+
+// Contas da casa (Caixa por conta · payments/fin-accounts.js) e rótulo curto
+// de "por onde saiu" numa conta a pagar (paidVia/paidAccount).
+export const FIN_ACCOUNT_LABEL = { mp: "Mercado Pago", mp_reserva: "MP reserva", asaas: "Asaas", sicredi: "Sicredi", btg_cc: "BTG cc", btg_inv: "BTG inv" };
+export const paidViaLabel = (p) => {
+  if (!p?.paidVia) return "";
+  if (p.paidVia === "mp") return p.autoMatched ? "baixada sozinha pela saída do MP" : "baixada pela saída do MP";
+  if (p.paidVia === "bank") return `paga pelo ${FIN_ACCOUNT_LABEL[p.paidAccount] || "banco"}`;
+  return `paga via ${FIN_ACCOUNT_LABEL[p.paidVia] || p.paidVia}`;
+};

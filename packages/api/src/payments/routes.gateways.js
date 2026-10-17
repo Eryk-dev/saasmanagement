@@ -12,7 +12,7 @@
 
 import { asaas as defaultAsaas } from "./asaas.js";
 import { appmax as defaultAppmax, parseAppmaxEvent } from "./appmax.js";
-import { ingestAsaasPayment, runAsaasSync } from "./asaas-payments.js";
+import { ingestAsaasPayment, runAsaasSync, importAsaasRows } from "./asaas-payments.js";
 import { ingestMirrorPayment } from "./mp-payments.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "../platform/http-status.js";
 
@@ -31,6 +31,16 @@ export function registerGatewayRoutes(app, repo, { mp, asaas = defaultAsaas, app
       req.log.warn({ err: err.message }, "Asaas: sync manual falhou");
       return reply.code(UPSTREAM_FAILED).send({ error: "Asaas não respondeu a busca de cobranças", detail: String(err.message || err).slice(0, 300) });
     }
+  });
+
+  // Import manual das cobranças do Asaas (export "Cobranças" ou extrato)
+  // ENQUANTO a chave da API não existe: mesmo doc (asa_inv_<nº da fatura>)
+  // que o sync vai completar depois. Não exige asaas.configured().
+  app.post("/api/asaas/import", { bodyLimit: 8 * 1024 * 1024 }, async (req, reply) => {
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : null;
+    if (!rows?.length) return reply.code(400).send({ error: "rows[] obrigatório: linhas do export do Asaas" });
+    if (rows.length > 2000) return reply.code(400).send({ error: "no máximo 2000 linhas por chamada" });
+    return importAsaasRows(repo, rows, { discord, log: req.log });
   });
 
   // Webhook do Asaas (painel → Integrações → Webhooks; eventos de cobrança).
