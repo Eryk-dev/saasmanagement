@@ -13,8 +13,11 @@ import { SECTOR_CATS, SECTOR_LABEL, PAY_CAT_LABEL, catLabel, money, mesCurto, me
 
 // As abas do Financeiro (12/10/2026 — quatro, um mês, uma régua de caixa):
 //   Resumo      — pendências com prazo no topo, a foto do mês (recebido pela
-//                 régua única × PRESUMIDO), fluxo de 6 meses, gastos e DRE
-//                 (números do servidor; a UI só desconta IA/WhatsApp).
+//                 régua única × PRESUMIDO), caixa por conta, gastos e DRE com
+//                 cada categoria abrindo nos lançamentos (números do servidor;
+//                 a UI só desconta IA/WhatsApp).
+//   Resultado   — fluxo de caixa dos últimos 6 meses (entrou × saiu),
+//                 resultado por mês e acumulado, caixa de hoje (18/10/2026).
 //   Conciliação — o espelho do Mercado Pago inteiro: fila do que precisa de
 //                 dono (entradas de cliente e saídas), lista por tipo (venda,
 //                 maquininha, interna, saída, ruído, ignorado), regras
@@ -198,14 +201,50 @@ function DreRow({ label, value, strong, neg, indent, title }) {
 }
 
 // Bloco de setor no DRE: linha do total + itens por categoria indentados.
-function DreSetor({ sector, itens }) {
+// Cada categoria ABRE (18/10/2026) nos lançamentos que a compõem — contas a
+// pagar, custos da aba Custos e a mídia automática — vindos de dre.detalhe.
+const dmyLine = (d) => (d ? `${String(d).slice(8, 10)}/${String(d).slice(5, 7)}` : "");
+function DreSetor({ sector, itens, detalhe }) {
+  const [open, setOpen] = useState({});
   const entries = Object.entries(itens || {}).sort((a, b) => b[1] - a[1]);
   const total = r2(entries.reduce((a, [, v]) => a + v, 0));
   if (!(total > 0)) return null;
+  const nameOf = (uid) => allUsers().find((u) => u.id === uid)?.name || uid;
   return (
     <>
       <DreRow label={SECTOR_LABEL[sector] || sector} value={total} neg />
-      {entries.map(([k, v]) => <DreRow key={k} label={catLabel(k)} value={v} neg indent />)}
+      {entries.map(([k, v]) => {
+        const lines = detalhe?.[k] || [];
+        const aberto = !!open[k];
+        return (
+          <React.Fragment key={k}>
+            <div onClick={() => lines.length && setOpen((o) => ({ ...o, [k]: !o[k] }))} role={lines.length ? "button" : undefined} aria-expanded={lines.length ? aberto : undefined}
+              title={lines.length ? `${lines.length} lançamento${lines.length > 1 ? "s" : ""} · clique pra ${aberto ? "fechar" : "abrir"}` : ""}
+              style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "6px 0", borderBottom: "1px solid var(--line-faint)", fontSize: 12.5, cursor: lines.length ? "pointer" : "default" }}>
+              <span style={{ color: "var(--fg-3)", paddingLeft: 14 }}>
+                {lines.length > 0 && <span className="mono" style={{ display: "inline-block", width: 12, color: "var(--fg-4)" }}>{aberto ? "▾" : "▸"}</span>}
+                {catLabel(k)}{lines.length > 1 ? <span className="dim" style={{ fontSize: 11 }}> · {lines.length}</span> : null}
+              </span>
+              <span className="tnum" style={{ fontWeight: 550, whiteSpace: "nowrap", color: "var(--fg-2)" }}>− {money(v)}</span>
+            </div>
+            {aberto && lines.map((l, i) => (
+              <div key={l.id || i} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "4px 0 4px 32px", borderBottom: "1px solid var(--line-faint)", fontSize: 11.5, background: "var(--bg-inset)" }}>
+                <span style={{ minWidth: 0, color: "var(--fg-2)" }}>
+                  <span className="tnum dim" style={{ display: "inline-block", width: 40 }}>{dmyLine(l.at)}</span>
+                  {l.label}
+                  <span className="dim"> {[
+                    l.who ? (l.source === "payable" && !String(l.who).includes(" ") ? nameOf(l.who) : l.who) : "",
+                    l.source === "payable" ? (l.status === "paga" ? `paga${l.paidVia === "bank" || l.paidVia === "mp" ? ` · ${FIN_ACCOUNT_LABEL[l.paidAccount || l.paidVia] || l.paidVia}` : ""}` : "em aberto") : "",
+                    l.source === "pct" ? `${l.pct}% ${({ received: "do recebido", cartao12x: "do cartão 12x", taxa_real: "taxa real dos gateways", won: "do vendido" })[l.pctBase] || l.pctBase}` : "",
+                    l.source === "expense" ? "aba Custos" : "",
+                  ].filter(Boolean).join(" · ")}</span>
+                </span>
+                <span className="tnum" style={{ whiteSpace: "nowrap", color: "var(--fg-2)" }}>{money(l.amount)}</span>
+              </div>
+            ))}
+          </React.Fragment>
+        );
+      })}
     </>
   );
 }
@@ -323,7 +362,6 @@ export function ResumoTab({ product, month, onTab, onMonth }) {
       <div className="finance-summary-grid">
         <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
           <CaixaCard caixa={fin.caixa} product={product} reload={reload} />
-          <FluxoCard fluxo={fin.fluxo} previsto={fin.previsto} month={month} onMonth={onMonth} />
           <GastosCard setores={{ ...S, cogs }} recebidosMes={fin.receber.recebidosMes} month={month} />
         </div>
         <Card title="DRE do mês" hint="P&L de SaaS: receita · deduções · custo do serviço · margem bruta · setores">
@@ -332,14 +370,14 @@ export function ResumoTab({ product, month, onTab, onMonth }) {
               <DreRow key={k} label={RECEITA_LABEL[k] || k} value={v} indent />
             ))}
             <DreRow label="Receita recebida" value={receitaTotal} strong />
-            <DreSetor sector="deducoes" itens={S.deducoes} />
+            <DreSetor sector="deducoes" itens={S.deducoes} detalhe={D.detalhe} />
             {D.deducoes > 0 && <DreRow label="Receita líquida" value={liquida} strong />}
-            <DreSetor sector="cogs" itens={cogs} />
+            <DreSetor sector="cogs" itens={cogs} detalhe={D.detalhe} />
             <DreRow label={`Lucro bruto${margem != null ? ` · margem ${String(margem).replace(".", ",")}%` : ""}`} value={bruto} strong
               title="Benchmark de SaaS: margem bruta saudável entre 70% e 85%." />
-            <DreSetor sector="sm" itens={S.sm} />
-            <DreSetor sector="rd" itens={S.rd} />
-            <DreSetor sector="ga" itens={S.ga} />
+            <DreSetor sector="sm" itens={S.sm} detalhe={D.detalhe} />
+            <DreSetor sector="rd" itens={S.rd} detalhe={D.detalhe} />
+            <DreSetor sector="ga" itens={S.ga} detalhe={D.detalhe} />
             <DreRow label="Resultado do mês" value={resultado} strong />
             {fin.conciliacao.pendentes.n > 0 && (
               <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--warn)" }}>
@@ -354,6 +392,64 @@ export function ResumoTab({ product, month, onTab, onMonth }) {
           onClose={() => setConfirming(null)}
           onDone={async () => { setConfirming(null); window.toast?.("recebimento confirmado", "pos"); await reload(); }} />,
         document.body)}
+    </div>
+  );
+}
+
+// ── Resultado geral ──────────────────────────────────────────────────────────
+// Aba própria (18/10/2026, Leo): o fluxo de caixa saiu do Resumo e virou a
+// leitura dos últimos 6 meses — entrou × saiu × resultado por mês, acumulado,
+// e o caixa de hoje. Os números são os mesmos do servidor (fluxo + caixa).
+export function ResultadoTab({ product, month, onMonth }) {
+  const { fin, err, reload } = useFin(product, month);
+  if (!fin || err) return <Carregando err={err} retry={reload} />;
+  const fluxo = fin.fluxo || [];
+  let acc = 0;
+  const linhas = fluxo.map((f) => { const res = r2(f.entrada - f.saida); acc = r2(acc + res); return { ...f, resultado: res, acumulado: acc }; });
+  const atual = linhas.find((l) => l.month === month) || linhas[linhas.length - 1] || { entrada: 0, saida: 0, resultado: 0 };
+  const entradaTot = r2(linhas.reduce((a, l) => a + l.entrada, 0)), saidaTot = r2(linhas.reduce((a, l) => a + l.saida, 0));
+  const caixa = fin.caixa || { total: 0, disponivel: 0, reserva: 0 };
+  return (
+    <div className="finance-content">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 190px), 1fr))", gap: 12 }}>
+        <StatTile label={`Resultado de ${mesCurto(month)}`} value={money(atual.resultado)} delta={`entrou ${money(atual.entrada)} · saiu ${money(atual.saida)}`} tone={atual.resultado >= 0 ? "up" : "down"}
+          title="Recebido (régua única) menos saídas do mês (contas pagas + custos + saídas da conta sem dono)." />
+        <StatTile label={`Acumulado · ${linhas.length} meses`} value={money(acc)} delta={`entrou ${money(entradaTot)} · saiu ${money(saidaTot)}`} tone={acc >= 0 ? "up" : "down"}
+          title={`Soma dos resultados de ${mesCurto(linhas[0]?.month || month)} a ${mesCurto(month)}.`} />
+        <StatTile label="Caixa hoje" value={money(caixa.total)} delta={`disponível ${money(caixa.disponivel)} · reserva ${money(caixa.reserva)}`} tone="flat"
+          title="Saldos lançados em Caixa por conta (Resumo), com a data de cada extrato." />
+        <StatTile label={`Previsto pra ${mesCurto(month)}`} value={money(r2((fin.previsto?.entrada || 0) - (fin.previsto?.saida || 0)))} delta={`entra ${money(fin.previsto?.entrada || 0)} · sai ${money(fin.previsto?.saida || 0)}`} tone="flat"
+          title="Faturas em aberto com vencimento no mês menos contas abertas + custos do mês." />
+      </div>
+      <FluxoCard fluxo={fluxo} previsto={fin.previsto} month={month} onMonth={onMonth} />
+      <Card title="Mês a mês" hint="entrou · saiu · resultado · acumulado desde o primeiro mês da janela · clique no mês pra abrir no Resumo">
+        <div className="tbl-x" style={{ padding: "6px var(--inset-x) 16px" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 520 }}>
+            <thead><tr>{["Mês", "Entrou", "Saiu", "Resultado", "Acumulado"].map((h, i) => <th key={h} className="kicker" style={{ textAlign: i ? "right" : "left", padding: "8px 10px", borderBottom: "1px solid var(--line-1)" }}>{h}</th>)}</tr></thead>
+            <tbody>
+              {linhas.map((l) => (
+                <tr key={l.month} style={{ background: l.month === month ? "var(--bg-inset)" : "transparent" }}>
+                  <td style={{ padding: "8px 10px", borderBottom: "1px solid var(--line-faint)", textTransform: "capitalize" }}>
+                    <button type="button" onClick={() => onMonth?.(l.month)} style={{ fontSize: 13, fontWeight: l.month === month ? 650 : 500, color: "var(--fg-1)", padding: 0 }}>{mesLongo(l.month)}</button>
+                  </td>
+                  <td className="tnum" style={{ padding: "8px 10px", textAlign: "right", borderBottom: "1px solid var(--line-faint)", color: "var(--pos)" }}>{money(l.entrada)}</td>
+                  <td className="tnum" style={{ padding: "8px 10px", textAlign: "right", borderBottom: "1px solid var(--line-faint)", color: "var(--neg)" }}>− {money(l.saida)}{l.saidasSemDono ? <span className="dim" title="saídas da conta sem conta a pagar" style={{ fontSize: 10.5 }}> ({money(l.saidasSemDono)} s/ dono)</span> : null}</td>
+                  <td className="tnum" style={{ padding: "8px 10px", textAlign: "right", borderBottom: "1px solid var(--line-faint)", fontWeight: 650, color: l.resultado >= 0 ? "var(--pos)" : "var(--neg)" }}>{l.resultado >= 0 ? "+" : "−"} {money(Math.abs(l.resultado))}</td>
+                  <td className="tnum" style={{ padding: "8px 10px", textAlign: "right", borderBottom: "1px solid var(--line-faint)", fontWeight: 650, color: l.acumulado >= 0 ? "var(--fg-1)" : "var(--neg)" }}>{money(l.acumulado)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot><tr>
+              <td style={{ padding: "8px 10px", fontWeight: 650 }}>Total</td>
+              <td className="tnum" style={{ padding: "8px 10px", textAlign: "right", fontWeight: 650 }}>{money(entradaTot)}</td>
+              <td className="tnum" style={{ padding: "8px 10px", textAlign: "right", fontWeight: 650 }}>− {money(saidaTot)}</td>
+              <td className="tnum" style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700, color: acc >= 0 ? "var(--pos)" : "var(--neg)" }}>{acc >= 0 ? "+" : "−"} {money(Math.abs(acc))}</td>
+              <td />
+            </tr></tfoot>
+          </table>
+        </div>
+      </Card>
+      <InfoNota>Entrada = recebido pela régua única (pagamento aprovado nos gateways + fatura baixada com prova). Saída = contas a pagar pagas no mês + custos automáticos + saídas da conta do MP sem conta a pagar. Presumido e entradas sem dono ficam fora até alguém confirmar/vincular.</InfoNota>
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { useData } from "../data.jsx";
 import { PageHead, StatTile, Card, Pill } from "../components/viz.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { EmptyState } from "../atoms.jsx";
-import { ResumoTab, ConciliacaoTab, PagarTab, FolhaTab } from "./finance-hub.jsx";
+import { ResumoTab, ResultadoTab, ConciliacaoTab, PagarTab, FolhaTab } from "./finance-hub.jsx";
 import { SECTOR_CATS, catLabel, money, moneyFull, mesLongo, mesCurto, monthKeyOf, shiftMonth } from "../lib/fin-cats.js";
 // Financeiro — o dinheiro do produto num lugar só, em QUATRO abas (12/10/2026):
 //   Resumo      — a foto do mês: pendências com prazo, recebido (régua única
@@ -73,13 +73,15 @@ function ExpensesScreen() {
       <PageHead title="Financeiro"
         sub={{
           resumo: `${mesLongo(month)} · a foto do mês: pendências, recebido × presumido, fluxo, gastos e DRE`,
-          conciliacao: `${mesLongo(month)} · o espelho do Mercado Pago inteiro: todo pagamento aprovado precisa de dono ou motivo`,
+          resultado: `últimos 6 meses até ${mesLongo(month)} · entrou × saiu, resultado por mês, acumulado e caixa de hoje`,
+          conciliacao: `${mesLongo(month)} · o espelho dos gateways inteiro: todo pagamento aprovado precisa de dono ou motivo`,
           pagar: `${mesLongo(month)} · contas com vencimento, situação e recorrência`,
           folha: `${mesLongo(month)} · folha salarial pela Remuneração: fixo, variável, bônus, VR/VT, acordos e ajustes por pessoa`,
           custos: `${mesLongo(month)} · automáticos (mídia, IA, WhatsApp, taxa do MP) e lançamentos por competência`,
         }[tab] || ""}>
         <nav className="finance-tabs" aria-label="Abas do financeiro">{[
           { value: "resumo", label: "Resumo" },
+          { value: "resultado", label: "Resultado geral" },
           { value: "conciliacao", label: "Conciliação" },
           { value: "pagar", label: "A pagar" },
           { value: "folha", label: "Folha" },
@@ -91,6 +93,7 @@ function ExpensesScreen() {
       {/* key={`${product.id}:${month}`}: trocar de produto/mês remonta a aba — rascunho
           de custo e vínculo em andamento nunca vazam pro SaaS errado. */}
       {tab === "resumo" && <ResumoTab key={`${product.id}:${month}`} product={product} month={month} onTab={setTab} onMonth={setMonth} />}
+      {tab === "resultado" && <ResultadoTab key={`${product.id}:${month}`} product={product} month={month} onMonth={(m) => { setMonth(m); setTab("resumo"); }} />}
       {tab === "conciliacao" && <ConciliacaoTab key={`${product.id}:${month}`} product={product} month={month} />}
       {tab === "pagar" && <PagarTab key={`${product.id}:${month}`} product={product} month={month} />}
       {tab === "folha" && <FolhaTab key={`${product.id}:${month}`} product={product} month={month} />}
