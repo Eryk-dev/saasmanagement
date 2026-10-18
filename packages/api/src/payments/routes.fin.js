@@ -86,14 +86,14 @@ function expensesOfMonth({ product, expenses, insights, invoices, leads, starts,
   if (needed.has("cartao12x")) bases.cartao12x = card12xBaseIn(mp, month);
   if (needed.has("received")) bases.received = cashIn({ customers, invoices, mpPayments: mp, saas: product.id, inWin: inMonth }).total;
   const rows = mine.map((e) => {
-    if (!(Number(e.pct) > 0)) return { category: e.category || "outros", pctBase: "", amount: Number(e.amount) || 0 };
+    if (!(Number(e.pct) > 0)) return { category: e.category || "outros", pctBase: "", amount: Number(e.amount) || 0, name: e.name || "", id: e.id };
     const base = pctBaseOf(e);
     // taxa_real: o valor É a taxa que o MP descontou (feeAmount do espelho);
     // o % do lançamento só serve de fallback pra pagamento sem líquido.
     const amount = base === "taxa_real"
       ? mpFeesIn(mp, month, { fallbackPct: Number(e.pct) })
       : round2((Number(e.pct) / 100) * bases[base]);
-    return { category: e.category || "outros", pctBase: base, amount };
+    return { category: e.category || "outros", pctBase: base, amount, name: e.name || "", id: e.id, pct: Number(e.pct) };
   });
   const total = round2(rows.reduce((a, r) => a + r.amount, 0) + ads);
   return { ads, rows, total };
@@ -227,14 +227,30 @@ export function registerFinRoutes(app, repo, { mp, asaas, discord } = {}) {
     // taxa real do MP é taxa de pagamento (COGS).
     const receita = { ...caixaMes.byKind };
     const setores = Object.fromEntries(SECTOR_KEYS.map((k) => [k, {}]));
-    const addSet = (sector, cat, v) => { if (v > 0) setores[sector][cat] = round2((setores[sector][cat] || 0) + v); };
-    for (const p of payables.filter((x) => x.month === month)) addSet(sectorOf(p.category), p.category || "outros", Number(p.amount) || 0);
-    for (const r of custosByMonth[month].rows) {
-      if (r.pctBase === "received") addSet("deducoes", "imposto", r.amount);
-      else if (r.pctBase === "cartao12x" || r.pctBase === "taxa_real") addSet("cogs", "taxas", r.amount);
-      else addSet(sectorOf(r.category), r.category || "outros", r.amount);
+    // `detalhe` (18/10/2026): cada categoria do DRE abre nos lançamentos que a
+    // compõem — conta a pagar (quem/quando/situação), custo da aba Custos
+    // (fixo ou percentual) e a mídia automática — pra analisar o gasto sem
+    // sair do Resumo.
+    const detalhe = {};
+    const addSet = (sector, cat, v, line) => {
+      if (!(v > 0)) return;
+      setores[sector][cat] = round2((setores[sector][cat] || 0) + v);
+      if (line) (detalhe[cat] = detalhe[cat] || []).push({ ...line, amount: round2(v) });
+    };
+    for (const p of payables.filter((x) => x.month === month)) {
+      addSet(sectorOf(p.category), p.category || "outros", Number(p.amount) || 0, {
+        id: p.id, source: "payable", label: p.description || "conta a pagar", who: p.counterpartyType === "colaborador" ? p.userId || "" : p.supplierName || "",
+        at: p.status === "paga" ? (p.paidAt || p.dueDate) : p.dueDate, status: p.status, paidVia: p.paidVia || "", paidAccount: p.paidAccount || "",
+      });
     }
-    addSet("sm", "ads", custosByMonth[month].ads);
+    for (const r of custosByMonth[month].rows) {
+      const line = { id: r.id, source: r.pctBase ? "pct" : "expense", label: r.name || (r.pctBase ? "custo percentual" : "custo"), pctBase: r.pctBase || "", pct: r.pct || 0 };
+      if (r.pctBase === "received") addSet("deducoes", "imposto", r.amount, line);
+      else if (r.pctBase === "cartao12x" || r.pctBase === "taxa_real") addSet("cogs", "taxas", r.amount, line);
+      else addSet(sectorOf(r.category), r.category || "outros", r.amount, line);
+    }
+    addSet("sm", "ads", custosByMonth[month].ads, { source: "ads", label: "Meta Ads · gasto das campanhas no mês (insights)" });
+    for (const list of Object.values(detalhe)) list.sort((a, b) => b.amount - a.amount);
     const somaSetor = (k) => round2(Object.values(setores[k]).reduce((x, v) => x + v, 0));
     const despesasMes = round2(SECTOR_KEYS.reduce((a, k) => a + somaSetor(k), 0));
     const receitaLiquida = round2(recebidosMes - somaSetor("deducoes"));
@@ -288,7 +304,7 @@ export function registerFinRoutes(app, repo, { mp, asaas, discord } = {}) {
       // do banco. IA/WhatsApp vêm do /api/expenses/summary e a UI desconta
       // dos dois (despesasMes e resultado) — mesmo número nas duas telas.
       dre: {
-        receita, receitaTotal: recebidosMes, setores,
+        receita, receitaTotal: recebidosMes, setores, detalhe,
         deducoes: somaSetor("deducoes"), receitaLiquida, cogs: somaSetor("cogs"), lucroBruto,
         margemBruta: recebidosMes > 0 ? round2(lucroBruto / recebidosMes) : null,
         sm: somaSetor("sm"), rd: somaSetor("rd"), ga: somaSetor("ga"),

@@ -206,3 +206,23 @@ test("Caixa por conta: GET devolve o retrato, PUT grava saldo com data; reserva 
   assert.equal(caixaOf(cfg).disponivel, 1408.39);
   await app.close();
 });
+
+test("DRE abre por categoria: dre.detalhe traz os lançamentos (conta a pagar, custo e mídia) por trás de cada número", async () => {
+  const repo = makeMemRepo();
+  const { app } = buildApp(repo);
+  await seed(repo);
+  await repo.create("payables", { id: "pa_1", saas: "leverads", description: "Pró-labore Leo", category: "prolabore", counterpartyType: "colaborador", userId: "leonardo", amount: 10000, month: "2026-10", dueDate: "2026-10-02", status: "paga", paidAt: "2026-10-02T12:00:00.000Z", paidVia: "mp", paidAccount: "mp" });
+  await repo.create("payables", { id: "pa_2", saas: "leverads", description: "Contadora", category: "contab", counterpartyType: "fornecedor", supplierName: "Lilliam", amount: 350, month: "2026-10", dueDate: "2026-10-18", status: "aberta" });
+  await repo.create("expenses", { id: "ex_1", saas: "leverads", name: "Checkout", category: "taxas", pct: 12, base: "taxa_real", month: "2026-07", amount: 0, recurring: true });
+  const g = (await app.inject({ method: "GET", url: "/api/fin/leverads?month=2026-10" })).json();
+  assert.equal(g.dre.setores.ga.prolabore, 10000);
+  assert.equal(g.dre.setores.ga.contab, 350);
+  const pro = g.dre.detalhe.prolabore;
+  assert.equal(pro.length, 1);
+  assert.deepEqual([pro[0].source, pro[0].label, pro[0].who, pro[0].status, pro[0].paidAccount, pro[0].amount], ["payable", "Pró-labore Leo", "leonardo", "paga", "mp", 10000]);
+  assert.equal(g.dre.detalhe.contab[0].status, "aberta");
+  assert.equal(g.dre.detalhe.contab[0].who, "Lilliam");
+  // Percentual sem base no mês não vira linha (valor zero fica fora, como no total).
+  assert.equal(g.dre.detalhe.taxas, undefined);
+  await app.close();
+});
