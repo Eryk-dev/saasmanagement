@@ -170,8 +170,10 @@ Feito em horário comercial, a pedido, com proxy no Easypanel cobrindo o TTL de 
 
 **Depois do corte (15:28):** 68 requisições (54×200, 10×201, 4×403), 12 webhooks, 10 envios de formulário, `wa_messages` gravando, nenhum aviso ou erro.
 
+**DNS (15:3x):** registro A trocado para `187.127.50.132` no Registro.br (TTL ficou 3600). O Traefik da VPS não conseguiu emitir o certificado: com o DNS propagando, parte das validações do Let's Encrypt cai no Easypanel, que intercepta `/.well-known/acme-challenge`. Por alguns minutos, quem já resolvia o IP novo recebeu o certificado padrão do Traefik (erro de TLS). Correção: o certificado Let's Encrypt válido do Easypanel (vence em **26/12/2026**) foi copiado para `/data/coolify/proxy/certs/levermoney.com.br.{crt,key}` e servido por `/data/coolify/proxy/dynamic/cockpit-cert.yaml`. Conferido de fora com verificação de TLS: 200 pela VPS e pelo proxy do Easypanel.
+
 **Pendências:**
-1. Registro A de `levermoney.com.br` → `187.127.50.132` no Registro.br (TTL 300). Depois de propagar: certificado emitido pelo Coolify, tráfego chegando direto, remover `cockpit-vps.yaml` do Easypanel.
+1. Quando o DNS terminar de propagar (até ~1 h depois da troca): conferir que o tráfego chega direto, remover `cockpit-vps.yaml` do Easypanel e fazer o Coolify emitir o próprio certificado (redeploy do app ou reinício do `coolify-proxy`). Só então remover `cockpit-cert.yaml` e os arquivos em `certs/`. **Prazo duro: 26/12/2026**, quando o certificado copiado vence.
 2. Webhook do Linear para `https://levermoney.com.br/api/webhooks/linear`; depois, remover `cockpit-easypanel-host.yaml` da VPS e o router `cockpit-vps-easypanel` do Easypanel.
 3. Deploy automático (webhook do GitHub para o Coolify ou Action com token `deploy`): exige admin do repo. Até lá, `cockpit-coolify.py deploy` na VPS.
 4. Achado fora do corte: o `copylever` (LeverAds) **não tem `COCKPIT_API_URL`** e usa o padrão `http://127.0.0.1:8787`, então o lead do form `/diagnostico` não chega ao Cockpit. Definir como `https://levermoney.com.br` (e `COCKPIT_API_KEY`, se o Cockpit exigir).
