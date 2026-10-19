@@ -1,6 +1,6 @@
 # Plano: migrar o Cockpit para a VPS do Levercopy
 
-> **Status (19/10/2026): proposto, não iniciado.** Complementa o `PLANO-PLATAFORMA-SUPABASE.md` (rev. 5), que já colocava o Cockpit na VPS nova do Levercopy, mas partia de uma premissa que não vale mais: a de que o Cockpit não tem banco próprio. Tudo o que está em "Estado medido" foi lido em produção em 19/10/2026, só leitura.
+> **Status (19/10/2026, 15:30 UTC): corte feito, DNS pendente.** O Cockpit roda na VPS desde 15:03 UTC; ver "Registro do corte" no fim. Complementa o `PLANO-PLATAFORMA-SUPABASE.md` (rev. 5), que já colocava o Cockpit na VPS nova do Levercopy, mas partia de uma premissa que não vale mais: a de que o Cockpit não tem banco próprio. Tudo o que está em "Estado medido" foi lido em produção em 19/10/2026, só leitura.
 
 ## Decisão
 
@@ -148,3 +148,31 @@ Até o fim da Fase 3, o projeto Cloud `zvlcyzqwetqueffossfs` fica intacto, só s
 - RLS e troca de login do Cockpit (`PLANO-AUTH.md`).
 - Migrar o Elo.
 - Desligar o projeto Cloud antigo do Levercopy (`hsooljludhobvsznvnir`). Ele ainda guarda o bucket até a Fase 0.2 entrar.
+
+## Registro do corte (19/10/2026)
+
+Feito em horário comercial, a pedido, com proxy no Easypanel cobrindo o TTL de 1 h do DNS.
+
+| UTC | Passo |
+|---|---|
+| 15:01:00 | `docker service scale extrator_mp_saasmngmnt=0` no Easypanel (serviço intacto, 0 réplicas) |
+| 15:01:20–15:02:00 | database `cockpit` criado; dump 25 s, restore 12 s; 125 tabelas com contagem **exata** |
+| 15:02:05–15:03:09 | `env_build.py cockpit prod` → `envs` (removeu `JOBS_ENABLED`) → `dominio` → `deploy` (60 s); health ok, banco `/cockpit` |
+| 15:03:28–15:07:30 | proxy no Easypanel (`/etc/easypanel/traefik/config/cockpit-vps.yaml`), três tentativas |
+| 15:2x | rota da URL antiga do Easypanel na VPS (`/data/coolify/proxy/dynamic/cockpit-easypanel-host.yaml`), para o webhook do Linear |
+
+**Proxy do Easypanel, o que não funcionou (Traefik 3.6.7 do Easypanel):**
+- `serversTransport` com `insecureSkipVerify` em arquivo do diretório de config: o service ficou `UP`, mas toda requisição devolveu `503 no available server`. Com e sem `serverName`.
+- Middleware `headers.customRequestHeaders.Host` + `passHostHeader: false`: o `Host` **não** é trocado; com o upstream `https://leverads.com.br` a requisição caiu na API do LeverAds (`copylever`) por ~1 min (15:06:40–15:07:30): rotas do Cockpit responderam 404 lá, nada gravado, webhooks desse intervalo perdidos.
+- **O que funciona:** upstream `https://leverads.com.br` (já aponta para a VPS e tem certificado válido) com `passHostHeader: true`. O Traefik da VPS roteia pelo `Host`, sem conferir o SNI.
+
+**Indisponibilidade:** 15:01–15:07 para quem resolvia o IP antigo (todos, com o DNS ainda no Easypanel).
+
+**Depois do corte (15:28):** 68 requisições (54×200, 10×201, 4×403), 12 webhooks, 10 envios de formulário, `wa_messages` gravando, nenhum aviso ou erro.
+
+**Pendências:**
+1. Registro A de `levermoney.com.br` → `187.127.50.132` no Registro.br (TTL 300). Depois de propagar: certificado emitido pelo Coolify, tráfego chegando direto, remover `cockpit-vps.yaml` do Easypanel.
+2. Webhook do Linear para `https://levermoney.com.br/api/webhooks/linear`; depois, remover `cockpit-easypanel-host.yaml` da VPS e o router `cockpit-vps-easypanel` do Easypanel.
+3. Deploy automático (webhook do GitHub para o Coolify ou Action com token `deploy`): exige admin do repo. Até lá, `cockpit-coolify.py deploy` na VPS.
+4. Achado fora do corte: o `copylever` (LeverAds) **não tem `COCKPIT_API_URL`** e usa o padrão `http://127.0.0.1:8787`, então o lead do form `/diagnostico` não chega ao Cockpit. Definir como `https://levermoney.com.br` (e `COCKPIT_API_KEY`, se o Cockpit exigir).
+5. Fase 3 (30 dias): pausar `zvlcyzqwetqueffossfs`, apagar `cockpit_ensaio` e a cópia morta do schema `cockpit` no `levercopy`, remover o `saasmngmnt` do Easypanel.

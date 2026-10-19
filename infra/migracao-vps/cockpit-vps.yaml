@@ -1,0 +1,26 @@
+# Corte do Cockpit para a VPS do Levercopy (19/10/2026): enquanto o DNS de levermoney.com.br
+# propaga, quem ainda chega neste host é repassado para a VPS. Remover quando o tráfego zerar.
+http:
+  routers:
+    cockpit-vps-https:
+      rule: "Host(`levermoney.com.br`)"
+      priority: 100000
+      entryPoints: [https]
+      service: cockpit-vps
+      tls:
+        certResolver: letsencrypt
+        domains: [{main: levermoney.com.br}]
+    cockpit-vps-easypanel:
+      rule: "Host(`extrator-mp-saasmngmnt.gnnc3f.easypanel.host`)"
+      priority: 100000
+      entryPoints: [https]
+      service: cockpit-vps
+      tls:
+        certResolver: letsencrypt
+  services:
+    cockpit-vps:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          # leverads.com.br já aponta para a VPS e tem certificado válido lá; o Host vai como levermoney.com.br
+          - url: "https://leverads.com.br"

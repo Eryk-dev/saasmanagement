@@ -1,0 +1,10 @@
+# Corte do Cockpit (19/10/2026): o webhook do Linear ainda aponta para a URL antiga do Easypanel.
+# O proxy do Easypanel repassa esse host para cá; esta rota entrega ao container do Cockpit.
+# Remover quando o webhook do Linear apontar para https://levermoney.com.br.
+http:
+  routers:
+    cockpit-easypanel-host:
+      rule: "Host(`extrator-mp-saasmngmnt.gnnc3f.easypanel.host`)"
+      entryPoints: [https]
+      service: https-0-sbul93ds9dvqfnkkccysymsg@docker
+      tls: {}
