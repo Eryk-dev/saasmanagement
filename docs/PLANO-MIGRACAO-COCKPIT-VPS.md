@@ -99,12 +99,19 @@ VPS 187.127.50.132 (Coolify)
 - **Conexão de app para o Postgres exige SSL**: a rede `coolify` é IPv6 (`fd72:…`) e o `pg_hba` só aceita IPv6 com `hostssl`. Usar `sslmode=require` (o `makePool` já desliga a verificação do certificado), nunca `sslmode=disable`.
 - Arquivos na VPS: `/root/.cockpit-app-pw`, `/root/.cockpit-cloud-dsn` (600), `/opt/cockpit-migracao/` (dump e fonte). O database `cockpit_ensaio` fica até o corte e sai depois.
 
+**App no Coolify (19/10/2026), em espera:** `cockpit` (`sbul93ds9dvqfnkkccysymsg`), projeto LeverAds/production, repo **público** `https://github.com/Eryk-dev/saasmanagement` (sem deploy key), branch `main`, `/Dockerfile.allinone`, porta 80, 2 vCPU / 2 GB, **sem domínio**, `JOBS_ENABLED=0`, apontando para `cockpit_ensaio`. Primeiro deploy: 30 s, `/api/health` ok, `cockpit_app`→`cockpit_ensaio` e `cockpit_reader`→`postgres` pela rede `coolify`.
+- Script: `/opt/cockpit-migracao/cockpit-coolify.py criar|envs|deploy|dominio|status` (token em `/root/.coolify-api-token`, uuid em `/opt/cockpit-migracao/coolify-ids.env`).
+- Env: `env_build.py <database> [prod]` monta `/opt/cockpit-migracao/env-cockpit.env` a partir de `env-easypanel.json` (o env do serviço `saasmngmnt`, copiado em 19/10): troca `COCKPIT_DB_URL` e `LEVERCOPY_DB_URL` para `leverads-db` com SSL e põe `JOBS_ENABLED=0`, exceto com `prod`. `GIT_SHA`/`DEPLOY_TIMESTAMP` do Easypanel ficam fora. **Mudou variável no Easypanel depois de 19/10? Copiar de novo antes do corte.**
+- ⚠️ **Deploy por push deixa de existir.** Repo público sem webhook: push na `main` não chega ao Coolify. Antes do corte, a engenharia (admin do repo) decide entre webhook do GitHub para o Coolify (`manual_webhook_secret_github`) ou um Action chamando `POST /api/v1/deploy?uuid=…` com token de habilidade `deploy` (como o `ci-runner-deploy` do LeverAds). Até lá, deploy manual: `python3 /opt/cockpit-migracao/cockpit-coolify.py deploy`.
+
 ### Fase 2 — corte (janela de ~30 min, fora do horário comercial)
 
+Tudo roda na VPS (`root@187.127.50.132`), em `/opt/cockpit-migracao`. Os scripts estão versionados em `infra/migracao-vps/`.
+
 1. Avisar o time; Cockpit fora do ar durante a janela.
-2. No Easypanel, **parar** o `saasmngmnt` (para o API e os 32 jobs: nada escreve mais no Cloud). Conferir no Cloud que não há conexão do Cockpit (`pg_stat_activity`).
-3. `pg_dump` final pela 5432 → `pg_restore` no database `cockpit` → contagem por tabela Cloud × VPS igual.
-4. Subir o Cockpit no Coolify com o env de produção completo, `COCKPIT_DB_URL`/`LEVERCOPY_DB_URL` locais, domínio `levermoney.com.br` e `JOBS_ENABLED` como hoje. **Só depois de o Easypanel estar parado:** duas instâncias com jobs ligados mandam WhatsApp e cobrança em dobro.
+2. No Easypanel, **parar** o `saasmngmnt` (para o API e os 32 jobs: nada escreve mais no Cloud). Conferir no Cloud que não há conexão do Cockpit (`pg_stat_activity`, pela conexão direta).
+3. Banco: criar o database `cockpit` (dono `cockpit_app`, extensões `pgcrypto` e `uuid-ossp`, como o `f1_setup` do ensaio) → `ALVO=cockpit` dump/restore → `ALVO=cockpit` contagem: **tem que dar igual em todas as tabelas** (com o Easypanel parado não há escrita).
+4. App: `python3 env_build.py cockpit prod` → `cockpit-coolify.py envs` → `cockpit-coolify.py dominio` → `cockpit-coolify.py deploy`. **Só depois de o Easypanel estar parado:** duas instâncias com jobs ligados mandam WhatsApp e cobrança em dobro.
 5. Trocar o registro A de `levermoney.com.br` para `187.127.50.132`. Enquanto o DNS propaga (TTL de 5 min), o Easypanel continua recebendo parte do tráfego: trocar o `saasmngmnt` por um proxy reverso (nginx) para `187.127.50.132` com `Host: levermoney.com.br`. Proxy, não redirect: webhook é `POST` e nem todo remetente segue 301/302. O Traefik da VPS emite o certificado assim que o DNS aponta para ela.
 6. Prova: `/api/health.build` igual ao commit da `main`; login; um webhook do WhatsApp recebido; um job rodando (log); proposta com foto; resultados do Levercopy na tela do cliente.
 
