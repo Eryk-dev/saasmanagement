@@ -128,6 +128,13 @@ export const api = {
   linkLeveradsOrg: (customerId, orgId) => req("POST", `/api/customers/${encodeURIComponent(customerId)}/leverads-org`, { orgId }),
   unlinkLeveradsOrg: (customerId) => req("DELETE", `/api/customers/${encodeURIComponent(customerId)}/leverads-org`),
   leveradsInvite: (customerId, rotate = false) => req("POST", `/api/customers/${encodeURIComponent(customerId)}/leverads-invite`, { rotate }),
+  // Versões e novidades (só admin) e a impressão do build da própria API.
+  health: () => req("GET", "/api/health"),
+  appVersions: () => req("GET", "/api/releases/apps"),
+  productUpdates: (saas = "") => req("GET", `/api/releases/updates${saas ? `?saas=${encodeURIComponent(saas)}` : ""}`),
+  productUpdateCreate: (doc) => req("POST", "/api/releases/updates", doc),
+  productUpdateUpdate: (id, patch) => req("PATCH", `/api/releases/updates/${encodeURIComponent(id)}`, patch),
+  productUpdateDelete: (id) => req("DELETE", `/api/releases/updates/${encodeURIComponent(id)}`),
   leveridOrgs: (orgIds) => req("GET", `/api/customers/leverid?orgs=${encodeURIComponent(orgIds.join(","))}`),
   // Auth do time: o token de sessão entra no MESMO slot da key (localStorage +
   // header x-api-key) — o resto do client não muda.

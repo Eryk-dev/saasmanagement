@@ -21,6 +21,7 @@ export const SCREEN_IDS = [
   "eloapp", "landingpages",
   "plans", // gestão do catálogo de planos (grupo Comercial; a tela é de admin)
   "tickets", "quick_replies", "support_settings", // grupo Suporte: fila, respostas rápidas e configurações de SLA/atendentes
+  "releases", // versões no ar de cada app + novidades de produto (só admin; a rota também exige a etiqueta)
 ];
 
 export const sanitizeScreens = (x) =>
@@ -83,6 +84,7 @@ const ROUTE_SCREENS = [
   ["/api/social/new-followers", ["today", "pipeline", "overview", "social"]],
   ["/api/social/dms", ["whatsapp", "social"]], // DMs de IG/Messenger no Inbox (tela whatsapp)
   ["/api/social", ["social"]],
+  ["/api/releases", ["releases"]],
   ["/api/marketing", ["metrics"]],
   ["/api/metrics/", ["metrics"]],
   ["/api/elo/", ["eloapp", "landingpages", "overview"]],  // agregados do app Elo (Análise do App + Visão geral do workspace)

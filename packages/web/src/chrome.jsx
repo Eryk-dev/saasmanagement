@@ -115,6 +115,7 @@ const NAV = [
   { id: "metas",      label: "Metas",          icon: "◎",  group: "geral" },
   { id: "remuneracao", label: "Remuneração",   icon: "◫",  group: "geral", adminOnly: true }, // modelos de comp por cargo (salário: admin, ou tela concedida explicitamente = leitura)
   { id: "expenses",   label: "Financeiro",     icon: "◫",  group: "geral", adminOnly: true, adminStrict: true }, // Financeiro: só a etiqueta admin (Leo, 12/10/2026); tela concedida não abre
+  { id: "releases",   label: "Versões e novidades", icon: "◉", group: "geral", adminOnly: true, adminStrict: true }, // versão no ar de cada app + novidades que os clientes leem (só a etiqueta admin)
   { id: "settings",   label: "Configurações",  icon: "✦",  group: "geral" },
 ];
 
@@ -160,6 +161,7 @@ const ICONS = {
   mindmaps: <NavSvg><circle cx="12" cy="5.2" r="2.4" /><circle cx="5.4" cy="18.2" r="2.4" /><circle cx="18.6" cy="18.2" r="2.4" /><path d="M12 7.6v3.6M12 11.2l-5.2 5M12 11.2l5.2 5" /></NavSvg>,
   metas: <NavSvg><circle cx="12" cy="12" r="8.6" /><circle cx="12" cy="12" r="4.9" /><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" /></NavSvg>,
   expenses: <NavSvg><rect x="2.8" y="5.4" width="18.4" height="13.6" rx="2" /><path d="M21.2 10.2h-4.7a1.9 1.9 0 0 0 0 3.8h4.7" /></NavSvg>,
+  releases: <NavSvg><path d="M12 3.2l2.3 4.7 5.2.8-3.8 3.7.9 5.2-4.6-2.4-4.6 2.4.9-5.2-3.8-3.7 5.2-.8z" /><path d="M5 20.5h14" /></NavSvg>,
   settings: <NavSvg><path d="M4 6.4h8.6M16.9 6.4H20M4 12h2.8M11.1 12H20M4 17.6h8.6M16.9 17.6H20" /><circle cx="14.8" cy="6.4" r="2" /><circle cx="9" cy="12" r="2" /><circle cx="14.8" cy="17.6" r="2" /></NavSvg>,
 };
 
@@ -308,10 +310,24 @@ function NavRail({ current, onNav, collapsed, onSearch }) {
         })}
       </div>
       <div className="rail-footer">
+        <RailBuild collapsed={collapsed} onOpen={isAdminUser() ? () => onNav("releases") : null} />
         <UserMenu key={`${current}:${product?.id}`} collapsed={collapsed} />
       </div>
     </nav>
   );
+}
+
+// Build da API no ar (impressão de packages/api/src, a do /api/health): o
+// Cockpit não tem número de versão, sobe direto da main. Para admin é o atalho
+// da tela Versões e novidades, onde está a versão de cada app.
+function RailBuild({ collapsed, onOpen }) {
+  const [build, setBuild] = React.useState("");
+  React.useEffect(() => { api.health().then((h) => setBuild(String(h?.build || ""))).catch(() => {}); }, []);
+  if (!build) return null;
+  const text = collapsed ? build.slice(0, 4) : `Cockpit · build ${build}`;
+  return onOpen
+    ? <button type="button" className="rail-build" data-link onClick={onOpen} title="Versões e novidades">{text}</button>
+    : <div className="rail-build" title="build da API no ar">{text}</div>;
 }
 
 // Produto e alternador no topo; o menu usa o Popover existente e cabe na viewport.

@@ -1,0 +1,29 @@
+/* Versões e novidades (screens/releases.jsx) */
+.releases-page { display: flex; flex-direction: column; min-height: 0; }
+.releases-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--gap-cards, 16px); padding: 16px var(--pad-x) 32px; align-items: start; }
+@media (max-width: 1100px) { .releases-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.rel-apps, .rel-updates { display: flex; flex-direction: column; padding: 12px var(--inset-x) 18px; }
+.rel-app { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 12px 0; border-top: 1px solid var(--line-1); }
+.rel-app:first-child { border-top: 0; }
+.rel-version { font-size: 12.5px; color: var(--fg-1); text-align: right; }
+.rel-detail { grid-column: 1 / -1; font-size: 11.5px; line-height: 1.45; overflow-wrap: anywhere; }
+.rel-worker { grid-column: 1 / -1; display: flex; gap: 10px; align-items: baseline; font-size: 11.5px; padding-left: 14px; }
+
+.rel-status { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--fg-1); white-space: nowrap; }
+.rel-status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--dot, var(--fg-4)); flex-shrink: 0; }
+.rel-update .rel-status { font-size: 11.5px; font-weight: 500; color: var(--fg-3); }
+
+.rel-update { display: flex; align-items: center; gap: 12px; padding: 12px 8px; border-radius: var(--r-3); cursor: pointer; }
+.rel-update:hover { background: var(--hover); }
+.rel-update + .rel-update { border-top: 1px solid var(--line-1); }
+.rel-update-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; font-size: 13.5px; }
+.rel-update-head .mono, .rel-update-head .dim { font-size: 11.5px; }
+.rel-update-body { font-size: 12.5px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.rel-error { font-size: 12.5px; color: var(--neg); padding: 4px 0; }
+.rel-error button, .rel-link { font-size: 12.5px; font-weight: 600; color: var(--accent); }
+
+.rel-editor { display: flex; flex-direction: column; gap: 12px; padding: 20px 22px; }
+.rel-editor-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.rel-editor-footer { display: flex; align-items: center; gap: 8px; padding-top: 4px; }

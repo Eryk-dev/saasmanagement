@@ -1309,6 +1309,20 @@ escrita de limites no LeverAds já existe (acima), atrás de
 `LEVERADS_LIMITS_APPLY`; o corpo dela (produto, plano, acesso) é o mesmo que o
 `set_product_grant` vai receber.
 
+**Versões e novidades (19/10/2026).** Domínio `releases/`, tela `releases`
+(só a etiqueta admin: `adminStrict` no NAV e a rota confere de novo).
+`GET /api/releases/apps` lê a versão NO AR de cada app (`app-versions.js`):
+Cockpit = impressão do build (`/api/health.build`, ele não tem número de
+versão), LeverAds = `{LEVERADS_API_URL}/api/version` com os workers, LeverId =
+`{IDENTITY_AUTH_URL}/health` do GoTrue, LeverPrice = só "responde" em
+`{LEVERPRICE_API_URL}/api/health` (sem endpoint de versão). Falha de um app não
+derruba os outros. As novidades de produto ficam na coleção PRIVATE
+`product_updates` (`/api/releases/updates`, rascunho → publicada; a data é a
+da 1ª publicação) e saem em `GET /public/updates/:saas` (aberta, só
+publicadas, sem autor) — o LeverAds lê com cache e mostra na página que abre
+pela versão da sidebar. O rodapé da navegação mostra o build do Cockpit e, para
+admin, abre esta tela. Teste: `releases.test.js`.
+
 Validação: `node --test packages/api/test/plan-*.test.js packages/api/test/entitlements.test.js packages/api/test/plano-no-cadastro.test.js`
 e, no navegador com mocks, `npm run test:review:plans -w packages/web`.
 

@@ -181,6 +181,7 @@ try {
     ["tickets", "/src/screens/tickets/index.jsx", "TicketsScreen", {}, "Tickets"],
     ["support-settings", "/src/screens/support-settings.jsx", "SupportSettingsScreen", {}, "Configurações de SLA"],
     ["quick-replies", "/src/screens/quick-replies.jsx", "QuickRepliesScreen", {}, "Respostas rápidas"],
+    ["releases", "/src/screens/releases.jsx", "ReleasesScreen", {}, "Versões e novidades"],
     // Detalhe do ticket é MODAL (14/09); no SSR o fetch não roda, então monta com o resumo da fila.
     ["ticket-detalhe", "/src/screens/tickets/detail.jsx", "TicketDetail", { ticketId: "t1", summary: { id: "t1", number: 7, subject: "Painel fora do ar", status: "new", priority: "urgent", channel: "portal", createdAt: nowIso }, saasId: "leverads", agents: [], onClose() {} }, "Painel fora do ar"],
   ];

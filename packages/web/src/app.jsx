@@ -60,6 +60,7 @@ const TicketsScreen = lazyScreen(() => import("./screens/tickets/index.jsx"), "T
 const SupportSettingsScreen = lazyScreen(() => import("./screens/support-settings.jsx"), "SupportSettingsScreen");
 const QuickRepliesScreen = lazyScreen(() => import("./screens/quick-replies.jsx"), "QuickRepliesScreen");
 const PlansScreen = lazyScreen(() => import("./screens/plans.jsx"), "PlansScreen");
+const ReleasesScreen = lazyScreen(() => import("./screens/releases.jsx"), "ReleasesScreen");
 const MindmapsScreen = lazyScreen(() => import("./screens/mindmaps.jsx"), "MindmapsScreen");
 const SettingsScreen = lazyScreen(() => import("./screens/settings.jsx"), "SettingsScreen");
 const SettingsLite = lazyScreen(() => import("./screens/settings.jsx"), "SettingsLite");
@@ -273,6 +274,7 @@ function App({ onInitialReady, initialLoading = false } = {}) {
     metas:       ["Geral", "Metas"],
     training:    ["Treinamentos"],
     expenses:    ["Geral", "Financeiro"],
+    releases:    ["Geral", "Versões e novidades"],
     settings:    ["Geral", "Configurações"],
     subscriptions: ["Comercial", "Clientes", "Assinaturas"], // rota antiga → aba dentro de Clientes
   };
@@ -335,6 +337,7 @@ function App({ onInitialReady, initialLoading = false } = {}) {
           {scr === "plans"       && <PlansScreen />}
           {scr === "metrics"     && <MetricsScreen />}
           {scr === "expenses"    && <ExpensesScreen />}
+          {scr === "releases"    && <ReleasesScreen />}
           {scr === "forms"       && <FormsScreen saasId={params.saas} />}
           {scr === "proposals"   && <ProposalsScreen saasId={params.saas} />}
           {scr === "creative"    && <CreativeScreen />}
