@@ -55,11 +55,6 @@
 .rail-badge { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; min-width: 21px; height: 20px; padding: 0 7px; border-radius: 999px; background: rgba(35,216,211,.16); color: #7defe9; font-size: 10.5px; font-weight: 600; letter-spacing: -.006em; }
 .rail-badge[data-tone="neg"] { background: rgba(226,105,90,.2); color: #ffb3a8; }
 .rail-group-toggle .rail-badge { min-width: 20px; height: 19px; }
-/* Rodapé da navegação: build no ar do próprio Cockpit */
-.rail-build { width: 100%; display: flex; align-items: center; gap: 6px; padding: 4px 8px 8px; border: 0; background: transparent; color: rgba(255,255,255,.45); font: 500 10.5px/1.2 var(--mono); text-align: left; }
-.rail-build[data-link] { cursor: pointer; }
-.rail-build[data-link]:hover { color: rgba(255,255,255,.8); }
-.cockpit-rail[data-collapsed] .rail-build { justify-content: center; }
 .rail-footer { padding: 10px 12px 14px; border-top: 1px solid rgba(255,255,255,.07); flex-shrink: 0; }
 .rail-account { width: 100%; display: flex; align-items: center; gap: 10px; padding: 6px 8px; border: 0; border-radius: 999px; background: transparent; color: #fff; text-align: left; }
 .rail-account-text strong { font-size: 12.5px; font-weight: 600; }

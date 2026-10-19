@@ -1320,8 +1320,8 @@ derruba os outros. As novidades de produto ficam na coleção PRIVATE
 `product_updates` (`/api/releases/updates`, rascunho → publicada; a data é a
 da 1ª publicação) e saem em `GET /public/updates/:saas` (aberta, só
 publicadas, sem autor) — o LeverAds lê com cache e mostra na página que abre
-pela versão da sidebar. O rodapé da navegação mostra o build do Cockpit e, para
-admin, abre esta tela. Teste: `releases.test.js`.
+pela versão da sidebar. O build do próprio Cockpit aparece só nesta tela (não na
+navegação). Teste: `releases.test.js`.
 
 Validação: `node --test packages/api/test/plan-*.test.js packages/api/test/entitlements.test.js packages/api/test/plano-no-cadastro.test.js`
 e, no navegador com mocks, `npm run test:review:plans -w packages/web`.

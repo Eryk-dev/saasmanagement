@@ -310,24 +310,10 @@ function NavRail({ current, onNav, collapsed, onSearch }) {
         })}
       </div>
       <div className="rail-footer">
-        <RailBuild collapsed={collapsed} onOpen={isAdminUser() ? () => onNav("releases") : null} />
         <UserMenu key={`${current}:${product?.id}`} collapsed={collapsed} />
       </div>
     </nav>
   );
-}
-
-// Build da API no ar (impressão de packages/api/src, a do /api/health): o
-// Cockpit não tem número de versão, sobe direto da main. Para admin é o atalho
-// da tela Versões e novidades, onde está a versão de cada app.
-function RailBuild({ collapsed, onOpen }) {
-  const [build, setBuild] = React.useState("");
-  React.useEffect(() => { api.health().then((h) => setBuild(String(h?.build || ""))).catch(() => {}); }, []);
-  if (!build) return null;
-  const text = collapsed ? build.slice(0, 4) : `Cockpit · build ${build}`;
-  return onOpen
-    ? <button type="button" className="rail-build" data-link onClick={onOpen} title="Versões e novidades">{text}</button>
-    : <div className="rail-build" title="build da API no ar">{text}</div>;
 }
 
 // Produto e alternador no topo; o menu usa o Popover existente e cabe na viewport.

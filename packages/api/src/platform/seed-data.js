@@ -90,6 +90,7 @@ export const COLLECTIONS = {
   contract_issues: [], // contratos GERADOS (histórico da tela Contratos + bloco da ficha do cliente): snapshot do modelo preenchido por cliente — { saas, contract, name, tag, customerId, customerName, values, fields, body, author, createdAt }
   mp_payments: [],   // espelho dos pagamentos do Mercado Pago (financeiro): quem pagou, como, casado com qual cliente/fatura (mp-payments.js)
   payment_links: [], // histórico dos links de pagamento gerados (card do lead, ficha do cliente ou tela): recibo da geração; o status vem do espelho do MP (payment-links.js)
+  product_update_assets: [], // prints das novidades (base64, servidos em /public/updates/assets/:id); PRIVATE
   product_updates: [], // novidades de produto escritas na tela Versões e novidades (releases/product-updates.js); PRIVATE, rotas em /api/releases e /public/updates/:saas
   leverads_orgs: [], // espelho das orgs do LeverAds (customers/leverads-orgs.js): contas gratuitas, pagantes sem cliente e o vínculo cliente × org; PRIVATE, rotas em /api/customers/leverads-orgs
   mp_preapprovals: [], // espelho das ASSINATURAS RECORRENTES do Mercado Pago (inclusive as criadas fora do cockpit), com o vínculo à assinatura do cliente (mp-subscriptions.js)

@@ -27,3 +27,47 @@
 .rel-editor { display: flex; flex-direction: column; gap: 12px; padding: 20px 22px; }
 .rel-editor-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .rel-editor-footer { display: flex; align-items: center; gap: 8px; padding-top: 4px; }
+.rel-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rel-hint { font-size: 11.5px; }
+.rel-neg { color: var(--neg); }
+
+/* Editor em duas colunas: formulário e prévia do que o cliente vê */
+.rel-editor { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 0; padding: 0; max-height: 86vh; }
+.rel-editor-form { display: flex; flex-direction: column; gap: 12px; padding: 20px 22px; overflow-y: auto; min-width: 0; }
+.rel-editor-preview { display: flex; flex-direction: column; gap: 10px; padding: 20px 22px; background: var(--bg-2); overflow-y: auto; min-width: 0; border-radius: 0 var(--r-4) var(--r-4) 0; }
+.rel-editor-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 860px) {
+  .rel-editor { grid-template-columns: minmax(0, 1fr); }
+  .rel-editor-preview { border-radius: 0 0 var(--r-4) var(--r-4); }
+}
+
+.rel-images { display: flex; flex-direction: column; gap: 8px; }
+.rel-image { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.rel-image img { width: 72px; height: 48px; object-fit: cover; border-radius: var(--r-2); border: 1px solid var(--line-1); }
+.rel-image-actions { display: inline-flex; gap: 2px; }
+.rel-image-actions button { width: 26px; height: 26px; border-radius: 999px; color: var(--fg-3); }
+.rel-image-actions button:hover:not(:disabled) { background: var(--hover); }
+.rel-drop { padding: 14px; border: 1px dashed var(--line-2, var(--line-1)); border-radius: var(--r-3); color: var(--fg-3); font-size: 12.5px; text-align: center; }
+.rel-drop:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+
+.rel-update-thumb { width: 56px; height: 38px; flex-shrink: 0; object-fit: cover; border-radius: var(--r-2); background: var(--bg-2); border: 1px solid var(--line-1); }
+
+/* Prévia: espelha o cartão da página de Novidades do LeverAds */
+.rel-preview { display: flex; flex-direction: column; gap: 10px; padding: 18px; border-radius: var(--r-4); background: var(--bg-1); box-shadow: var(--shadow-card); }
+.rel-preview h3 { margin: 0; font-size: 16px; font-weight: 700; color: var(--fg-1); }
+.rel-preview p { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--fg-2); white-space: pre-line; }
+.rel-preview figure { margin: 0; }
+.rel-preview figure img { width: 100%; border-radius: var(--r-3); border: 1px solid var(--line-1); display: block; }
+.rel-preview figcaption { font-size: 11.5px; color: var(--fg-3); margin-top: 6px; }
+.rel-preview-thumbs { display: flex; gap: 6px; }
+.rel-preview-thumbs img { width: 64px; height: 42px; object-fit: cover; border-radius: var(--r-2); border: 1px solid var(--line-1); }
+.rel-preview-noimg { padding: 26px 12px; border: 1px dashed var(--line-1); border-radius: var(--r-3); text-align: center; font-size: 12px; color: var(--warn); }
+.rel-preview ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--fg-2); }
+.rel-preview-meta { display: flex; align-items: center; gap: 8px; font-size: 11.5px; }
+.rel-preview-cta { align-self: flex-start; font-size: 13px; font-weight: 600; color: var(--accent); }
+.rel-preview-fix { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: 13px; }
+.rel-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--fg-2); }
+.rel-chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--fg-4); }
+.rel-chip[data-category="novo"]::before { background: var(--accent); }
+.rel-chip[data-category="melhoria"]::before { background: var(--pos); }
+.rel-chip[data-category="correcao"]::before { background: var(--warn); }
