@@ -2641,6 +2641,12 @@ export async function runStartupMigrations(repo) {
   } catch (err) {
     console.error("[migration] migrateFollowupDays falhou:", err?.message || err);
   }
+  try {
+    const n = await migrateProposalAssetsUrl(repo);
+    if (n) console.log(`[migration] fotos da proposta servidas pelo cockpit: ${n} proposta(s)/modelo(s) sem a URL do Supabase Cloud`);
+  } catch (err) {
+    console.error("[migration] migrateProposalAssetsUrl falhou:", err?.message || err);
+  }
   // Higiene do Financeiro (12/10/2026): cada migração loga e falha isolada.
   await runFinMigrations(repo);
 }
@@ -3084,6 +3090,37 @@ export async function ensureWaMessagesLeadId(repo) {
       if (!t) continue;
       await repo.update("wa_messages", m.id, { leadId: t.leadId, saas: m.saas || t.saas || "" });
       changed++;
+    }
+  }
+  await repo.create("app_config", { id: FLAG, at: new Date().toISOString(), changed });
+  return changed;
+}
+
+// ── Fotos da proposta fora do Supabase Cloud do produto (19/10) ────────────
+// Propostas e modelos guardam no JSON a URL absoluta do bucket público
+// `proposal-assets` do projeto Cloud do LeverAds (1.670 propostas em 19/10),
+// que vai ser desligado depois da ida para a VPS. Os mesmos arquivos agora são
+// estáticos do cockpit (packages/web/public/proposal-assets); troca o prefixo
+// pelo caminho relativo. Um UPDATE em SQL quando há banco; em JS no mem-repo
+// dos testes. Roda uma vez (marcador).
+export const OLD_PROPOSAL_ASSETS = "https://hsooljludhobvsznvnir.supabase.co/storage/v1/object/public/proposal-assets/";
+export const NEW_PROPOSAL_ASSETS = "/proposal-assets/";
+export async function migrateProposalAssetsUrl(repo) {
+  const FLAG = "proposal_assets_local_v1";
+  if (await repo.get("app_config", FLAG).catch(() => null)) return 0;
+  let changed = 0;
+  for (const name of ["proposals", "proposal_templates"]) {
+    if (typeof repo.rawUpdate === "function") {
+      changed += await repo.rawUpdate(name, `UPDATE {tbl} SET json = replace(json::text, $1, $2)::jsonb
+        WHERE strpos(json::text, $1) > 0`, [OLD_PROPOSAL_ASSETS, NEW_PROPOSAL_ASSETS]);
+    } else {
+      for (const doc of await repo.list(name)) {
+        const text = JSON.stringify(doc);
+        if (!text.includes(OLD_PROPOSAL_ASSETS)) continue;
+        const { id, ...rest } = JSON.parse(text.replaceAll(OLD_PROPOSAL_ASSETS, NEW_PROPOSAL_ASSETS));
+        await repo.update(name, id, rest);
+        changed++;
+      }
     }
   }
   await repo.create("app_config", { id: FLAG, at: new Date().toISOString(), changed });

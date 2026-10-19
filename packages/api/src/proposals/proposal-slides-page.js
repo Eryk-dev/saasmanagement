@@ -521,10 +521,11 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0B141D; }
 `;
 
 // Fotos da operação: as MESMAS do deck antigo (slide `nossa_operacao` do
-// `pt_leverads`), que já rodaram em call e estão no bucket público
-// `proposal-assets`. O bucket ficou no projeto do PRODUTO quando os bancos se
-// separaram (30/08), por isso o domínio não é o do cockpit.
-const ASSETS = "https://hsooljludhobvsznvnir.supabase.co/storage/v1/object/public/proposal-assets/leverads";
+// `pt_leverads`), que já rodaram em call. Moravam no bucket `proposal-assets`
+// do Supabase Cloud do PRODUTO, que vai ser desligado; agora são estáticos do
+// próprio cockpit (packages/web/public/proposal-assets). Caminho relativo: o
+// deck só abre em página do cockpit (/p/:id, preview), em qualquer ambiente.
+const ASSETS = "/proposal-assets/leverads";
 const FOTOS = {
   estoque: `${ASSETS}/operacao-interna-2.jpg`,
   interna: `${ASSETS}/operacao-interna-1.jpg`,
