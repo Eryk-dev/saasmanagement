@@ -39,10 +39,12 @@ O que decide é o banco, não o app. O Cockpit conversa muito com o próprio ban
 
 **VPS nova** — Ubuntu 24.04, Coolify 4.4.6, Traefik. Postgres `leverads-db` (`max_connections` 200, `shared_buffers` 6 GB), PostgREST, GoTrue, Studio, meta, Envoy (`leverads-api-gw`). Apps: `copylever` (teto 4 GB, sem teto de CPU), `leveradswk` (3 GB, sem teto de CPU), `ci-runner-runner-1` + `ci-runner-dind-1` (4 GB cada). **Não há Storage, Kong nem Supavisor.** UFW libera só 22/80/443; 5432 só para `82.25.70.107` e `82.112.245.65`.
 
-**Quem chama o Cockpit pela URL atual**
-- webhooks: `/api/webhooks/whatsapp` (WhatsApp Cloud), `/api/webhooks/social` (Meta), `/api/webhooks/linear`, `/api/webhooks/shopify/uniquekids`;
-- LeverAds: `COCKPIT_API_URL` no `copylever` (form `/diagnostico` cria lead);
-- clientes MCP, formulários públicos e o time (favoritos, links de pagamento com `back_url`).
+**Domínios** — o Cockpit é servido em **`levermoney.com.br`** (registro A → `82.25.70.107`, TTL 3600, DNS no Registro.br `*.sec.dns.br`). Nas últimas 24 h foram 7.903 requisições por ele e 48 pela URL do Easypanel. O Traefik do Easypanel também roteia `api.levermoney.com.br` para o Cockpit, mas esse nome não existe no DNS (NXDOMAIN). Os outros subdomínios (`copy.`, `conciliador.`, `dash.`) são de outros serviços e não mudam.
+
+**Quem chama o Cockpit**
+- por `levermoney.com.br`: formulários públicos, webhooks do WhatsApp, Meta e Shopify, clientes MCP, o time;
+- pela URL do Easypanel (`extrator-mp-saasmngmnt.gnnc3f.easypanel.host`): só o webhook do **Linear** (42 em 24 h) e `/public/lp/events` (6);
+- LeverAds: `COCKPIT_API_URL` no `copylever` (form `/diagnostico` cria lead).
 
 ## Arquitetura alvo
 
@@ -55,19 +57,20 @@ VPS 187.127.50.132 (Coolify)
 ├─ copylever, leveradswk
 └─ cockpit (allinone: nginx :80, api :8787, mcp :8788)  teto 2 vCPU / 2 GB
                 ▲
-   cockpit.<domínio> (Traefik/TLS)       Easypanel: URL antiga vira proxy → domínio novo (30 dias)
+   levermoney.com.br (Traefik/TLS)       Easypanel: vira proxy → VPS enquanto o DNS propaga
 ```
 
-- `COCKPIT_DB_URL` → `cockpit_app@leverads-db:5432/cockpit?sslmode=disable` (rede interna do Docker; nada pela internet).
-- `LEVERCOPY_DB_URL` → `cockpit_reader@leverads-db:5432/postgres?sslmode=disable`.
+- `COCKPIT_DB_URL` → `cockpit_app@leverads-db:5432/cockpit?sslmode=require` (rede `coolify`; nada pela internet).
+- `LEVERCOPY_DB_URL` → `cockpit_reader@leverads-db:5432/postgres?sslmode=require`.
 - `JOBS_ENABLED` só fica ligado em **uma** instância por vez (ver corte).
 
 ## Fases
 
 ### Fase 0 — decisões e preparação (sem impacto)
 
-1. **Domínio:** escolher o host novo (sugestão: `cockpit.leverads.com.br`) e pedir o registro A → `187.127.50.132` a quem administra o DNS.
-2. **Fotos da proposta:** copiar os 21 objetos de `proposal-assets/leverads` para `packages/web/public/proposal-assets/` e trocar a constante `ASSETS` (`proposal-slides-page.js:527`) por caminho relativo. São 3 MB estáticos: não justificam subir Storage na VPS. Ajustar `test/cases.test.js:269`. Pode ir para a `main` antes de tudo, porque não depende da VPS.
+1. **Domínio:** o mesmo, `levermoney.com.br`; o corte é trocar o registro A para `187.127.50.132`. Um dia antes, baixar o TTL de 3600 para 300 no Registro.br. Recadastrar o webhook do Linear e a origem de `/public/lp/events` em `levermoney.com.br` já agora, porque a URL do Easypanel some.
+2. **Fotos da proposta:** copiar os 21 objetos de `proposal-assets/leverads` para `packages/web/public/proposal-assets/leverads/` (servidos pelo nginx em `levermoney.com.br/proposal-assets/...`) e trocar a constante `ASSETS` (`proposal-slides-page.js:527`). São 3 MB estáticos: não justificam subir Storage na VPS. Ajustar `test/cases.test.js:269`.
+   ⚠️ **A URL também está gravada nos dados:** em 19/10, **1.670 `proposals` e 2 `proposal_templates`** tinham `https://hsooljludhobvsznvnir.supabase.co/storage/v1/object/public/proposal-assets/` no JSON (9 arquivos: `operacao-interna-1/2.jpg`, `operacao-barracao-novo/antigo.jpg`, `ig-{netair,easy,uniquekids,uniquebox,bellator}-full.jpg`), além das `_bak_*`. Esses links de proposta já enviados quebram quando o projeto Cloud antigo for desligado. Reescrever o prefixo para `https://levermoney.com.br/proposal-assets/` numa migração idempotente de startup (`runStartupMigrations`), depois que as fotos estiverem servidas. Não depende da VPS; precisa estar feito antes de desligar `hsooljludhobvsznvnir`.
 3. **Tetos de CPU:** pôr teto de CPU também em `copylever`, `leveradswk` e no runner de CI (hoje só há teto de memória). O CI é o vizinho mais barulhento; ver LEV-555.
 4. **Webhooks:** listar onde cada URL está cadastrada (app da Meta/WhatsApp, Linear, Shopify UniqueKids, `back_url` do Mercado Pago, clientes MCP) e quem tem acesso a cada painel.
 
@@ -88,19 +91,27 @@ VPS 187.127.50.132 (Coolify)
 5. Subir o Cockpit no Coolify apontando para `cockpit_ensaio`, com **`JOBS_ENABLED=0`** e sem as credenciais de integração (WhatsApp, MP, Meta, Linear). Validar login pelo LeverId, CRM, propostas com fotos, resultados do Levercopy. Confirmar que o `initDb` roda sem superusuário.
 6. Apagar `cockpit_ensaio` e o app de ensaio.
 
+**Resultado do ensaio (19/10/2026):**
+- `cockpit_app` (sem superusuário, `noinherit`, sem `CONNECT` no database `postgres`) e `cockpit_ensaio` criados pelo `supabase_admin`. O `postgres` da imagem do Supabase **não** consegue `create database ... owner` de outra role (`must be able to SET ROLE`).
+- `pg_dump` pela **conexão direta** `db.zvlcyzqwetqueffossfs.supabase.co:5432` (a VPS alcança por IPv6). Nunca pelo pooler: o `pg_dump` faz `SET` de sessão, e um `SET` vazado pelo 6543 deixou o Cockpit 1h48 sem conseguir escrever em 19/10.
+- Dump **26 s** (320 MB, `-Fc`); restore **12 s** (`-j 4`). Contagem: 125 tabelas, todas iguais.
+- App da `origin/main` (`b94ac3e9`) num container solto na rede `coolify`, `APP_ENV=dev`, `JOBS_ENABLED=0`: `initDb` rodou sem superusuário, `/api/health` ok, proposta `/p/:id` e formulário `/f/:id` renderizaram (200), zero erro no log, 115 MB de RAM.
+- **Conexão de app para o Postgres exige SSL**: a rede `coolify` é IPv6 (`fd72:…`) e o `pg_hba` só aceita IPv6 com `hostssl`. Usar `sslmode=require` (o `makePool` já desliga a verificação do certificado), nunca `sslmode=disable`.
+- Arquivos na VPS: `/root/.cockpit-app-pw`, `/root/.cockpit-cloud-dsn` (600), `/opt/cockpit-migracao/` (dump e fonte). O database `cockpit_ensaio` fica até o corte e sai depois.
+
 ### Fase 2 — corte (janela de ~30 min, fora do horário comercial)
 
 1. Avisar o time; Cockpit fora do ar durante a janela.
 2. No Easypanel, **parar** o `saasmngmnt` (para o API e os 32 jobs: nada escreve mais no Cloud). Conferir no Cloud que não há conexão do Cockpit (`pg_stat_activity`).
 3. `pg_dump` final pela 5432 → `pg_restore` no database `cockpit` → contagem por tabela Cloud × VPS igual.
-4. Subir o Cockpit no Coolify com o env de produção completo, `COCKPIT_DB_URL`/`LEVERCOPY_DB_URL` locais, `COCKPIT_PUBLIC_URL` no domínio novo e `JOBS_ENABLED` como hoje. **Só depois de o Easypanel estar parado:** duas instâncias com jobs ligados mandam WhatsApp e cobrança em dobro.
-5. No Easypanel, trocar o `saasmngmnt` por um proxy reverso (nginx) da URL antiga para o domínio novo. Proxy, não redirect: webhook é `POST` e nem todo remetente segue 301/302.
+4. Subir o Cockpit no Coolify com o env de produção completo, `COCKPIT_DB_URL`/`LEVERCOPY_DB_URL` locais, domínio `levermoney.com.br` e `JOBS_ENABLED` como hoje. **Só depois de o Easypanel estar parado:** duas instâncias com jobs ligados mandam WhatsApp e cobrança em dobro.
+5. Trocar o registro A de `levermoney.com.br` para `187.127.50.132`. Enquanto o DNS propaga (TTL de 5 min), o Easypanel continua recebendo parte do tráfego: trocar o `saasmngmnt` por um proxy reverso (nginx) para `187.127.50.132` com `Host: levermoney.com.br`. Proxy, não redirect: webhook é `POST` e nem todo remetente segue 301/302. O Traefik da VPS emite o certificado assim que o DNS aponta para ela.
 6. Prova: `/api/health.build` igual ao commit da `main`; login; um webhook do WhatsApp recebido; um job rodando (log); proposta com foto; resultados do Levercopy na tela do cliente.
 
 ### Fase 3 — pós-corte (dias 1 a 30)
 
-1. Recadastrar os webhooks e o `COCKPIT_API_URL` do `copylever` no domínio novo, um por um, conferindo o tráfego chegando direto.
-2. Quando a URL antiga parar de receber tráfego, remover o proxy do Easypanel.
+1. Conferir o `COCKPIT_API_URL` do `copylever` (precisa apontar para `levermoney.com.br`).
+2. Quando o Easypanel parar de receber tráfego do Cockpit (DNS propagado), remover o proxy e o serviço `saasmngmnt`.
 3. Revisar a allowlist `LEVERADS_PG`: o `82.25.70.107` provavelmente entrou para o `LEVERCOPY_DB_URL` do Cockpit (confirmar); manter só se backups do Easypanel ainda precisarem.
 4. Backup diário do database `cockpit` junto com o do `levercopy`.
 5. Depois de 30 dias estável:
