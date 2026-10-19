@@ -455,7 +455,14 @@ internos; depois a comparação de modelos com o mesmo conjunto.
    LeverId quando configurado). A aba Gratuitas da tela Clientes lista as orgs
    sem cliente (gratuitas e pagantes sem cliente); elas **não** são
    `customers`, então não entram em KPI, churn, MRR, placar nem réguas. O
-   vínculo `customer.leveradsOrgId` vem da ficha ("Vincular conta", as mais
+   vínculo `customer.leveradsOrgId` vem do **convite** (a ficha gera o "Link de
+   cadastro" `LEVERADS_APP_URL/signup?convite=cvt_…` em
+   `POST /api/customers/:id/leverads-invite`, guardado em
+   `customer.signupInvite`; o cadastro do LeverAds grava o convite em
+   `orgs.cockpit_invite` e avisa `POST /public/leverads/org-created` com
+   `X-Cockpit-Service-Key` = `LEVERADS_SERVICE_KEY`, que relê as orgs, vincula
+   com `orgLink.via = "convite"` e roda o sync de acesso na hora — vale mesmo com
+   outro e-mail), da ficha ("Vincular conta", as mais
    novas primeiro, para o integrador que cria a conta com o cliente na call),
    do cadastro, ou sozinho pelo e-mail quando o e-mail do cliente ou do lead é
    exatamente o da org ou de uma conta dela e o par é único
@@ -1133,10 +1140,15 @@ pagamento, valor anual, cliente desde, churn). Teste: `multi-product.test.js`.
 
 **Acesso e limites.** `entitlements.js` calcula, por cliente × produto, o acesso
 (status da assinatura) e os limites (do `planSnapshot`, não do plano vivo). O
-adaptador do LeverAds (`leverads-access.js`) continua escrevendo SÓ
-`payment_active`; a diferença de limites (contas → `paid_seats`, cota de OEM →
-`creator_quota_*`, Price → `leverprice_enabled`) sai em `report.limits` como
-relatório, com `apply` ou sem. `/api/entitlements/{status,run,customers/:id}`
+adaptador do LeverAds (`leverads-access.js`) escreve `payment_active` e compara
+os limites (contas → `paid_seats`, cota de OEM → `creator_quota_*`, Price →
+`leverprice_enabled`) em `report.limits`. Por padrão os limites são só
+relatório; com `apply` **e** `LEVERADS_LIMITS_APPLY=1` (ou `{applyLimits:true}`
+no run manual), e só pela rota de serviço, o plano é gravado na org por
+`PUT /api/service/cockpit/orgs/:id/entitlements` do LeverAds (payment_active +
+campos do plano + cliente/plano de origem, idempotente; LeverAds migration 240).
+Venda personalizada, plano não identificado e org self-service (`plan_id`)
+continuam só no relatório. `/api/entitlements/{status,run,customers/:id}`
 são as rotas; `/api/leverads-access/*` segue como alias. As duas famílias pedem
 a tela Clientes, e forçar `apply` pede etiqueta admin.
 
@@ -1292,10 +1304,12 @@ Prévia com o funil atual e um lead por etapa: `?shell&etapas#today` ou
 código do plano e sem preço; preço e cobrança ficam aqui e os limites são
 aplicados em cada produto. `orgRefOf` já resolve `leveradsOrgId` hoje e `orgId`
 depois. Ainda NÃO existe: adaptador do LeverId (depende da migration
-`product_grants` + RPC no repo LeverId), escrita de limites no LeverAds e
-integração com o LeverPrice.
+`product_grants` + RPC no repo LeverId) e integração com o LeverPrice. A
+escrita de limites no LeverAds já existe (acima), atrás de
+`LEVERADS_LIMITS_APPLY`; o corpo dela (produto, plano, acesso) é o mesmo que o
+`set_product_grant` vai receber.
 
-Validação: `node --test packages/api/test/plan-*.test.js packages/api/test/entitlements.test.js`
+Validação: `node --test packages/api/test/plan-*.test.js packages/api/test/entitlements.test.js packages/api/test/plano-no-cadastro.test.js`
 e, no navegador com mocks, `npm run test:review:plans -w packages/web`.
 
 **Dor `[PRICE]` (07/10/2026).** O Leo começou a subir criativo de precificação

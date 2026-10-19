@@ -6,7 +6,12 @@
 // propósito: conta gratuita não entra em KPI, churn, MRR, placar nem nas
 // réguas de pós-venda.
 //
-// O vínculo (`customer.leveradsOrgId`) nasce de três jeitos:
+// O vínculo (`customer.leveradsOrgId`) nasce de quatro jeitos:
+//   · pelo convite: a ficha gera o link de cadastro da venda
+//     (LEVERADS_APP_URL/signup?convite=...), o cadastro do LeverAds guarda o
+//     convite na org (`cockpit_invite`) e avisa aqui (POST
+//     /public/leverads/org-created). Convite é exato: vale mesmo quando o
+//     cliente se cadastra com outro e-mail;
 //   · manual, na ficha (o integrador cria a conta com o cliente na call e
 //     escolhe a org entre as mais recentes) — rotas em routes.leverads-orgs.js;
 //   · pelo e-mail, sozinho: o e-mail do cliente ou do lead dele é exatamente o
@@ -18,7 +23,8 @@
 // O vínculo importa porque o sync de paywall (billing/leverads-access.js), os
 // resultados, o relatório mensal e a badge de LeverId leem `leveradsOrgId`.
 
-import { envClient } from "../billing/leverads-access.js";
+import crypto from "node:crypto";
+import { envClient, syncLeveradsAccessNow } from "../billing/leverads-access.js";
 import { isChurnedCustomer } from "../billing/churn.js";
 
 export const ORGS = "leverads_orgs";
@@ -26,6 +32,47 @@ export const MIRROR_INTERVAL_MS = 10 * 60 * 1000;
 const SAAS_ID = () => process.env.LEVERCOPY_SAAS_ID || "leverads";
 
 const norm = (v) => String(v || "").trim().toLowerCase();
+
+// ── Convite do link de cadastro ─────────────────────────────────────────────
+// O mesmo formato que o cadastro do LeverAds aceita ([A-Za-z0-9_-]{16,128}).
+export const newInviteToken = () => `cvt_${crypto.randomBytes(18).toString("base64url")}`;
+export const signupUrl = (token, env = process.env) =>
+  `${String(env.LEVERADS_APP_URL || "https://leverads.com.br").replace(/\/+$/, "")}/signup?convite=${encodeURIComponent(token)}`;
+
+// Convite do cliente (cria na primeira vez; `rotate` troca o antigo, que deixa
+// de vincular). Devolve o que a ficha mostra.
+export async function ensureSignupInvite(repo, customer, { rotate = false, now = () => new Date() } = {}) {
+  let invite = customer.signupInvite;
+  if (!invite?.token || rotate) {
+    invite = { token: newInviteToken(), createdAt: now().toISOString() };
+    await repo.update("customers", customer.id, { signupInvite: invite });
+  }
+  return { token: invite.token, url: signupUrl(invite.token), createdAt: invite.createdAt || "" };
+}
+
+// Vínculos pelo convite: a org guardou o convite de UM cliente. Cliente já
+// vinculado, que desfez esse vínculo, de outro produto ou org já vinculada
+// ficam de fora, como no e-mail.
+export function planInviteLinks({ orgs, customers, saasId = SAAS_ID() }) {
+  const linked = new Set(customers.map((c) => norm(c.leveradsOrgId)).filter(Boolean));
+  const byToken = new Map();
+  for (const c of customers) {
+    const token = String(c.signupInvite?.token || "");
+    if (!token || c.saas !== saasId || norm(c.leveradsOrgId)) continue;
+    byToken.set(token, byToken.has(token) ? null : c);
+  }
+  const links = [];
+  const used = new Set();
+  for (const o of orgs) {
+    const token = String(o.invite || "");
+    if (!token || o.gone || linked.has(norm(o.id))) continue;
+    const c = byToken.get(token);
+    if (!c || used.has(c.id) || (c.orgLinkRejected || []).map(norm).includes(norm(o.id))) continue;
+    used.add(c.id);
+    links.push({ customerId: c.id, orgId: norm(o.id) });
+  }
+  return links;
+}
 
 // E-mails de contato do cliente: o do cadastro e o do lead que virou venda.
 export function customerEmails(customer, leadById) {
@@ -78,6 +125,9 @@ function mirrorRow(org, prev, { members, nowIso }) {
     createdAt: org.created_at || prev?.createdAt || prev?.firstSeenAt || nowIso,
     firstSeenAt: prev?.firstSeenAt || nowIso,
     members: members || prev?.members || [],
+    // Convite do link de cadastro que a org usou (rota de serviço, migration
+    // 240 do LeverAds); vazio no login de super admin ou sem convite.
+    invite: String(org.cockpit_invite || ""),
     customerId: prev?.customerId || "",
     gone: false,
   };
@@ -119,12 +169,20 @@ export async function runLeveradsOrgMirror(repo, { client, identity = null, now 
 
   const customers = await repo.list("customers");
   const leads = await repo.list("leads").catch(() => []);
-  const links = planEmailLinks({ orgs: [...rows.values()], customers, leads });
-  for (const l of links) {
+  const inviteLinks = planInviteLinks({ orgs: [...rows.values()], customers });
+  for (const l of inviteLinks) {
+    await repo.update("customers", l.customerId, { leveradsOrgId: l.orgId, orgLink: { via: "convite", at: nowIso } });
+    const c = customers.find((x) => x.id === l.customerId);
+    if (c) { c.leveradsOrgId = l.orgId; }
+  }
+  // O e-mail roda depois e já vê os vínculos do convite.
+  const emailLinks = planEmailLinks({ orgs: [...rows.values()], customers, leads });
+  for (const l of emailLinks) {
     await repo.update("customers", l.customerId, { leveradsOrgId: l.orgId, orgLink: { via: "email", email: l.email, at: nowIso } });
     const c = customers.find((x) => x.id === l.customerId);
     if (c) { c.leveradsOrgId = l.orgId; }
   }
+  const links = [...inviteLinks, ...emailLinks];
 
   const customerByOrg = new Map();
   for (const c of customers) if (norm(c.leveradsOrgId)) customerByOrg.set(norm(c.leveradsOrgId), c.id);
@@ -144,6 +202,7 @@ export async function runLeveradsOrgMirror(repo, { client, identity = null, now 
     free: live.filter((r) => !r.customerId && !r.paymentActive).length,
     payingWithoutCustomer: live.filter((r) => !r.customerId && r.paymentActive).length,
     autoLinked: links.length,
+    inviteLinked: inviteLinks.length,
     created, updated,
   };
   if (links.length || created) log?.info?.(report, "leverads-orgs: espelho atualizado");
@@ -166,6 +225,30 @@ export function makeLeveradsOrgMirror(repo, { client = null, identity = null, lo
       return running;
     },
   };
+}
+
+// Aviso do cadastro do LeverAds (POST /public/leverads/org-created): relê as
+// orgs (vincula pelo convite ou pelo e-mail) e, se a conta nova ganhou cliente,
+// roda o sync de acesso na hora — o plano chega sem esperar os 10 min.
+export async function handleOrgCreated(repo, mirror, { orgId, log, syncAccess = syncLeveradsAccessNow } = {}) {
+  const report = await mirror.run();
+  const id = norm(orgId);
+  const customer = id ? (await repo.list("customers")).find((c) => norm(c.leveradsOrgId) === id) : null;
+  if (!customer) return { linked: false, mirror: report };
+  const access = await syncAccess(repo, { log });
+  log?.info?.({ org: id, customer: customer.id, via: customer.orgLink?.via }, "leverads-orgs: conta nova vinculada no cadastro");
+  return { linked: true, customer: customer.id, access: access ? { mode: access.mode, limits: access.limits?.mode } : null };
+}
+
+// Chave do aviso: a mesma LEVERADS_SERVICE_KEY com que o cockpit chama o
+// LeverAds (lá, COCKPIT_SERVICE_KEY), comparada em tempo constante.
+export function serviceKeyOk(given, env = process.env) {
+  const want = String(env.LEVERADS_SERVICE_KEY || "");
+  const got = String(given || "");
+  if (!want || !got) return false;
+  const a = Buffer.from(got);
+  const b = Buffer.from(want);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 export function startLeveradsOrgMirror(mirror, { log, intervalMs = MIRROR_INTERVAL_MS } = {}) {

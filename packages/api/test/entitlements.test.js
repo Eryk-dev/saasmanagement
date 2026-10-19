@@ -1,6 +1,7 @@
 // Entitlements: o direito do cliente em cada produto sai do billing + do retrato
 // do plano contratado. O adaptador do LeverAds segue escrevendo SÓ o
-// payment_active; a diferença de limites é relatório, nunca escrita.
+// payment_active; a diferença de limites é relatório (a escrita do plano está
+// em plano-no-cadastro.test.js, atrás de applyLimits).
 
 import test from "node:test";
 import assert from "node:assert/strict";

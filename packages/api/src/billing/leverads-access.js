@@ -22,10 +22,15 @@
 // é revisada antes de valer. POST /api/leverads-access/run {apply:true} força
 // um tick aplicando (pra primeira virada assistida).
 //
-// LIMITES do plano (contas, cota de OEM, Lever Price): o tick também compara o
-// que o plano contratado dá (entitlements.js) com o que a org tem, e devolve a
-// diferença em `report.limits`. É só relatório: nenhum limite é escrito no
-// produto, com apply ou sem — a escrita entra depois de o relatório ser revisado.
+// LIMITES do plano (contas, cota de OEM, módulos): o tick também compara o que
+// o plano contratado dá (entitlements.js) com o que a org tem, e devolve a
+// diferença em `report.limits`. Por padrão é só relatório. Com apply E
+// LEVERADS_LIMITS_APPLY=1 (ou {applyLimits:true} no run manual), e só pela rota
+// de serviço, o plano é GRAVADO na org: PUT /api/service/cockpit/orgs/:id/
+// entitlements com payment_active, os campos do plano e o cliente/plano de
+// origem. É assim que a conta criada pelo link de cadastro da venda já nasce no
+// plano certo. Venda personalizada, sem plano identificado ou org self-service
+// (plan_id) continuam só no relatório.
 
 import { NOT_CONFIGURED } from "../platform/http-status.js";
 import { desiredAccess, desiredEntitlements, leveradsLimitFields, limitsDiff, orgRefOf, plansByCodeOf } from "./entitlements.js";
@@ -103,7 +108,12 @@ function makeServiceClient({ base, serviceKey, fetchImpl }) {
     mode: "service",
     configured: () => Boolean(base && serviceKey),
     listOrgs: () => request("/api/service/cockpit/orgs"),
-    // A rota de serviço só muda payment_active — é tudo o que o sync escreve.
+    // Plano contratado (acesso + limites + módulos) numa chamada só, idempotente
+    // do lado do produto.
+    applyEntitlements: (id, body) => request(`/api/service/cockpit/orgs/${encodeURIComponent(id)}/entitlements`, {
+      method: "PUT", body: JSON.stringify(body),
+    }),
+    // updateOrg só muda payment_active; o resto do plano vai por applyEntitlements.
     updateOrg: (id, patch) => {
       const keys = Object.keys(patch || {});
       if (keys.length !== 1 || keys[0] !== "payment_active") {
@@ -118,14 +128,15 @@ function makeServiceClient({ base, serviceKey, fetchImpl }) {
 
 // Um tick do sync. Sempre devolve o report completo — em dry-run, `planned`
 // lista o que seria feito; em apply, `applied` conta o que foi.
-export async function runLeveradsAccessSync(repo, { client, apply = false, log } = {}) {
+export async function runLeveradsAccessSync(repo, { client, apply = false, applyLimits = false, log } = {}) {
+  const writeLimits = apply && applyLimits && typeof client.applyEntitlements === "function";
   const saasId = process.env.LEVERCOPY_SAAS_ID || "leverads";
   const report = {
     mode: apply ? "apply" : "dry-run", at: new Date().toISOString(),
     checked: 0, inSync: 0, applied: 0, planned: [], skipped: [], errors: [],
     // Limites do plano (contas, cota de OEM, Lever Price) × o que a org tem no
     // produto. SÓ RELATÓRIO: nada daqui é escrito, com apply ou sem.
-    limits: { mode: "report", inSync: 0, planned: [], skipped: [], unsupported: [] },
+    limits: { mode: writeLimits ? "apply" : "report", inSync: 0, applied: 0, planned: [], skipped: [], unsupported: [], errors: [] },
   };
   const customers = (await repo.list("customers")).filter((c) => c.saas === saasId && c.leveradsOrgId);
   if (!customers.length) return report;
@@ -147,7 +158,13 @@ export async function runLeveradsAccessSync(repo, { client, apply = false, log }
       report.errors.push({ customer: customer.id, name: customer.name, error: `org ${customer.leveradsOrgId} não existe no produto` });
       continue;
     }
-    if (want.paymentActive) limitsReport(report.limits, customer, org, desiredEntitlements(customer, subs, plansByCode, { defaultProduct: "leverads" }));
+    if (want.paymentActive) {
+      const ents = desiredEntitlements(customer, subs, plansByCode, { defaultProduct: "leverads" });
+      const toWrite = limitsReport(report.limits, customer, org, ents);
+      // O plano leva o payment_active junto: a conta nova sai do bloqueio já
+      // com as cadeiras, cotas e módulos do plano, numa escrita só.
+      if (writeLimits && toWrite) await writePlan(report.limits, client, customer, org, toWrite, want);
+    }
     if (Boolean(org.payment_active) === want.paymentActive) { report.inSync++; continue; }
     const action = {
       customer: customer.id, name: customer.name, org: org.id, orgName: org.name,
@@ -171,9 +188,12 @@ export async function runLeveradsAccessSync(repo, { client, apply = false, log }
 // Compara os limites do plano com a org e anota no relatório. Conservador:
 // venda personalizada ou sem plano identificado fica com limites manuais, e org
 // com assinatura self-service do próprio produto (plan_id) não é comparada, já
-// que lá as contas pagas entram na cobrança do produto.
+// que lá as contas pagas entram na cobrança do produto. Devolve o direito do
+// LeverAds a gravar quando há diferença (ou a org ainda não sabe de que
+// cliente/plano veio); null quando não há nada a escrever.
 function limitsReport(out, customer, org, entitlements) {
   const who = { customer: customer.id, name: customer.name, org: org.id, orgName: org.name };
+  let toWrite = null;
   for (const ent of entitlements || []) {
     if (ent.source !== "plan") {
       out.skipped.push({ ...who, product: ent.product, reason: "plano personalizado ou não identificado: limites manuais" });
@@ -187,14 +207,48 @@ function limitsReport(out, customer, org, entitlements) {
     if (!Object.keys(want).length) continue;
     const { changes, unsupported } = limitsDiff(org, want);
     if (unsupported.length) out.unsupported.push({ ...who, product: ent.product, plan: ent.planCode, fields: unsupported });
+    const origin = String(org.cockpit_customer_id || "") === String(customer.id) && String(org.cockpit_plan_code || "") === String(ent.planCode || "");
     if (Object.keys(changes).length) out.planned.push({ ...who, product: ent.product, plan: ent.planCode, changes });
     else if (!unsupported.length) out.inSync++;
+    if (ent.product === "leverads" && (Object.keys(changes).length || !origin)) toWrite = { ent, fields: want };
+  }
+  return toWrite;
+}
+
+async function writePlan(out, client, customer, org, { ent, fields }, access) {
+  const body = {
+    product: "leverads", customer_id: String(customer.id), plan_code: ent.planCode || null,
+    plan_name: ent.planName || null, payment_active: access.paymentActive, fields,
+  };
+  try {
+    const res = await client.applyEntitlements(org.id, body);
+    out.applied++;
+    // A escrita já levou o payment_active: o passo do paywall vê a org em dia.
+    org.payment_active = access.paymentActive;
+    return res;
+  } catch (err) {
+    out.errors.push({ customer: customer.id, name: customer.name, org: org.id, plan: ent.planCode, error: err.message });
+    return null;
   }
 }
 
 let lastReport = null;
 
 const isAdmin = (u) => !u || (u.roles || []).includes("admin"); // sem sessão = key mestre
+
+// Uma rodada fora do intervalo, com os flags do ambiente — é o que o aviso de
+// org criada (customers/leverads-orgs.js) chama depois de vincular a conta nova,
+// para o plano chegar sem esperar o tick. Divide o último report com a tela.
+export async function syncLeveradsAccessNow(repo, { client, log } = {}) {
+  const cli = client || envClient();
+  if (!cli.configured()) return null;
+  lastReport = await runLeveradsAccessSync(repo, {
+    client: cli, log,
+    apply: process.env.LEVERADS_ACCESS_APPLY === "1",
+    applyLimits: process.env.LEVERADS_LIMITS_APPLY === "1",
+  });
+  return lastReport;
+}
 
 export function startLeveradsAccessSync(repo, { log, intervalMs, client } = {}) {
   const cli = client || envClient();
@@ -203,11 +257,12 @@ export function startLeveradsAccessSync(repo, { log, intervalMs, client } = {}) 
     return () => {};
   }
   const apply = process.env.LEVERADS_ACCESS_APPLY === "1";
+  const applyLimits = process.env.LEVERADS_LIMITS_APPLY === "1";
   let running = false;
   const tick = async () => {
     if (running) return;
     running = true;
-    try { lastReport = await runLeveradsAccessSync(repo, { client: cli, apply, log }); }
+    try { lastReport = await runLeveradsAccessSync(repo, { client: cli, apply, applyLimits, log }); }
     catch (err) { log?.warn({ err: err.message }, "leverads-access: tick falhou"); }
     finally { running = false; }
   };
@@ -231,7 +286,8 @@ export function registerLeveradsAccessRoutes(app, repo, { client } = {}) {
       return reply.code(NOT_CONFIGURED).send({ error: NOT_CONFIGURED_MSG });
     }
     const apply = req.body?.apply === true || process.env.LEVERADS_ACCESS_APPLY === "1";
-    lastReport = await runLeveradsAccessSync(repo, { client: cli, apply, log: req.log });
+    const applyLimits = req.body?.applyLimits === true || process.env.LEVERADS_LIMITS_APPLY === "1";
+    lastReport = await runLeveradsAccessSync(repo, { client: cli, apply, applyLimits, log: req.log });
     return lastReport;
   };
   app.post("/api/leverads-access/run", run);

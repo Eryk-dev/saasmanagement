@@ -27,6 +27,9 @@
 .lva-linked strong { font-size: 13px; font-weight: 650; color: var(--fg-1); }
 .lva-linked small { font-size: 11.5px; color: var(--fg-3); line-height: 1.4; }
 .lva-err { color: var(--neg); font-size: 11.5px; margin: 6px 0 0; }
+.lva-invite { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.lva-invite .inp { flex: 1; min-width: 180px; font-size: 11.5px; }
+.lva-invite small { font-size: 11.5px; color: var(--fg-3); }
 
 .lva-picker { display: flex; flex-direction: column; gap: 6px; padding: 2px 4px; }
 .lva-picker-head { display: flex; gap: 6px; }

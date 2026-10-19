@@ -9,7 +9,9 @@ import "./leverads-accounts.css";
 //   · FreeAccountsTab   aba Gratuitas: contas sem venda e as pagantes sem
 //                       cliente, com "Vincular a cliente";
 //   · CustomerOrgLink   bloco da ficha: a conta vinculada (e por onde veio),
-//                       desfazer e "Vincular conta" com as mais novas primeiro.
+//                       desfazer e "Vincular conta" com as mais novas primeiro;
+//                       sem conta, o "Link de cadastro" com convite: o cliente
+//                       cria a conta por ele e já entra no plano da venda.
 // Conta gratuita não é cliente: não entra em KPI, churn nem régua.
 
 const { useCallback, useEffect, useMemo, useRef, useState } = React;
@@ -85,7 +87,30 @@ function OrgPicker({ anchor, orgs, emails, busy, onPick, onRefresh, refreshing, 
   );
 }
 
-const VIA = { email: "vinculada pelo e-mail", manual: "vinculada na ficha" };
+const VIA = { convite: "vinculada pelo link de cadastro", email: "vinculada pelo e-mail", manual: "vinculada na ficha" };
+
+// Link de cadastro da venda (convite): copiar e mandar pro cliente. A conta
+// criada por ele vincula sozinha a este cliente e recebe o plano.
+function SignupInviteLink({ customer }) {
+  const [invite, setInvite] = useState(null);
+  const [state, setState] = useState("");
+  async function copy() {
+    setState("…");
+    try {
+      const res = invite || await api.leveradsInvite(customer.id);
+      setInvite(res);
+      await navigator.clipboard?.writeText(res.url);
+      setState("copiado");
+    } catch (e) { setState(e?.message || "não deu pra gerar o link"); }
+  }
+  return (
+    <div className="lva-invite">
+      <button type="button" onClick={copy} disabled={state === "…"} title="o cliente cria a conta por este link e já entra no plano da venda">Link de cadastro</button>
+      {invite && <input className="inp" readOnly value={invite.url} onFocus={(e) => e.target.select()} aria-label="link de cadastro" />}
+      {state && state !== "…" && <small>{state}</small>}
+    </div>
+  );
+}
 
 export function CustomerOrgLink({ customer, lead, onChanged }) {
   const mirror = useLeveradsMirror();
@@ -129,6 +154,7 @@ export function CustomerOrgLink({ customer, lead, onChanged }) {
           {mirror.configured && <button ref={ref} type="button" className="lva-primary" onClick={() => setOpen(true)} disabled={!!busy}>Vincular conta</button>}
         </div>
       )}
+      {!orgId && <SignupInviteLink customer={customer} />}
       {err && <p className="lva-err" role="alert">{err}</p>}
       {open && <OrgPicker anchor={ref} orgs={mirror.orgs} emails={emails} busy={busy} onPick={link}
         onRefresh={mirror.refresh} refreshing={mirror.loading} onClose={() => setOpen(false)} />}

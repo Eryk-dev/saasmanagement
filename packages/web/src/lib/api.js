@@ -127,6 +127,7 @@ export const api = {
   refreshLeveradsOrgs: () => req("POST", "/api/customers/leverads-orgs/refresh"),
   linkLeveradsOrg: (customerId, orgId) => req("POST", `/api/customers/${encodeURIComponent(customerId)}/leverads-org`, { orgId }),
   unlinkLeveradsOrg: (customerId) => req("DELETE", `/api/customers/${encodeURIComponent(customerId)}/leverads-org`),
+  leveradsInvite: (customerId, rotate = false) => req("POST", `/api/customers/${encodeURIComponent(customerId)}/leverads-invite`, { rotate }),
   leveridOrgs: (orgIds) => req("GET", `/api/customers/leverid?orgs=${encodeURIComponent(orgIds.join(","))}`),
   // Auth do time: o token de sessão entra no MESMO slot da key (localStorage +
   // header x-api-key) — o resto do client não muda.

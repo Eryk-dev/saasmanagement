@@ -8,8 +8,12 @@
 //   POST   /api/customers/:id/leverads-org        { orgId } vincula na mão
 //   DELETE /api/customers/:id/leverads-org        desfaz (e o automático não
 //                                                  religa essa org)
+//   POST   /api/customers/:id/leverads-invite     { rotate? } link de cadastro
+//                                                  com convite (vínculo exato)
+//   POST   /public/leverads/org-created           aviso do cadastro do LeverAds
+//                                                  (X-Cockpit-Service-Key)
 
-import { ORGS } from "./leverads-orgs.js";
+import { ORGS, ensureSignupInvite, handleOrgCreated, serviceKeyOk } from "./leverads-orgs.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const norm = (v) => String(v || "").trim().toLowerCase();
@@ -49,6 +53,23 @@ export function registerLeveradsOrgRoutes(app, repo, { mirror }) {
     if (prev && prev !== orgId) await repo.update(ORGS, prev, { customerId: "" }).catch(() => {});
     await repo.update(ORGS, orgId, { customerId: customer.id });
     return saved;
+  });
+
+  app.post("/api/customers/:id/leverads-invite", async (req, reply) => {
+    const customer = await repo.get("customers", req.params.id);
+    if (!customer) return reply.code(404).send({ error: "Cliente não encontrado." });
+    return ensureSignupInvite(repo, customer, { rotate: req.body?.rotate === true });
+  });
+
+  // Aberta no gate de sessão (OPEN_PREFIXES); a chave de serviço é a credencial.
+  // Responde na hora e vincula/sincroniza em seguida: o cadastro não espera.
+  app.post("/public/leverads/org-created", async (req, reply) => {
+    if (!serviceKeyOk(req.headers["x-cockpit-service-key"])) return reply.code(401).send({ error: "Chave inválida" });
+    const orgId = norm(req.body?.org_id);
+    if (!UUID.test(orgId)) return reply.code(400).send({ error: "org_id inválido" });
+    handleOrgCreated(repo, mirror, { orgId, log: req.log })
+      .catch((err) => req.log.warn({ err: err.message, org: orgId }, "leverads-orgs: aviso de org criada falhou (o tick recupera)"));
+    return reply.code(202).send({ received: true });
   });
 
   app.delete("/api/customers/:id/leverads-org", async (req, reply) => {
