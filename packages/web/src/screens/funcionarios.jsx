@@ -6,6 +6,7 @@ import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { usePeriod } from "../components/period-picker.jsx";
 import { buildPeople, TeamCards, topPerformer, asRate } from "../components/team-cards.jsx";
+import { TeamFilter, TeamsCard, useTeams } from "../components/teams-card.jsx";
 
 // Funcionários — desempenho por pessoa. Reusa os cartões do time (TeamCards, os
 // mesmos da Visão geral) mas como tela dedicada no menu Análises, com o próprio
@@ -19,6 +20,8 @@ function FuncionariosScreen({ onNav }) {
   // Janela GLOBAL do cockpit (a mesma da Visão geral e da Aquisição).
   const { period, custom, win } = usePeriod(); // seletor no topo; aqui só lemos a janela
   const [score, setScore] = useState(null);
+  const [teams, reloadTeams] = useTeams(product?.id);
+  const [teamId, setTeamId] = useState("");
 
   useEffect(() => {
     if (!product?.id) return;
@@ -36,7 +39,10 @@ function FuncionariosScreen({ onNav }) {
 
   if (!product) return <EmptyState title="Sem produto ativo" hint="Escolha um produto no seletor da barra lateral." />;
 
-  const people = buildPeople(score);
+  // Filtro por time (auth/teams.js): os cartões e o coaching ficam só com os
+  // membros. Time arquivado ou de outro produto some do filtro.
+  const team = (teams || []).find((t) => t.id === teamId);
+  const people = buildPeople(score).filter((p) => !team || team.members.includes(p.user));
   const highlight = topPerformer(people);
   const coaching = people.flatMap((p) => {
     const checks = [
@@ -54,8 +60,9 @@ function FuncionariosScreen({ onNav }) {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Análise de Equipe" sub="desempenho por pessoa · placar por papel (SDR · closer · CS)" />
       <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+        <TeamFilter teams={teams} value={team ? teamId : ""} onChange={setTeamId} />
         {score == null && <div className="dim" style={{ fontSize: 12.5 }}>carregando…</div>}
-        {score != null && !people.length && <EmptyState title="Sem atividade no período" hint="O desempenho por pessoa aparece quando o time movimenta leads e clientes." />}
+        {score != null && !people.length && <EmptyState title="Sem atividade no período" hint={team ? `Ninguém do time ${team.name} movimentou leads ou clientes no período.` : "O desempenho por pessoa aparece quando o time movimenta leads e clientes."} />}
         {people.length > 0 && <TeamCards people={people} bizDays={win.businessDays} onPerson={openPerson} highlight={highlight} />}
 
         {people.length > 0 && (
@@ -74,6 +81,7 @@ function FuncionariosScreen({ onNav }) {
             ))}
           </section>
         )}
+        <TeamsCard saas={product.id} teams={teams} onChanged={reloadTeams} />
       </div>
     </div>
   );

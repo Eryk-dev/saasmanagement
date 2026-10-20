@@ -96,6 +96,7 @@ export const COLLECTIONS = {
   timeline_events: [], // timeline imutável do cliente/lead alimentada pelos eventos (events/timeline.js): só inserção; PRIVATE, lida por /api/customers/:id/timeline e /api/leads/:id/timeline
   workspaces: [], // tenant de cada produto (id produto:tenant), com o cliente dono (customers/lifecycle.js); PRIVATE, lido por /api/customers/workspaces e pelo perfil do cliente
   onboardings: [], // integração do cliente como registro próprio, separada do ganho (Fase 1B); PRIVATE
+  teams: [], // times: pessoas de um produto por função, com gestor (auth/teams.js); PRIVATE
   bundles: [], // pacotes: planos de produtos diferentes por um preço só, rateado no fechamento (billing/bundles.js); PRIVATE
   deal_orders: [], // pedido do fechamento: as assinaturas que nasceram de um negócio (e do pacote); PRIVATE
   meetings: [], // calls de venda como registro (crm/meetings.js): espelho dos campos de call do lead, com estado agendada/realizada/no_show/remarcada; PRIVATE

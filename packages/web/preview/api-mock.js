@@ -109,6 +109,12 @@ const RESPOSTAS = {
     return t;
   },
   crmActivities: ({ lead = "", customer = "" }) => ({ activities: atividadesPreview.filter((t) => (customer && t.crmCustomer === customer) || (lead && t.crmLead === lead)) }),
+  teams: () => ({ teams: [
+    { id: "tm1", name: "SDR LeverAds", saas: "leverads", kind: "sdr", members: ["leo"], manager: "leo", status: "active" },
+    { id: "tm2", name: "Fechamento", saas: "leverads", kind: "closer", members: ["lucas", "tiago"], manager: "lucas", status: "active" },
+  ] }),
+  createTeam: (b) => ({ id: "tm_new", ...b }),
+  updateTeam: (id, b) => ({ id, ...b }),
   completeCrmActivity: (id) => { const t = atividadesPreview.find((x) => x.id === id); if (t) t.completed = true; return t; },
   ...customersCashMock,
   ...trainingMock,

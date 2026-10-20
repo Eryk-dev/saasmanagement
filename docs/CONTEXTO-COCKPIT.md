@@ -1580,6 +1580,22 @@ em `crm/activity-cards.js`.
   se a atividade com prazo hoje entra nessa fila.
 - **Teste:** `crm-activity-cards.test.js`.
 
+**Times (20/10/2026).** Fase 2 do plano do Lever CRM, em `auth/teams.js`.
+
+- **Coleção** `teams` (PRIVATE): `name`, `saas` (vazio = todos os produtos),
+  `kind` (sdr/closer/integracao/cs/suporte/outro), `members`, `manager`,
+  `status`. O gestor sempre entra nos membros, e membro que não é usuário é
+  recusado. Uma pessoa pode estar em mais de um time.
+- **Rotas:** `GET /api/teams?saas=&all=1` (aberta a quem está logado),
+  `POST /api/teams` e `PATCH /api/teams/:id` (só admin; `{status:"archived"}`
+  arquiva).
+- **Web** (`components/teams-card.jsx`): na Análise de Equipe
+  (`screens/funcionarios.jsx`), chips de time filtram os cartões e a fila de
+  coaching, e o card "Times" lista, cria e edita (admin).
+- **Distribuição de leads não mudou:** `autoLeadOwner` segue por SDR do
+  produto (round-robin opcional), sem olhar o time.
+- **Teste:** `teams.test.js`.
+
 **WhatsApp: dono da conversa e virar ticket (20/10/2026).** Fase 2 do plano
 do Lever CRM, em `whatsapp/thread-owner.js`.
 
