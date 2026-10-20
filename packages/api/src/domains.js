@@ -26,6 +26,7 @@ import * as support from "./support/index.js";
 import * as whatsapp from "./whatsapp/index.js";
 import * as sdr from "./sdr/index.js";
 import * as customers from "./customers/index.js";
+import * as events from "./events/index.js";
 import * as releases from "./releases/index.js";
 import * as comp from "./comp/index.js";
 import * as crm from "./crm/index.js";
@@ -33,7 +34,7 @@ import { makeJobGate } from "./platform/app-env.js";
 
 export const DOMAINS = [
   platform, auth, google, forms, proposals, billing, payments, marketing, blog,
-  calls, training, metrics, tasks, support, whatsapp, sdr, customers, releases, comp, crm,
+  calls, training, metrics, tasks, support, whatsapp, sdr, customers, events, releases, comp, crm,
 ];
 
 // Sobe as rotinas em segundo plano de todos os domínios (chamado pelo index.js

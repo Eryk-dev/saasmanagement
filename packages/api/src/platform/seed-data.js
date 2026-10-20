@@ -92,6 +92,8 @@ export const COLLECTIONS = {
   payment_links: [], // histórico dos links de pagamento gerados (card do lead, ficha do cliente ou tela): recibo da geração; o status vem do espelho do MP (payment-links.js)
   product_update_assets: [], // prints das novidades (base64, servidos em /public/updates/assets/:id); PRIVATE
   product_updates: [], // novidades de produto escritas na tela Versões e novidades (releases/product-updates.js); PRIVATE, rotas em /api/releases e /public/updates/:saas
+  crm_events: [], // caixa de entrada dos eventos assinados dos produtos (events/events-core.js): id = emissor:event_id, estados pending/processed/unmatched/failed/dead; PRIVATE
+  timeline_events: [], // timeline imutável do cliente/lead alimentada pelos eventos (events/timeline.js): só inserção; PRIVATE, lida por /api/customers/:id/timeline e /api/leads/:id/timeline
   leverads_orgs: [], // espelho das orgs do LeverAds (customers/leverads-orgs.js): contas gratuitas, pagantes sem cliente e o vínculo cliente × org; PRIVATE, rotas em /api/customers/leverads-orgs
   mp_preapprovals: [], // espelho das ASSINATURAS RECORRENTES do Mercado Pago (inclusive as criadas fora do cockpit), com o vínculo à assinatura do cliente (mp-subscriptions.js)
   campaigns: [],     // disparos (e-mail + WhatsApp) pros leads qualificados por produto (ferramenta)

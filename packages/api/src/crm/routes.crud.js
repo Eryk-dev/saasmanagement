@@ -69,7 +69,10 @@ const PRIVATE = new Set(["users", "product_updates", "product_update_assets", "s
   "plan_changes",
   // Espelho das orgs do LeverAds: escrito só pelo servidor, lido pelas rotas
   // de /api/customers/leverads-orgs (guard de Clientes).
-  "leverads_orgs"]);
+  "leverads_orgs",
+  // Eventos dos produtos e timeline imutável: escritos só pelo servidor
+  // (events/), lidos pelas rotas próprias.
+  "crm_events", "timeline_events"]);
 
 const isExposed = (c) => COLLECTION_NAMES.includes(c) && !PRIVATE.has(c);
 

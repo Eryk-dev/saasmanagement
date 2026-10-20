@@ -79,7 +79,12 @@ const INDEXES = [
   ["ticket_events_ticket_idx", "ticket_events", `((json->>'ticket'))`],
   ["notifications_task_idx", "notifications", `((json->>'task'))`],
   ["plan_changes_customer_idx", "plan_changes", `((json->>'customer'))`],
-  ["activities_lead_idx", "activities", `((json->>'lead'))`], // timeline do lead (GET /api/activities?lead=)
+  ["activities_lead_idx", "activities", `((json->>'lead'))`],
+  // Caixa de entrada de eventos (o runner lê por estado) e timeline única
+  // (lida por cliente e por lead) — events/.
+  ["crm_events_status_idx", "crm_events", `((json->>'status'), (json->>'nextAttemptAt'))`],
+  ["timeline_events_customer_idx", "timeline_events", `((json->>'customer'))`],
+  ["timeline_events_lead_idx", "timeline_events", `((json->>'lead'))`], // timeline do lead (GET /api/activities?lead=)
   // proposals é a maior coleção do banco (47 MB de snapshots, acima do teto do
   // cache de list()); o pace só precisa das criadas HOJE por produto.
   ["proposals_saas_created_idx", "proposals", `((json->>'saas'), (json->>'createdAt'))`],

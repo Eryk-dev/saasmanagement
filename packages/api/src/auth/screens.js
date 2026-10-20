@@ -118,6 +118,7 @@ const ROUTE_SCREENS = [
   // billing da base, então segue o guard de Clientes. Aplicar de verdade ainda
   // pede etiqueta admin dentro da rota (leverads-access.js).
   ["/api/leverads-access", ["customers"]],
+  ["/api/crm-events", ["customers"]], // caixa de entrada dos eventos dos produtos (events/)
   ["/api/entitlements", ["customers"]],
   ["/api/nps", ["customers"]],
   // Cases nascem da ficha do cliente e mostram faturamento por conta: mesmo

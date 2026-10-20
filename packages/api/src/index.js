@@ -28,7 +28,7 @@ const OPEN_PATHS = new Set(["/api/health", "/embed.js", "/favicon.ico", "/api/au
 // Superfície pública do form builder (página + envio anônimo) e do proposal
 // builder (página /p/:id, aceite, painel do closer via editKey). Endurecimento
 // (rate-limit, honeypot, token) vive em routes.forms.js / routes.proposals.js.
-const OPEN_PREFIXES = ["/f/", "/public/forms/", "/fi/", "/public/integration-forms/", "/p/", "/public/proposals/", "/public/mp/", "/public/asaas/", "/public/appmax/", "/public/leverads/", "/public/updates/", "/public/social/", "/public/training/", "/public/users/", "/public/activities/", "/public/tasks/", "/public/followup/", "/public/lp/", "/u/", "/m/", "/api/webhooks/",
+const OPEN_PREFIXES = ["/f/", "/public/forms/", "/fi/", "/public/integration-forms/", "/p/", "/public/proposals/", "/public/mp/", "/public/asaas/", "/public/appmax/", "/public/leverads/", "/public/events/", "/public/updates/", "/public/social/", "/public/training/", "/public/users/", "/public/activities/", "/public/tasks/", "/public/followup/", "/public/lp/", "/u/", "/m/", "/api/webhooks/",
   // Link curto do convite de agenda (auth/booking-page.js): preview em português
   // no WhatsApp e redirecionamento pra agenda do Google de quem atende.
   "/a/",

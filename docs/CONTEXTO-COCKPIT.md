@@ -134,7 +134,7 @@ A API é organizada por domínio em `packages/api/src/`: `platform/` (banco, see
 migrações, cache, status HTTP), `shared/` (módulos puros que a SPA também importa;
 sem API do Node), `auth/`, `crm/`, `sdr/`, `whatsapp/`, `calls/`, `google/`,
 `forms/`, `proposals/`, `billing/`, `payments/`, `customers/`, `support/`, `tasks/`,
-`training/`, `marketing/`, `blog/`, `metrics/`, `comp/` e `integrations/`
+`training/`, `marketing/`, `blog/`, `metrics/`, `comp/`, `events/` e `integrations/`
 (clientes externos transversais). Ficam na raiz `index.js`, `routes.js`,
 `domains.js` e `build-info.js`; `assets/` guarda as imagens servidas. Arquivo novo
 entra na pasta do domínio dele.
@@ -1343,6 +1343,33 @@ navegação). Teste: `releases.test.js`.
 
 Validação: `node --test packages/api/test/plan-*.test.js packages/api/test/entitlements.test.js packages/api/test/plano-no-cadastro.test.js`
 e, no navegador com mocks, `npm run test:review:plans -w packages/web`.
+
+**Eventos dos produtos e timeline única (20/10/2026).** Fases 1.1 e 1.2 do
+plano do Lever CRM, no domínio `events/`. Os produtos não escrevem no banco do
+cockpit: publicam em `POST /public/events/v1` (aberta no gate de sessão).
+
+- **A credencial do envio:** HMAC-SHA256 de `${timestamp}.${corpo cru}`, com o
+  segredo do emissor em `LEVER_EVENTS_SECRET_<EMISSOR>`. Os headers são
+  `x-lever-source`, `x-lever-timestamp` (ms, janela de 5 min) e
+  `x-lever-signature`. Emissor sem segredo recebe 401.
+- **Idempotência:** o envelope (`event_id`, `type` com ponto, `occurred_at`, e
+  opcionalmente `lever_id`, `org_id`, `product`, `subject{email,phone}` e
+  `payload` de até 16 KB) vira `crm_events` com id `emissor:event_id`.
+  Reenvio devolve `duplicate: true` e não regrava.
+- **Processamento:** casa `org_id` com o cliente (`leveradsOrgId`/`orgId`), e
+  `lever_id`, e-mail ou telefone com o lead (régua do dedup). O resultado vai
+  para `timeline_events`, só de inserção, com id `tl:` + o do evento.
+- **Reentrega:** sem dono vira `unmatched` e com erro vira `failed`. O job
+  `crmEvents` tenta de novo com espera de 2 min a 24 h; depois de 8 tentativas
+  o evento vira `dead`.
+- **Timeline única:** `GET /api/customers/:id/timeline` e
+  `GET /api/leads/:id/timeline` juntam na leitura `timeline_events`,
+  `activities` dos leads do cliente, `plan_changes` e `ticket_events` dos
+  tickets dele, cada item com `origin`. O lead vê também a história do cliente
+  que gerou.
+- **Caixa de entrada:** `GET /api/crm-events?status=` (guard de Clientes).
+- **Coleções:** as duas são PRIVATE.
+- **Teste:** `crm-events.test.js`.
 
 **Dor `[PRICE]` (07/10/2026).** O Leo começou a subir criativo de precificação
 com `[PRICE]` no nome, rastreado como o `[OEM]`. O que o código já fazia desde
