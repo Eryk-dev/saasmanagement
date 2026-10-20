@@ -5,10 +5,11 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { isAdminUser } from "../lib/users.js";
-import { EmptyState, MoreMenu } from "../atoms.jsx";
+import { EmptyState, MoreMenu, toast } from "../atoms.jsx";
 import { Drawer } from "../components/overlay.jsx";
 import { BarraComposicao } from "../components/story.jsx";
 import { PlanModal } from "../components/plan-editor.jsx";
+import { SwitchRow } from "../components/form-controls.jsx";
 import { CYCLE_TITLE } from "../lib/payments.js";
 import { PLAN_LIMITS, PLAN_FEATURES, PLAN_PRODUCTS, planProductOf, limitsSummary, featuresIncluded } from "../../../api/src/shared/plan-resources.js";
 
@@ -257,6 +258,25 @@ function Subscribers({ rows }) {
   </>;
 }
 
+// Pós-venda do plano (Lever CRM): exige integração com o cliente depois da
+// venda? Ligado, o Ganho abre a integração sozinho; desligado, o cliente vai
+// direto pro acompanhamento de CS. Grava na hora (PATCH do plano, só admin).
+function PlanIntegrationSwitch({ plan }) {
+  const { refresh } = useData();
+  const [on, setOn] = React.useState(plan.requiresIntegration === true);
+  const [busy, setBusy] = React.useState(false);
+  async function change(v) {
+    if (busy) return;
+    setBusy(true);
+    setOn(v);
+    try { await api.update("plans", plan.id, { requiresIntegration: v }); await refresh?.(); }
+    catch (e) { setOn(!v); toast(`${e.message || "Não foi possível salvar"} · tente de novo`, "neg"); }
+    finally { setBusy(false); }
+  }
+  return <SwitchRow checked={on} onChange={change} disabled={busy} title="Exige integração depois da venda"
+    hint={on ? "O Ganho abre a integração com o checklist do modelo." : "O cliente vai direto pro acompanhamento de CS; a integração ainda pode ser aberta à mão."} />;
+}
+
 function PlanDrawer({ plan, stat, onClose, onEdit }) {
   const price = priceText(plan);
   const limits = PLAN_LIMITS.filter((l) => l.key in (plan.limits || {}));
@@ -309,6 +329,12 @@ function PlanDrawer({ plan, stat, onClose, onEdit }) {
             <section>
               <div className="kicker">Entregáveis na apresentação</div>
               <ul className="plans-list">{deliverables.map((d, i) => <li key={i}>{d}</li>)}</ul>
+            </section>
+          )}
+          {plan.v === 2 && isAdminUser() && (
+            <section>
+              <div className="kicker">Pós-venda</div>
+              <div style={{ marginTop: 8 }}><PlanIntegrationSwitch plan={plan} /></div>
             </section>
           )}
           <section>
