@@ -296,3 +296,20 @@ button.chist-meeting:hover { background:var(--hover); }
   .chist-btn, button.chist-meeting, .chist-link { min-height:44px; }
   .chist-link { display:inline-flex; align-items:center; }
 }
+
+/* Régua de marcos enxuta (components/milestone-strip.jsx). */
+.customer-peek-ms { display:flex; flex-direction:column; gap:8px; margin-top:10px; }
+.customer-peek-ms-bar { display:flex; gap:4px; }
+.customer-peek-ms-bar button { flex:1; height:8px; border-radius:999px; background:var(--line-2); cursor:pointer; }
+.customer-peek-ms-bar button[data-s=done] { background:var(--accent); }
+.customer-peek-ms-bar button[data-s=late] { background:var(--neg); }
+.customer-peek-ms-bar button[data-s=soon] { background:var(--warn); }
+.customer-peek-ms-bar button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.customer-peek-ms-next { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12.5px; color:var(--fg-2); }
+.customer-peek-ms-next > span { flex:1; min-width:0; }
+.customer-peek-ms-next b { font-weight:600; color:var(--fg-1); }
+.customer-peek-ms-next em { font-style:normal; font-size:11.5px; color:var(--fg-4); white-space:nowrap; }
+.customer-peek-ms-next em[data-s=late] { color:var(--neg); }
+.customer-peek-ms-next em[data-s=soon] { color:var(--warn); }
+.customer-peek-ms-next > button { height:24px; padding:0 10px; border-radius:999px; border:1px solid var(--line-2); background:var(--bg-1); font-size:11.5px; font-weight:600; color:var(--fg-1); cursor:pointer; }
+.customer-peek-ms-next > button.customer-peek-ms-more { border:0; background:transparent; padding:0; color:var(--accent); font-weight:500; }

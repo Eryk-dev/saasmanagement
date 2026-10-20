@@ -472,10 +472,16 @@ internos; depois a comparação de modelos com o mesmo conjunto.
    tela, exceções e acessos administrativos; `lib/users.js` espelha a UI.
    `roles` já participa de regras de acesso — não assumir que é só etiqueta.
    Credenciais e tokens não entram no CRUD/JSON público nem no guia.
-   Nos cards que a Agenda abre (Negócio e Integração, produto leverads), a
-   `AccountLine` mostra a mesma conta em uma linha: a vinculada, a que tem o
-   e-mail do lead mas não está vinculada, ou "sem conta" com o link de
-   cadastro. Vincular e desfazer só no card do cliente.
+   Nos cards do Negócio e da Integração (produto leverads), o badge do LeverId
+   aparece ao lado do nome quando o cliente já tem conta
+   (`CustomerLeverIdBadge`); sem conta, só o botão "Link de cadastro"
+   (`SignupInviteLink`), para o integrador mandar ao cliente. Ausência do badge
+   é o "sem conta": não há linha escrita. Vincular e desfazer só no card do
+   cliente. No card da Integração, escolher o integrador mostra o link da
+   agenda dele (`BookingLinkActions`, o mesmo do gate de Integração); com
+   negócio de origem, a marcação cai nele. A régua de marcos do card do cliente
+   é uma barra por marco + o próximo com "✓ feito" (`milestone-strip.jsx`);
+   a lista completa abre em "ver todos".
 5. **Atualização não pode apagar edição em curso:** o app atual preserva as
    telas durante refresh (sem `key={dataVersion}`) e contém proteções para quem
    está digitando. Estado que deve sobreviver segue os stores e padrões
@@ -1553,36 +1559,10 @@ de SDR.
   "aplicar pacote: …".
 - **Teste:** `crm-bundles.test.js`.
 
-**Atividade ligada a registro (20/10/2026).** Fase 2 do plano do Lever CRM,
-em `crm/activity-cards.js`.
-
-- **O que é:** ligação, WhatsApp, e-mail, reunião, tarefa ou follow-up de um
-  lead, cliente, integração ou acompanhamento, com dono e dia. É uma
-  **tarefa** (`tasks`) com `activityType`, `record: { kind, id, label }` e os
-  ponteiros `crmLead`/`crmCustomer`, resolvidos do registro na criação
-  (índices `tasks_crm_customer_idx` e `tasks_crm_lead_idx`). Por isso segue
-  as notificações, os prazos e o quadro de Tarefas.
-- **Rotas:** `POST /api/crm-activities`, `GET /api/crm-activities?lead=|customer=`
-  e `POST /api/crm-activities/:id/complete`. A conclusão tem rota própria
-  porque `/api/tasks` é da tela "tasks" e o CS nem sempre a vê; ela só vale
-  para tarefa que é atividade. Guard: pipeline, today ou customers.
-- **Timeline:** a atividade concluída entra na timeline do cliente e do lead
-  (`events/timeline.js`, `origin: "atividade"`, `kind: atividade.<tipo>`).
-- **Não substitui o próximo toque:** `lead.nextActionAt` continua sendo o
-  motor da cadência, da fila de Atividades e do robô de SDR. A atividade cobre
-  o resto do trabalho (CS, integração, tarefas do closer).
-- **Web** (`components/activity-cards.jsx`):
-  - o card do Cliente tem "Nova atividade" no "+ novo" e lista as abertas em
-    "Em andamento";
-  - o card do Negócio ganhou o bloco "Atividades" com "+ atividade";
-  - integração e acompanhamento ganharam o bloco "atividades", filtrado pelo
-    registro;
-  - no quadro de Tarefas, o drawer mostra "atividade de X →", que abre o card
-    (`openActivityRecord` em `lib/open-record.js`).
-- **Fora da fila de Atividades:** a tela Atividades é a fila de leads com
-  roteiro, e as tarefas saíram dela em 20/09 (`33289a5a`). Fica para decidir
-  se a atividade com prazo hoje entra nessa fila.
-- **Teste:** `crm-activity-cards.test.js`.
+**Atividade manual ligada a registro: retirada (20/10/2026).** Chegou a
+existir ("+ atividade" nos cards, sobre `tasks`) e saiu no mesmo dia: as
+atividades do funil já nascem da etapa (próximo passo e cadência do lead), e o
+botão manual competia com elas. Não recriar sem decisão de produto.
 
 **Times (20/10/2026).** Fase 2 do plano do Lever CRM, em `auth/teams.js`.
 

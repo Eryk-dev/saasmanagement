@@ -33,6 +33,7 @@ import { isChurned, CHURN_REASONS, churnReasonLabel } from "../lib/churn.js";
 import { fetchLeveradsOrgs } from "../lib/leverads.js";
 import { fetchLeverIdOrgs, customerOrgId } from "../lib/leverid.js";
 import { LeverIdBadge } from "../components/leverid-badge.jsx";
+import { MilestoneStrip } from "../components/milestone-strip.jsx";
 import { FreeAccountsTab, CustomerOrgLink } from "../components/leverads-accounts.jsx";
 
 import { CustomerContacts, CustomerDeals, CustomerNow, CustomerStateChips } from "../components/customer-crm.jsx";
@@ -1093,13 +1094,10 @@ function CustomerPeek(props) {
           {product?.id==='leverads'&&<CustomerOrgLink customer={customer} lead={lead}/>}
           <section className="customer-peek-milestones">
             <div className="customer-peek-kicker"><span>{kids?'jornada de consultas':'régua de marcos'}</span>{!kids&&<b>{milestones.filter(m=>m.status==='done').length} de {milestones.length}</b>}</div>
-            {kids?<button className="customer-peek-consult" onClick={()=>{onClose();window.location.hash='consultas';}}>Abrir consultas →</button>:<div className="customer-peek-checks">
-              {milestones.map(m=><button key={m.key} aria-pressed={m.status==='done'} onClick={()=>{
+            {kids?<button className="customer-peek-consult" onClick={()=>{onClose();window.location.hash='consultas';}}>Abrir consultas →</button>:milestones.length?<MilestoneStrip milestones={milestones} onToggle={m=>{
                 if(m.status==='done'){const done={...customer.milestonesDone};delete done[m.key];onPatch(customer,{milestonesDone:done});}
                 else onComplete(customer,m.key);
-              }}><i>{m.status==='done'?'✓':''}</i><span>{m.label}</span></button>)}
-              {!milestones.length&&<p>Defina “Cliente desde” na edição para ativar a régua.</p>}
-            </div>}
+              }}/>:<p className="customer-peek-note">Defina “Cliente desde” na edição para ativar a régua.</p>}
           </section>
           <section className="customer-peek-money">
             <div className="customer-peek-kicker">dinheiro</div>

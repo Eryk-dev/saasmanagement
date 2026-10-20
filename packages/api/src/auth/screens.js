@@ -121,7 +121,6 @@ const ROUTE_SCREENS = [
   ["/api/crm-events", ["customers"]], // caixa de entrada dos eventos dos produtos (events/)
   ["/api/meetings", ["pipeline", "calls", "desempenho"]], // placar das calls de venda (crm/meetings.js)
   ["/api/bundles", ["plans", "pipeline", "customers"]], // pacotes: o closer lê e aplica, o admin cria (billing/bundles.js)
-  ["/api/crm-activities", ["pipeline", "today", "customers"]], // atividades ligadas a registros (crm/activity-cards.js)
   ["/api/entitlements", ["customers"]],
   ["/api/nps", ["customers"]],
   // Cases nascem da ficha do cliente e mostram faturamento por conta: mesmo

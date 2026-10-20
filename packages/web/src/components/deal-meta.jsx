@@ -9,7 +9,9 @@ import { api } from "../lib/api.js";
 import { openCustomer, openLeadById, openOnboarding } from "../lib/open-record.js";
 import { stageByKind, firstStage } from "../lib/funnel.js";
 import { Popover } from "./popover.jsx";
-import { AccountLine } from "./leverads-accounts.jsx";
+import { SignupInviteLink } from "./leverads-accounts.jsx";
+import { CustomerLeverIdBadge } from "./leverid-badge.jsx";
+import { customerOrgId } from "../lib/leverid.js";
 
 export const DEAL_TYPES = [
   { value: "nova_venda", label: "Nova venda" },
@@ -99,8 +101,7 @@ export function LeadCrmStrip({ lead, onPatch, onLeave }) {
   const links = useCustomerLinks(lead);
   const calls = useCallCount(lead);
   const tags = Array.isArray(lead.tags) ? lead.tags : [];
-  return <>
-  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 12 }}>
+  return <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 12 }}>
     <DealTypePill value={lead.dealType} onChange={(v) => onPatch({ dealType: v })} />
     <TagsEditor tags={tags} onChange={(next) => onPatch({ tags: next })} />
     {calls && (calls.done + calls.noShow) > 0 && <span style={{ fontSize: 11.5, color: calls.noShow ? "var(--warn)" : "var(--fg-3)", marginLeft: 2 }}
@@ -110,12 +111,23 @@ export function LeadCrmStrip({ lead, onPatch, onLeave }) {
       <button type="button" style={link} onClick={() => { onLeave?.(); openCustomer(links.customer.id); }} title="Abrir o card do cliente">cliente: {links.customer.name} →</button>
       {links.onboarding && <button type="button" style={link} onClick={() => { onLeave?.(); openOnboarding(links.onboarding.id); }} title="Abrir o card da integração">
         integração {links.onboarding.progress ?? 0}% →</button>}
+      {/* Cliente sem conta: o integrador manda o link de cadastro daqui. */}
+      {lead.saas === "leverads" && !customerOrgId(links.customer) && <span className="lva-inline"><SignupInviteLink customer={links.customer} /></span>}
     </>}
-  </div>
-  {/* Conta LeverId: a vinculada ao cliente ou a que o lead criou com o mesmo e-mail. */}
-  {lead.saas === "leverads" && (!lead.customerId || links) && <AccountLine customer={links?.customer || null} lead={lead}
-    onOpenCustomer={links?.customer ? () => { onLeave?.(); openCustomer(links.customer.id); } : undefined} />}
-  </>;
+  </div>;
+}
+
+// Badge do LeverId ao lado do nome do lead: aparece quando o cliente do
+// negócio já tem conta (a ausência do badge é o "sem conta").
+export function LeadLeverIdBadge({ lead }) {
+  const [customer, setCustomer] = useState(null);
+  useEffect(() => {
+    if (!lead?.customerId) { setCustomer(null); return undefined; }
+    let alive = true;
+    api.get("customers", lead.customerId).then((c) => alive && setCustomer(c || null)).catch(() => alive && setCustomer(null));
+    return () => { alive = false; };
+  }, [lead?.customerId]);
+  return customer ? <CustomerLeverIdBadge customer={customer} /> : null;
 }
 
 // As versões da proposta, em uma linha (v1 expirada · v2 aberta).

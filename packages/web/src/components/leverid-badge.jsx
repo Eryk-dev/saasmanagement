@@ -1,6 +1,8 @@
 import React from "react";
 import { Popover } from "./popover.jsx";
 import { Icon } from "../screens/tasks/icons.jsx";
+import { api } from "../lib/api.js";
+import { customerOrgId } from "../lib/leverid.js";
 import "./leverid-badge.css";
 // Badge de LeverId ao lado do nome do cliente: só o favicon da Lever, quando a
 // org do cliente já tem conta na identidade central (apagado se a org estiver
@@ -99,4 +101,18 @@ export function LeverIdBadge({ org, orgId }) {
       )}
     </>
   );
+}
+
+// O mesmo badge nos cards que abrem fora da tela Clientes (Negócio,
+// Integração): busca só a org deste cliente. Sem conta no LeverId, nada.
+export function CustomerLeverIdBadge({ customer }) {
+  const orgId = customerOrgId(customer);
+  const [org, setOrg] = useState(null);
+  useEffect(() => {
+    if (!orgId) { setOrg(null); return undefined; }
+    let alive = true;
+    api.leveridOrgs([orgId]).then((r) => alive && setOrg(r?.orgs?.[orgId] || null)).catch(() => alive && setOrg(null));
+    return () => { alive = false; };
+  }, [orgId]);
+  return <LeverIdBadge org={org} orgId={orgId} />;
 }

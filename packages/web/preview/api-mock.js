@@ -98,11 +98,6 @@ let notificacoes = [
   { id: "n4", saas: "leverads", by: "api", type: "ticket_sla_breach", text: "SLA estourado: #1042 Painel não carrega os anúncios do Mercado Livre passou do prazo de 1ª resposta", at: emDias(0), read: false, task: "tk1", link: { screen: "tickets", thread: "tk1" } },
 ];
 
-// Atividades ligadas a registro (components/activity-cards.jsx), em memória.
-const atividadesPreview = [
-  { id: "task_prev_0", title: "Ligar para o financeiro · Galante Comércio", activityType: "ligacao", assignees: ["leo"], dueDate: "2026-09-18",
-    record: { kind: "customer", id: "c2", label: "Galante Comércio" }, crmCustomer: "c2", crmLead: "", completed: false },
-];
 // Exemplos do Lever CRM na prévia: uma integração e um acompanhamento do
 // Galante Comércio (c2), com reunião marcada, e o placar de comparecimento.
 const integracaoPreview = {
@@ -133,21 +128,12 @@ const RESPOSTAS = {
     const rows = [[82, 9, 2, 3], [64, 7, 4, 2], [90, 9, 1, 1]];
     return { total: 38, closers: users.map((u, i) => ({ closer: u.id, comparecimento: rows[i][0], realizada: rows[i][1], no_show: rows[i][2], agendada: rows[i][3] })) };
   },
-  createCrmActivity: (b) => {
-    const label = { ligacao: "Ligar", whatsapp: "WhatsApp", email: "E-mail", reuniao: "Reunião", tarefa: "Tarefa", followup: "Follow-up" }[b.type] || "Tarefa";
-    const t = { id: `task_prev_${atividadesPreview.length + 1}`, title: b.title || `${label} · registro`, activityType: b.type, assignees: b.owner ? [b.owner] : [], dueDate: b.dueDate,
-      record: { ...b.record, label: "registro" }, crmLead: b.record.kind === "lead" ? b.record.id : "", crmCustomer: b.record.kind === "customer" ? b.record.id : "", completed: false };
-    atividadesPreview.push(t);
-    return t;
-  },
-  crmActivities: ({ lead = "", customer = "" }) => ({ activities: atividadesPreview.filter((t) => (customer && t.crmCustomer === customer) || (lead && t.crmLead === lead)) }),
   teams: () => ({ teams: [
     { id: "tm1", name: "SDR LeverAds", saas: "leverads", kind: "sdr", members: ["leo"], manager: "leo", status: "active" },
     { id: "tm2", name: "Fechamento", saas: "leverads", kind: "closer", members: ["lucas", "tiago"], manager: "lucas", status: "active" },
   ] }),
   createTeam: (b) => ({ id: "tm_new", ...b }),
   updateTeam: (id, b) => ({ id, ...b }),
-  completeCrmActivity: (id) => { const t = atividadesPreview.find((x) => x.id === id); if (t) t.completed = true; return t; },
   ...customersCashMock,
   ...trainingMock,
   ...ticketsMock,

@@ -13,8 +13,10 @@ import { DateTimeField } from "./datetime-field.jsx";
 import { Checkbox } from "./form-controls.jsx";
 import { RecordTimeline } from "./record-timeline.jsx";
 import { RecordMeetings } from "./record-meetings.jsx";
-import { ActivitySection } from "./activity-cards.jsx";
-import { AccountLine } from "./leverads-accounts.jsx";
+import { BookingLinkActions } from "./booking-link.jsx";
+import { SignupInviteLink } from "./leverads-accounts.jsx";
+import { CustomerLeverIdBadge } from "./leverid-badge.jsx";
+import { customerOrgId } from "../lib/leverid.js";
 import { allUsers } from "../lib/users.js";
 import { openCustomer, openLeadById } from "../lib/open-record.js";
 import { toast } from "../atoms.jsx";
@@ -39,6 +41,7 @@ export const ONBOARDING_KINDS = [
   { value: "treinamento", label: "Treinamento" },
 ];
 export const stageLabel = (v) => ONBOARDING_STAGES.find((s) => s.value === v)?.label || v;
+const CLOSED_STAGES = new Set(["concluida", "cancelada"]);
 export const kindLabel = (v) => ONBOARDING_KINDS.find((k) => k.value === v)?.label || v;
 const TONE = { pos: "pos", neg: "neg" };
 const isoToLocal = (iso) => {
@@ -53,6 +56,7 @@ const progressOf = (items) => (items.length ? Math.round((items.filter((i) => i.
 export function OnboardingDrawer({ id, onClose }) {
   const [o, setO] = useState(null);
   const [customer, setCustomer] = useState(null);
+  const [lead, setLead] = useState(null);
   const [draft, setDraft] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -64,8 +68,11 @@ export function OnboardingDrawer({ id, onClose }) {
       if (!alive) return;
       setO(row);
       setDraft(row);
-      const c = await api.get("customers", row.customer).catch(() => null);
-      if (alive) setCustomer(c);
+      const [c, l] = await Promise.all([
+        api.get("customers", row.customer).catch(() => null),
+        row.lead ? api.get("leads", row.lead).catch(() => null) : null,
+      ]);
+      if (alive) { setCustomer(c); setLead(l); }
     }).catch((e) => alive && setError(e.message || "Integração não encontrada."));
     return () => { alive = false; };
   }, [id]);
@@ -122,8 +129,11 @@ export function OnboardingDrawer({ id, onClose }) {
         <header className="customer-peek-head">
           <div>
             <div className="customer-peek-title"><h2>{draft ? kindLabel(draft.kind) : "Integração"}</h2></div>
-            <p>{customer ? <button type="button" className="customer-peek-link" onClick={() => { onClose(); openCustomer(customer.id); }}>{customer.name} →</button> : (draft ? "cliente" : "")}</p>
-            {customer?.saas === "leverads" && <AccountLine customer={customer} onOpenCustomer={() => { onClose(); openCustomer(customer.id); }} />}
+            <p style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              {customer ? <button type="button" className="customer-peek-link" onClick={() => { onClose(); openCustomer(customer.id); }}>{customer.name} →</button> : (draft ? "cliente" : "")}
+              {customer && <CustomerLeverIdBadge customer={customer} />}
+              {customer?.saas === "leverads" && !customerOrgId(customer) && <span className="lva-inline"><SignupInviteLink customer={customer} /></span>}
+            </p>
           </div>
           <button aria-label="Fechar integração" onClick={close} disabled={busy}>✕</button>
         </header>
@@ -139,6 +149,11 @@ export function OnboardingDrawer({ id, onClose }) {
             <div className="customer-peek-kicker"><span>quando e quem</span></div>
             <div className="customer-peek-fact"><span>Tipo</span><strong><SelectPopover size="sm" value={draft.kind} options={ONBOARDING_KINDS} onChange={(v) => set({ kind: v })} label="Tipo de integração" /></strong></div>
             <div className="customer-peek-fact"><span>Integrador</span><strong><SelectPopover size="sm" value={draft.integrator || ""} options={[{ value: "", label: "sem integrador" }, ...users]} onChange={(v) => set({ integrator: v })} label="Integrador" /></strong></div>
+            {/* Link da agenda do integrador para o cliente marcar sozinho (o mesmo
+                do gate de Integração). Com negócio de origem, a marcação cai nele. */}
+            {draft.integrator && !CLOSED_STAGES.has(draft.stage) && (lead || customer) && <div style={{ padding: "6px 0" }}>
+              <BookingLinkActions lead={lead || { saas: customer.saas, name: customer.contact || customer.name, phone: customer.phone || "" }} userId={draft.integrator} />
+            </div>}
             <div className="customer-peek-fact"><span>Kickoff</span><strong><DateTimeField value={isoToLocal(draft.kickoffAt)} onChange={(v) => set({ kickoffAt: v ? new Date(v).toISOString() : "" })} /></strong></div>
             <div className="customer-peek-fact"><span>Go-live previsto</span><strong><DateTimeField withTime={false} value={draft.plannedGoLiveAt ? isoToLocal(draft.plannedGoLiveAt).slice(0, 10) : ""} onChange={(v) => set({ plannedGoLiveAt: v ? new Date(`${v}T12:00`).toISOString() : "" })} /></strong></div>
             {draft.goLiveAt && <div className="customer-peek-fact"><span>Go-live real</span><strong>{new Date(draft.goLiveAt).toLocaleDateString("pt-BR")}</strong></div>}
@@ -170,7 +185,6 @@ export function OnboardingDrawer({ id, onClose }) {
             <div className="customer-peek-kicker"><span>notas</span></div>
             <textarea className="inp" rows={3} style={{ width: "100%", marginTop: 8, height: "auto", padding: 8 }} value={draft.notes || ""} onChange={(e) => set({ notes: e.target.value })} placeholder="combinados, acessos, pendências…" />
           </section>
-          {customer && <ActivitySection record={{ kind: "onboarding", id: draft.id, label: `Integração · ${customer.name}` }} customer={customer.id} />}
           {customer && <section>
             <div className="customer-peek-kicker"><span>linha do tempo do cliente</span></div>
             <RecordTimeline customerId={customer.id} limit={5} />

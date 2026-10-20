@@ -385,10 +385,6 @@ export const api = {
   teams: (saas = "") => req("GET", `/api/teams?saas=${encodeURIComponent(saas)}`),
   createTeam: (body) => req("POST", "/api/teams", body),
   updateTeam: (id, patch) => req("PATCH", `/api/teams/${encodeURIComponent(id)}`, patch),
-  // Atividade (ligação, WhatsApp, tarefa…) ligada a lead, cliente, integração ou acompanhamento.
-  createCrmActivity: (body) => req("POST", "/api/crm-activities", body),
-  crmActivities: ({ lead = "", customer = "" }) => req("GET", `/api/crm-activities?lead=${encodeURIComponent(lead)}&customer=${encodeURIComponent(customer)}`),
-  completeCrmActivity: (id, completed = true) => req("POST", `/api/crm-activities/${encodeURIComponent(id)}/complete`, { completed }),
   leadProposalVersions: (leadId) => req("GET", `/api/leads/${leadId}/proposals`),
   // Views salvas por usuário (filtros com nome) de uma tela.
   savedViews: (screen) => req("GET", `/api/views?screen=${encodeURIComponent(screen)}`),

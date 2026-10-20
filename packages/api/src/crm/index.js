@@ -9,7 +9,6 @@ import { registerCrudRoutes } from "./routes.crud.js";
 import { registerFunnelRoutes } from "./routes.funnel.js";
 import { registerViewRoutes } from "./routes.views.js";
 import { registerMeetingRoutes } from "./routes.meetings.js";
-import { registerActivityCardRoutes } from "./routes.activity-cards.js";
 import { startMeetingsSweep } from "./meetings.js";
 import { startCadencia } from "./cadencia-runner.js";
 
@@ -24,8 +23,6 @@ export function register(app, repo, ctx) {
   registerViewRoutes(app, repo);
   // Calls de venda como registro (espelho dos campos de call do lead).
   registerMeetingRoutes(app, repo);
-  // Atividade (ligação, WhatsApp, tarefa…) ligada a lead, cliente, integração ou acompanhamento.
-  registerActivityCardRoutes(app, repo);
   // CRUD genérico sobre as coleções (/api/:collection).
   registerCrudRoutes(app, repo, {
     discordClient: ctx.discord, googleUser: ctx.googleUser, metaCapiClient: ctx.metaCapi, briefer: ctx.briefer,

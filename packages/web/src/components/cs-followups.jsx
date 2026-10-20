@@ -11,7 +11,6 @@ import { SelectPopover } from "./select-popover.jsx";
 import { DateTimeField } from "./datetime-field.jsx";
 import { RecordMeetings } from "./record-meetings.jsx";
 import { RecordTimeline } from "./record-timeline.jsx";
-import { ActivitySection } from "./activity-cards.jsx";
 import { allUsers } from "../lib/users.js";
 import { openCustomer, openRecord } from "../lib/open-record.js";
 import { toast } from "../atoms.jsx";
@@ -111,7 +110,6 @@ export function FollowupDrawer({ id, onClose }) {
             <textarea className="inp" rows={3} style={{ width: "100%", marginTop: 8, height: "auto", padding: 8 }} value={draft.notes || ""} onChange={(e) => set({ notes: e.target.value })} placeholder="o que o cliente disse…" />
             <textarea className="inp" rows={2} style={{ width: "100%", marginTop: 8, height: "auto", padding: 8 }} value={draft.nextSteps || ""} onChange={(e) => set({ nextSteps: e.target.value })} placeholder="próximos passos combinados…" />
           </section>
-          {customer && <ActivitySection record={{ kind: "followup", id: draft.id, label: `Acompanhamento · ${customer.name}` }} customer={customer.id} />}
           {customer && <section><div className="customer-peek-kicker"><span>linha do tempo do cliente</span></div><RecordTimeline customerId={customer.id} limit={5} /></section>}
           {error && <p role="alert" className="customer-peek-feedback">{error}</p>}
         </div>}

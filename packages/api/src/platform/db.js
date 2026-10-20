@@ -95,8 +95,6 @@ const INDEXES = [
   ["meetings_lead_idx", "meetings", `((json->>'lead'))`],
   ["deal_orders_lead_idx", "deal_orders", `((json->>'lead'))`],
   ["deal_orders_customer_idx", "deal_orders", `((json->>'customer'))`],
-  ["tasks_crm_customer_idx", "tasks", `((json->>'crmCustomer'))`],
-  ["tasks_crm_lead_idx", "tasks", `((json->>'crmLead'))`],
   ["subscriptions_status_idx", "subscriptions", `((json->>'status'))`],
   ["mp_payments_status_idx", "mp_payments", `((json->>'status'))`],
   ["subscriptions_customer_idx", "subscriptions", `((json->>'customer'))`],

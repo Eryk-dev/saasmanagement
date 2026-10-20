@@ -13,8 +13,9 @@ import "./leverads-accounts.css";
 //                       novas primeiro; sem conta, o "Link de cadastro" com
 //                       convite: o cliente cria a conta por ele e já entra no
 //                       plano da venda;
-//   · AccountLine       a mesma informação em uma linha, nos cards que a
-//                       Agenda abre (Negócio, Integração).
+//   · SignupInviteLink  o mesmo "Link de cadastro" nos cards do Negócio e da
+//                       Integração, para o integrador mandar ao cliente sem
+//                       conta.
 // Conta gratuita não é cliente: não entra em KPI, churn nem régua.
 
 const { useCallback, useEffect, useMemo, useRef, useState } = React;
@@ -98,7 +99,7 @@ const VIA = { convite: "vinculada pelo link de cadastro", email: "vinculada pelo
 
 // Link de cadastro da venda (convite): copiar e mandar pro cliente. A conta
 // criada por ele vincula sozinha a este cliente e recebe o plano.
-function SignupInviteLink({ customer }) {
+export function SignupInviteLink({ customer }) {
   const [invite, setInvite] = useState(null);
   const [state, setState] = useState("");
   async function copy() {
@@ -168,32 +169,6 @@ export function CustomerOrgLink({ customer, lead, onChanged }) {
       {open && <OrgPicker anchor={ref} orgs={mirror.orgs} emails={emails} busy={busy} onPick={link}
         onRefresh={mirror.refresh} refreshing={mirror.loading} onClose={() => setOpen(false)} />}
     </section>
-  );
-}
-
-// ── Linha da conta (cards abertos pela Agenda) ──────────────────────────────
-// Negócio ou Integração: a conta vinculada ao cliente; sem vínculo, a conta
-// cujo e-mail bate com o do cliente ou do lead (criou na call?); sem nenhuma,
-// o link de cadastro quando já há cliente. Vincular e desfazer ficam no card
-// do cliente. Quem não vê Clientes não recebe o espelho (guard da API) e a
-// linha some.
-export function AccountLine({ customer = null, lead = null, onOpenCustomer }) {
-  const mirror = useLeveradsMirror();
-  if (mirror.loading || mirror.error || !mirror.configured) return null;
-  const orgId = norm(customer?.leveradsOrgId);
-  const linked = orgId ? mirror.orgs.find((o) => o.id === orgId) : null;
-  const emails = emailsOf(customer, lead);
-  const match = orgId ? null : mirror.orgs.find((o) => o.active !== false && !o.customerId && orgMatches(o, emails));
-  return (
-    <div className="lva-line" data-tone={orgId ? "pos" : match ? "warn" : "mut"}>
-      <span className="lva-line-kicker">LeverId</span>
-      {orgId ? <span><strong>{linked?.name || "conta vinculada"}</strong>{linked ? ` · ${orgFacts(linked)}` : ""}</span>
-        : match ? <>
-          <span><strong>{match.name || match.email}</strong> · criada {whenLabel(match.createdAt)} · e-mail bate, não vinculada</span>
-          {customer && onOpenCustomer && <button type="button" className="lva-line-link" onClick={onOpenCustomer}>vincular no cliente →</button>}
-        </>
-        : <><span>sem conta{emails.length ? " com este e-mail" : ""}</span>{customer && <SignupInviteLink customer={customer} />}</>}
-    </div>
   );
 }
 
