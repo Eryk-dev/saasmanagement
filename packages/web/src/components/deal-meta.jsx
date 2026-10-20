@@ -78,13 +78,31 @@ function useCustomerLinks(lead) {
   return state;
 }
 
+// Quantas calls o lead já teve (registro de calls, crm/meetings.js).
+function useCallCount(lead) {
+  const [n, setN] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    api.leadMeetings(lead.id).then((r) => {
+      if (!alive) return;
+      const rows = (r && r.meetings) || [];
+      setN({ done: rows.filter((m) => m.status === "realizada").length, noShow: rows.filter((m) => m.status === "no_show").length });
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [lead.id, lead.callAt, lead.stage]);
+  return n;
+}
+
 // A linha do cabeçalho do card do Negócio.
 export function LeadCrmStrip({ lead, onPatch, onLeave }) {
   const links = useCustomerLinks(lead);
+  const calls = useCallCount(lead);
   const tags = Array.isArray(lead.tags) ? lead.tags : [];
   return <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 12 }}>
     <DealTypePill value={lead.dealType} onChange={(v) => onPatch({ dealType: v })} />
     <TagsEditor tags={tags} onChange={(next) => onPatch({ tags: next })} />
+    {calls && (calls.done + calls.noShow) > 0 && <span style={{ fontSize: 11.5, color: calls.noShow ? "var(--warn)" : "var(--fg-3)", marginLeft: 2 }}
+      title="Calls de venda deste lead que já passaram">{calls.done} {calls.done === 1 ? "call feita" : "calls feitas"}{calls.noShow ? ` · ${calls.noShow} no-show` : ""}</span>}
     {links?.customer && <>
       <span aria-hidden="true" style={{ width: 1, height: 14, background: "var(--line-2)", margin: "0 4px" }} />
       <button type="button" style={link} onClick={() => { onLeave?.(); openCustomer(links.customer.id); }} title="Abrir o card do cliente">cliente: {links.customer.name} →</button>

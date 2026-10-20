@@ -372,6 +372,9 @@ export const api = {
   openOnboardings: () => req("GET", "/api/customers/onboardings?open=1"),
   // Reunião com Meet próprio num registro do cliente (host = "onboardings" | "followups").
   // Versões da proposta do lead, com o estado de cada uma.
+  // Calls de venda como registro: as do lead e o placar de comparecimento.
+  leadMeetings: (leadId) => req("GET", `/api/leads/${leadId}/meetings`),
+  meetingsReport: ({ from = "", to = "", saas = "" } = {}) => req("GET", `/api/meetings/report?from=${from}&to=${to}&saas=${encodeURIComponent(saas)}`),
   leadProposalVersions: (leadId) => req("GET", `/api/leads/${leadId}/proposals`),
   // Views salvas por usuário (filtros com nome) de uma tela.
   savedViews: (screen) => req("GET", `/api/views?screen=${encodeURIComponent(screen)}`),

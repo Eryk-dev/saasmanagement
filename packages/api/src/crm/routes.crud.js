@@ -25,6 +25,7 @@ import { syncProposalLeadSnapshot } from "../proposals/proposal.js";
 import { convertWonLead, syncWonLeadDeal } from "./won-lead.js";
 import { syncLeadOnboarding } from "../customers/onboardings.js";
 import { leadTagPatch } from "./lead-tags.js";
+import { syncLeadMeetings } from "./meetings.js";
 import { completeMilestoneTasks } from "../customers/customer-milestones.js";
 import { CLOSED_PLAN_ANNUAL_FACTOR } from "../shared/plan-cycles.js";
 import { syncPersonalCalendar } from "../google/google-user.js";
@@ -74,7 +75,7 @@ const PRIVATE = new Set(["users", "product_updates", "product_update_assets", "s
   "leverads_orgs",
   // Eventos dos produtos e timeline imutável: escritos só pelo servidor
   // (events/), lidos pelas rotas próprias.
-  "crm_events", "timeline_events", "workspaces", "onboardings", "cs_followups", "saved_views"]);
+  "crm_events", "timeline_events", "workspaces", "onboardings", "cs_followups", "saved_views", "meetings"]);
 
 const isExposed = (c) => COLLECTION_NAMES.includes(c) && !PRIVATE.has(c);
 
@@ -713,6 +714,10 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
     // customerId que ele acabou de gravar. Best-effort: nunca quebra o PATCH.
     if (collection === "leads" && ["stage", "integrationAt", "integrator"].some((k) => k in req.body)) {
       try { await syncLeadOnboarding(repo, await repo.get("leads", updated.id)); } catch { /* fail-open */ }
+    }
+    // Call de venda como registro (meetings.js): marcar, remarcar, no-show.
+    if (collection === "leads" && ["callAt", "stage", "closer", "callUrl", "meetEventId"].some((k) => k in req.body)) {
+      try { await syncLeadMeetings(repo, await repo.get("leads", updated.id)); } catch { /* fail-open */ }
     }
     // Plano/valor/pagamento reeditados num lead que JÁ virou cliente (gate da
     // Integração ou edição direta) → o fechamento novo re-espelha no cliente e

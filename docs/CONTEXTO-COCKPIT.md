@@ -1509,6 +1509,27 @@ Lever CRM.
   atrasados.
 - **Teste:** `crm-commercial.test.js`.
 
+**Call de venda como registro (20/10/2026).** Fase 2 do plano do Lever CRM,
+em `crm/meetings.js`. A call continua marcada nos campos do lead (`callAt`,
+`callUrl`, `meetEventId`), de que dependem o Meet, o resumo, a Agenda e o robô
+de SDR.
+
+- **Coleção:** `meetings` espelha cada call (id `mt_<lead>_<horário>`) com
+  estado:
+  - agendada (no futuro);
+  - realizada (passou, ou está no `callHistory`);
+  - no_show (lead entrou numa etapa de no-show depois do horário);
+  - remarcada (era agendada e o horário saiu do lead).
+- **Quando roda:** no PATCH do lead (`callAt`, `stage`, `closer`, `callUrl`,
+  `meetEventId`) e no job `crmMeetings` a cada 15 min, que pega o que o robô
+  grava direto. Idempotente.
+- **Rotas:** `GET /api/leads/:id/meetings` e
+  `GET /api/meetings/report?from&to&saas` (placar por closer com a taxa de
+  comparecimento).
+- **Web:** o card "Comparecimento às calls" na tela de Calls e "N calls feitas
+  · M no-show" na linha do cabeçalho do card do Negócio.
+- **Teste:** `crm-meetings.test.js`.
+
 **WhatsApp: dono da conversa e virar ticket (20/10/2026).** Fase 2 do plano
 do Lever CRM, em `whatsapp/thread-owner.js`.
 
