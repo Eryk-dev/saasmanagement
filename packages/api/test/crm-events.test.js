@@ -76,8 +76,8 @@ test("evento assinado de cliente vinculado vai para a timeline dele; reenvio nã
   assert.equal(r2.statusCode, 202);
   assert.equal(r2.json().duplicate, true);
   assert.equal((await repo.list(EVENTS)).length, 1);
-  const tl = await repo.list(TIMELINE);
-  assert.equal(tl.length, 1);
+  const tl = (await repo.list(TIMELINE)).filter((t) => t.eventId);
+  assert.equal(tl.length, 1, "um item do evento (o resto é a mudança de estágio do cliente)");
   assert.equal(tl[0].customer, c.id);
   assert.equal(tl[0].kind, "workspace.created");
   assert.deepEqual(tl[0].data, { plan: "pro" });
@@ -108,7 +108,7 @@ test("evento sem dono fica unmatched e casa quando o vínculo aparece", async ()
   assert.equal(cedo.processed, 0, "antes da espera, o runner não pega");
   const depois = await processDue(repo, { now: new Date(Date.now() + 3 * 60_000) });
   assert.equal(depois.processed, 1);
-  assert.equal((await repo.list(TIMELINE))[0].customer, c.id);
+  assert.equal((await repo.list(TIMELINE)).find((t) => t.eventId).customer, c.id);
 });
 
 test("lever_id e e-mail casam com o lead; o lead puxa o cliente", async () => {

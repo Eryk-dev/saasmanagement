@@ -7,6 +7,8 @@ import { registerNpsRoutes } from "./routes.nps.js";
 import { registerCustomerResultsRoutes } from "./routes.customer-results.js";
 import { registerLeverIdRoutes } from "./routes.leverid.js";
 import { registerLeveradsOrgRoutes } from "./routes.leverads-orgs.js";
+import { registerLifecycleRoutes } from "./routes.lifecycle.js";
+import { startLifecycleSweep } from "./lifecycle.js";
 import { makeLeveradsOrgMirror, startLeveradsOrgMirror } from "./leverads-orgs.js";
 import { makeIdentityAdmin } from "../auth/identity-admin.js";
 import { startCustomerMilestones } from "./customer-milestones.js";
@@ -37,6 +39,8 @@ export function register(app, repo, ctx) {
   // cliente × org (manual na ficha ou automático pelo e-mail).
   orgMirror = makeLeveradsOrgMirror(repo, { identity, ...(ctx.opts.leveradsOrgs || {}) });
   registerLeveradsOrgRoutes(app, repo, { mirror: orgMirror });
+  // Empresa, contatos, estágio de vida, status financeiro e workspaces.
+  registerLifecycleRoutes(app, repo);
 }
 
 export function start(repo, { clients, log, stops, jobOn }) {
@@ -56,6 +60,9 @@ export function start(repo, { clients, log, stops, jobOn }) {
   if (jobOn("clientPendingReminder")) startClientPendingReminder(repo, { log });
   // Espelho das orgs do LeverAds a cada 10 min: conta nova aparece na aba
   // Gratuitas e o vínculo pelo e-mail é gravado quando não há dúvida.
+  // Estágio de vida e status financeiro de todo cliente + workspaces, a
+  // cada 15 min (cada mudança vira item datado da timeline).
+  if (jobOn("crmLifecycle")) stops.push(startLifecycleSweep(repo, { log }));
   if (jobOn("leveradsOrgMirror")) stops.push(startLeveradsOrgMirror(orgMirror || makeLeveradsOrgMirror(repo, { log }), { log }));
   // Aquece os resultados das propostas (incluindo o resumo do deck C) e
   // renova a cada seis horas, mesmo sem uma nova abertura para disparar o cache.

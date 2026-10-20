@@ -19,6 +19,7 @@
 
 import crypto from "node:crypto";
 import { findDuplicateLead } from "../crm/lead-dedup.js";
+import { refreshLifecycle } from "../customers/lifecycle.js";
 import { appendTimeline } from "./timeline.js";
 
 export const EVENTS = "crm_events";
@@ -89,6 +90,21 @@ export async function ingestEvent(repo, record, { now = new Date() } = {}) {
 
 const norm = (v) => String(v || "").trim().toLowerCase();
 
+// Evento de produto casa dentro do produto (régua do dedup). Evento sem
+// produto — o LeverId é a identidade de todos — casa pelo e-mail em qualquer um.
+async function leadBySubject(repo, ev) {
+  const { email, phone } = ev.subject;
+  if (ev.product) return findDuplicateLead(repo, { saas: ev.product, email, phone });
+  if (!email) return null;
+  return (await repo.list("leads")).find((l) => !l.internal && norm(l.email) === email) || null;
+}
+
+// Cliente cujo cadastro ou contato tem esse e-mail (a pessoa é da empresa).
+async function customerByEmail(repo, email) {
+  return (await repo.list("customers")).find((c) =>
+    norm(c.email) === email || (Array.isArray(c.contacts) && c.contacts.some((x) => norm(x.email) === email))) || null;
+}
+
 // A quem o evento pertence. org_id → cliente pelo vínculo com o produto;
 // lever_id → lead que já carrega esse LeverId; e-mail/telefone → lead do
 // produto (mesma régua do dedup). O lead do cliente completa o par.
@@ -100,12 +116,27 @@ export async function resolveRefs(repo, ev) {
     customer = (await repo.list("customers")).find((c) => norm(c.leveradsOrgId) === org || norm(c.orgId) === org) || null;
   }
   if (ev.leverId) lead = (await repo.listWhere("leads", { leverId: ev.leverId }))[0] || null;
-  if (!lead && (ev.subject?.email || ev.subject?.phone)) {
-    lead = await findDuplicateLead(repo, { saas: ev.product, email: ev.subject.email, phone: ev.subject.phone });
-  }
+  if (!lead && (ev.subject?.email || ev.subject?.phone)) lead = await leadBySubject(repo, ev);
   if (!lead && customer?.leadId) lead = await repo.get("leads", customer.leadId);
   if (!customer && lead?.customerId) customer = await repo.get("customers", lead.customerId);
+  if (!customer && ev.subject?.email) customer = await customerByEmail(repo, ev.subject.email);
   return { customer: customer?.id || "", lead: lead?.id || "" };
+}
+
+// O LeverId que o evento trouxe fica no lead e no contato do cliente que casou
+// pelo e-mail — é assim que a Pessoa ganha a chave de junção. Nunca troca um
+// LeverId que já está lá.
+async function stampLeverId(repo, ev, refs) {
+  if (!ev.leverId) return;
+  const lead = refs.lead ? await repo.get("leads", refs.lead) : null;
+  if (lead && !lead.leverId) await repo.update("leads", lead.id, { leverId: ev.leverId }, { silent: true });
+  const customer = refs.customer ? await repo.get("customers", refs.customer) : null;
+  const email = ev.subject?.email;
+  if (!customer || !email || !Array.isArray(customer.contacts)) return;
+  const hit = customer.contacts.findIndex((c) => norm(c.email) === email && !c.leverId);
+  if (hit < 0) return;
+  const contacts = customer.contacts.map((c, i) => (i === hit ? { ...c, leverId: ev.leverId } : c));
+  await repo.update("customers", customer.id, { contacts }, { silent: true });
 }
 
 const backoffMs = (attempts) => Math.min(2 ** attempts, 24 * 60) * 60_000; // 2 min … 24 h
@@ -127,6 +158,9 @@ export async function processEvent(repo, ev, { now = new Date() } = {}) {
       customer: refs.customer, lead: refs.lead, eventId: ev.id,
       leverId: ev.leverId, product: ev.product, data: ev.payload || {},
     });
+    await stampLeverId(repo, ev, refs);
+    const customer = refs.customer ? await repo.get("customers", refs.customer) : null;
+    if (customer) await refreshLifecycle(repo, customer, { now });
     return await repo.update(EVENTS, ev.id, {
       status: "processed", attempts, error: "", refs, processedAt: now.toISOString(),
     }, { silent: true });

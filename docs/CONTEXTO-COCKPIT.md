@@ -1371,6 +1371,32 @@ cockpit: publicam em `POST /public/events/v1` (aberta no gate de sessão).
 - **Coleções:** as duas são PRIVATE.
 - **Teste:** `crm-events.test.js`.
 
+**Ciclo de vida do cliente, empresa e workspaces (20/10/2026).** Fases 1.3 a
+1.5 do plano do Lever CRM, em `customers/lifecycle.js`. Decisão: não há
+coleções novas de Pessoa e Empresa; tudo se apoia no que já existe.
+
+- **Empresa:** derivada na leitura. Razão social e CNPJ vêm de
+  `customer.fiscal`; o domínio, do 1º e-mail não gratuito.
+- **Contatos:** `customer.contacts[]` (papel decisor, financeiro, usuário ou
+  ponto focal), mais o cadastro e o lead da venda, sem repetir e-mail. A
+  edição é por `PUT /api/customers/:id/contacts`; o `leverId` do contato só
+  vem de evento, nunca da tela.
+- **Estágio e status financeiro:** o cliente ganha `lifecycle` (integracao,
+  ativo, risco ou churn) e `financialStatus` (aguardando_pagamento,
+  adimplente ou inadimplente). Os dois são derivados de assinaturas, faturas,
+  `onboardings` e `health` < 50. Cada mudança vira item datado da timeline
+  (`customer.lifecycle_changed`, `customer.financial_status_changed`).
+  **Nenhum dos dois corta acesso;** isso continua só no sync de acesso.
+- **Workspaces:** coleção `workspaces` (id `produto:tenant`), espelhada do
+  vínculo do cliente e das orgs do LeverAds, inclusive as sem cliente.
+- **Job `crmLifecycle`:** recalcula a cada 15 min.
+- **Rotas:** `GET /api/customers/:id/profile`, `GET /api/customers/workspaces`
+  e `POST /api/customers/lifecycle/run`.
+- **Efeitos do evento processado:** recalcula o cliente e grava o `lever_id`
+  no lead e no contato que casou pelo e-mail, sem trocar um que já exista.
+  Evento sem `product` (o LeverId) casa o e-mail em qualquer produto.
+- **Teste:** `crm-lifecycle.test.js`.
+
 **Dor `[PRICE]` (07/10/2026).** O Leo começou a subir criativo de precificação
 com `[PRICE]` no nome, rastreado como o `[OEM]`. O que o código já fazia desde
 16/09: `painCode` aceita a etiqueta, o `/f/:id` resolve o anúncio ainda sem
