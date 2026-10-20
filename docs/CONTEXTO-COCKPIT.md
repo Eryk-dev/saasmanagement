@@ -1477,8 +1477,12 @@ onde quer que se abram, com links entre eles.
   "· reunião" e abre o cliente; a consulta sem lead de origem abre o cliente.
 - **CSS:** os blocos usam as classes `customer-peek-*`; os componentes
   importam `screens/customers.css` porque abrem fora da tela de Clientes.
-- **Pendente:** as abas mortas do `CustomerModal` (`operation` sempre
-  preenchido) continuam lá; tirar ou religar é o próximo passo da limpeza.
+- **Ficha antiga (`CustomerModal`):** abre só por operação do card (editar,
+  cobranças, histórico, reunião, upsell, churn). As abas Resumo, Indicações e
+  Histórico saíram em 20/10/2026, junto com `CustomerFacts`, `FormAnswersCard`,
+  `ResultsBox`, `NpsBox`, `CustomerReferrals`, `CustomerHistory`,
+  `CustomerContracts` e os imports que só elas usavam. Ninguém conseguia abrir
+  essas abas; o smoke renderiza a operação "money".
 
 **Dor `[PRICE]` (07/10/2026).** O Leo começou a subir criativo de precificação
 com `[PRICE]` no nome, rastreado como o `[OEM]`. O que o código já fazia desde

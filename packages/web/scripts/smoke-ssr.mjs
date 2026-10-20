@@ -1127,19 +1127,21 @@ try {
     const cliente = window.SEED.CUSTOMERS[0];
     const nowIso2 = new Date().toISOString();
 
-    // A ficha: as quatro abas existem e o cabeçalho carrega nome + dinheiro.
+    // A ficha abre por OPERAÇÃO do card do cliente (as abas antigas saíram em
+    // 20/10/2026): cobranças mostra o cabeçalho da operação e o dinheiro.
     const ficha = R(React.createElement(C.CustomerModal, {
+      operation: "money",
       customer: cliente, lead: window.SEED.LEADS[0], product: window.SEED.SAAS[0],
       subs: [], invoices: [], planLabel: () => "Pro", lastContact: () => "hoje",
       leverOrg: null, onComplete() {}, onPatch() {}, onClose() {}, onNewReferral() {},
     }));
-    for (const aba of ["Resumo", "Dinheiro", "Indicações", "Histórico"]) has("ficha", ficha, aba);
+    has("ficha", ficha, "Gerenciar cobranças");
     has("ficha", ficha, "Cliente Teste");
-    has("ficha", ficha, "Dinheiro do contrato");
-    has("ficha", ficha, "cliente desde");
+    for (const morta of ["Indicações</", "Resumo</"]) if (ficha.includes(morta)) throw new Error(`ficha ainda renderiza a aba antiga ${morta}`);
 
     // Cliente sem lead e sem assinatura: a ficha ainda monta.
     const semLead = R(React.createElement(C.CustomerModal, {
+      operation: "history",
       customer: { id: "c9", saas: "leverads", name: "Sem Lead", arr: 0 }, lead: null, product: window.SEED.SAAS[0],
       subs: [], invoices: [], planLabel: () => "", lastContact: () => "—",
       leverOrg: null, onComplete() {}, onPatch() {}, onClose() {}, onNewReferral() {},

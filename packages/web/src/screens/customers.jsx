@@ -1,49 +1,44 @@
 import { LeadGrade } from "../components/lead-card.jsx";
-import { GradeCol } from "../components/icp-card.jsx";
+
 import React from "react";
 import { createPortal } from "react-dom";
 import "./customers.css";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { PageHead, Card, Pill, Segmented, FilterTab } from "../components/viz.jsx";
-import { AvisoTopo, BarraFiltros } from "../components/story.jsx";
+import { Card, Pill, FilterTab } from "../components/viz.jsx";
+
 import { Modal, Drawer } from "../components/overlay.jsx";
 import { ManualPaidModal } from "../components/manual-paid-modal.jsx";
 import { useConfirmLink } from "../components/confirm-link-modal.jsx";
 import { EmptyState, PrimaryButton, MoreMenu } from "../atoms.jsx";
 import { Icon } from "./tasks/icons.jsx";
 import { milestonesFor, nextMilestone, tenureLabel, dueLabel } from "../lib/milestones.js";
-import { ActivityList } from "../components/timeline.jsx";
-import { CallSummaryCard, IntegrationBriefCard } from "./today.jsx";
+
 import { SubscriptionsScreen, ChangeModal } from "./subscriptions.jsx";
 import { EntityForm } from "../components/EntityForm.jsx";
-import { WhatsappChat } from "../components/whatsapp-chat.jsx";
-import { CustomerTickets } from "../components/customer-tickets.jsx";
+
 import { useActiveSaas } from "../lib/workspace.js";
-import { leadTier, waLink, GRADE_STYLE } from "../lib/ui.js";
-import { scriptChecklist } from "../lib/scripts.js";
-import { displayName, usersByRole } from "../lib/users.js";
-import { npsBucket, lastNps, pendingNps, NPS_TONE } from "../lib/nps.js";
-import { paymentLabel, paymentUpfront, paymentRecurring, paymentCustom, PAY_STATUS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel, accruedAmountOf, isRecurringClose, CYCLE_LABEL, closedPlanFromLabel, plansOf, anyGatewayOn, defaultGateway, gatewayLabel } from "../lib/payments.js";
+import { leadTier, waLink } from "../lib/ui.js";
+
+import { displayName } from "../lib/users.js";
+
+import { paymentLabel, paymentUpfront, paymentRecurring, paymentCustom, PAY_STATUS, consultPackageLabel, consultPackageOf, mpMethodLabel, accruedAmountOf, CYCLE_LABEL, closedPlanFromLabel, anyGatewayOn, defaultGateway, gatewayLabel } from "../lib/payments.js";
 import { CustomerPlanPanel, CustomerContractForm, CustomerProducts } from "../components/customer-plan.jsx";
-import { PaymentMethodSelect } from "../components/lead-blocks.jsx";
+
 import { UpsellPanel } from "../components/UpsellPanel.jsx";
 import { CustomerMeetings, CustomerMeetingForm } from "../components/customer-meeting.jsx";
 import { CustomerHistoryView } from "../components/customer-history.jsx";
-import { useAttribution, leadPain } from "../lib/pains.js";
+
 import { isChurned, CHURN_REASONS, churnReasonLabel } from "../lib/churn.js";
 import { fetchLeveradsOrgs } from "../lib/leverads.js";
 import { fetchLeverIdOrgs, customerOrgId } from "../lib/leverid.js";
 import { LeverIdBadge } from "../components/leverid-badge.jsx";
 import { FreeAccountsTab, CustomerOrgLink } from "../components/leverads-accounts.jsx";
-import { printContract, issueDate, byIssuedDesc } from "../lib/contracts.js";
+
 import { CustomerOnboardings } from "../components/onboarding-card.jsx";
 import { CustomerContacts, CustomerDeals, CustomerStateChips } from "../components/customer-crm.jsx";
 import { RecordTimeline } from "../components/record-timeline.jsx";
 import { OPEN_CUSTOMER_KEY, onOpenRecord, openOnboarding } from "../lib/open-record.js";
-// Base das URLs públicas (link de indicação do cliente): no dev o proxy do
-// Vite repassa /f pra API.
-const publicBase = () => import.meta.env.VITE_API_BASE || window.location.origin;
 
 // Cinco colunas da referência, com rolagem interna quando os pisos não cabem.
 export const TABLE_GRID = "minmax(244px,1.5fr) minmax(190px,1fr) minmax(130px,1.05fr) minmax(182px,.9fr) minmax(90px,.85fr)";
@@ -882,70 +877,6 @@ function CustomersScreen({ initialTab }) {
 // Caixa padrão das seções do popup (mesma linguagem do drawer do pipeline).
 const BOX = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "12px 14px", background: "var(--bg-inset)" };
 
-// Nome do formulário de origem do lead (lead.form é o id). Mesmo padrão do
-// attributionCache de pains.js: cacheia a PROMESSA por SaaS pra não re-buscar
-// a lista de forms a cada popup aberto.
-const formsCache = {};
-function useFormName(saas, formId) {
-  const [name, setName] = useState(null);
-  useEffect(() => {
-    if (!saas || !formId) { setName(null); return; }
-    let alive = true;
-    (formsCache[saas] ??= api.list("forms").then((rows) => rows.filter((f) => f.saas === saas)).catch(() => { delete formsCache[saas]; return []; }))
-      .then((rows) => { if (alive) setName(rows.find((f) => f.id === formId)?.name || null); });
-    return () => { alive = false; };
-  }, [saas, formId]);
-  return name;
-}
-
-// Dados do cliente: os campos comerciais herdados do lead de origem, moldados
-// pro pós-venda (contato clicável, potencial, dor do anúncio, valor fechado,
-// pagamento e responsáveis). O lápis liga a edição INLINE dos campos do
-// cadastro do cliente (nome, contato, e-mail, WhatsApp, plano, pagamento,
-// valor e cliente desde), sem trocar de janela; o que vem do lead é leitura.
-// Legenda da classificação de nível (dentro do card "Clientes por nível"): a
-// MESMA matriz que define a grade (GRADE_GRID de lib/ui.js) — contas de
-// marketplace × anúncios na maior conta. Mais de cada = nível mais alto
-// (S topo, E base).
-function NivelLegend() {
-  return <div style={{ flex: "0 1 320px", minWidth: 260, border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-inset)", padding: "10px 12px" }}><GradeCol /></div>;
-}
-
-// Respostas do formulário de diagnóstico (campos do lead), editáveis do popup
-// do cliente — mesmo checklist do drawer do pipeline (scriptChecklist). Alterar
-// aqui persiste no lead e recalcula o Potencial/Nível do cliente.
-function FormAnswersCard({ lead, product, onPatch }) {
-  if (!lead) return null;
-  const saasCfg = (window.SEED?.SAAS || []).find((x) => x.id === (lead.saas || product?.id)) || product;
-  const items = scriptChecklist(saasCfg, lead);
-  if (!items.length) return null;
-  return (
-    <div style={BOX}>
-      <div className="kicker" style={{ marginBottom: 8 }}>Respostas do formulário</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {items.map((c) => (
-          <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "5px 9px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.raw ? "var(--bg-1)" : "var(--warn-soft)" }}>
-            <span style={{ color: c.raw ? "var(--pos)" : "var(--warn)", flexShrink: 0, fontSize: 12 }}>{c.raw ? "✓" : "○"}</span>
-            <span className="dim" style={{ flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.35 }}>{c.label}</span>
-            {c.type === "select" ? (
-              <select value={c.raw || ""} onChange={(e) => onPatch({ [c.key]: e.target.value })}
-                style={{ flexShrink: 0, maxWidth: "50%", height: 26, padding: "0 6px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 12, fontWeight: 500 }}>
-                <option value="">selecionar…</option>
-                {c.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                {c.raw && !c.options.some((o) => o.value === c.raw) && <option value={c.raw}>{c.raw}</option>}
-              </select>
-            ) : (
-              <input key={lead.id + c.key} type="text" defaultValue={c.raw || ""} placeholder="preencher…"
-                onBlur={(e) => { if (e.target.value !== (c.raw || "")) onPatch({ [c.key]: e.target.value }); }}
-                onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                style={{ flexShrink: 0, width: "50%", height: 26, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontWeight: 500 }} />
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 // Valor do contrato com UNIDADE (mês ou ano). O banco guarda sempre o ANUAL
 // (customer.arr; o MRR das telas é arr/12), mas quem vende assinatura recorrente
@@ -1003,151 +934,6 @@ export function ValorContrato({ customer, onPatch, inputSt }) {
   );
 }
 
-function CustomerFacts({ customer, lead, product, leverOrg, onPatch, cicloAte = null }) {
-  const [edit, setEdit] = useState(false);
-  const saasId = customer.saas || product?.id;
-  const saasCfg = (window.SEED?.SAAS || []).find((x) => x.id === saasId) || product;
-  const cat = useAttribution(saasId, !!lead?.utm);
-  const pain = lead ? leadPain(lead, cat, saasCfg?.painMap) : null;
-  const tier = lead ? leadTier(lead) : null;
-  const formName = useFormName(saasId, lead?.form);
-  // Anúncio que trouxe o lead: utm.content é o id, o catálogo de atribuição
-  // resolve o nome (que já carrega o código de dor "[X]" no título).
-  const adName = lead?.utm?.content ? (cat?.ads?.[String(lead.utm.content)]?.name || String(lead.utm.content)) : null;
-  const email = customer.email || lead?.email;
-  const phone = customer.phone || lead?.phone;
-  const wa = phone ? waLink(phone) : null;
-  const linkStyle = { color: "var(--accent)", fontWeight: 600, textDecoration: "none" };
-  // TRÊS SEÇÕES em vez de até 20 pares num auto-fit só, onde "WhatsApp" caía
-  // ao lado de "SDR": quem é (contato), o que comprou (contrato), de onde veio
-  // (origem). Par vazio continua sumindo; seção que esvazia não aparece.
-  const grupos = [
-    ["Contato", [
-      ["Empresa", customer.company || lead?.company],
-      ["Contato", customer.contact],
-      ["WhatsApp", wa ? <a href={wa} target="_blank" rel="noreferrer" style={linkStyle}>{phone}</a> : phone],
-      ["E-mail", email ? <a href={`mailto:${email}`} style={linkStyle}>{email}</a> : null],
-      ["Dono da conta", customer.owner ? displayName(customer.owner) : (customer.saas === "uniquekids" ? null : "sem dono")],
-      ["Usuário LeverAds", customer.leveradsOrgId
-        ? (leverOrg ? (leverOrg.email ? `${leverOrg.name} · ${leverOrg.email}` : leverOrg.name) : customer.leveradsOrgId)
-        : null],
-    ]],
-    ["Contrato", [
-      ["Plano", customer.plan],
-      // Recorrência: mostra a mensalidade E o acumulado (a régua dos 30 dias).
-      ["Valor fechado", lead?.amount
-        ? (isRecurringClose(lead)
-          ? `${window.fmt.money(lead.amount)}/mês · acumulado ${window.fmt.money(accruedAmountOf(lead, { endAt: customer.endedAt }))}`
-          : window.fmt.money(lead.amount))
-        : null],
-      ["Pagamento", (customer.paymentMethod || lead?.paymentMethod) ? paymentLabel(customer.paymentMethod || lead?.paymentMethod, customer.paymentTerms || lead?.paymentTerms) : null],
-      ["Status pgto.", PAY_STATUS[customer.paymentStatus] ? `${PAY_STATUS[customer.paymentStatus].label} (manual)` : null],
-      ["Ciclo atual até", cicloAte],
-      ["Upsells", Number(customer.upsellCount) > 0
-        ? `${customer.upsellCount}${parseDay(customer.lastUpsellAt) ? ` · último ${fmtDay(parseDay(customer.lastUpsellAt))}` : ""}${customer.lastUpsellItem ? ` · ${customer.lastUpsellItem}` : ""}`
-        : null],
-      ["Conta grande", customer.keyAccount ? "sim · fora das médias" : null],
-    ]],
-    ["Origem", [
-      ["Origem", lead?.source],
-      ["Potencial", tier && tier.key !== "sem" ? tier.label : null],
-      ["Dor do anúncio", pain ? `[${pain.code}] ${pain.label}` : null],
-      ["Anúncio", adName],
-      ["Formulário", formName],
-      ["Faixa de faturamento", lead?.value],
-      ["SDR", lead?.owner ? displayName(lead.owner) : null],
-      ["Closer", lead?.closer ? displayName(lead.closer) : null],
-      ["Integrador", lead?.integrator ? displayName(lead.integrator) : null],
-      ["Motivo da busca", lead?.reason],
-    ]],
-  ].map(([titulo, pares]) => [titulo, pares.filter(([, v]) => v != null && v !== "")]).filter(([, pares]) => pares.length);
-  const facts = grupos.flatMap(([, pares]) => pares);
-  const patch = (p) => onPatch && onPatch(p);
-  const inputSt = { flex: 1, minWidth: 0, height: 28, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 };
-  const EditRow = ({ label, children }) => (
-    <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <span className="mono dim" style={{ width: 96, flexShrink: 0, fontSize: 10.5 }}>{label}</span>
-      {children}
-    </label>
-  );
-  // Mentoria vende pacote de consultas; os demais, plano por ciclo. "Mensal"
-  // (recorrência) saiu de linha em 10/09/2026: só aparece se já é o plano.
-  // Produto com catálogo de planos: o plano se edita em Gerenciar cobranças.
-  // Sem catálogo (mentoria), segue o seletor de rótulo de sempre.
-  const catalogPlans = customer.saas === "uniquekids" ? [] : plansOf(customer.saas);
-  const PLANS = customer.saas === "uniquekids"
-    ? CONSULT_PACKAGES.map(consultPackageLabel)
-    : ["Anual", "Semestral", "Serviço único", "Trimestral", ...(customer.plan === "Mensal" ? ["Mensal"] : [])];
-  return (
-    <div style={BOX}>
-      <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
-        <span>Dados do cliente</span>
-        {onPatch && (
-          <button onClick={() => setEdit((v) => !v)} title={edit ? "Concluir edição" : "Editar os dados aqui mesmo"}
-            style={{ marginLeft: "auto", height: 22, padding: "0 8px", borderRadius: 999, border: "1px solid " + (edit ? "var(--accent)" : "var(--line-2)"), background: edit ? "var(--accent)" : "var(--bg-1)", color: edit ? "var(--accent-fg)" : "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
-            {edit ? "✓ pronto" : "✎ editar"}
-          </button>
-        )}
-      </div>
-      {edit ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-          <EditRow label="Nome"><input defaultValue={customer.name || ""} onBlur={(e) => e.target.value !== (customer.name || "") && patch({ name: e.target.value })} style={inputSt} /></EditRow>
-          <EditRow label="Contato"><input defaultValue={customer.contact || ""} onBlur={(e) => e.target.value !== (customer.contact || "") && patch({ contact: e.target.value })} style={inputSt} /></EditRow>
-          <EditRow label="E-mail"><input defaultValue={customer.email || ""} onBlur={(e) => e.target.value !== (customer.email || "") && patch({ email: e.target.value })} style={inputSt} /></EditRow>
-          <EditRow label="WhatsApp"><input defaultValue={customer.phone || ""} onBlur={(e) => e.target.value !== (customer.phone || "") && patch({ phone: e.target.value })} style={inputSt} /></EditRow>
-          {!catalogPlans.length && <EditRow label={customer.saas === "uniquekids" ? "Pacote" : "Plano"}>
-            <select value={customer.plan || ""} onChange={(e) => patch({ plan: e.target.value })} style={inputSt}>
-              <option value="">{customer.saas === "uniquekids" ? "sem pacote" : "sem plano"}</option>
-              {PLANS.map((p) => <option key={p} value={p}>{p}</option>)}
-              {customer.plan && !PLANS.includes(customer.plan) && <option value={customer.plan}>{customer.plan}</option>}
-            </select>
-          </EditRow>}
-          <EditRow label="Pagamento">
-            <PaymentMethodSelect value={customer.paymentMethod || ""} onChange={(v) => patch({ paymentMethod: v })}
-              fieldStyle={inputSt} placeholder="—" commit="blur" />
-          </EditRow>
-          <EditRow label="Status pgto.">
-            <select value={PAY_STATUS[customer.paymentStatus] ? customer.paymentStatus : ""} onChange={(e) => patch({ paymentStatus: e.target.value })} style={inputSt}>
-              <option value="">automático (dinheiro registrado decide)</option>
-              <option value="paid">Pago</option>
-              <option value="partial">Parcial</option>
-              <option value="unpaid">Não pago</option>
-            </select>
-          </EditRow>
-          <ValorContrato customer={customer} onPatch={patch} inputSt={inputSt} />
-          <EditRow label="Cliente desde"><input type="date" value={String(customer.startedAt || "").slice(0, 10)} onChange={(e) => patch({ startedAt: e.target.value })} style={inputSt} /></EditRow>
-          {customer.saas !== "uniquekids" && (
-            <EditRow label="Dono da conta">
-              <select value={customer.owner || ""} onChange={(e) => patch({ owner: e.target.value })} style={inputSt}>
-                <option value="">sem dono</option>
-                {usersByRole("integrator").map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
-                {customer.owner && !usersByRole("integrator").some((u) => u.id === customer.owner) && <option value={customer.owner}>{displayName(customer.owner)}</option>}
-              </select>
-            </EditRow>
-          )}
-        </div>
-      ) : facts.length === 0 ? (
-        <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Sem dados ainda. Use o ✎ pra preencher.</div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {grupos.map(([titulo, pares]) => (
-            <div key={titulo}>
-              <div className="kicker" style={{ marginBottom: 3 }}>{titulo}</div>
-              <div className="resp-cols" style={{ "--cols": "repeat(2, minmax(0,1fr))", gap: "0 18px" }}>
-                {pares.map(([k, v]) => (
-                  <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5, padding: "5px 0", borderBottom: "1px solid var(--line-1)", minWidth: 0 }}>
-                    <span className="mono dim" style={{ flexShrink: 0, fontSize: 10.5 }}>{k}</span>
-                    <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0, overflowWrap: "anywhere" }}>{v}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // Popup do cliente: tela dividida no padrão do drawer do pipeline (sem scroll
 // longo). Esquerda: dados do cliente (edição inline no próprio campo) +
@@ -1244,136 +1030,6 @@ function CasesTab({ product, customers }) {
   );
 }
 
-// Bloco de Resultados da ficha: a evidência de serviço na mão de quem cuida da
-// conta. O número é o INFLUENCIADO (o que os anúncios que a Lever criou
-// venderam), nunca o faturamento da loja: a loja já vendia antes da gente, e
-// inflar queima a prova na primeira conferência que o cliente fizer.
-function ResultsBox({ customer }) {
-  const [data, setData] = useState(null);
-  const [erro, setErro] = useState("");
-  const [enviando, setEnviando] = useState(false);
-  const [aviso, setAviso] = useState("");
-  React.useEffect(() => {
-    let vivo = true;
-    setData(null); setErro("");
-    api.customerResults(customer.id)
-      .then((r) => { if (vivo) setData(r); })
-      .catch((e) => { if (vivo) setErro(e?.message || "não consegui carregar"); });
-    return () => { vivo = false; };
-  }, [customer.id]);
-  async function enviar() {
-    if (enviando) return;
-    setEnviando(true);
-    try {
-      const r = await api.customerReportSend(customer.id);
-      setAviso(r?.status === "skipped"
-        ? "sem venda influenciada nos 30 dias: não mandei (R$ 0 não é evidência de serviço)"
-        : r?.whatsapp === "task" ? "fora da janela do WhatsApp: abri uma tarefa com o texto pronto" : "relatório enviado");
-      api.customerResults(customer.id).then(setData).catch(() => {});
-    } catch (e) {
-      setAviso(e?.message || "não consegui enviar agora");
-    } finally { setEnviando(false); }
-  }
-  const money = window.fmt.money;
-  const snap = data?.snapshot;
-  const ultimo = data?.reports?.[0];
-  return (
-    <div style={{ ...BOX, marginBottom: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-        <div className="kicker">Resultados</div>
-        {data?.hasOrg && (
-          <button onClick={enviar} disabled={enviando}
-            style={{ marginLeft: "auto", height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", cursor: enviando ? "default" : "pointer" }}>
-            {enviando ? "enviando…" : "enviar relatório agora"}
-          </button>
-        )}
-      </div>
-      {erro && <div role="alert" className="customers-load">{erro} <button onClick={recarregar}>Tentar novamente</button></div>}
-      {!erro && !data && <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>carregando…</div>}
-      {data && !data.hasOrg && (
-        <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
-          Vincule a org na LeverAds (editar cliente) pra ter o número: sem ela o cockpit não sabe quanto os anúncios venderam na conta dele.
-        </div>
-      )}
-      {data?.hasOrg && snap && (
-        <>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 22, fontWeight: 700, lineHeight: 1 }}>{money(snap.gmv30d)}</span>
-            <span style={{ fontSize: 12, color: "var(--fg-3)" }}>
-              vendidos pelos anúncios da Lever nos últimos 30 dias{snap.orders30d ? ` · ${window.fmt.int(snap.orders30d)} ${snap.orders30d === 1 ? "pedido" : "pedidos"}` : ""}
-            </span>
-          </div>
-          <div style={{ marginTop: 6, fontSize: 12.5, color: "var(--fg-2)" }}>
-            desde o começo {money(snap.gmvTotal)}{snap.listings ? ` · ${window.fmt.int(snap.listings)} anúncios criados pela plataforma` : ""}
-          </div>
-        </>
-      )}
-      {data?.hasOrg && !snap && <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Sem número do produto agora (o banco não respondeu).</div>}
-      <div style={{ marginTop: 8, fontSize: 12, color: "var(--fg-3)" }}>
-        {ultimo
-          ? `último relatório em ${new Date(ultimo.periodEnd).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(".", "")}${ultimo.status === "skipped" ? " (não enviado: sem venda no período)" : ""}`
-          : "nenhum relatório enviado ainda"}
-      </div>
-      {aviso && <div style={{ marginTop: 6, fontSize: 12, color: "var(--fg-3)" }}>{aviso}</div>}
-    </div>
-  );
-}
-
-// Bloco de NPS da ficha. A pergunta sai sozinha na régua (mês 1, mês 3 e de 90
-// em 90 dias), mas o dono da conta pode pedir na hora: o botão manda o e-mail e,
-// se a conversa estiver dentro da janela de 24h, o WhatsApp; fora dela vira
-// tarefa com o texto pronto, porque texto livre fora da janela é reprovado pela
-// Meta depois de "enviar".
-function NpsBox({ customer }) {
-  const all = window.SEED?.NPS || [];
-  const ultimo = lastNps(customer, all);
-  const pendente = pendingNps(customer, all);
-  const [enviando, setEnviando] = useState(false);
-  const [aviso, setAviso] = useState("");
-  const bucket = ultimo ? npsBucket(ultimo.score) : "";
-  async function pedir() {
-    if (enviando) return;
-    setEnviando(true);
-    try {
-      const r = await api.npsAsk(customer.id);
-      setAviso(r?.channel === "task"
-        ? "fora da janela do WhatsApp: abri uma tarefa com o texto pronto"
-        : `pedido enviado por ${String(r?.channel || "").replace("+", " e ")}`);
-    } catch (e) {
-      setAviso(e?.message || "não consegui pedir agora");
-    } finally { setEnviando(false); }
-  }
-  return (
-    <div style={{ ...BOX, marginBottom: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-        <div className="kicker">NPS</div>
-        <button onClick={pedir} disabled={enviando}
-          style={{ marginLeft: "auto", height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", cursor: enviando ? "default" : "pointer" }}>
-          {enviando ? "pedindo…" : "pedir NPS agora"}
-        </button>
-      </div>
-      {ultimo ? (
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 22, fontWeight: 700, lineHeight: 1 }}>{ultimo.score}</span>
-          <Pill tone={NPS_TONE[bucket] || "mut"}>{bucket}</Pill>
-          <span style={{ fontSize: 12, color: "var(--fg-3)" }}>
-            {ultimo.answeredAt ? new Date(ultimo.answeredAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(".", "") : ""}
-          </span>
-        </div>
-      ) : (
-        <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
-          {pendente ? "Pedido enviado, ainda sem resposta." : "Nenhuma nota ainda. A pergunta sai sozinha a partir do mês 1."}
-        </div>
-      )}
-      {ultimo?.reason && (
-        <div style={{ marginTop: 8, fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5, fontStyle: "italic" }}>
-          "{ultimo.reason}"
-        </div>
-      )}
-      {aviso && <div style={{ marginTop: 8, fontSize: 12, color: "var(--fg-3)" }}>{aviso}</div>}
-    </div>
-  );
-}
 
 // Compact fiche: the same amounts/status as the table, with operational forms
 // opened separately. No second financial calculation or legacy summary.
@@ -1469,7 +1125,11 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
   // QUATRO ABAS (redesign de 12/09): a ficha era uma rolagem única com doze
   // blocos — dados, assinatura, parcelas, faturas, MP, upsell, régua, conversa,
   // indicações, contratos, histórico. Nada saiu; cada bloco tem lugar agora.
-  const [aba, setAba] = useState(operation === "money" ? "dinheiro" : operation === "referral" ? "indicacoes" : operation === "history" || operation === "meeting" ? "" : "resumo"); // resumo | dinheiro | indicacoes | historico
+  // A ficha abre sempre por uma OPERAÇÃO do card do cliente (CustomerPeek):
+  // editar, cobranças, histórico, reunião, upsell ou churn. As abas antigas
+  // (Resumo, Indicações, Histórico) não tinham mais por onde ser abertas e
+  // saíram; o que elas mostravam está no próprio card.
+  const aba = operation === "money" ? "dinheiro" : "";
   const [meetingBusy, setMeetingBusy] = useState(false);
   // Edição das RESPOSTAS DO FORMULÁRIO (campos do lead) direto do popup: otimista
   // no objeto do lead (do SEED) + PATCH; o bump re-renderiza o popro pra o
@@ -1683,77 +1343,6 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
       painelStyle={{ maxHeight: "min(92dvh, 100%)", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "18px 24px 14px", borderBottom: "1px solid var(--line-faint)", flexShrink: 0 }}>
           {operation && <div className="customer-operation-head"><h2>{({edit:"Editar cliente", money:"Gerenciar cobranças", referral:"Registrar indicação", upsell:"Registrar upsell", churn:"Registrar churn", meeting:"Marcar reunião", history:"Histórico e resumos"})[operation]} · {customer.name}</h2><button aria-label="Fechar ação" onClick={onClose}>✕</button></div>}
-          {!operation && <>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                {customer.keyAccount && <span title="conta grande · fora das médias" style={{ color: "var(--accent)", fontSize: 15 }}>★</span>}
-                {!isKids && lead && (() => {
-                  const t = leadTier(lead);
-                  return t.grade
-                    ? <LeadGrade tier={t} size={22} />
-                    : null;
-                })()}
-                <div style={{ fontFamily: "var(--display)", fontSize: 20, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{customer.name}</div>
-                <LeverIdBadge org={leverId} orgId={customerOrgId(customer)} />
-                {!churned && (st ? <Pill tone={st.tone}>{st.label}</Pill> : !isKids && <Pill tone="mut">sem assinatura</Pill>)}
-                {(customer.flags || []).map((f) => <Pill key={f} tone="warn">{f}</Pill>)}
-              </div>
-              <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 4 }}>
-                {[
-                  isKids ? `${money(customer.arr || 0)} · Mentoria R.O.T.I.N.A` : `${money((customer.arr || 0) / 12)}/mês · ${money(customer.arr || 0)}/ano`,
-                  customer.email || "",
-                  fmtDay(parseDay(customer.startedAt)) ? `cliente desde ${fmtDay(parseDay(customer.startedAt))}${tenureLabel(customer) ? ` (${tenureLabel(customer)})` : ""}` : "",
-                ].filter(Boolean).join(" · ")}
-              </div>
-            </div>
-            {!editing && !churned && (
-              <button onClick={() => { setUpsellOpen((v) => !v); setChurnOpen(false); }}
-                title="Registrar um upsell (venda extra pra este cliente): o que foi vendido, valor, pago / a receber / link do Mercado Pago e quem vendeu. Entra no caixa, no placar e na meta de upsell do CS."
-                style={{ height: 28, padding: "0 11px", borderRadius: 999, border: "1px solid color-mix(in srgb, var(--pos) 45%, transparent)", background: "var(--bg-1)", color: "var(--pos)", fontSize: 12, flexShrink: 0 }}>
-                {upsellOpen ? "cancelar" : "registrar upsell"}
-              </button>
-            )}
-            {!editing && !churned && (
-              <button onClick={() => { setChurnOpen((v) => !v); setUpsellOpen(false); }}
-                title="Registrar a saída deste cliente (churn): data + motivo. Cancela as assinaturas em aberto (espelha no Mercado Pago quando vinculadas) e tira o cliente do MRR e da base ativa — o histórico e o valor do contrato ficam registrados."
-                style={{ height: 28, padding: "0 11px", borderRadius: 999, border: "1px solid color-mix(in srgb, var(--neg) 40%, transparent)", background: "var(--bg-1)", color: "var(--neg)", fontSize: 12, flexShrink: 0 }}>
-                {churnOpen ? "cancelar" : "registrar churn"}
-              </button>
-            )}
-            {!editing && !churned && customer.saas !== "uniquekids" && (
-              <button onClick={async (ev) => {
-                const btn = ev.currentTarget; const era = btn.textContent;
-                btn.disabled = true; btn.textContent = "criando…";
-                try {
-                  const c = await api.caseFromCustomer(customer.id);
-                  window.alert(c.metrics?.length
-                    ? `Rascunho criado com o número do painel (${c.metrics[0].value}). Falta ${(c.blockers || []).join(", ")}. Abra a aba Cases pra completar e publicar.`
-                    : `Rascunho criado. Falta ${(c.blockers || []).join(", ")}. Abra a aba Cases pra completar e publicar.`);
-                } catch (e) { window.alert(e?.message || "não consegui criar o rascunho"); }
-                finally { btn.disabled = false; btn.textContent = era; }
-              }}
-                title="Cria o rascunho de case deste cliente, já com o número do painel (o que os anúncios da Lever venderam na conta dele nos últimos 30 dias). Nada vai a público sem a autorização dele."
-                style={{ height: 28, padding: "0 11px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, flexShrink: 0 }}>
-                virar case
-              </button>
-            )}
-            {!editing && (
-              <button onClick={() => setEditing(true)} style={{ height: 28, padding: "0 11px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, flexShrink: 0 }}>Editar</button>
-            )}
-            <button onClick={onClose} aria-label="Fechar" style={{ height: 28, width: 28, borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 13, flexShrink: 0 }}>✕</button>
-          </div>
-          {!editing && (
-            <div style={{ marginTop: 12 }}>
-              <Segmented value={aba} onChange={setAba} options={[
-                { value: "resumo", label: "Resumo" },
-                { value: "dinheiro", label: "Dinheiro" },
-                { value: "indicacoes", label: "Indicações" },
-                { value: "historico", label: "Histórico" },
-              ]} />
-            </div>
-          )}
-          </>}
           {/* Faixa de churn: o cliente saiu — quando, por quê e o desfazer. */}
           {churned && (!operation || operation === "churn") && (
             <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "9px 12px", borderRadius: "var(--r-2)", background: "var(--neg-soft)", border: "1px solid color-mix(in srgb, var(--neg) 30%, transparent)" }}>
@@ -1819,172 +1408,6 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
         {operation === "meeting" && (
           <CustomerMeetingForm customer={customer} lead={lead} onBusy={setMeetingBusy} onCancel={onClose}
             onDone={async () => { await refresh(); onClose(); }} />
-        )}
-
-        {/* ── RESUMO: o contrato, os dados e o que fazer com o cliente ────── */}
-        {!operation && aba === "resumo" && (
-        <div className="resp-cols" style={{ "--cols": "minmax(0,1fr) minmax(0,1fr)", gap: 14, alignItems: "start" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-        {/* Dinheiro do contrato: a mesma barra empilhada da aba Clientes, com a
-            parcela vencida e as ações dela (as MESMAS funções da aba Dinheiro,
-            não uma segunda implementação da baixa). */}
-        <div style={BOX}>
-          <div className="kicker accent" style={{ marginBottom: 8 }}>Dinheiro do contrato</div>
-          {(() => {
-            const contrato = Number(customer.arr) || 0;
-            const pagas = parcelas.filter((i) => invStatus(i) === "paid");
-            const recebido = parcelas.length
-              ? pagas.reduce((a, i) => a + (Number(i.amount) || 0), 0)
-              : (paymentUpfront(customer.paymentMethod || lead?.paymentMethod) ? contrato : 0);
-            const pct = contrato > 0 ? Math.min(100, (recebido / contrato) * 100) : 0;
-            const vencida = parcelas.find((i) => invStatus(i) !== "paid" && parseDay(i.dueDate) && parseDay(i.dueDate).getTime() < Date.now());
-            const aberta = vencida || parcelas.find((i) => invStatus(i) !== "paid");
-            return (
-              <>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                  <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 24, fontWeight: 700 }}>{money(recebido)}</span>
-                  <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{`recebido de ${money(contrato)} contratados`}</span>
-                </div>
-                <div style={{ display: "flex", height: 12, borderRadius: 999, overflow: "hidden", background: "var(--bg-2)", marginTop: 8 }}>
-                  <div style={{ width: `${pct}%`, background: "var(--pos)" }} />
-                  <div style={{ width: `${100 - pct}%`, background: "var(--warn)" }} />
-                </div>
-                <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 6 }}>
-                  {parcelas.length
-                    ? `${pagas.length} de ${parcelas.length} parcelas pagas`
-                    : (paymentUpfront(customer.paymentMethod || lead?.paymentMethod) ? "pagamento à vista: entrou no fechamento" : "sem cronograma de parcelas ainda")}
-                </div>
-                {aberta && (
-                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line-1)", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 12.5, color: vencida ? "var(--neg)" : "var(--fg-2)", minWidth: 0 }}>
-                      {`${vencida ? "venceu" : "vence"} ${fmtDay(parseDay(aberta.dueDate))} · ${money(aberta.amount)}`}
-                      {aberta.installmentN ? ` · parcela ${aberta.installmentN}` : ""}
-                    </span>
-                    <button onClick={() => invoiceLink(aberta)} style={{ ...ACAO_BTN, marginLeft: "auto" }}>copiar link</button>
-                    <button onClick={() => toggleParcela(aberta)} disabled={invBusy === aberta.id} style={ACAO_BTN}>
-                      {invBusy === aberta.id ? "…" : "marcar paga"}
-                    </button>
-                  </div>
-                )}
-              </>
-            );
-          })()}
-        </div>
-
-        <CustomerFacts customer={customer} lead={lead} product={product} leverOrg={leverOrg}
-          cicloAte={mainSub && (mainSub.status === "active" || mainSub.status === "past_due") && parseDay(mainSub.periodEnd) ? fmtDay(parseDay(mainSub.periodEnd)) : null}
-          onPatch={onPatch ? (p) => onPatch(customer, p) : null} />
-
-        {/* Respostas do formulário (campos do lead) — editáveis daqui; mudou o
-            nicho/contas/anúncios, o Potencial e o Nível recalculam. Só quando
-            há lead com perguntas (mentoria/produto B2C sem grade não mostra). */}
-        {!isKids && <FormAnswersCard lead={lead} product={product} onPatch={patchLead} />}
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-        {isKids ? (
-        <div style={BOX}>
-          <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center" }}>
-            <span>Jornada de consultas</span>
-            <button onClick={() => { onClose(); window.location.hash = "consultas"; }}
-              style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
-              abrir Consultas ↗
-            </button>
-          </div>
-          {customer.startedAt && (
-            <div style={{ fontSize: 12, color: "var(--fg-3)", marginBottom: 10 }}>
-              cliente desde {new Date(customer.startedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(".", "")} · {nextConsult ? `próxima consulta: ${fmtConsultaAt(nextConsult.at)}` : consultDone >= consultTotal && consultas.length > 0 ? "jornada completa 🎉" : "sem próxima marcada"}
-            </div>
-          )}
-          {consultas.length === 0 ? (
-            <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
-              Nenhuma consulta ainda. O pacote nasce sozinho quando o lead vira Ganho; dá pra criar na tela Consultas também.
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              {consultas.map((c, i) => {
-                const cst = CONSULT_STATUS[c.status] || CONSULT_STATUS.scheduled;
-                const done = c.status === "done";
-                return (
-                  <div key={c.id} style={{ display: "flex", gap: 12, position: "relative", paddingBottom: i === consultas.length - 1 ? 0 : 14 }}>
-                    {i < consultas.length - 1 && <span style={{ position: "absolute", left: 7, top: 18, bottom: 0, width: 2, background: "var(--line-1)" }} />}
-                    <span style={{
-                      width: 16, height: 16, borderRadius: 999, flexShrink: 0, marginTop: 1, zIndex: 1,
-                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9,
-                      background: done ? "var(--pos-soft)" : c.at ? "var(--warn-soft)" : "var(--bg-2)",
-                      color: done ? "var(--pos)" : c.at ? "var(--warn)" : "var(--fg-4)",
-                      border: !done && !c.at ? "1px solid var(--line-2)" : "none",
-                    }}>
-                      {done ? "✓" : c.n || "○"}
-                    </span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>Consulta {c.n || "?"} de {c.packageTotal || consultTotal}</div>
-                      <div style={{ fontSize: 12, color: "var(--fg-3)" }}>
-                        {c.at ? fmtConsultaAt(c.at) : "sem data · marque na tela Consultas"}
-                        {c.summary ? " · resumo de IA pronto" : ""}
-                      </div>
-                    </div>
-                    <Pill tone={c.at || done ? cst.tone : "mut"}>{!done && !c.at ? "a marcar" : cst.label}</Pill>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-        ) : (
-        <>
-        {!isKids && <ResultsBox customer={customer} />}
-        <NpsBox customer={customer} />
-        <div style={BOX}>
-          <div className="kicker" style={{ marginBottom: 8 }}>Ações de retenção</div>
-          {!customer.startedAt && (
-            <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
-              Defina "Cliente desde" (editar cliente) pra ativar a régua de marcos: onboarding, check-in de mês 1, revisão de mês 3, upsell de mês 6 e contato de renovação (2 meses antes do fim do contrato).
-            </div>
-          )}
-          {customer.startedAt && (
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              <div style={{ fontSize: 12, color: "var(--fg-3)", marginBottom: 10 }}>
-                cliente desde {new Date(customer.startedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(".", "")} · {tenureLabel(customer)}
-              </div>
-              {milestonesFor({ ...customer, contractCycle: mainSub?.cycle }, product).map((m, i, arr) => (
-                <div key={m.key} style={{ display: "flex", gap: 12, position: "relative", paddingBottom: i === arr.length - 1 ? 0 : 16 }}>
-                  {i < arr.length - 1 && <span style={{ position: "absolute", left: 7, top: 18, bottom: 0, width: 2, background: "var(--line-1)" }} />}
-                  <span style={{
-                    width: 16, height: 16, borderRadius: 999, flexShrink: 0, marginTop: 1, zIndex: 1,
-                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9,
-                    background: m.status === "done" ? "var(--pos-soft)" : m.status === "late" ? "var(--neg-soft)" : m.status === "soon" ? "var(--warn-soft)" : "var(--bg-2)",
-                    color: m.status === "done" ? "var(--pos)" : m.status === "late" ? "var(--neg)" : m.status === "soon" ? "var(--warn)" : "var(--fg-4)",
-                    border: m.status === "next" ? "1px solid var(--line-2)" : "none",
-                  }}>
-                    {m.status === "done" ? "✓" : "○"}
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{m.label}</div>
-                    <div style={{ fontSize: 12, color: "var(--fg-3)" }}>
-                      {m.status === "done"
-                        ? `concluído ${new Date(m.doneAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "")}`
-                        : `${m.hint || ""}${m.hint ? " · " : ""}${m.status === "late" ? "venceu " : "vence "}${dueLabel(m.dueAt)}`}
-                    </div>
-                  </div>
-                  {m.status !== "done" && (
-                    <button onClick={() => onComplete(customer, m.key)}
-                      style={{ alignSelf: "flex-start", height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", flexShrink: 0 }}>
-                      concluir
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        </>
-        )}
-
-        {/* Indicações em resumo: o inteiro (com o link) mora na aba própria. */}
-        <CustomerReferrals customer={customer} onNewReferral={onNewReferral} compact onOpen={() => setAba("indicacoes")} />
-        </div>
-        </div>
         )}
 
         {/* ── DINHEIRO: assinatura, parcelas, faturas, MP e upsells ───────── */}
@@ -2185,29 +1608,6 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
         </div>
         </div>
         )}
-
-        {/* ── INDICAÇÕES ──────────────────────────────────────────────────── */}
-        {aba === "indicacoes" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-        <CustomerReferrals customer={customer} onNewReferral={onNewReferral} />
-        </div>
-        )}
-
-        {/* ── HISTÓRICO: a conversa, a timeline do funil e os contratos ───── */}
-        {aba === "historico" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-        {/* Inbox do WhatsApp conectado: a MESMA conversa da tela #whatsapp,
-            pra mandar mensagem pro cliente sem sair do popup. */}
-        <WhatsappChat lead={lead} phone={customer.phone} />
-
-        {/* Pedidos ao Suporte (só com a tela Tickets e o produto no escopo). */}
-        <CustomerTickets customer={customer} />
-
-        <CustomerHistory customer={customer} />
-
-        <CustomerContracts customer={customer} onClose={onClose} />
-        </div>
-        )}
         </div>
         )}
         {confirmLinkEl}
@@ -2215,21 +1615,6 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
   );
 }
 
-// ── Aba Indicações: a FILA DE COLHEITA ──────────────────────────────────────
-// A quem pedir indicação hoje, ordenado pela prova mais fresca: o que os
-// anúncios da Lever venderam na conta do cliente nos últimos 30 dias. O gatilho
-// é dado, não calendário — cliente que acabou de ver resultado indica bem,
-// cliente perguntado no aniversário de contrato indica por educação.
-//
-// O botão "pedir" faz três coisas de uma vez: abre o WhatsApp do cliente com a
-// frase pronta (com o número dele dentro), cria a tarefa pra quem pediu e
-// carimba o pedido, pro mesmo cliente não ser perguntado de novo por 90 dias.
-const BUCKETS = {
-  pedir: { label: "pedir agora", tone: "pos" },
-  descanso: { label: "pedido há pouco", tone: "mut" },
-  prova_fraca: { label: "resultado ainda pequeno", tone: "warn" },
-  sem_prova: { label: "sem resultado ainda", tone: "warn" },
-};
 
 function ReferralsTab({ saasId, onRegister, customers, onSummary, onOpenCustomer }) {
   const [data, setData] = useState(null);
@@ -2391,228 +1776,6 @@ function ReferralsTab({ saasId, onRegister, customers, onSummary, onOpenCustomer
   );
 }
 
-// INDICAÇÕES DESTE CLIENTE (Leo, 12/09/2026): quem ele já indicou, em que pé
-// está cada um e os nomes que ele deu na integração e ninguém foi buscar. O
-// crédito da coleta é do COLABORADOR, então o nome de quem colheu aparece em
-// cada linha — é o que faz o pedido ter dono.
-//
-// O link de indicação é o caminho mais barato: o cliente encaminha
-// /f/<form>?ref=<id dele> no grupo de lojistas e o vínculo nasce sozinho, já
-// creditado ao dono do cliente.
-function CustomerReferrals({ customer, onNewReferral, compact = false, onOpen = null }) {
-  const [formId, setFormId] = useState("");
-  const [copied, setCopied] = useState(false);
-  React.useEffect(() => {
-    let alive = true;
-    api.list("forms")
-      .then((rows) => {
-        if (!alive) return;
-        const f = (rows || []).find((x) => x.saas === customer.saas && x.status === "published");
-        setFormId(f?.id || "");
-      })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, [customer.saas]);
-
-  const leads = (window.SEED?.LEADS || []).filter((l) => l.referredByCustomer === customer.id);
-  const seeds = Array.isArray(customer.referralSeeds) ? customer.referralSeeds : [];
-  // Nome plantado que já virou lead sai da lista de pendentes (casa por
-  // telefone, que é o que a pessoa dá na integração).
-  const digits = (v) => String(v || "").replace(/\D/g, "").slice(-8);
-  const pending = seeds.filter((s) => !leads.some((l) => digits(l.phone) && digits(l.phone) === digits(s.phone)));
-  // Sem nada E sem form publicado o bloco inteiro não aparece — no Resumo,
-  // porém, a linha existe pra dizer que ninguém foi indicado ainda.
-  if (!compact && !leads.length && !pending.length && !formId) return null;
-
-  const link = formId ? `${publicBase()}/f/${formId}?ref=${customer.id}` : "";
-
-  // No Resumo: só o placar e o caminho pra aba. O bloco inteiro (linhas, nomes
-  // plantados e o link) vive na aba Indicações.
-  if (compact) {
-    const fecharam = leads.filter((l) => l.customerId).length;
-    return (
-      <div style={BOX}>
-        <div className="kicker" style={{ marginBottom: 6 }}>Indicações</div>
-        {leads.length || pending.length ? (
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", fontSize: 12.5, color: "var(--fg-2)" }}>
-            <b className="tnum" style={{ fontSize: 18, fontWeight: 700 }}>{leads.length}</b>
-            <span>{`${leads.length === 1 ? "indicado" : "indicados"}${fecharam ? ` · ${fecharam} ${fecharam === 1 ? "fechou" : "fecharam"}` : ""}${pending.length ? ` · ${pending.length} ${pending.length === 1 ? "nome plantado" : "nomes plantados"}` : ""}`}</span>
-          </div>
-        ) : (
-          <div style={{ fontSize: 12.5, color: "var(--fg-3)" }}>Ninguém indicado ainda. O pedido rende mais depois de um resultado.</div>
-        )}
-        {onOpen && (
-          <button onClick={onOpen} className="mono"
-            style={{ marginTop: 8, background: "none", border: 0, padding: 0, fontSize: 12, color: "var(--accent)", fontWeight: 600, cursor: "pointer" }}>
-            abrir indicações →
-          </button>
-        )}
-      </div>
-    );
-  }
-  async function copyLink() {
-    if (!link) return;
-    try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1800); }
-    catch { window.prompt("Copie:", link); }
-  }
-
-  return (
-    <div className="sec">
-      <div className="sec-head">
-        <h3 className="card-title">Indicações</h3>
-        {link && (
-          <button onClick={copyLink}
-            style={{ height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)" }}>
-            {copied ? "link copiado" : "copiar link de indicação"}
-          </button>
-        )}
-      </div>
-      {!leads.length && !pending.length && (
-        <div style={{ fontSize: 12, color: "var(--fg-3)" }}>
-          Ninguém indicado ainda. O pedido rende mais depois de um resultado, com o número na mão.
-        </div>
-      )}
-      {!!leads.length && (
-        <div style={{ display: "grid", gap: 6 }}>
-          {leads.map((l) => (
-            <div key={l.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12 }}>
-              <span style={{ fontWeight: 500 }}>{l.company || l.name || l.phone}</span>
-              <span style={{ color: "var(--fg-3)", textAlign: "right" }}>
-                {l.customerId ? "fechou" : (l.stage || "no funil")}
-                {l.referralCollectedBy ? ` · colhido por ${displayName(l.referralCollectedBy)}` : " · sem coletor"}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-      {!!pending.length && (
-        <div style={{ marginTop: leads.length ? 10 : 0, display: "grid", gap: 6 }}>
-          <div style={{ fontSize: 11, color: "var(--fg-3)" }}>
-            Nomes que ele deu na integração e ninguém foi buscar:
-          </div>
-          {pending.map((sd, i) => (
-            <div key={`${sd.phone || sd.name}-${i}`} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, alignItems: "center" }}>
-              <span>{sd.name}{sd.phone ? ` · ${sd.phone}` : ""}</span>
-              {onNewReferral && (
-                <button onClick={() => onNewReferral(customer, sd)}
-                  style={{ height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", flexShrink: 0 }}>
-                  registrar indicação
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Contratos gerados PRA ESTE CLIENTE: o mesmo histórico da tela Contratos,
-// filtrado pelo vínculo que a geração carimba (contract_issues.customerId). É a
-// resposta de "o que esse cliente já assinou" sem sair da ficha. Só leitura —
-// gerar e excluir registro continuam na tela Contratos, onde o modelo mora; a
-// reimpressão sai do SNAPSHOT (corpo + valores do dia), não do modelo atual.
-function CustomerContracts({ customer, onClose }) {
-  const [rows, setRows] = React.useState(null);
-  const [err, setErr] = React.useState(false);
-  const [expanded, setExpanded] = React.useState(false);
-  React.useEffect(() => {
-    let alive = true;
-    setRows(null); setErr(false); setExpanded(false);
-    api.list("contract_issues", { customer: customer.id })
-      .then((r) => { if (alive) setRows([...(r || [])].sort(byIssuedDesc)); })
-      .catch((e) => { console.warn("contratos do cliente não carregaram:", e.message); if (alive) { setRows([]); setErr(true); } });
-    return () => { alive = false; };
-  }, [customer.id]);
-  const shown = expanded ? (rows || []) : (rows || []).slice(0, 5);
-  return (
-    <div style={BOX}>
-      <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
-        <span>Contratos gerados</span>
-        {rows && rows.length > 0 && <span className="mono dim tnum" style={{ fontSize: 10 }}>{rows.length}</span>}
-        <button onClick={() => { onClose && onClose(); window.location.hash = "contracts"; }}
-          style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
-          abrir Contratos ↗
-        </button>
-      </div>
-      {rows === null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
-      {err && <div style={{ fontSize: 12.5, color: "var(--neg)" }}>Não deu pra carregar os contratos deste cliente · reabra a ficha pra tentar de novo.</div>}
-      {rows && !err && rows.length === 0 && (
-        <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
-          Nenhum contrato gerado pra este cliente. Gere na tela Contratos (escolhendo o cliente) que ele aparece aqui.
-        </div>
-      )}
-      {shown.map((i) => (
-        <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 13, flexWrap: "wrap" }}>
-          <span className="mono dim tnum" style={{ fontSize: 11, flexShrink: 0 }}>{issueDate(i.createdAt)}</span>
-          <span style={{ color: "var(--fg-2)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={i.name}>{i.name}</span>
-          {String(i.values?.valor_total || "").trim() && (
-            <span className="mono tnum" style={{ fontSize: 11.5, color: "var(--fg-3)", flexShrink: 0 }}>R$ {String(i.values.valor_total).trim()}</span>
-          )}
-          <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-            {i.author && <span className="mono dim" style={{ fontSize: 10 }}>{displayName(i.author)}</span>}
-            <button onClick={() => { if (!printContract(i, i.values)) window.toast && window.toast("O navegador bloqueou a janela de impressão · libere o popup deste site", "neg"); }}
-              title="reimprimir o contrato exatamente como foi gerado"
-              style={{ height: 22, padding: "0 9px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11 }}>
-              Imprimir / PDF
-            </button>
-          </span>
-        </div>
-      ))}
-      {rows && rows.length > shown.length && (
-        <button onClick={() => setExpanded(true)} className="mono" style={{ fontSize: 11, color: "var(--accent)", padding: "6px 0" }}>
-          +{rows.length - shown.length} mais
-        </button>
-      )}
-    </div>
-  );
-}
-
-// Histórico do cliente = a timeline do lead de origem (customer.leadId) —
-// a jornada comercial inteira continua legível depois do fechamento. Read-only.
-function CustomerHistory({ customer }) {
-  const [acts, setActs] = React.useState(null);
-  const [expanded, setExpanded] = React.useState(false);
-  React.useEffect(() => {
-    if (!customer?.leadId) { setActs([]); return; }
-    let alive = true;
-    api.listActivities(customer.leadId).then((a) => alive && setActs(a)).catch(() => alive && setActs([]));
-    return () => { alive = false; };
-  }, [customer?.leadId]);
-  // Último resumo (integração ou venda) em card rico, fora da timeline abaixo.
-  const callSummary = React.useMemo(() => {
-    const cs = (acts || []).filter((x) => x.meta?.event === "call_summary" && x.meta?.summary).sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0))[0];
-    return cs ? { ...cs.meta.summary, recordingUrl: cs.meta.recordingUrl || "", kind: cs.meta.kind || "call" } : null;
-  }, [acts]);
-  // Briefing de passagem pro integrador: aqui ele SUBSTITUI o resumo da call de
-  // venda (nasce dela e é escrito pra quem vai entregar). O resumo da call de
-  // INTEGRAÇÃO, que acontece depois, continua aparecendo.
-  const brief = React.useMemo(() => {
-    const b = (acts || []).filter((x) => x.meta?.event === "integration_brief" && x.meta?.brief).sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0))[0];
-    return b ? { ...b.meta.brief, source: b.meta.source || "", recordingUrl: b.meta.recordingUrl || "" } : null;
-  }, [acts]);
-  if (!customer?.leadId || (acts !== null && acts.length === 0)) return null;
-  const shown = expanded ? acts : (acts || []).slice(0, 10);
-  const timelineActs = shown.filter((a) => !(a.type === "system" && (a.meta?.event === "call_summary" || a.meta?.event === "integration_brief")));
-  const showCallSummary = !!callSummary && !(brief && callSummary.kind === "call");
-  return (
-    <div style={BOX}>
-      {brief && <div style={{ marginBottom: 12 }}><IntegrationBriefCard brief={brief} phone={customer.phone || ""} /></div>}
-      {showCallSummary && <div style={{ marginBottom: 12 }}><CallSummaryCard summary={callSummary} phone={customer.phone || ""} /></div>}
-      <div className="kicker" style={{ marginBottom: 8 }}>
-        Histórico do funil
-      </div>
-      {acts === null
-        ? <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>carregando…</div>
-        : <ActivityList activities={timelineActs} compact />}
-      {acts && acts.length > 10 && !expanded && (
-        <button onClick={() => setExpanded(true)} className="mono" style={{ fontSize: 11, color: "var(--accent)", padding: "6px 0" }}>
-          ver tudo ({acts.length})
-        </button>
-      )}
-    </div>
-  );
-}
 
 // CustomersScreen é o que o app monta. CustomerModal e ReferralsTab saem daqui
 // pro smoke de render exercitar os estados que a tela inteira não alcança no
