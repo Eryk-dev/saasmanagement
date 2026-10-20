@@ -3,7 +3,7 @@
 // A seção do card do cliente lista os abertos e cria; a gaveta edita, fecha e
 // marca reunião. Mesmo desenho do customer-peek.
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../lib/api.js";
 import { Drawer } from "./overlay.jsx";
@@ -11,7 +11,7 @@ import { SelectPopover } from "./select-popover.jsx";
 import { DateTimeField } from "./datetime-field.jsx";
 import { RecordMeetings } from "./record-meetings.jsx";
 import { RecordTimeline } from "./record-timeline.jsx";
-import { allUsers, displayName } from "../lib/users.js";
+import { allUsers } from "../lib/users.js";
 import { openCustomer, openRecord } from "../lib/open-record.js";
 import { toast } from "../atoms.jsx";
 import "../screens/customers.css";
@@ -29,45 +29,10 @@ const SENTIMENTS = [
   { value: "negativo", label: "negativo", tone: "neg" },
 ];
 const kindLabel = (v) => FOLLOWUP_KINDS.find((k) => k.value === v)?.label || v;
-const day = (iso) => (iso ? new Date(iso).toLocaleDateString("pt-BR") : "sem prazo");
+
 const isoToDay = (iso) => (iso ? new Date(iso).toISOString().slice(0, 10) : "");
 export const openFollowup = (id) => openRecord("followup", id);
 
-export function CustomerFollowups({ customer, onLeave }) {
-  const [rows, setRows] = useState(null);
-  const [kind, setKind] = useState("check_in");
-  const [busy, setBusy] = useState(false);
-  const load = () => api.customerFollowups(customer.id).then((r) => setRows(r.followups || [])).catch(() => setRows([]));
-  useEffect(() => { load(); }, [customer.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  const open = (rows || []).filter((f) => f.status === "aberto").sort((a, b) => String(a.dueAt || "9").localeCompare(String(b.dueAt || "9")));
-
-  async function create() {
-    if (busy) return;
-    setBusy(true);
-    try {
-      const f = await api.createFollowup(customer.id, { kind });
-      onLeave?.();
-      openFollowup(f.id);
-    } catch (e) {
-      toast(`${e.message || "Não foi possível abrir o acompanhamento"} · tente de novo`, "neg");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return <section>
-    <div className="customer-peek-kicker"><span>acompanhamento</span>{rows && <b>{open.length ? `${open.length} aberto${open.length === 1 ? "" : "s"}` : "nada aberto"}</b>}</div>
-    {rows === null && <p className="customer-peek-note mono dim">carregando…</p>}
-    {open.map((f) => <div key={f.id} className="customer-peek-fact">
-      <span>{kindLabel(f.kind)}</span>
-      <strong><button type="button" className="customer-peek-link" onClick={() => { onLeave?.(); openFollowup(f.id); }}>{day(f.dueAt)}{f.owner ? ` · ${displayName(f.owner)}` : ""} →</button></strong>
-    </div>)}
-    <div style={{ display: "flex", gap: 6, marginTop: 10, alignItems: "center" }}>
-      <div style={{ flex: 1, minWidth: 0 }}><SelectPopover size="sm" value={kind} options={FOLLOWUP_KINDS} onChange={setKind} label="Tipo de acompanhamento" /></div>
-      <button type="button" className="customer-peek-link" onClick={create} disabled={busy}>{busy ? "abrindo…" : "novo acompanhamento"}</button>
-    </div>
-  </section>;
-}
 
 export function FollowupDrawer({ id, onClose }) {
   const [f, setF] = useState(null);

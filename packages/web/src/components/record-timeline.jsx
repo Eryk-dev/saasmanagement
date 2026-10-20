@@ -43,7 +43,7 @@ export function RecordTimeline({ customerId = "", leadId = "", limit = 8 }) {
     let alive = true;
     setState((s) => ({ ...s, loading: true, error: "" }));
     const load = customerId ? api.customerTimeline(customerId) : api.leadTimeline(leadId);
-    load.then((r) => alive && setState({ loading: false, items: r.items || [], error: "" }))
+    load.then((r) => alive && setState({ loading: false, items: (r && r.items) || [], error: "" }))
       .catch((e) => alive && setState({ loading: false, items: [], error: e.message || "não foi possível carregar" }));
     return () => { alive = false; };
   }, [customerId, leadId]);

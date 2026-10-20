@@ -1,5 +1,5 @@
 import React from "react";
-import { MoreMenu } from "../atoms.jsx";
+import { MoreMenu, WaButton } from "../atoms.jsx";
 import { Pill } from "../components/viz.jsx";
 import { Drawer, Modal } from "../components/overlay.jsx";
 import { LeadGrade, LeadSection, LeadDisclosure, LeadPhoneCopy } from "../components/lead-card.jsx";
@@ -27,8 +27,7 @@ import { useData } from "../data.jsx";
 import { DayPicker } from "../components/followup-contact.jsx";
 import { followupBadge, followupNextContact, followupDayOf } from "../lib/followup.js";
 import { CustomerCard } from "./tickets/customer-card.jsx";
-import { LeadCustomerBar } from "../components/customer-crm.jsx";
-import { LeadDealMeta } from "../components/deal-meta.jsx";
+import { LeadCrmStrip, ProposalVersionsLine } from "../components/deal-meta.jsx";
 // Lead detail drawer — slides over the pipeline when a card is opened.
 // (Funil unificado: o card do pipeline é um lead, então o detalhe é do lead.)
 // Seções: header → números → GPS (etapa gateada + próximo toque + call) →
@@ -482,6 +481,8 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
   // Cartão: a MESMA caixa dos blocos compartilhados (lead-blocks.jsx), pra o
   // card e o painel de atividade terem o mesmo respiro.
   const box = leadBox;
+  // Botão secundário da fileira de ações (32px, a altura do WaButton).
+  const actBtn = { display: "inline-flex", alignItems: "center", height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, textDecoration: "none", cursor: "pointer" };
   const rowLabel = { fontSize: 11, width: 104, flexShrink: 0 };
   const presetBtn = { height: 32, padding: "0 13px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 500 };
   // Linha rótulo→campo pra edição inline do Resumo.
@@ -1093,54 +1094,51 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
               {[["SDR", lead.owner], ["Closer", lead.closer], ["Integrador", lead.integrator]].filter(([, id]) => id).map(([role, id]) => <span key={role}>{role} · {displayName(id)}</span>)}
               <span title={`Lead ${lead.id}`}>Nesta etapa · {daysSince(lead.stageSince || lead.createdAt)}</span>
             </div>
+            {/* Tipo do negócio, tags e o caminho pro cliente e pra integração. */}
+            <LeadCrmStrip lead={lead} onPatch={patch} onLeave={close} />
           </header>
           <div className="lead-panel-body">
-          <LeadCustomerBar lead={lead} onLeave={close} />
-          <LeadDealMeta lead={lead} onPatch={patch} />
           {/* Próximo passo e agendamento mantêm os handlers da ficha. */}
         {scheduleCard}
 
+          {/* Uma fileira só (20/10/2026): o WhatsApp é a ação principal, no
+              tamanho do botão verde do design system, ao lado das outras.
+              Antes era um botão escuro de largura inteira + duas fileiras. */}
           <LeadSection title="A ação de agora">
-            {wa ? (onOpenWhatsapp
-              ? <button className="lead-panel-button primary" onClick={() => onOpenWhatsapp(lead)}>Abrir conversa no WhatsApp</button>
-              : <a className="lead-panel-button primary" href={wa} target="_blank" rel="noopener noreferrer">Abrir WhatsApp ↗</a>)
-              : <button className="lead-panel-button primary" onClick={() => setShowComposer(true)}>Registrar contato</button>}
-            {onOpenWhatsapp && wa && (
-              <div className="lead-panel-actions" style={{ marginTop: 10 }}>
-                <a className="lead-panel-button" href={wa} target="_blank" rel="noopener noreferrer" title="Abrir no WhatsApp Web">Web ↗</a>
-              </div>
-            )}
-            <div className="lead-panel-actions" style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line-1)" }}>
+            <div className="lead-panel-actions">
+              {wa
+                ? (onOpenWhatsapp
+                  ? <WaButton onClick={() => onOpenWhatsapp(lead)} title="Abrir a conversa no Inbox do cockpit">WhatsApp</WaButton>
+                  : <WaButton href={wa} title="Abrir no WhatsApp Web">WhatsApp ↗</WaButton>)
+                : <button style={actBtn} onClick={() => setShowComposer(true)}>Registrar contato</button>}
               {(onOpenWhatsapp || wa) && (
-                <button onClick={propostaNoWhats} disabled={propBusy}
+                <button onClick={propostaNoWhats} disabled={propBusy} style={{ ...actBtn, opacity: propBusy ? 0.6 : 1 }}
                   title={lead.proposalUrl
                     ? "Abrir o WhatsApp Web com o produto escolhido em apresentar, já pronto para o cliente"
-                    : "Gerar a apresentação e abrir o WhatsApp Web com a versão pronta para o cliente"}
-                  style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", opacity: propBusy ? 0.6 : 1 }}>
-                  {propBusy ? "gerando…" : "➤ proposta no Whats"}
+                    : "Gerar a apresentação e abrir o WhatsApp Web com a versão pronta para o cliente"}>
+                  {propBusy ? "gerando…" : "proposta no Whats"}
                 </button>
               )}
               {lead.proposal_edit_url && (
-                <a href={lead.proposal_edit_url} target="_blank" rel="noreferrer"
-                  title="Abrir a apresentação do closer (tela zero com régua e SPIN)"
-                  style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 12.5, fontWeight: 600, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
+                <a href={lead.proposal_edit_url} target="_blank" rel="noreferrer" title="Abrir a apresentação do closer (tela zero com régua e SPIN)"
+                  style={{ ...actBtn, borderColor: "var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)" }}>
                   apresentar ↗
                 </a>
               )}
-              {/* Link de pagamento à vista no CARD (Leo, 13/09): estava dentro
-                  do ⋯, e é o passo seguinte à apresentação — quem fecha na call
-                  precisa cobrar sem procurar. */}
-              <button onClick={() => setPayLink(true)}
-                title={lead.mpChargeUrl ? "Abrir/refazer o link de pagamento deste lead" : "Criar o link de pagamento deste lead (Mercado Pago, Asaas ou Appmax)"}
-                style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
-                {lead.mpChargeUrl ? (lead.mpChargeKind === "recurring" ? "link da assinatura" : "link de pagamento") : "link de pagamento"}
+              {/* Link de pagamento à vista no CARD (Leo, 13/09): é o passo
+                  seguinte à apresentação — quem fecha na call cobra sem procurar. */}
+              <button onClick={() => setPayLink(true)} style={actBtn}
+                title={lead.mpChargeUrl ? "Abrir/refazer o link de pagamento deste lead" : "Criar o link de pagamento deste lead (Mercado Pago, Asaas ou Appmax)"}>
+                {lead.mpChargeUrl && lead.mpChargeKind === "recurring" ? "link da assinatura" : "link de pagamento"}
               </button>
-              <MoreMenu size={30} items={[
+              <MoreMenu size={32} label="Mais ações" items={[
+                onOpenWhatsapp && wa && { label: "abrir no WhatsApp Web ↗", onClick: () => window.open(wa, "_blank", "noopener,noreferrer") },
                 ...altDecks.map((t) => ({ label: `gerar ${t.pickLabel || t.name}`, onClick: () => gerarCom(t) })),
                 lead.customProposalUrl && { label: "abrir proposta personalizada ↗", onClick: () => window.open(cockpitProposalUrl(lead.customProposalUrl), "_blank", "noreferrer") },
                 { label: lead.customProposalUrl ? "editar proposta personalizada" : "montar proposta personalizada", onClick: () => setCustomProp(true) },
               ]} />
             </div>
+            <ProposalVersionsLine lead={lead} />
           </LeadSection>
 
           <LeadStageSection saasCfg={saasCfg} lead={lead} isOpen={isOpen} onMove={moveStage} />

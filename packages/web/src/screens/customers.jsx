@@ -26,7 +26,7 @@ import { paymentLabel, paymentUpfront, paymentRecurring, paymentCustom, PAY_STAT
 import { CustomerPlanPanel, CustomerContractForm, CustomerProducts } from "../components/customer-plan.jsx";
 
 import { UpsellPanel } from "../components/UpsellPanel.jsx";
-import { CustomerMeetings, CustomerMeetingForm } from "../components/customer-meeting.jsx";
+import { CustomerMeetingForm } from "../components/customer-meeting.jsx";
 import { CustomerHistoryView } from "../components/customer-history.jsx";
 
 import { isChurned, CHURN_REASONS, churnReasonLabel } from "../lib/churn.js";
@@ -35,12 +35,10 @@ import { fetchLeverIdOrgs, customerOrgId } from "../lib/leverid.js";
 import { LeverIdBadge } from "../components/leverid-badge.jsx";
 import { FreeAccountsTab, CustomerOrgLink } from "../components/leverads-accounts.jsx";
 
-import { CustomerOnboardings } from "../components/onboarding-card.jsx";
-import { CustomerContacts, CustomerDeals, CustomerStateChips } from "../components/customer-crm.jsx";
+import { CustomerContacts, CustomerDeals, CustomerNow, CustomerStateChips } from "../components/customer-crm.jsx";
 import { RecordTimeline } from "../components/record-timeline.jsx";
-import { CustomerFollowups } from "../components/cs-followups.jsx";
 import { CsPortfolioTab } from "../components/cs-portfolio.jsx";
-import { OPEN_CUSTOMER_KEY, onOpenRecord, openOnboarding } from "../lib/open-record.js";
+import { OPEN_CUSTOMER_KEY, onOpenRecord } from "../lib/open-record.js";
 
 // Cinco colunas da referência, com rolagem interna quando os pisos não cabem.
 export const TABLE_GRID = "minmax(244px,1.5fr) minmax(190px,1fr) minmax(130px,1.05fr) minmax(182px,.9fr) minmax(90px,.85fr)";
@@ -1089,11 +1087,10 @@ function CustomerPeek(props) {
               {label:'Registrar indicação',onClick:()=>props.onNewReferral(customer)},
             ]}/></div>
           </section>
+          {/* O que está aberto agora (integração, acompanhamento, reunião) e o
+              "+ novo" de tudo que se abre a partir do cliente. */}
+          {!kids&&<CustomerNow customer={customer} lead={lead} onLeave={onClose} onScheduleMeeting={()=>setOperation('meeting')}/>}
           {product?.id==='leverads'&&<CustomerOrgLink customer={customer} lead={lead}/>}
-          {!kids&&<CustomerOnboardings customer={customer} onOpen={(id)=>{onClose();openOnboarding(id);}}/>}
-          {!kids&&<CustomerFollowups customer={customer} onLeave={onClose}/>}
-          <CustomerDeals customer={customer} onLeave={onClose}/>
-          <CustomerContacts customer={customer}/>
           <section className="customer-peek-milestones">
             <div className="customer-peek-kicker"><span>{kids?'jornada de consultas':'régua de marcos'}</span>{!kids&&<b>{milestones.filter(m=>m.status==='done').length} de {milestones.length}</b>}</div>
             {kids?<button className="customer-peek-consult" onClick={()=>{onClose();window.location.hash='consultas';}}>Abrir consultas →</button>:<div className="customer-peek-checks">
@@ -1104,14 +1101,15 @@ function CustomerPeek(props) {
               {!milestones.length&&<p>Defina “Cliente desde” na edição para ativar a régua.</p>}
             </div>}
           </section>
-          {!kids&&<CustomerMeetings customer={customer} lead={lead} onSchedule={()=>setOperation('meeting')} onOpenHistory={()=>setOperation('history')}/>}
           <section className="customer-peek-money">
             <div className="customer-peek-kicker">dinheiro</div>
             <div className="customer-peek-amount"><strong>{money(financial.received)}</strong><span>de {money(financial.contracted)}</span></div>
             <div className="customer-peek-bar"><i style={{width:`${financial.contracted>0?Math.min(100,financial.received/financial.contracted*100):0}%`,background:`var(--${financial.status.key==='paid'?'pos':financial.status.key==='partial'?'warn':'neg'})`}}/></div>
             <p>{pending.length?`${pending.length} cobrança${pending.length===1?'':'s'} em aberto · ${money(totalOpen)}`:financial.status.key==='paid'?'nada em aberto':'sem cobrança gerada ainda'}</p>
           </section>
-          <section><div className="customer-peek-kicker"><span>linha do tempo</span></div><RecordTimeline customerId={customer.id}/></section>
+          <CustomerDeals customer={customer} onLeave={onClose}/>
+          <CustomerContacts customer={customer}/>
+          <section><div className="customer-peek-kicker"><span>linha do tempo</span></div><RecordTimeline customerId={customer.id} limit={5}/></section>
           {feedback&&<p role={feedback.error?'alert':'status'} className="customer-peek-feedback">{feedback.text}</p>}
         </div>
         <footer className="customer-peek-footer"><button disabled={!!busy||!pending.length} onClick={chargeNext}>{busy==='charge'?'Gerando link…':pending.length?'Cobrar próxima':'Nada a cobrar'}</button><button disabled={!!busy||kids||churned} onClick={createCase}>{busy==='case'?'Criando rascunho…':'Virar case'}</button></footer>

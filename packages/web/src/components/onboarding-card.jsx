@@ -4,7 +4,7 @@
 // kickoff, go-live, integrador e a linha do tempo do cliente. Abre de
 // qualquer tela por lib/open-record.js.
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../lib/api.js";
 import { Drawer } from "./overlay.jsx";
@@ -13,7 +13,7 @@ import { DateTimeField } from "./datetime-field.jsx";
 import { Checkbox } from "./form-controls.jsx";
 import { RecordTimeline } from "./record-timeline.jsx";
 import { RecordMeetings } from "./record-meetings.jsx";
-import { allUsers, displayName } from "../lib/users.js";
+import { allUsers } from "../lib/users.js";
 import { openCustomer, openLeadById } from "../lib/open-record.js";
 import { toast } from "../atoms.jsx";
 // O desenho de gaveta do card do cliente: estes blocos também abrem fora da
@@ -180,44 +180,4 @@ export function OnboardingDrawer({ id, onClose }) {
     </Drawer>, document.body);
 }
 
-// Lista de integrações de um cliente, com "Nova integração" (sem negócio novo).
-export function CustomerOnboardings({ customer, onOpen }) {
-  const [rows, setRows] = useState(null);
-  const [creating, setCreating] = useState(false);
-  const [kind, setKind] = useState("novo_produto");
-  const [busy, setBusy] = useState(false);
-  const load = () => api.customerOnboardings(customer.id).then((r) => setRows(r.onboardings || [])).catch(() => setRows([]));
-  useEffect(() => { load(); }, [customer.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function create() {
-    if (busy) return;
-    setBusy(true);
-    try {
-      const o = await api.createOnboarding(customer.id, { kind });
-      setCreating(false);
-      await load();
-      onOpen(o.id);
-    } catch (e) {
-      toast(`${e.message || "Não foi possível abrir a integração"} · tente de novo`, "neg");
-    } finally {
-      setBusy(false);
-    }
-  }
-  const open = (rows || []).filter((o) => !["concluida", "cancelada"].includes(o.stage));
-  return <section className="customer-peek-onboardings">
-    <div className="customer-peek-kicker"><span>integrações</span>{rows && <b>{open.length ? `${open.length} em andamento` : "nenhuma aberta"}</b>}</div>
-    {rows === null && <p className="customer-peek-note mono dim">carregando…</p>}
-    {(rows || []).map((o) => <div key={o.id} className="customer-peek-fact">
-      <span>{kindLabel(o.kind)}</span>
-      <strong><button type="button" className="customer-peek-link" onClick={() => onOpen(o.id)}>{stageLabel(o.stage)} · {o.progress ?? 0}% →</button>
-        {o.integrator && <em style={{ display: "block", fontStyle: "normal", fontSize: 11, color: "var(--fg-4)", fontWeight: 400 }}>{displayName(o.integrator)}</em>}</strong>
-    </div>)}
-    {creating
-      ? <div style={{ display: "flex", gap: 6, marginTop: 10, alignItems: "center" }}>
-        <SelectPopover size="sm" value={kind} options={ONBOARDING_KINDS} onChange={setKind} label="Tipo de integração" />
-        <button type="button" className="customer-peek-link" onClick={create} disabled={busy}>{busy ? "abrindo…" : "abrir"}</button>
-        <button type="button" className="customer-peek-link" style={{ color: "var(--fg-3)" }} onClick={() => setCreating(false)} disabled={busy}>cancelar</button>
-      </div>
-      : <button type="button" className="customer-peek-action" onClick={() => setCreating(true)}>Nova integração</button>}
-  </section>;
-}

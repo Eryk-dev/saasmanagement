@@ -1,14 +1,14 @@
-// Comercial do Lever CRM (Fase 2) no card do Negócio: tipo de negócio (nova
-// venda, upsell, renovação, reativação), tags do time e as versões da proposta
-// com o estado de cada uma. E o "Novo negócio" do card do cliente, que abre um
-// lead já ligado a ele (upsell, renovação, reativação) no funil do produto.
+// Comercial do Lever CRM (Fase 2) no card do Negócio, sem ocupar o corpo do
+// card: uma linha no cabeçalho com o tipo de negócio, as tags e o caminho pro
+// cliente e pra integração (quando o lead já vendeu), e as versões da proposta
+// em uma linha junto dos botões de proposta. `createExtraDeal` abre, a partir
+// do card do cliente, um negócio já ligado a ele (upsell, renovação, reativação).
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api.js";
-import { openLeadById } from "../lib/open-record.js";
+import { openCustomer, openLeadById, openOnboarding } from "../lib/open-record.js";
 import { stageByKind, firstStage } from "../lib/funnel.js";
-import { SelectPopover } from "./select-popover.jsx";
-import { toast } from "../atoms.jsx";
+import { Popover } from "./popover.jsx";
 
 export const DEAL_TYPES = [
   { value: "nova_venda", label: "Nova venda" },
@@ -16,72 +16,110 @@ export const DEAL_TYPES = [
   { value: "renovacao", label: "Renovação" },
   { value: "reativacao", label: "Reativação" },
 ];
+const dealLabel = (v) => DEAL_TYPES.find((d) => d.value === v)?.label || "Nova venda";
 const STATUS_TONE = { aceita: "var(--pos)", expirada: "var(--neg)", aberta: "var(--accent)", enviada: "var(--fg-3)" };
-const chip = { display: "inline-flex", alignItems: "center", gap: 4, height: 22, padding: "0 9px", borderRadius: 999, background: "var(--bg-2)", fontSize: 11.5, color: "var(--fg-2)" };
 
-export function LeadDealMeta({ lead, onPatch }) {
-  const [tag, setTag] = useState("");
+const pill = {
+  display: "inline-flex", alignItems: "center", gap: 4, height: 22, padding: "0 9px", borderRadius: 999,
+  background: "var(--bg-2)", border: 0, fontSize: 11.5, color: "var(--fg-2)", cursor: "pointer", whiteSpace: "nowrap",
+};
+const link = { ...pill, background: "transparent", padding: "0 2px", color: "var(--accent)", fontWeight: 600 };
+
+// Tipo do negócio: a pílula abre a lista (Popover), sem select de formulário.
+function DealTypePill({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  return <>
+    <button ref={ref} type="button" style={pill} onClick={() => setOpen((v) => !v)} aria-haspopup="listbox" aria-expanded={open} title="Tipo do negócio">
+      {dealLabel(value)} <span aria-hidden="true" style={{ color: "var(--fg-4)" }}>▾</span>
+    </button>
+    {open && <Popover anchor={ref} onClose={() => setOpen(false)} width={180} align="start" label="Tipo do negócio">
+      {DEAL_TYPES.map((d) => <button key={d.value} type="button" onClick={() => { setOpen(false); if (d.value !== value) onChange(d.value); }}
+        style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 10px", borderRadius: "var(--r-2)", fontSize: 12.5, color: "var(--fg-2)", background: d.value === (value || "nova_venda") ? "var(--accent-soft)" : "transparent", border: 0, cursor: "pointer" }}>
+        {d.label}
+      </button>)}
+    </Popover>}
+  </>;
+}
+
+function TagsEditor({ tags, onChange }) {
+  const [adding, setAdding] = useState(false);
+  const [text, setText] = useState("");
+  const commit = () => {
+    const t = text.trim();
+    if (t) onChange([...tags, t]);
+    setText("");
+    setAdding(false);
+  };
+  return <>
+    {tags.map((t) => <span key={t} style={{ ...pill, cursor: "default" }}>#{t}
+      <button type="button" aria-label={`Tirar a tag ${t}`} onClick={() => onChange(tags.filter((x) => x !== t))} style={{ border: 0, background: "transparent", color: "var(--fg-4)", cursor: "pointer", padding: 0 }}>✕</button></span>)}
+    {adding
+      ? <input autoFocus className="inp" style={{ width: 110, height: 22, fontSize: 11.5, borderRadius: 999 }} placeholder="tag…" value={text}
+        onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setText(""); setAdding(false); } }} />
+      : <button type="button" style={{ ...pill, background: "transparent", border: "1px dashed var(--line-2)", color: "var(--fg-3)" }} onClick={() => setAdding(true)}>+ tag</button>}
+  </>;
+}
+
+// Cliente e integração do lead que já vendeu (o caminho de volta do card).
+function useCustomerLinks(lead) {
+  const [state, setState] = useState(null);
+  useEffect(() => {
+    if (!lead?.customerId) { setState(null); return undefined; }
+    let alive = true;
+    Promise.all([api.get("customers", lead.customerId).catch(() => null), api.customerOnboardings(lead.customerId).catch(() => null)])
+      .then(([customer, r]) => {
+        if (!alive || !customer) return;
+        const open = ((r && r.onboardings) || []).filter((o) => !["concluida", "cancelada"].includes(o.stage));
+        setState({ customer, onboarding: open.find((o) => o.lead === lead.id) || open[0] || null });
+      });
+    return () => { alive = false; };
+  }, [lead?.customerId, lead?.id]);
+  return state;
+}
+
+// A linha do cabeçalho do card do Negócio.
+export function LeadCrmStrip({ lead, onPatch, onLeave }) {
+  const links = useCustomerLinks(lead);
+  const tags = Array.isArray(lead.tags) ? lead.tags : [];
+  return <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 12 }}>
+    <DealTypePill value={lead.dealType} onChange={(v) => onPatch({ dealType: v })} />
+    <TagsEditor tags={tags} onChange={(next) => onPatch({ tags: next })} />
+    {links?.customer && <>
+      <span aria-hidden="true" style={{ width: 1, height: 14, background: "var(--line-2)", margin: "0 4px" }} />
+      <button type="button" style={link} onClick={() => { onLeave?.(); openCustomer(links.customer.id); }} title="Abrir o card do cliente">cliente: {links.customer.name} →</button>
+      {links.onboarding && <button type="button" style={link} onClick={() => { onLeave?.(); openOnboarding(links.onboarding.id); }} title="Abrir o card da integração">
+        integração {links.onboarding.progress ?? 0}% →</button>}
+    </>}
+  </div>;
+}
+
+// As versões da proposta, em uma linha (v1 expirada · v2 aberta).
+export function ProposalVersionsLine({ lead }) {
   const [versions, setVersions] = useState(null);
   useEffect(() => {
     let alive = true;
-    api.leadProposalVersions(lead.id).then((r) => alive && setVersions(r.proposals || [])).catch(() => alive && setVersions([]));
+    api.leadProposalVersions(lead.id).then((r) => alive && setVersions((r && r.proposals) || [])).catch(() => alive && setVersions([]));
     return () => { alive = false; };
   }, [lead.id, lead.proposta_id]);
-  const tags = Array.isArray(lead.tags) ? lead.tags : [];
-  const addTag = () => {
-    const t = tag.trim();
-    if (!t) return;
-    onPatch({ tags: [...tags, t] });
-    setTag("");
-  };
-  return <section className="lead-section">
-    <div className="lead-section-heading"><h3>Negócio</h3></div>
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <span className="mono dim" style={{ fontSize: 11, width: 104, flexShrink: 0 }}>Tipo</span>
-      <div style={{ flex: 1, minWidth: 0 }}><SelectPopover size="sm" value={lead.dealType || "nova_venda"} options={DEAL_TYPES} onChange={(v) => onPatch({ dealType: v })} label="Tipo de negócio" /></div>
-    </div>
-    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-      <span className="mono dim" style={{ fontSize: 11, width: 104, flexShrink: 0 }}>Tags</span>
-      {tags.map((t) => <span key={t} style={chip}>#{t}
-        <button type="button" aria-label={`Tirar a tag ${t}`} onClick={() => onPatch({ tags: tags.filter((x) => x !== t) })} style={{ color: "var(--fg-4)" }}>✕</button></span>)}
-      <input className="inp" style={{ width: 120, height: 24 }} placeholder="nova tag…" value={tag} onChange={(e) => setTag(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addTag(); }} onBlur={addTag} />
-    </div>
-    {versions && versions.length > 0 && <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 8 }}>
-      <span className="mono dim" style={{ fontSize: 11, width: 104, flexShrink: 0 }}>Propostas</span>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {[...versions].reverse().map((v) => <span key={v.id} style={chip} title={`criada ${new Date(v.createdAt).toLocaleDateString("pt-BR")}${v.validUntil ? ` · válida até ${v.validUntil}` : ""}${v.views ? ` · ${v.views} visualizações` : ""}`}>
-          v{v.version} <b style={{ color: STATUS_TONE[v.status], fontWeight: 600 }}>{v.status}</b></span>)}
-      </div>
-    </div>}
-  </section>;
+  if (!versions || !versions.length) return null;
+  return <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 10, fontSize: 11.5, color: "var(--fg-3)" }}>
+    <span>propostas</span>
+    {versions.map((v) => <span key={v.id} title={`criada ${new Date(v.createdAt).toLocaleDateString("pt-BR")}${v.validUntil ? ` · válida até ${v.validUntil}` : ""}${v.views ? ` · ${v.views} visualizações` : ""}`}>
+      v{v.version} <b style={{ color: STATUS_TONE[v.status], fontWeight: 600 }}>{v.status}</b></span>)}
+  </div>;
 }
 
-// "Novo negócio" no card do cliente: lead ligado ao cliente, no funil do
-// produto, na etapa de proposta (cliente já é conhecido; não volta pro SDR).
-export function NewDealButton({ customer, onLeave }) {
-  const [type, setType] = useState("upsell");
-  const [busy, setBusy] = useState(false);
-  async function create() {
-    if (busy) return;
-    setBusy(true);
-    try {
-      const product = (window.SEED?.SAAS || []).find((p) => p.id === customer.saas);
-      const stage = stageByKind(product, "proposta") || stageByKind(product, "followup") || firstStage(product);
-      const lead = await api.create("leads", {
-        saas: customer.saas, name: customer.contact || customer.name, company: customer.name,
-        email: customer.email || "", phone: customer.phone || "", customerId: customer.id, dealType: type,
-        stage, closer: customer.owner || "", source: "Cliente",
-      });
-      onLeave?.();
-      openLeadById(lead.id);
-    } catch (e) {
-      toast(`${e.message || "Não foi possível abrir o negócio"} · tente de novo`, "neg");
-    } finally {
-      setBusy(false);
-    }
-  }
-  return <div style={{ display: "flex", gap: 6, marginTop: 10, alignItems: "center" }}>
-    <div style={{ flex: 1, minWidth: 0 }}><SelectPopover size="sm" value={type} options={DEAL_TYPES.filter((d) => d.value !== "nova_venda")} onChange={setType} label="Tipo do novo negócio" /></div>
-    <button type="button" className="customer-peek-link" onClick={create} disabled={busy}>{busy ? "abrindo…" : "novo negócio"}</button>
-  </div>;
+// Negócio novo a partir do cliente: lead ligado a ele, no funil do produto, na
+// etapa de proposta (o cliente já é conhecido; não volta pro SDR).
+export async function createExtraDeal(customer, type) {
+  const product = (window.SEED?.SAAS || []).find((p) => p.id === customer.saas);
+  const stage = stageByKind(product, "proposta") || stageByKind(product, "followup") || firstStage(product);
+  const lead = await api.create("leads", {
+    saas: customer.saas, name: customer.contact || customer.name, company: customer.name,
+    email: customer.email || "", phone: customer.phone || "", customerId: customer.id, dealType: type,
+    stage, closer: customer.owner || "", source: "Cliente",
+  });
+  openLeadById(lead.id);
+  return lead;
 }

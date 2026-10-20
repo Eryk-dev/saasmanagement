@@ -1,12 +1,17 @@
-// Blocos do Lever CRM no card do Cliente (Fases 1.3 a 1B): estágio de vida e
-// status financeiro, os negócios (leads) do cliente com o caminho de volta pro
-// card do Negócio, e os contatos com papel. Mesmo desenho do customer-peek.
+// Blocos do Lever CRM no card do Cliente. Desenho de 20/10/2026, depois do
+// "não entendi": em vez de quatro blocos soltos (integrações, acompanhamento,
+// negócios, reuniões), cada um com o seu seletor, o card tem UM bloco "Em
+// andamento" com o que está aberto e UM botão "+ novo" para abrir o resto.
+// Os estados (estágio de vida, financeiro) ficam em chips no cabeçalho.
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api.js";
-import { openCustomer, openLeadById, openOnboarding } from "../lib/open-record.js";
+import { openLeadById, openOnboarding, openRecord } from "../lib/open-record.js";
 import { displayName } from "../lib/users.js";
-import { NewDealButton } from "./deal-meta.jsx";
+import { Popover } from "./popover.jsx";
+import { toast } from "../atoms.jsx";
+import { createExtraDeal } from "./deal-meta.jsx";
+import { summaryReason } from "./customer-meeting.jsx";
 // O desenho de gaveta do card do cliente: estes blocos também abrem fora da
 // tela de Clientes (card do Negócio, card da Integração).
 import "../screens/customers.css";
@@ -19,10 +24,18 @@ export const LIFECYCLE = {
 };
 export const FINANCIAL = {
   aguardando_pagamento: { label: "aguardando 1º pagamento", tone: "mut" },
-  adimplente: { label: "adimplente", tone: "pos" },
+  adimplente: { label: "pagamento em dia", tone: "pos" },
   inadimplente: { label: "inadimplente", tone: "neg" },
 };
 const ROLE = { decisor: "decisor", financeiro: "financeiro", usuario: "usuário", ponto_focal: "ponto focal" };
+const KIND = { implantacao: "Implantação", novo_produto: "Produto novo", reintegracao: "Reintegração", migracao: "Migração", treinamento: "Treinamento" };
+const STAGE = { aguardando_kickoff: "aguardando kickoff", kickoff: "kickoff feito", configuracao: "configuração", treinamento: "treinamento", go_live: "go-live" };
+const FOLLOWUP = { check_in: "Check-in", qbr: "QBR", renovacao: "Renovação", risco: "Conversa de risco" };
+const DEAL = { upsell: "upsell", renovacao: "renovação", reativacao: "reativação" };
+const NEW_DEAL = { upsell: "Novo upsell", renovacao: "Nova renovação", reativacao: "Nova reativação" };
+const day = (iso) => (iso ? new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "");
+const when = (iso) => new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+const hostSegment = (h) => (h?.collection === "onboardings" ? "onboardings" : "followups");
 
 // Os dois estados na mesma linha, no desenho de estado do customer-peek.
 export function CustomerStateChips({ customer }) {
@@ -35,68 +48,137 @@ export function CustomerStateChips({ customer }) {
   </div>;
 }
 
-// Negócios do cliente: o que gerou a venda e os que vieram depois (upsell,
-// renovação). Cada um abre o card do Negócio.
-export function CustomerDeals({ customer, onLeave }) {
-  const leads = (window.SEED?.LEADS || []).filter((l) => l.id === customer.leadId || l.customerId === customer.id);
+// "+ novo": a lista de tudo que se abre a partir do cliente, num lugar só.
+function AddMenu({ groups, busy }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  return <>
+    <button ref={ref} type="button" disabled={busy} onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open}
+      style={{ marginLeft: "auto", height: 24, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, fontWeight: 600, letterSpacing: "normal", textTransform: "none", cursor: "pointer" }}>
+      {busy ? "abrindo…" : "+ novo"}
+    </button>
+    {open && <Popover anchor={ref} onClose={() => setOpen(false)} width={230} align="end" label="Abrir para o cliente">
+      {groups.map(([title, items]) => <div key={title} style={{ padding: "4px 0" }}>
+        <div className="kicker" style={{ padding: "4px 10px" }}>{title}</div>
+        {items.map((i) => <button key={i.label} type="button" onClick={() => { setOpen(false); i.onClick(); }}
+          style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 10px", borderRadius: "var(--r-2)", fontSize: 12.5, color: "var(--fg-2)", background: "transparent", border: 0, cursor: "pointer" }}>
+          {i.label}
+        </button>)}
+      </div>)}
+    </Popover>}
+  </>;
+}
+
+function Row({ label, children, onClick, sub }) {
+  return <div className="customer-peek-fact" style={{ alignItems: "flex-start" }}>
+    <span>{label}</span>
+    <strong>
+      {onClick ? <button type="button" className="customer-peek-link" onClick={onClick}>{children} →</button> : children}
+      {sub && <em style={{ display: "block", fontStyle: "normal", fontSize: 11, fontWeight: 400, color: "var(--fg-4)" }}>{sub}</em>}
+    </strong>
+  </div>;
+}
+
+// "Em andamento": as integrações abertas, os acompanhamentos abertos, a
+// próxima reunião e a reunião passada sem resumo. Tudo abre o próprio card.
+export function CustomerNow({ customer, lead, onLeave, onScheduleMeeting }) {
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const load = () => Promise.all([
+    api.customerOnboardings(customer.id).catch(() => null),
+    api.customerFollowups(customer.id).catch(() => null),
+    api.customerRecordMeetings(customer.id).catch(() => null),
+  ]).then(([o, f, m]) => setData({ onboardings: (o && o.onboardings) || [], followups: (f && f.followups) || [], meetings: (m && m.meetings) || [] }));
+  useEffect(() => { setData(null); load(); }, [customer.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const go = (fn) => { onLeave?.(); fn(); };
+  async function run(fn, errorText) {
+    if (busy) return;
+    setBusy(true);
+    try { await fn(); } catch (e) { toast(`${e.message || errorText} · tente de novo`, "neg"); } finally { setBusy(false); }
+  }
+  const newOnboarding = () => run(async () => {
+    const kind = (data?.onboardings || []).length ? "novo_produto" : "implantacao";
+    const o = await api.createOnboarding(customer.id, { kind });
+    go(() => openOnboarding(o.id));
+  }, "Não foi possível abrir a integração");
+  const newFollowup = (kind) => run(async () => {
+    const f = await api.createFollowup(customer.id, { kind });
+    go(() => openRecord("followup", f.id));
+  }, "Não foi possível abrir o acompanhamento");
+  const newDeal = (type) => run(async () => { onLeave?.(); await createExtraDeal(customer, type); }, "Não foi possível abrir o negócio");
+
+  const now = Date.now();
+  const onboardings = (data?.onboardings || []).filter((o) => !["concluida", "cancelada"].includes(o.stage));
+  const followups = (data?.followups || []).filter((f) => f.status === "aberto");
+  const live = (data?.meetings || []).filter((m) => m.status === "scheduled");
+  const next = live.filter((m) => Date.parse(m.at) > now).sort((a, b) => Date.parse(a.at) - Date.parse(b.at))[0];
+  const pending = live.find((m) => !m.summaryAt && m.meetUrl && Date.parse(m.at) + 50 * 60_000 < now);
+  const legacy = !next && lead?.integrationAt && Date.parse(lead.integrationAt) > now ? lead : null;
+  const empty = data && !onboardings.length && !followups.length && !next && !legacy && !pending;
+
+  async function summarize() {
+    await run(async () => {
+      const r = await api.summarizeRecordMeeting(hostSegment(pending.host), pending.host.id, pending.id);
+      if (r?.ok) { toast("Resumo pronto", "pos"); await load(); } else toast(`Sem resumo: ${summaryReason(r)}`, "warn");
+    }, "Falha ao gerar o resumo");
+  }
+
+  const groups = [
+    ["Integração", [{ label: (data?.onboardings || []).length ? "Nova integração (produto novo)" : "Nova integração", onClick: newOnboarding }]],
+    ["Acompanhamento", Object.entries(FOLLOWUP).map(([k, l]) => ({ label: l, onClick: () => newFollowup(k) }))],
+    ["Reunião", [{ label: "Marcar reunião", onClick: onScheduleMeeting }]],
+    ["Negócio", Object.entries(NEW_DEAL).map(([k, l]) => ({ label: l, onClick: () => newDeal(k) }))],
+  ];
+
   return <section>
-    <div className="customer-peek-kicker"><span>negócios</span><b>{leads.length}</b></div>
-    {leads.map((l) => <div key={l.id} className="customer-peek-fact">
-      <span>{l.id === customer.leadId ? "venda de origem" : ({ upsell: "upsell", renovacao: "renovação", reativacao: "reativação" })[l.dealType] || "negócio"}</span>
-      <strong><button type="button" className="customer-peek-link" onClick={() => { onLeave?.(); openLeadById(l.id); }}>{l.stage || "—"}{l.closer ? ` · ${displayName(l.closer)}` : ""} →</button></strong>
-    </div>)}
-    {!leads.length && <p className="customer-peek-note">Nenhum negócio ligado a este cliente.</p>}
-    <NewDealButton customer={customer} onLeave={onLeave} />
+    <div className="customer-peek-kicker"><span>em andamento</span><AddMenu groups={groups} busy={busy} /></div>
+    {data === null && <p className="customer-peek-note mono dim">carregando…</p>}
+    {empty && <p className="customer-peek-note">Nada aberto agora. Use "+ novo" para abrir integração, acompanhamento, reunião ou negócio.</p>}
+    {onboardings.map((o) => <Row key={o.id} label={`Integração · ${KIND[o.kind] || o.kind}`} onClick={() => go(() => openOnboarding(o.id))}
+      sub={o.integrator ? displayName(o.integrator) : "sem integrador"}>{STAGE[o.stage] || o.stage} · {o.progress ?? 0}%</Row>)}
+    {followups.map((f) => <Row key={f.id} label={FOLLOWUP[f.kind] || f.kind} onClick={() => go(() => openRecord("followup", f.id))}
+      sub={f.owner ? displayName(f.owner) : "sem dono"}>{f.dueAt ? `até ${day(f.dueAt)}` : "sem prazo"}</Row>)}
+    {next && <Row label="Próxima reunião" sub={next.host.label}>
+      {when(next.at)}{next.meetUrl ? <> · <a className="customer-peek-link" href={next.meetUrl} target="_blank" rel="noopener noreferrer">Meet ↗</a></> : null}
+    </Row>}
+    {legacy && <Row label="Próxima reunião" sub="implantação (no negócio)">
+      {when(legacy.integrationAt)}{legacy.integrationCallUrl ? <> · <a className="customer-peek-link" href={legacy.integrationCallUrl} target="_blank" rel="noopener noreferrer">Meet ↗</a></> : null}
+    </Row>}
+    {pending && <div className="customer-peek-pending">
+      <span>{`Reunião de ${day(pending.at)} sem resumo`}</span>
+      <button type="button" onClick={summarize} disabled={busy}>{busy ? "Gerando…" : "Gerar resumo"}</button>
+    </div>}
   </section>;
 }
 
-// Contatos com papel (perfil do cliente). Só leitura aqui; a edição é pela
-// rota de contatos.
+// Negócios do cliente: a venda de origem e os que vieram depois. Cada um abre
+// o card do Negócio. Criar mora no "+ novo" do bloco Em andamento.
+export function CustomerDeals({ customer, onLeave }) {
+  const leads = (window.SEED?.LEADS || []).filter((l) => l.id === customer.leadId || l.customerId === customer.id);
+  if (!leads.length) return null;
+  return <section>
+    <div className="customer-peek-kicker"><span>negócios</span><b>{leads.length}</b></div>
+    {leads.map((l) => <Row key={l.id} label={l.id === customer.leadId ? "venda de origem" : DEAL[l.dealType] || "negócio"}
+      onClick={() => { onLeave?.(); openLeadById(l.id); }}>{l.stage || "—"}{l.closer ? ` · ${displayName(l.closer)}` : ""}</Row>)}
+  </section>;
+}
+
+// Empresa e contatos com papel (perfil do cliente). Só leitura aqui.
 export function CustomerContacts({ customer }) {
   const [profile, setProfile] = useState(null);
   useEffect(() => {
     let alive = true;
-    api.customerProfile(customer.id).then((p) => alive && setProfile(p)).catch(() => alive && setProfile({ contacts: [], company: {} }));
+    api.customerProfile(customer.id).then((p) => alive && setProfile(p || {})).catch(() => alive && setProfile({}));
     return () => { alive = false; };
   }, [customer.id, customer.lifecycle, customer.financialStatus]);
-  if (!profile) return null;
-  const { company = {}, contacts = [] } = profile;
-  if (!contacts.length && !company.cnpj) return null;
+  const company = profile?.company || {};
+  const contacts = profile?.contacts || [];
+  if (!profile || (!contacts.length && !company.cnpj)) return null;
   return <section>
     <div className="customer-peek-kicker"><span>empresa e contatos</span></div>
-    {company.cnpj && <div className="customer-peek-fact"><span>{company.legalName || "Razão social"}</span><strong className="tnum">{company.cnpj}</strong></div>}
-    {company.domain && <div className="customer-peek-fact"><span>Domínio</span><strong>{company.domain}</strong></div>}
-    {contacts.map((c) => <div key={c.email || c.phone || c.name} className="customer-peek-fact">
-      <span>{[ROLE[c.role] || (c.primary ? "principal" : "contato"), c.leverId ? "LeverId" : ""].filter(Boolean).join(" · ")}</span>
-      <strong>{c.name || c.email}{c.email && c.name ? <em style={{ display: "block", fontStyle: "normal", fontSize: 11, fontWeight: 400, color: "var(--fg-4)" }}>{c.email}</em> : null}</strong>
-    </div>)}
-  </section>;
-}
-
-// No card do Negócio (lead que já vendeu): o cliente que nasceu dele, com o
-// estado, e a integração em andamento — cada um abre o próprio card. É o
-// caminho de volta que faltava (Fase 1B): antes o lead não levava ao cliente.
-export function LeadCustomerBar({ lead, onLeave }) {
-  const [state, setState] = useState(null);
-  useEffect(() => {
-    if (!lead?.customerId) return undefined;
-    let alive = true;
-    Promise.all([api.get("customers", lead.customerId).catch(() => null), api.customerOnboardings(lead.customerId).catch(() => ({ onboardings: [] }))])
-      .then(([customer, r]) => alive && setState({ customer, onboardings: r.onboardings || [] }));
-    return () => { alive = false; };
-  }, [lead?.customerId]);
-  if (!lead?.customerId || !state?.customer) return null;
-  const { customer, onboardings } = state;
-  const current = onboardings.find((o) => o.lead === lead.id && !["concluida", "cancelada"].includes(o.stage))
-    || onboardings.find((o) => !["concluida", "cancelada"].includes(o.stage));
-  return <section className="lead-section">
-    <div className="lead-section-heading"><h3>Cliente</h3>
-      <button type="button" className="customer-peek-link" onClick={() => { onLeave?.(); openCustomer(customer.id); }}>abrir cliente →</button></div>
-    <div style={{ fontSize: 13, fontWeight: 600 }}>{customer.name}</div>
-    <CustomerStateChips customer={customer} />
-    {current && <div className="customer-peek-fact" style={{ marginTop: 8 }}>
-      <span>Integração · {current.progress ?? 0}%</span>
-      <strong><button type="button" className="customer-peek-link" onClick={() => { onLeave?.(); openOnboarding(current.id); }}>abrir integração →</button></strong>
-    </div>}
+    {company.cnpj && <Row label={company.legalName || "Razão social"}><span className="tnum">{company.cnpj}</span></Row>}
+    {contacts.map((c) => <Row key={c.email || c.phone || c.name} label={[ROLE[c.role] || (c.primary ? "principal" : "contato"), c.leverId ? "LeverId" : ""].filter(Boolean).join(" · ")}
+      sub={c.email && c.name ? c.email : ""}>{c.name || c.email}</Row>)}
   </section>;
 }
