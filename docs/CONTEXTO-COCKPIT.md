@@ -1549,6 +1549,37 @@ de SDR.
   "aplicar pacote: …".
 - **Teste:** `crm-bundles.test.js`.
 
+**Atividade ligada a registro (20/10/2026).** Fase 2 do plano do Lever CRM,
+em `crm/activity-cards.js`.
+
+- **O que é:** ligação, WhatsApp, e-mail, reunião, tarefa ou follow-up de um
+  lead, cliente, integração ou acompanhamento, com dono e dia. É uma
+  **tarefa** (`tasks`) com `activityType`, `record: { kind, id, label }` e os
+  ponteiros `crmLead`/`crmCustomer`, resolvidos do registro na criação
+  (índices `tasks_crm_customer_idx` e `tasks_crm_lead_idx`). Por isso segue
+  as notificações, os prazos e o quadro de Tarefas.
+- **Rotas:** `POST /api/crm-activities`, `GET /api/crm-activities?lead=|customer=`
+  e `POST /api/crm-activities/:id/complete`. A conclusão tem rota própria
+  porque `/api/tasks` é da tela "tasks" e o CS nem sempre a vê; ela só vale
+  para tarefa que é atividade. Guard: pipeline, today ou customers.
+- **Timeline:** a atividade concluída entra na timeline do cliente e do lead
+  (`events/timeline.js`, `origin: "atividade"`, `kind: atividade.<tipo>`).
+- **Não substitui o próximo toque:** `lead.nextActionAt` continua sendo o
+  motor da cadência, da fila de Atividades e do robô de SDR. A atividade cobre
+  o resto do trabalho (CS, integração, tarefas do closer).
+- **Web** (`components/activity-cards.jsx`):
+  - o card do Cliente tem "Nova atividade" no "+ novo" e lista as abertas em
+    "Em andamento";
+  - o card do Negócio ganhou o bloco "Atividades" com "+ atividade";
+  - integração e acompanhamento ganharam o bloco "atividades", filtrado pelo
+    registro;
+  - no quadro de Tarefas, o drawer mostra "atividade de X →", que abre o card
+    (`openActivityRecord` em `lib/open-record.js`).
+- **Fora da fila de Atividades:** a tela Atividades é a fila de leads com
+  roteiro, e as tarefas saíram dela em 20/09 (`33289a5a`). Fica para decidir
+  se a atividade com prazo hoje entra nessa fila.
+- **Teste:** `crm-activity-cards.test.js`.
+
 **WhatsApp: dono da conversa e virar ticket (20/10/2026).** Fase 2 do plano
 do Lever CRM, em `whatsapp/thread-owner.js`.
 
