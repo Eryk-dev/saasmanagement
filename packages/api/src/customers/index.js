@@ -8,6 +8,7 @@ import { registerCustomerResultsRoutes } from "./routes.customer-results.js";
 import { registerLeverIdRoutes } from "./routes.leverid.js";
 import { registerLeveradsOrgRoutes } from "./routes.leverads-orgs.js";
 import { registerLifecycleRoutes } from "./routes.lifecycle.js";
+import { registerOnboardingRoutes } from "./routes.onboardings.js";
 import { startLifecycleSweep } from "./lifecycle.js";
 import { makeLeveradsOrgMirror, startLeveradsOrgMirror } from "./leverads-orgs.js";
 import { makeIdentityAdmin } from "../auth/identity-admin.js";
@@ -41,6 +42,8 @@ export function register(app, repo, ctx) {
   registerLeveradsOrgRoutes(app, repo, { mirror: orgMirror });
   // Empresa, contatos, estágio de vida, status financeiro e workspaces.
   registerLifecycleRoutes(app, repo);
+  // Integração como registro do cliente, separada do ganho (Fase 1B).
+  registerOnboardingRoutes(app, repo);
 }
 
 export function start(repo, { clients, log, stops, jobOn }) {

@@ -9,6 +9,7 @@ import { randomUUID } from "node:crypto";
 import { kindOf, cadenceOf, firstStage, stageByKind, isNoShowStage, isWonLead, LOSS_KINDS, TOUCH_TYPES } from "./stages.js";
 import { NOMES_DIAS as CADENCIA_DIAS } from "./cadencia-stages.js";
 import { removePlanHistory } from "../billing/plan-history.js";
+import { cancelLeadOnboardings } from "../customers/onboardings.js";
 import { followupDayOf, todayBrt, dayStartIso, followupStepOf, firstFollowupDay, nextFollowupDay, FOLLOWUP_STEPS } from "../shared/followup-contacts.js";
 import { loadFollowupContacts } from "./followup-config.js";
 
@@ -173,6 +174,8 @@ export async function revertWonLead(repo, lead, { author = "system" } = {}) {
       removed = true;
     }
   }
+  // A integração que nasceu desta venda e ainda não começou sai junto.
+  try { await cancelLeadOnboardings(repo, lead); } catch { /* best-effort */ }
   try {
     await logActivity(repo, {
       saas: lead.saas || "", lead: lead.id, type: "system", author,

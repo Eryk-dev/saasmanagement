@@ -87,6 +87,7 @@ const INDEXES = [
   ["timeline_events_lead_idx", "timeline_events", `((json->>'lead'))`],
   ["workspaces_customer_idx", "workspaces", `((json->>'customer'))`],
   ["onboardings_customer_idx", "onboardings", `((json->>'customer'))`],
+  ["onboardings_lead_idx", "onboardings", `((json->>'lead'))`],
   ["subscriptions_customer_idx", "subscriptions", `((json->>'customer'))`],
   ["invoices_customer_idx", "invoices", `((json->>'customer'))`],
   // proposals é a maior coleção do banco (47 MB de snapshots, acima do teto do

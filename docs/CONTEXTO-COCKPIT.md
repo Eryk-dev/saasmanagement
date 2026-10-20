@@ -1397,6 +1397,37 @@ coleções novas de Pessoa e Empresa; tudo se apoia no que já existe.
   Evento sem `product` (o LeverId) casa o e-mail em qualquer produto.
 - **Teste:** `crm-lifecycle.test.js`.
 
+**Integração como registro do cliente (20/10/2026).** Fase 1B do plano do
+Lever CRM, em `customers/onboardings.js`. **Ganho e integração são coisas
+diferentes:** a venda é fato do lead (`customerId`/`wonAt`; no funil o Ganho
+vem antes da Integração), e a integração é do cliente.
+
+- **Coleção:** `onboardings`, com `customer`, `lead` opcional, `kind`
+  (implantacao, novo_produto, reintegracao, migracao ou treinamento), etapas
+  (aguardando_kickoff, kickoff, configuracao, treinamento, go_live, concluida,
+  cancelada), integrador, kickoff, go-live previsto e real, e checklist em
+  `items[]` (lado lever ou cliente).
+- **Concluir exige o checklist em 100%.** Cada mudança de etapa vira item da
+  timeline e recalcula o `lifecycle` do cliente.
+- **Rotas:** `GET|POST /api/customers/:id/onboardings`,
+  `GET|PATCH /api/customers/onboardings/:id`,
+  `GET /api/customers/onboardings?open=1` e
+  `POST /api/customers/onboardings/backfill {apply}` (dry-run por padrão).
+- **Espelho do card (legado):**
+  - o PATCH de lead com `stage`, `integrationAt` ou `integrator` chama
+    `syncLeadOnboarding`;
+  - ela cria uma integração `source: "lead"` quando o card entra em Integração,
+    quando marcam horário de integração ou quando o plano vendido tem
+    `requiresIntegration`;
+  - **vender não abre integração;**
+  - ela acompanha a etapa (Pós-venda = concluída) até alguém editar pela
+    integração (`managed: true`).
+- **Venda desfeita:** `revertWonLead` cancela a integração que nasceu dela e
+  ainda não começou.
+- **Ainda no lead:** a reunião da implantação inicial (Meet, resumo, agenda
+  pessoal) continua no lead; reunião própria da integração é a 1B-b.
+- **Teste:** `crm-onboardings.test.js`.
+
 **Dor `[PRICE]` (07/10/2026).** O Leo começou a subir criativo de precificação
 com `[PRICE]` no nome, rastreado como o `[OEM]`. O que o código já fazia desde
 16/09: `painCode` aceita a etiqueta, o `/f/:id` resolve o anúncio ainda sem

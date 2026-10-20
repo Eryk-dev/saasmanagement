@@ -23,6 +23,7 @@ import { syncConsultationCalendar, syncConsultationMeetEvent } from "../calls/co
 import { customerPlanPatch, customerPlanState, recordPlanChange, stampSubscriptionPlan, subscriptionPlanState, syncCustomerPlanFromSub } from "../billing/plan-history.js";
 import { syncProposalLeadSnapshot } from "../proposals/proposal.js";
 import { convertWonLead, syncWonLeadDeal } from "./won-lead.js";
+import { syncLeadOnboarding } from "../customers/onboardings.js";
 import { completeMilestoneTasks } from "../customers/customer-milestones.js";
 import { CLOSED_PLAN_ANNUAL_FACTOR } from "../shared/plan-cycles.js";
 import { syncPersonalCalendar } from "../google/google-user.js";
@@ -702,6 +703,12 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
       if (briefer && (toKind === "integracao" || toKind === "ganho") && !updated.integrationBriefAt) {
         briefer.briefLead(updated.id).catch(() => { /* o poller tenta de novo */ });
       }
+    }
+    // Integração do cliente espelha o card enquanto o funil ainda carrega a
+    // integração (onboardings.js). Depois do convertWonLead: precisa do
+    // customerId que ele acabou de gravar. Best-effort: nunca quebra o PATCH.
+    if (collection === "leads" && ["stage", "integrationAt", "integrator"].some((k) => k in req.body)) {
+      try { await syncLeadOnboarding(repo, await repo.get("leads", updated.id)); } catch { /* fail-open */ }
     }
     // Plano/valor/pagamento reeditados num lead que JÁ virou cliente (gate da
     // Integração ou edição direta) → o fechamento novo re-espelha no cliente e
