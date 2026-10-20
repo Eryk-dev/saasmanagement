@@ -12,6 +12,7 @@ import { Popover } from "./popover.jsx";
 import { toast } from "../atoms.jsx";
 import { createExtraDeal } from "./deal-meta.jsx";
 import { summaryReason } from "./customer-meeting.jsx";
+import { ActivityForm, OpenActivities } from "./activity-cards.jsx";
 // O desenho de gaveta do card do cliente: estes blocos também abrem fora da
 // tela de Clientes (card do Negócio, card da Integração).
 import "../screens/customers.css";
@@ -84,6 +85,9 @@ function Row({ label, children, onClick, sub }) {
 export function CustomerNow({ customer, lead, onLeave, onScheduleMeeting }) {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [activity, setActivity] = useState(false);
+  const [activityKey, setActivityKey] = useState(0);
+  const [activityCount, setActivityCount] = useState(0);
   const load = () => Promise.all([
     api.customerOnboardings(customer.id).catch(() => null),
     api.customerFollowups(customer.id).catch(() => null),
@@ -115,7 +119,7 @@ export function CustomerNow({ customer, lead, onLeave, onScheduleMeeting }) {
   const next = live.filter((m) => Date.parse(m.at) > now).sort((a, b) => Date.parse(a.at) - Date.parse(b.at))[0];
   const pending = live.find((m) => !m.summaryAt && m.meetUrl && Date.parse(m.at) + 50 * 60_000 < now);
   const legacy = !next && lead?.integrationAt && Date.parse(lead.integrationAt) > now ? lead : null;
-  const empty = data && !onboardings.length && !followups.length && !next && !legacy && !pending;
+  const empty = data && !onboardings.length && !followups.length && !next && !legacy && !pending && !activityCount;
 
   async function summarize() {
     await run(async () => {
@@ -127,6 +131,7 @@ export function CustomerNow({ customer, lead, onLeave, onScheduleMeeting }) {
   const groups = [
     ["Integração", [{ label: (data?.onboardings || []).length ? "Nova integração (produto novo)" : "Nova integração", onClick: newOnboarding }]],
     ["Acompanhamento", Object.entries(FOLLOWUP).map(([k, l]) => ({ label: l, onClick: () => newFollowup(k) }))],
+    ["Atividade", [{ label: "Nova atividade (ligar, WhatsApp, tarefa…)", onClick: () => setActivity(true) }]],
     ["Reunião", [{ label: "Marcar reunião", onClick: onScheduleMeeting }]],
     ["Negócio", Object.entries(NEW_DEAL).map(([k, l]) => ({ label: l, onClick: () => newDeal(k) }))],
   ];
@@ -134,7 +139,8 @@ export function CustomerNow({ customer, lead, onLeave, onScheduleMeeting }) {
   return <section>
     <div className="customer-peek-kicker"><span>em andamento</span><AddMenu groups={groups} busy={busy} /></div>
     {data === null && <p className="customer-peek-note mono dim">carregando…</p>}
-    {empty && <p className="customer-peek-note">Nada aberto agora. Use "+ novo" para abrir integração, acompanhamento, reunião ou negócio.</p>}
+    {empty && <p className="customer-peek-note">Nada aberto agora. Use "+ novo" para abrir integração, acompanhamento, atividade, reunião ou negócio.</p>}
+    <OpenActivities customer={customer.id} reload={activityKey} onCount={setActivityCount} />
     {onboardings.map((o) => <Row key={o.id} label={`Integração · ${KIND[o.kind] || o.kind}`} onClick={() => go(() => openOnboarding(o.id))}
       sub={o.integrator ? displayName(o.integrator) : "sem integrador"}>{STAGE[o.stage] || o.stage} · {o.progress ?? 0}%</Row>)}
     {followups.map((f) => <Row key={f.id} label={FOLLOWUP[f.kind] || f.kind} onClick={() => go(() => openRecord("followup", f.id))}
@@ -149,6 +155,8 @@ export function CustomerNow({ customer, lead, onLeave, onScheduleMeeting }) {
       <span>{`Reunião de ${day(pending.at)} sem resumo`}</span>
       <button type="button" onClick={summarize} disabled={busy}>{busy ? "Gerando…" : "Gerar resumo"}</button>
     </div>}
+    {activity && <ActivityForm record={{ kind: "customer", id: customer.id, label: customer.name }} onClose={() => setActivity(false)}
+      onSaved={() => { setActivity(false); setActivityKey((n) => n + 1); }} />}
   </section>;
 }
 

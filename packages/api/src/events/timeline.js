@@ -33,6 +33,13 @@ const fromTicketEvent = (e) => ({
   ticket: e.ticket, author: e.by || "", data: e.data || {},
 });
 
+// Atividade (tarefa ligada a registro, crm/activity-cards.js) concluída.
+const fromActivityCard = (t) => ({
+  id: t.id, origin: "atividade", at: t.completedAt, kind: `atividade.${t.activityType}`, source: "cockpit",
+  customer: t.crmCustomer || "", lead: t.crmLead || "", author: t.completedBy || "", text: t.title || "",
+  data: { record: t.record || null, note: t.description || "" },
+});
+
 const uniq = (xs) => [...new Set(xs.filter(Boolean).map(String))];
 
 // Leads e cliente que formam a mesma história: o cliente puxa o lead de origem
@@ -52,14 +59,23 @@ async function ticketEventsOf(repo, customerId) {
   return lists.flat();
 }
 
+async function activityCardsOf(repo, customerId, leadIds) {
+  const lists = await Promise.all([
+    customerId ? repo.listWhere("tasks", { crmCustomer: customerId }) : [],
+    ...leadIds.map((id) => repo.listWhere("tasks", { crmLead: id })),
+  ]);
+  return lists.flat().filter((t) => t.activityType && t.completed && t.completedAt);
+}
+
 export async function buildTimeline(repo, { customer = "", lead = "", limit = 200 } = {}) {
   const { customerId, leadIds } = await scopeOf(repo, { customer, lead });
-  const [byCustomer, byLeads, activities, planChanges, ticketEvents] = await Promise.all([
+  const [byCustomer, byLeads, activities, planChanges, ticketEvents, cards] = await Promise.all([
     customerId ? repo.listWhere(TIMELINE, { customer: customerId }) : [],
     Promise.all(leadIds.map((id) => repo.listWhere(TIMELINE, { lead: id }))).then((l) => l.flat()),
     Promise.all(leadIds.map((id) => repo.listWhere("activities", { lead: id }))).then((l) => l.flat()),
     customerId ? repo.listWhere("plan_changes", { customer: customerId }) : [],
     ticketEventsOf(repo, customerId),
+    activityCardsOf(repo, customerId, leadIds),
   ]);
   const seen = new Set();
   const items = [
@@ -67,6 +83,7 @@ export async function buildTimeline(repo, { customer = "", lead = "", limit = 20
     ...activities.map(fromActivity),
     ...planChanges.map(fromPlanChange),
     ...ticketEvents.map(fromTicketEvent),
+    ...cards.map(fromActivityCard),
   ].filter((x) => x.at && !seen.has(x.id) && seen.add(x.id));
   items.sort((a, b) => String(b.at).localeCompare(String(a.at)));
   return { customer: customerId, leads: leadIds, items: items.slice(0, Math.max(1, Math.min(limit, 1000))) };

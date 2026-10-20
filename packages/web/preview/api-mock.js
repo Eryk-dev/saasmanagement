@@ -98,7 +98,18 @@ let notificacoes = [
   { id: "n4", saas: "leverads", by: "api", type: "ticket_sla_breach", text: "SLA estourado: #1042 Painel não carrega os anúncios do Mercado Livre passou do prazo de 1ª resposta", at: emDias(0), read: false, task: "tk1", link: { screen: "tickets", thread: "tk1" } },
 ];
 
+// Atividades ligadas a registro (components/activity-cards.jsx), em memória.
+const atividadesPreview = [];
 const RESPOSTAS = {
+  createCrmActivity: (b) => {
+    const label = { ligacao: "Ligar", whatsapp: "WhatsApp", email: "E-mail", reuniao: "Reunião", tarefa: "Tarefa", followup: "Follow-up" }[b.type] || "Tarefa";
+    const t = { id: `task_prev_${atividadesPreview.length + 1}`, title: b.title || `${label} · registro`, activityType: b.type, assignees: b.owner ? [b.owner] : [], dueDate: b.dueDate,
+      record: { ...b.record, label: "registro" }, crmLead: b.record.kind === "lead" ? b.record.id : "", crmCustomer: b.record.kind === "customer" ? b.record.id : "", completed: false };
+    atividadesPreview.push(t);
+    return t;
+  },
+  crmActivities: ({ lead = "", customer = "" }) => ({ activities: atividadesPreview.filter((t) => (customer && t.crmCustomer === customer) || (lead && t.crmLead === lead)) }),
+  completeCrmActivity: (id) => { const t = atividadesPreview.find((x) => x.id === id); if (t) t.completed = true; return t; },
   ...customersCashMock,
   ...trainingMock,
   ...ticketsMock,

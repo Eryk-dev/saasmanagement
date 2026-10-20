@@ -381,6 +381,10 @@ export const api = {
   updateBundle: (id, patch) => req("PATCH", `/api/bundles/${id}`, patch),
   applyLeadBundle: (leadId, bundleId) => req("POST", `/api/leads/${leadId}/bundle`, { bundleId }),
   customerOrders: (customerId) => req("GET", `/api/customers/${customerId}/orders`),
+  // Atividade (ligação, WhatsApp, tarefa…) ligada a lead, cliente, integração ou acompanhamento.
+  createCrmActivity: (body) => req("POST", "/api/crm-activities", body),
+  crmActivities: ({ lead = "", customer = "" }) => req("GET", `/api/crm-activities?lead=${encodeURIComponent(lead)}&customer=${encodeURIComponent(customer)}`),
+  completeCrmActivity: (id, completed = true) => req("POST", `/api/crm-activities/${encodeURIComponent(id)}/complete`, { completed }),
   leadProposalVersions: (leadId) => req("GET", `/api/leads/${leadId}/proposals`),
   // Views salvas por usuário (filtros com nome) de uma tela.
   savedViews: (screen) => req("GET", `/api/views?screen=${encodeURIComponent(screen)}`),

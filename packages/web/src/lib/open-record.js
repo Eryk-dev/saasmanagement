@@ -16,6 +16,11 @@ export const openCustomer = (id) => openRecord("customer", id);
 export const openLeadById = (id) => openRecord("lead", id);
 export const openOnboarding = (id) => openRecord("onboarding", id);
 
+// O registro de uma atividade (tarefa com `record`, crm/activity-cards.js no
+// servidor): { kind: lead|customer|onboarding|followup, id }. "lead" é o nome
+// do evento de abrir a ficha; os outros já batem.
+export const openActivityRecord = (record) => record?.id && openRecord(record.kind, record.id);
+
 // Assina os pedidos de abrir; devolve a função que cancela a assinatura.
 export function onOpenRecord(handler) {
   const fn = (e) => handler(e.detail || {});

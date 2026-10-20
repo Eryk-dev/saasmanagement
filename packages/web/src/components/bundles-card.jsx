@@ -31,7 +31,7 @@ function BundleForm({ saas, plans, onClose, onSaved }) {
       onSaved();
     } catch (e) { setError(e.message || "Não foi possível criar o pacote."); } finally { setBusy(false); }
   }
-  return <Modal onClose={onClose} fechavel={!busy} label="Novo pacote" largura={560} padding={20}>
+  return <Modal onClose={onClose} fechavel={!busy} label="Novo pacote" painelStyle={{ padding: "20px 22px" }} largura={560} padding={20}>
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <h2 style={{ margin: 0, fontSize: 17 }}>Novo pacote</h2>
       <p style={{ margin: 0, fontSize: 12.5, color: "var(--fg-3)" }}>Junte planos de produtos diferentes. No Ganho, cada produto vira uma assinatura com a sua parte do preço, dividida pela tabela.</p>
@@ -47,8 +47,8 @@ function BundleForm({ saas, plans, onClose, onSaved }) {
       <div><div className="kicker">Preço do pacote (total do ciclo)</div><input className="inp" style={{ width: 200, marginTop: 4 }} inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="15.000,00" /></div>
       {error && <p role="alert" style={{ margin: 0, color: "var(--neg)", fontSize: 12.5 }}>{error}</p>}
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-        <button type="button" className="plans-create" style={{ background: "var(--bg-2)", color: "var(--fg-1)" }} onClick={onClose} disabled={busy}>Cancelar</button>
-        <button type="button" className="plans-create" onClick={save} disabled={busy}>{busy ? "Criando…" : "Criar pacote"}</button>
+        <button type="button" style={{ padding: "8px 14px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 13 }} onClick={onClose} disabled={busy}>Cancelar</button>
+        <button type="button" style={{ padding: "8px 14px", background: "var(--btn-bg)", color: "var(--btn-fg)", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 600 }} onClick={save} disabled={busy}>{busy ? "Criando…" : "Criar pacote"}</button>
       </div>
     </div>
   </Modal>;

@@ -13,6 +13,7 @@ import { DateTimeField } from "./datetime-field.jsx";
 import { Checkbox } from "./form-controls.jsx";
 import { RecordTimeline } from "./record-timeline.jsx";
 import { RecordMeetings } from "./record-meetings.jsx";
+import { ActivitySection } from "./activity-cards.jsx";
 import { allUsers } from "../lib/users.js";
 import { openCustomer, openLeadById } from "../lib/open-record.js";
 import { toast } from "../atoms.jsx";
@@ -166,6 +167,7 @@ export function OnboardingDrawer({ id, onClose }) {
             <div className="customer-peek-kicker"><span>notas</span></div>
             <textarea className="inp" rows={3} style={{ width: "100%", marginTop: 8, height: "auto", padding: 8 }} value={draft.notes || ""} onChange={(e) => set({ notes: e.target.value })} placeholder="combinados, acessos, pendências…" />
           </section>
+          {customer && <ActivitySection record={{ kind: "onboarding", id: draft.id, label: `Integração · ${customer.name}` }} customer={customer.id} />}
           {customer && <section>
             <div className="customer-peek-kicker"><span>linha do tempo do cliente</span></div>
             <RecordTimeline customerId={customer.id} limit={5} />

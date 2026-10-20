@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Avatar, SecondaryButton, useEsc } from "../../atoms.jsx";
 import { api, assetUrl } from "../../lib/api.js";
 import { displayName } from "../../lib/users.js";
+import { openActivityRecord } from "../../lib/open-record.js";
 import { Menu } from "../../components/menu.jsx";
 import { UserPicker, UserAvatarRing } from "../../components/user-picker.jsx";
 import { DateQuick } from "../../components/date-quick.jsx";
@@ -347,6 +348,8 @@ export function TaskPanel({ task, tasks, columns, board, users, usersById, label
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 18px 18px", display: "flex", flexDirection: "column", gap: 14 }}>
         {task.createdBy && <div className="mono dim" style={{ fontSize: 11 }}>criada por {usersById.get(task.createdBy)?.name || displayName(task.createdBy) || task.createdBy}{task.createdAt ? ` · ${when(task.createdAt)}` : ""}{task.recurrenceOf ? " · ocorrência de tarefa recorrente" : ""}{task.followUpOf ? " · acompanhamento" : ""}</div>}
         <TitleField key={"t" + task.id} task={task} save={(v) => saveField(task.id, { title: v })} />
+        {task.record?.id && <button type="button" onClick={() => openActivityRecord(task.record)} title="Abrir o card do registro desta atividade"
+          style={{ alignSelf: "flex-start", fontSize: 12, color: "var(--accent)" }}>atividade de {task.record.label} →</button>}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <Row label="Responsáveis" anchorRef={assigneesRef}>

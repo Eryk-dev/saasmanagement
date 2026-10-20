@@ -28,6 +28,7 @@ import { DayPicker } from "../components/followup-contact.jsx";
 import { followupBadge, followupNextContact, followupDayOf } from "../lib/followup.js";
 import { CustomerCard } from "./tickets/customer-card.jsx";
 import { LeadCrmStrip, ProposalVersionsLine } from "../components/deal-meta.jsx";
+import { LeadActivities } from "../components/activity-cards.jsx";
 // Lead detail drawer — slides over the pipeline when a card is opened.
 // (Funil unificado: o card do pipeline é um lead, então o detalhe é do lead.)
 // Seções: header → números → GPS (etapa gateada + próximo toque + call) →
@@ -1156,6 +1157,8 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
             </div>
             <ProposalVersionsLine lead={lead} />
           </LeadSection>
+
+          <LeadActivities lead={lead} />
 
           <LeadStageSection saasCfg={saasCfg} lead={lead} isOpen={isOpen} onMove={moveStage} />
 
