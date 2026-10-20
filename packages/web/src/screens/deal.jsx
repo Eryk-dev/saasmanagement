@@ -27,6 +27,7 @@ import { useData } from "../data.jsx";
 import { DayPicker } from "../components/followup-contact.jsx";
 import { followupBadge, followupNextContact, followupDayOf } from "../lib/followup.js";
 import { CustomerCard } from "./tickets/customer-card.jsx";
+import { LeadCustomerBar } from "../components/customer-crm.jsx";
 // Lead detail drawer — slides over the pipeline when a card is opened.
 // (Funil unificado: o card do pipeline é um lead, então o detalhe é do lead.)
 // Seções: header → números → GPS (etapa gateada + próximo toque + call) →
@@ -472,8 +473,10 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
   // O compromisso QUE a etapa está esperando (o "próximo passo" de verdade):
   // call na etapa de call, integração na entrega, senão o toque do GPS. É o que
   // vira a linha grande no topo do bloco; o resto é contexto por fase.
+  // Pós-venda não marca integração aqui: o editor dela só existe na etapa de
+  // Integração, e a integração do cliente tem card próprio (bloco Cliente).
   const primaryStep = kind === "call" ? { label: "Call", verb: "agendar call" }
-    : (kind === "integracao" || kind === "posvenda") ? { label: "Integração", verb: "marcar integração" }
+    : kind === "integracao" ? { label: "Integração", verb: "marcar integração" }
     : { label: "Próximo toque", verb: "marcar toque" };
   // Cartão: a MESMA caixa dos blocos compartilhados (lead-blocks.jsx), pra o
   // card e o painel de atividade terem o mesmo respiro.
@@ -1091,6 +1094,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
             </div>
           </header>
           <div className="lead-panel-body">
+          <LeadCustomerBar lead={lead} onLeave={close} />
           {/* Próximo passo e agendamento mantêm os handlers da ficha. */}
         {scheduleCard}
 

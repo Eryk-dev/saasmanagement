@@ -11,6 +11,8 @@ import { stageKind } from "../lib/funnel.js";
 import { isNoShowStage } from "../lib/scripts.js";
 import { followupDueDay, followupBadge, localDayStart } from "../lib/followup.js";
 import { bizWall, bizNow } from "../lib/format.js";
+import { api } from "../lib/api.js";
+import { openCustomer, openOnboarding } from "../lib/open-record.js";
 
 // A GRADE da agenda. Morava em screens/pipeline.jsx desde que a aba Agenda era
 // do pipeline; a aba saiu de lá (VIEWS = kanban | list) e o código ficou, com
@@ -148,6 +150,27 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, move, per
   const sel = Array.isArray(personIds) ? personIds : [];
   const only = sel.length ? new Set(sel) : null;
   const person = sel.length === 1 ? sel[0] : null;
+  // A integração tem card próprio (Lever CRM, Fase 1B): o evento de integração
+  // abre a integração do cliente quando ela existe; reunião avulsa com o
+  // cliente e consulta sem lead de origem abrem o card do cliente.
+  const [onbByLead, setOnbByLead] = useStP(() => new Map());
+  React.useEffect(() => {
+    let alive = true;
+    api.openOnboardings()
+      .then((r) => alive && setOnbByLead(new Map((r.onboardings || []).filter((o) => o.lead).map((o) => [o.lead, o.id]))))
+      .catch(() => { /* sem a lista, o clique abre o lead como antes */ });
+    return () => { alive = false; };
+  }, [leads]);
+  const openEvent = (l, kind, meeting) => {
+    if (kind === "consulta") {
+      if (l._leadRef) onOpenLead?.(l._leadRef);
+      else if (l._customerId) openCustomer(l._customerId);
+      return;
+    }
+    if (kind === "integração" && meeting && l.customerId) { openCustomer(l.customerId); return; }
+    if (kind === "integração" && onbByLead.get(l.id)) { openOnboarding(onbByLead.get(l.id)); return; }
+    onOpenLead?.(l);
+  };
   const [pickerOpen, setPickerOpen] = useStP(false);
   const pickerAnchor = React.useRef(null);
   // ARRASTAR (09/10/2026): HTML5 nativo, nas mesmas convenções do Kanban
@@ -253,6 +276,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, move, per
         _pack: c.n && c.packageTotal ? `${c.n}/${c.packageTotal}` : "", // consulta não tem valor: mostra a posição no pacote
         saas: c.saas, stage: "",
         _leadRef: (c.leadId && leadById.get(c.leadId)) || null,
+        _customerId: c.customerId || "",
       },
     }));
   const events = leads
@@ -286,7 +310,9 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, move, per
       }
       const intMs = atMs(l.integrationAt);
       if (l.integrationAt) {
-        out.push({ l, t: wallAt(intMs), kind: "integração", who: l.integrator || l.closer, done: Number.isFinite(intMs) && intMs < Date.now() });
+        // Reunião marcada pela ficha do cliente usa o mesmo horário do lead
+        // (integrationMeetLabel); na grade ela se chama reunião, não "int".
+        out.push({ l, t: wallAt(intMs), kind: "integração", meeting: l.integrationMeetLabel === "Reunião", who: l.integrator || l.closer, done: Number.isFinite(intMs) && intMs < Date.now() });
       }
       // HISTÓRICO de calls remarcadas por cima (lead.callHistory, arquivado
       // pelo PATCH da API quando um callAt passado é sobrescrito): cada
@@ -969,7 +995,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, move, per
                     );
                   });
                 })()}
-                {placed.map(({ l, t, kind, who, done, personLane, personLanes, sub, subs }) => {
+                {placed.map(({ l, t, kind, meeting, who, done, personLane, personLanes, sub, subs }) => {
                   const tone = toneOf(who);
                   const isTouch = kind === "toque";
                   const isFollowup = kind === "follow-up";
@@ -1009,7 +1035,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, move, per
                     <div key={l.id + kind + t.getTime()} role="button" tabIndex={0}
                       {...(movable ? dragProps({ type: "lead", key: `${l.id}-${kind}`, l, kind, who: who || "", t }, 1) : {})}
                       onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); e.currentTarget.click(); } }}
-                      onClick={(e) => { e.stopPropagation(); const target = kind === "consulta" ? l._leadRef : l; if (target && onOpenLead) onOpenLead(target); }}
+                      onClick={(e) => { e.stopPropagation(); openEvent(l, kind, meeting); }}
                       title={`${timeStr} · ${isFollowup ? "follow-up" : kind}${noShow ? " · NO-SHOW, o lead não compareceu" : done ? (isFollowup ? " · já passou" : " · realizada · histórico") : ""}${confirmed ? " · CONFIRMADA pelo lead" : ""} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"}${movable ? " · arraste pra remarcar" : ""}`}
                       style={{
                         position: "absolute", top: (hour - H0) * hourH + 2,
@@ -1049,7 +1075,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, move, per
                               dois horários do mesmo dia. */}
                           <div className="mono tnum" style={{ display: "flex", alignItems: "center", gap: 3, minWidth: 0, fontSize: isWeek ? 9.5 : 10, color: AGENDA_INK_SOFT }}>
                             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {`${noShow ? "✕ " : done ? "✓ " : ""}${timeStr}${isWeek && who ? ` · ${displayName(who).split(" ")[0]}` : ""}${kind === "integração" ? " · int" : kind === "consulta" ? " · 1:1" : ""}`}
+                              {`${noShow ? "✕ " : done ? "✓ " : ""}${timeStr}${isWeek && who ? ` · ${displayName(who).split(" ")[0]}` : ""}${kind === "integração" ? (meeting ? " · reunião" : " · int") : kind === "consulta" ? " · 1:1" : ""}`}
                             </span>
                             {noShow && (
                               <span title="O lead não compareceu"

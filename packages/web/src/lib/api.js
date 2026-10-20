@@ -359,6 +359,17 @@ export const api = {
   // Remarcar da atividade de Integração: solta a sala usada e o Meet acompanha.
   integrationMeeting: (leadId, body) => req("POST", `/api/leads/${leadId}/integration-meeting`, body),
   customerMeetingSummary: (customerId, force = false) => req("POST", `/api/customers/${customerId}/meeting-summary`, { force }),
+  // Lever CRM: perfil (empresa, contatos, estágio de vida, status financeiro,
+  // workspaces), timeline única e as integrações do cliente (Fase 1B).
+  customerProfile: (customerId) => req("GET", `/api/customers/${customerId}/profile`),
+  customerContacts: (customerId, contacts) => req("PUT", `/api/customers/${customerId}/contacts`, { contacts }),
+  customerTimeline: (customerId, limit = 200) => req("GET", `/api/customers/${customerId}/timeline?limit=${limit}`),
+  leadTimeline: (leadId, limit = 200) => req("GET", `/api/leads/${leadId}/timeline?limit=${limit}`),
+  customerOnboardings: (customerId) => req("GET", `/api/customers/${customerId}/onboardings`),
+  createOnboarding: (customerId, body) => req("POST", `/api/customers/${customerId}/onboardings`, body),
+  onboarding: (id) => req("GET", `/api/customers/onboardings/${id}`),
+  updateOnboarding: (id, patch) => req("PATCH", `/api/customers/onboardings/${id}`, patch),
+  openOnboardings: () => req("GET", "/api/customers/onboardings?open=1"),
   // Briefing de passagem pro integrador (lê a transcrição da call de VENDA).
   integrationBrief: (leadId, force = false) => req("POST", `/api/leads/${leadId}/integration-brief`, { force }),
   // Insight de pitch: analisa os resumos das calls do produto e sugere uma

@@ -1,13 +1,15 @@
 import React from "react";
 import { useTweaks, TweaksPanel, TweakSection, TweakRadio, TweakColor } from "./tweaks-panel.jsx";
 import { NavRail, TopBar, NAV } from "./chrome.jsx";
-import { eventsUrl } from "./lib/api.js";
+import { api, eventsUrl } from "./lib/api.js";
+import { OPEN_CUSTOMER_KEY, onOpenRecord } from "./lib/open-record.js";
+import { OnboardingDrawer } from "./components/onboarding-card.jsx";
 import { WaHotAlert } from "./components/wa-hot-alert.jsx";
 import { FeedbackWidget } from "./components/feedback-widget.jsx";
 import { TrainingGate } from "./components/training-gate.jsx";
 import { LeadDetail } from "./screens/deal.jsx";
 import { CommandSearch } from "./components/CommandSearch.jsx";
-import { ToastHost } from "./atoms.jsx";
+import { ToastHost, toast } from "./atoms.jsx";
 import { ScreenTransition, lazyScreen } from "./components/screen-loading.jsx";
 import { ErrorBoundary } from "./components/error-boundary.jsx";
 import { Drawer } from "./components/overlay.jsx";
@@ -96,6 +98,7 @@ function App({ onInitialReady, initialLoading = false } = {}) {
   const [screen, setScreen] = useStA(() => screenFromHash());
   const [params, setParams] = useStA({});
   const [leadSel, setLeadSel] = useStA(null);
+  const [onboardingSel, setOnboardingSel] = useStA(null);
   const [searchOpen, setSearchOpen] = useStA(false); // busca de leads (⌘K)
   const isMobile = useIsMobile();
   const [menuOpen, setMenuOpen] = useStA(false); // drawer da nav no mobile
@@ -218,6 +221,27 @@ function App({ onInitialReady, initialLoading = false } = {}) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Um card pede outro (Lever CRM, Fase 1B): o mesmo Negócio, Cliente e
+  // Integração de onde quer que se abram (lib/open-record.js). A tela de
+  // Clientes aberta atende o pedido sozinha; fora dela, o atalho fica no
+  // sessionStorage e a navegação monta a tela já com a ficha.
+  useEA(() => onOpenRecord(({ kind, id }) => {
+    if (kind === "onboarding") { setLeadSel(null); setOnboardingSel(id); return; }
+    setOnboardingSel(null);
+    if (kind === "customer") {
+      setLeadSel(null);
+      if (screenFromHash() === "customers") return;
+      try { sessionStorage.setItem(OPEN_CUSTOMER_KEY, id); } catch { /* ignore */ }
+      nav("customers");
+      return;
+    }
+    if (kind === "lead") {
+      const l = (window.SEED?.LEADS || []).find((x) => x.id === id);
+      if (l) { setLeadSel(l); return; }
+      api.get("leads", id).then(setLeadSel).catch(() => toast("Negócio não encontrado · tente de novo", "neg"));
+    }
+  }), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function nav(id, p = {}) {
     setSearchOpen(false);
@@ -380,6 +404,12 @@ function App({ onInitialReady, initialLoading = false } = {}) {
         <ErrorBoundary variant="modal" label="lead" resetKey={leadSel.id} onReset={() => setLeadSel(null)}>
           <LeadDetail pipeline={scr === "pipeline"} lead={leadSel} onClose={() => setLeadSel(null)}
             onOpenWhatsapp={(l, draft) => { setLeadSel(null); nav("whatsapp", { waLead: l.id, waThread: "", waDraft: draft || "" }); }} />
+        </ErrorBoundary>
+      )}
+
+      {onboardingSel && (
+        <ErrorBoundary variant="modal" label="integração" resetKey={onboardingSel} onReset={() => setOnboardingSel(null)}>
+          <OnboardingDrawer id={onboardingSel} onClose={() => setOnboardingSel(null)} />
         </ErrorBoundary>
       )}
 

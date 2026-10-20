@@ -37,6 +37,10 @@ import { fetchLeverIdOrgs, customerOrgId } from "../lib/leverid.js";
 import { LeverIdBadge } from "../components/leverid-badge.jsx";
 import { FreeAccountsTab, CustomerOrgLink } from "../components/leverads-accounts.jsx";
 import { printContract, issueDate, byIssuedDesc } from "../lib/contracts.js";
+import { CustomerOnboardings } from "../components/onboarding-card.jsx";
+import { CustomerContacts, CustomerDeals, CustomerStateChips } from "../components/customer-crm.jsx";
+import { RecordTimeline } from "../components/record-timeline.jsx";
+import { OPEN_CUSTOMER_KEY, onOpenRecord, openOnboarding } from "../lib/open-record.js";
 // Base das URLs públicas (link de indicação do cliente): no dev o proxy do
 // Vite repassa /f pra API.
 const publicBase = () => import.meta.env.VITE_API_BASE || window.location.origin;
@@ -174,18 +178,17 @@ function CustomersScreen({ initialTab }) {
   // depois do reset acima no mesmo commit, então prevalece.
   useEffect(() => {
     let id = null;
-    try { id = sessionStorage.getItem("cockpit_customers_open"); sessionStorage.removeItem("cockpit_customers_open"); } catch { /* ignore */ }
+    try { id = sessionStorage.getItem(OPEN_CUSTOMER_KEY); sessionStorage.removeItem(OPEN_CUSTOMER_KEY); } catch { /* ignore */ }
     if (id) { setTab("base"); setSel(id); }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  // Com a tela já aberta (busca ⌘K), o pedido chega por evento.
-  useEffect(() => {
-    const open = (e) => {
-      try { sessionStorage.removeItem("cockpit_customers_open"); } catch { /* ignore */ }
-      if (e.detail) { setTab("base"); setSel(e.detail); }
-    };
-    window.addEventListener("cockpit:open-customer", open);
-    return () => window.removeEventListener("cockpit:open-customer", open);
-  }, []);
+  // Pedido de abrir vindo de outro card (Negócio, Integração) com a tela já
+  // aberta: o sessionStorage acima só é lido na montagem.
+  useEffect(() => onOpenRecord(({ kind, id }) => {
+    if (kind !== "customer") return;
+    try { sessionStorage.removeItem(OPEN_CUSTOMER_KEY); } catch { /* ignore */ }
+    setTab("base");
+    setSel(id);
+  }), []);
   useEffect(() => {
     if (!product?.id) return;
     let alive = true;
@@ -1412,7 +1415,7 @@ function CustomerPeek(props) {
       <div className="customer-peek">
         <header className="customer-peek-head">
           <LeadGrade tier={tier} placeholder />
-          <div><div className="customer-peek-title"><h2>{customer.name}</h2><LeverIdBadge org={props.leverId} orgId={customerOrgId(customer)} /><button className="customer-peek-edit" aria-label="Editar cliente" title="Editar cliente" onClick={()=>setOperation('edit')} disabled={!!busy}><Icon name="pencil" size={13}/></button></div><p>{[customer.contact,customer.keyAccount?'conta grande':null,tenureLabel(customer)?`${tenureLabel(customer)} de casa`:null].filter(Boolean).join(' · ')}</p></div>
+          <div><div className="customer-peek-title"><h2>{customer.name}</h2><LeverIdBadge org={props.leverId} orgId={customerOrgId(customer)} /><button className="customer-peek-edit" aria-label="Editar cliente" title="Editar cliente" onClick={()=>setOperation('edit')} disabled={!!busy}><Icon name="pencil" size={13}/></button></div><p>{[customer.contact,customer.keyAccount?'conta grande':null,tenureLabel(customer)?`${tenureLabel(customer)} de casa`:null].filter(Boolean).join(' · ')}</p><CustomerStateChips customer={customer}/></div>
           <button aria-label="Fechar ficha" onClick={onClose} disabled={!!busy}>✕</button>
         </header>
         <div className="customer-peek-body">
@@ -1428,6 +1431,9 @@ function CustomerPeek(props) {
             ]}/></div>
           </section>
           {product?.id==='leverads'&&<CustomerOrgLink customer={customer} lead={lead}/>}
+          {!kids&&<CustomerOnboardings customer={customer} onOpen={(id)=>{onClose();openOnboarding(id);}}/>}
+          <CustomerDeals customer={customer} onLeave={onClose}/>
+          <CustomerContacts customer={customer}/>
           <section className="customer-peek-milestones">
             <div className="customer-peek-kicker"><span>{kids?'jornada de consultas':'régua de marcos'}</span>{!kids&&<b>{milestones.filter(m=>m.status==='done').length} de {milestones.length}</b>}</div>
             {kids?<button className="customer-peek-consult" onClick={()=>{onClose();window.location.hash='consultas';}}>Abrir consultas →</button>:<div className="customer-peek-checks">
@@ -1445,6 +1451,7 @@ function CustomerPeek(props) {
             <div className="customer-peek-bar"><i style={{width:`${financial.contracted>0?Math.min(100,financial.received/financial.contracted*100):0}%`,background:`var(--${financial.status.key==='paid'?'pos':financial.status.key==='partial'?'warn':'neg'})`}}/></div>
             <p>{pending.length?`${pending.length} cobrança${pending.length===1?'':'s'} em aberto · ${money(totalOpen)}`:financial.status.key==='paid'?'nada em aberto':'sem cobrança gerada ainda'}</p>
           </section>
+          <section><div className="customer-peek-kicker"><span>linha do tempo</span></div><RecordTimeline customerId={customer.id}/></section>
           {feedback&&<p role={feedback.error?'alert':'status'} className="customer-peek-feedback">{feedback.text}</p>}
         </div>
         <footer className="customer-peek-footer"><button disabled={!!busy||!pending.length} onClick={chargeNext}>{busy==='charge'?'Gerando link…':pending.length?'Cobrar próxima':'Nada a cobrar'}</button><button disabled={!!busy||kids||churned} onClick={createCase}>{busy==='case'?'Criando rascunho…':'Virar case'}</button></footer>

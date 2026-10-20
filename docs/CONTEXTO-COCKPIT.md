@@ -1428,6 +1428,37 @@ vem antes da Integração), e a integração é do cliente.
   pessoal) continua no lead; reunião própria da integração é a 1B-b.
 - **Teste:** `crm-onboardings.test.js`.
 
+**Cards por tipo de registro (20/10/2026).** Fase 1B do plano do Lever CRM,
+na web. **Regra:** Negócio, Cliente e Integração têm um card cada, o mesmo de
+onde quer que se abram, com links entre eles.
+
+- **Como um card abre outro:** `lib/open-record.js` (`openCustomer`,
+  `openLeadById`, `openOnboarding`) dispara o pedido, e o `app.jsx` atende:
+  - Cliente: navega para Clientes com o atalho do `sessionStorage`; com a tela
+    já aberta, ela mesma escuta o pedido;
+  - Negócio: abre o `LeadDetail`;
+  - Integração: abre o `OnboardingDrawer`.
+- **Card da Integração** (`components/onboarding-card.jsx`): gaveta no desenho
+  do customer-peek, com etapa (`SelectPopover`), checklist (`Checkbox`, lado
+  Lever ou cliente), kickoff e go-live (`DateTimeField`), integrador, notas e
+  a linha do tempo do cliente. Salvar mostra o erro 409 do checklist.
+- **Card do Cliente** (`CustomerPeek`): ganhou chips de estágio de vida e
+  status financeiro, e quatro blocos:
+  - Integrações, com "Nova integração" sem negócio novo;
+  - Negócios, com "abrir negócio";
+  - Empresa e contatos, vindos do `/profile`;
+  - Linha do tempo (`components/record-timeline.jsx`, a mesma timeline única).
+- **Card do Negócio:** o bloco "Cliente" (`LeadCustomerBar`) leva ao cliente e
+  à integração em andamento. Em Pós-venda o "próximo passo" é o toque; o
+  editor de integração ficou só na etapa Integração.
+- **Agenda:** o evento de integração abre a integração quando existe; a
+  reunião marcada pela ficha (`integrationMeetLabel: "Reunião"`) aparece como
+  "· reunião" e abre o cliente; a consulta sem lead de origem abre o cliente.
+- **CSS:** os blocos usam as classes `customer-peek-*`; os componentes
+  importam `screens/customers.css` porque abrem fora da tela de Clientes.
+- **Pendente:** as abas mortas do `CustomerModal` (`operation` sempre
+  preenchido) continuam lá; tirar ou religar é o próximo passo da limpeza.
+
 **Dor `[PRICE]` (07/10/2026).** O Leo começou a subir criativo de precificação
 com `[PRICE]` no nome, rastreado como o `[OEM]`. O que o código já fazia desde
 16/09: `painCode` aceita a etiqueta, o `/f/:id` resolve o anúncio ainda sem
