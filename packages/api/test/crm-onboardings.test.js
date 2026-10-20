@@ -136,3 +136,31 @@ test("carga inicial: dry-run conta, apply cria uma por lead e não repete", asyn
   assert.equal((await backfillOnboardings(repo, { apply: true })).skipped, 2);
   assert.deepEqual((await repo.list(ONBOARDINGS)).map((o) => o.stage).sort(), ["aguardando_kickoff", "concluida"]);
 });
+
+test("modelo de checklist: integração aberta no cliente nasce com os itens do tipo, e o do plano vence", async () => {
+  const repo = await seed();
+  const c = await repo.create("customers", { name: "Loja", saas: "leverads", planCode: "oem_escala" });
+  const padrao = await createOnboarding(repo, { customer: c.id, kind: "migracao" });
+  assert.equal(padrao.template, "migracao");
+  assert.ok(padrao.items.length >= 3 && padrao.items.every((i) => i.title && !i.doneAt));
+
+  const app = Fastify();
+  registerOnboardingRoutes(app, repo);
+  const vazio = await app.inject({ method: "PUT", url: "/api/customers/onboarding-templates/leverads", payload: { templates: [] } });
+  assert.equal(vazio.statusCode, 200);
+  assert.equal((await app.inject({ url: "/api/customers/onboarding-templates/leverads" })).json().templates[0].id, "implantacao", "salvar vazio volta ao padrão");
+  const semItens = await app.inject({ method: "PUT", url: "/api/customers/onboarding-templates/leverads", payload: { templates: [{ kind: "implantacao", items: [] }] } });
+  assert.equal(semItens.statusCode, 400);
+  const ok = await app.inject({ method: "PUT", url: "/api/customers/onboarding-templates/leverads", payload: { templates: [
+    { kind: "implantacao", name: "OEM", planCodes: ["oem_escala"], items: [{ title: "Catálogo OEM importado", side: "lever" }] },
+    { kind: "implantacao", name: "Geral", items: [{ title: "Kickoff", side: "lever" }] },
+  ] } });
+  assert.equal(ok.statusCode, 200, ok.body);
+  const doPlano = await createOnboarding(repo, { customer: c.id, kind: "implantacao" });
+  assert.deepEqual(doPlano.items.map((i) => i.title), ["Catálogo OEM importado"]);
+  const outro = await repo.create("customers", { name: "Outra", saas: "leverads" });
+  assert.deepEqual((await createOnboarding(repo, { customer: outro.id })).items.map((i) => i.title), ["Kickoff"]);
+
+  const lead = await repo.create("leads", { saas: "leverads", stage: "Integração", customerId: outro.id });
+  assert.deepEqual((await syncLeadOnboarding(repo, lead)).items, [], "o espelho do card não ganha modelo");
+});

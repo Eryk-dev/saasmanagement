@@ -1483,6 +1483,31 @@ Lever CRM.
   card certo.
 - **Teste:** `crm-portfolio.test.js`.
 
+**Carteira de CS, acompanhamentos e modelos de integração (20/10/2026).**
+Fase 3 do plano do Lever CRM.
+
+- **Carteira:** o cliente ganha `csStage` (saudavel, atencao, em_risco,
+  renovacao, churn; vazio enquanto está em integração), calculado no
+  `refreshLifecycle` a partir do estágio de vida, do `health` e de
+  acompanhamento de renovação aberto. A mudança vai para a timeline. A aba
+  "Carteira CS" em Clientes mostra os clientes em colunas
+  (`components/cs-portfolio.jsx`).
+- **Acompanhamento** (`cs_followups`): check_in, qbr, renovacao ou risco, com
+  dono, prazo, sentimento, notas, próximos passos e reuniões.
+  - Rotas: `GET|POST /api/customers/:id/followups` e
+    `GET|PATCH /api/customers/followups/:id`.
+  - Criar ou fechar recalcula o cliente.
+  - Web: seção no card do cliente e gaveta própria
+    (`components/cs-followups.jsx`, `openRecord("followup", id)`).
+- **Modelos de checklist** (`customers/onboarding-templates.js`): um padrão por
+  tipo de integração no código, trocável por produto em
+  `app_config/onboarding_templates_<saas>`.
+  - Rotas: `GET|PUT /api/customers/onboarding-templates/:saas` (PUT só
+    admin; lista vazia volta ao padrão).
+  - Um modelo pode valer só para alguns planos (`planCodes`).
+  - A integração aberta sem itens nasce com o modelo. O espelho do card do
+    lead não ganha modelo e conclui sem o portão do checklist.
+
 **Cards por tipo de registro (20/10/2026).** Fase 1B do plano do Lever CRM,
 na web. **Regra:** Negócio, Cliente e Integração têm um card cada, o mesmo de
 onde quer que se abram, com links entre eles.

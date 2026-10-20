@@ -379,6 +379,7 @@ export const api = {
   // Acompanhamento de CS (check-in, QBR, renovação, risco).
   customerFollowups: (customerId) => req("GET", `/api/customers/${customerId}/followups`),
   createFollowup: (customerId, body) => req("POST", `/api/customers/${customerId}/followups`, body),
+  followup: (id) => req("GET", `/api/customers/followups/${id}`),
   updateFollowup: (id, patch) => req("PATCH", `/api/customers/followups/${id}`, patch),
   openFollowups: () => req("GET", "/api/customers/followups?open=1"),
   // Receita da carteira: movimentos de MRR, renovações 7/15/30/60 e aging.

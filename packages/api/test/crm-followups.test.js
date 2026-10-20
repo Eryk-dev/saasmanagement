@@ -16,7 +16,7 @@ test("acompanhamento nasce com o dono da conta e fecha com sentimento na timelin
   assert.deepEqual([f.kind, f.status, f.owner, f.dueAt], ["qbr", "aberto", "bia", "2026-11-01T13:00:00.000Z"]);
   const done = await updateFollowup(repo, f.id, { status: "feito", sentiment: "positivo", nextSteps: "upsell do OEM" }, { now: new Date("2026-11-01T15:00:00Z") });
   assert.equal(done.doneAt, "2026-11-01T15:00:00.000Z");
-  const tl = (await repo.list("timeline_events")).map((t) => t.kind).sort();
+  const tl = (await repo.list("timeline_events")).map((t) => t.kind).filter((k) => k.startsWith("followup.")).sort();
   assert.deepEqual(tl, ["followup.created", "followup.done"]);
   await assert.rejects(updateFollowup(repo, f.id, { sentiment: "eufórico" }), (e) => e.statusCode === 400);
   await assert.rejects(createFollowup(repo, { customer: "nao" }), (e) => e.statusCode === 404);
@@ -48,4 +48,14 @@ test("rotas: lista abertas, cria e edita com validação", async () => {
   await app.inject({ method: "PATCH", url: `/api/customers/followups/${id}`, payload: { status: "feito" } });
   assert.equal((await app.inject({ url: "/api/customers/followups?open=1" })).json().followups.length, 0);
   assert.equal((await app.inject({ url: `/api/customers/${c.id}/followups` })).json().followups.length, 1);
+});
+
+test("renovação aberta põe o cliente na coluna renovação da carteira; fechar tira", async () => {
+  const repo = makeMemRepo();
+  const c = await repo.create("customers", { name: "Loja", health: 85 });
+  await repo.create("subscriptions", { customer: c.id, status: "active" });
+  const f = await createFollowup(repo, { customer: c.id, kind: "renovacao" });
+  assert.equal((await repo.get("customers", c.id)).csStage, "renovacao");
+  await updateFollowup(repo, f.id, { status: "feito" });
+  assert.equal((await repo.get("customers", c.id)).csStage, "saudavel");
 });

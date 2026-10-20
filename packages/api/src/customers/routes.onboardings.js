@@ -6,9 +6,13 @@
 //   GET   /api/customers/onboardings/:id          uma integração, com o progresso
 //   PATCH /api/customers/onboardings/:id          etapa, datas, integrador, checklist
 //   GET   /api/customers/:id/onboardings          as integrações do cliente
-//   POST  /api/customers/:id/onboardings          { kind, product, integrator, kickoffAt, plannedGoLiveAt, items }
+//   POST  /api/customers/:id/onboardings          { kind, product, integrator, kickoffAt, plannedGoLiveAt, items } (sem items = modelo)
+//   GET|PUT /api/customers/onboarding-templates/:saas  modelos de checklist por tipo (PUT só admin)
 
 import { ONBOARDINGS, backfillOnboardings, createOnboarding, onboardingsOf, progressOf, updateOnboarding } from "./onboardings.js";
+import { cleanTemplates, templatesId, templatesOf } from "./onboarding-templates.js";
+
+const isAdmin = (u) => !u || (u.roles || []).includes("admin");
 
 const withProgress = (o) => ({ ...o, progress: progressOf(o) });
 const OPEN = (o) => !["concluida", "cancelada"].includes(o.stage);
@@ -26,6 +30,16 @@ export function registerOnboardingRoutes(app, repo) {
     const all = await repo.list(ONBOARDINGS);
     return { onboardings: (req.query?.open ? all.filter(OPEN) : all).map(withProgress) };
   });
+
+  // Modelos de checklist por produto (padrão no código; troca só com etiqueta admin).
+  app.get("/api/customers/onboarding-templates/:saas", async (req) => ({ templates: await templatesOf(repo, req.params.saas) }));
+  app.put("/api/customers/onboarding-templates/:saas", async (req, reply) => guard(reply, async () => {
+    if (!isAdmin(req.authUser)) return reply.code(403).send({ error: "Editar modelos de integração exige etiqueta admin" });
+    const templates = cleanTemplates(req.body?.templates);
+    const id = templatesId(req.params.saas);
+    const saved = (await repo.get("app_config", id)) ? await repo.update("app_config", id, { templates }) : await repo.create("app_config", { id, templates });
+    return { templates: saved.templates };
+  }));
 
   app.post("/api/customers/onboardings/backfill", async (req) => backfillOnboardings(repo, { apply: req.body?.apply === true }));
 

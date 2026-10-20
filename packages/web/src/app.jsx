@@ -4,6 +4,7 @@ import { NavRail, TopBar, NAV } from "./chrome.jsx";
 import { api, eventsUrl } from "./lib/api.js";
 import { OPEN_CUSTOMER_KEY, onOpenRecord } from "./lib/open-record.js";
 import { OnboardingDrawer } from "./components/onboarding-card.jsx";
+import { FollowupDrawer } from "./components/cs-followups.jsx";
 import { WaHotAlert } from "./components/wa-hot-alert.jsx";
 import { FeedbackWidget } from "./components/feedback-widget.jsx";
 import { TrainingGate } from "./components/training-gate.jsx";
@@ -99,6 +100,7 @@ function App({ onInitialReady, initialLoading = false } = {}) {
   const [params, setParams] = useStA({});
   const [leadSel, setLeadSel] = useStA(null);
   const [onboardingSel, setOnboardingSel] = useStA(null);
+  const [followupSel, setFollowupSel] = useStA(null);
   const [searchOpen, setSearchOpen] = useStA(false); // busca de leads (⌘K)
   const isMobile = useIsMobile();
   const [menuOpen, setMenuOpen] = useStA(false); // drawer da nav no mobile
@@ -227,8 +229,10 @@ function App({ onInitialReady, initialLoading = false } = {}) {
   // Clientes aberta atende o pedido sozinha; fora dela, o atalho fica no
   // sessionStorage e a navegação monta a tela já com a ficha.
   useEA(() => onOpenRecord(({ kind, id }) => {
-    if (kind === "onboarding") { setLeadSel(null); setOnboardingSel(id); return; }
+    if (kind === "onboarding") { setLeadSel(null); setFollowupSel(null); setOnboardingSel(id); return; }
+    if (kind === "followup") { setLeadSel(null); setOnboardingSel(null); setFollowupSel(id); return; }
     setOnboardingSel(null);
+    setFollowupSel(null);
     if (kind === "customer") {
       setLeadSel(null);
       if (screenFromHash() === "customers") return;
@@ -410,6 +414,12 @@ function App({ onInitialReady, initialLoading = false } = {}) {
       {onboardingSel && (
         <ErrorBoundary variant="modal" label="integração" resetKey={onboardingSel} onReset={() => setOnboardingSel(null)}>
           <OnboardingDrawer id={onboardingSel} onClose={() => setOnboardingSel(null)} />
+        </ErrorBoundary>
+      )}
+
+      {followupSel && (
+        <ErrorBoundary variant="modal" label="acompanhamento" resetKey={followupSel} onReset={() => setFollowupSel(null)}>
+          <FollowupDrawer id={followupSel} onClose={() => setFollowupSel(null)} />
         </ErrorBoundary>
       )}
 

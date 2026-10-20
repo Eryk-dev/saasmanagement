@@ -16,6 +16,7 @@ import { kindOf } from "../crm/stages.js";
 import { requiresIntegration } from "../billing/plan-catalog.js";
 import { appendTimeline } from "../events/timeline.js";
 import { refreshLifecycle } from "./lifecycle.js";
+import { templateFor, templatesOf } from "./onboarding-templates.js";
 
 export const ONBOARDINGS = "onboardings";
 export const ONBOARDING_STAGES = ["aguardando_kickoff", "kickoff", "configuracao", "treinamento", "go_live", "concluida", "cancelada"];
@@ -59,13 +60,17 @@ export async function createOnboarding(repo, body, { by = "", now = new Date(), 
   const customer = await repo.get("customers", s(body?.customer, 120));
   if (!customer) throw fail(404, "Cliente não encontrado.");
   const kind = ONBOARDING_KINDS.includes(body?.kind) ? body.kind : "implantacao";
+  // Sem checklist no pedido, nasce com o do modelo do tipo (e do plano). O
+  // espelho do card do lead (legado) não ganha modelo: ele conclui quando o
+  // card vai pro Pós-venda, e o checklist em aberto travaria isso.
+  const template = body?.items || source === "lead" ? null : templateFor(await templatesOf(repo, customer.saas), { kind, planCode: customer.planCode || "" });
   const onboarding = await repo.create(ONBOARDINGS, {
     id: "ob_" + randomUUID(),
     customer: customer.id, lead: s(body?.lead, 120), saas: customer.saas || "",
     kind, product: s(body?.product, 40), stage: "aguardando_kickoff", stageAt: now.toISOString(),
     integrator: s(body?.integrator, 60) || customer.owner || "",
     kickoffAt: isoOrEmpty(body?.kickoffAt), plannedGoLiveAt: isoOrEmpty(body?.plannedGoLiveAt), goLiveAt: "",
-    items: body?.items ? cleanItems(body.items) : [], notes: s(body?.notes, 2000),
+    items: cleanItems(body?.items || template?.items || []), template: template?.id || "", notes: s(body?.notes, 2000),
     source, managed: source !== "lead", createdAt: now.toISOString(), createdBy: by,
   });
   await afterChange(repo, onboarding, "onboarding.created", { kind, source }, now);
@@ -88,7 +93,7 @@ export async function updateOnboarding(repo, id, body, { by = "", now = new Date
   const stage = body?.stage;
   if (stage !== undefined && !ONBOARDING_STAGES.includes(stage)) throw fail(400, `Etapa inválida: ${stage}`);
   const moving = stage && stage !== cur.stage;
-  if (moving && stage === "concluida") {
+  if (moving && stage === "concluida" && !fromLead) {
     const items = patch.items || cur.items || [];
     if (items.some((i) => !i.doneAt)) throw fail(409, "Conclua todos os itens do checklist antes de concluir a integração.");
   }

@@ -64,26 +64,48 @@ export function lifecycleOf(customer, { subs, onboardings, financialStatus }) {
   return "ativo";
 }
 
+// Coluna da Carteira de CS (Fase 3): saudável, atenção, em risco, renovação
+// em negociação ou churn. Cliente ainda em integração fica fora da carteira
+// (vazio): ele está no pipeline da integração.
+export const CS_STAGES = ["saudavel", "atencao", "em_risco", "renovacao", "churn"];
+export function csStageOf(customer, { lifecycle, followups = [] }) {
+  if (lifecycle === "churn") return "churn";
+  if (followups.some((f) => f.kind === "renovacao" && f.status === "aberto")) return "renovacao";
+  if (lifecycle === "integracao") return "";
+  const health = Number(customer.health) || 0;
+  if (lifecycle === "risco" || (health > 0 && health < RISK_HEALTH)) return "em_risco";
+  if (health > 0 && health < 70) return "atencao";
+  return "saudavel";
+}
+
 async function inputsOf(repo, customerId) {
-  const [subs, invoices, onboardings] = await Promise.all([
+  const [subs, invoices, onboardings, followups] = await Promise.all([
     repo.listWhere("subscriptions", { customer: customerId }),
     repo.listWhere("invoices", { customer: customerId }),
     repo.listWhere("onboardings", { customer: customerId }),
+    repo.listWhere("cs_followups", { customer: customerId }),
   ]);
-  return { subs, invoices, onboardings };
+  return { subs, invoices, onboardings, followups };
 }
+
+const TIMELINE_KIND = {
+  lifecycle: "customer.lifecycle_changed",
+  financialStatus: "customer.financial_status_changed",
+  csStage: "customer.cs_stage_changed",
+};
 
 // Recalcula e grava o que mudou; devolve o cliente atualizado (ou o mesmo).
 export async function refreshLifecycle(repo, customer, { now = new Date() } = {}) {
-  const { subs, invoices, onboardings } = await inputsOf(repo, customer.id);
+  const { subs, invoices, onboardings, followups } = await inputsOf(repo, customer.id);
   const financialStatus = financialStatusOf(subs, invoices);
   const lifecycle = lifecycleOf(customer, { subs, onboardings, financialStatus });
+  const csStage = csStageOf(customer, { lifecycle, followups });
   const at = now.toISOString();
-  const changes = [["lifecycle", lifecycle], ["financialStatus", financialStatus]].filter(([k, v]) => (customer[k] || "") !== v);
+  const changes = [["lifecycle", lifecycle], ["financialStatus", financialStatus], ["csStage", csStage]].filter(([k, v]) => (customer[k] || "") !== v);
   if (!changes.length) return customer;
   for (const [field, to] of changes) {
     await appendTimeline(repo, {
-      id: `tl:${field}:${customer.id}:${at}`, kind: field === "lifecycle" ? "customer.lifecycle_changed" : "customer.financial_status_changed",
+      id: `tl:${field}:${customer.id}:${at}`, kind: TIMELINE_KIND[field],
       source: "cockpit", at, customer: customer.id, lead: customer.leadId || "", data: { from: customer[field] || "", to },
     });
   }

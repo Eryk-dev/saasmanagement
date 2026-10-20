@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { companyOf, contactsOf, financialStatusOf, lifecycleOf, refreshLifecycle, runLifecycleSweep } from "../src/customers/lifecycle.js";
+import { companyOf, contactsOf, csStageOf, financialStatusOf, lifecycleOf, refreshLifecycle, runLifecycleSweep } from "../src/customers/lifecycle.js";
 import { registerLifecycleRoutes } from "../src/customers/routes.lifecycle.js";
 import { processEvent, EVENTS } from "../src/events/events-core.js";
 import { TIMELINE } from "../src/events/timeline.js";
@@ -49,11 +49,12 @@ test("mudança de estágio grava no cliente e vira item datado da timeline; sem 
   const saved = await refreshLifecycle(repo, c, { now });
   assert.equal(saved.lifecycle, "ativo");
   assert.equal(saved.financialStatus, "aguardando_pagamento");
-  assert.equal((await repo.list(TIMELINE)).length, 2);
+  assert.equal(saved.csStage, "saudavel");
+  assert.equal((await repo.list(TIMELINE)).length, 3, "estágio, financeiro e carteira");
 
   const again = await refreshLifecycle(repo, saved, { now });
   assert.equal(again, saved, "nada mudou, nada gravado");
-  assert.equal((await repo.list(TIMELINE)).length, 2);
+  assert.equal((await repo.list(TIMELINE)).length, 3);
 
   const inv = (await repo.list("invoices"))[0];
   await repo.update("invoices", inv.id, { status: "overdue" });
@@ -62,6 +63,7 @@ test("mudança de estágio grava no cliente e vira item datado da timeline; sem 
   assert.equal(later.lifecycle, "risco");
   const tl = (await repo.list(TIMELINE)).filter((t) => t.at === "2026-10-21T12:00:00.000Z");
   assert.deepEqual(tl.map((t) => [t.kind, t.data.from, t.data.to]).sort(), [
+    ["customer.cs_stage_changed", "saudavel", "em_risco"],
     ["customer.financial_status_changed", "aguardando_pagamento", "inadimplente"],
     ["customer.lifecycle_changed", "ativo", "risco"],
   ]);
@@ -111,4 +113,13 @@ test("perfil do cliente e edição de contatos com validação", async () => {
   const ok = await app.inject({ method: "PUT", url: `/api/customers/${c.id}/contacts`, payload: { contacts: [{ name: "Fin", email: "FIN@loja.test", role: "financeiro", leverId: "forjado" }] } });
   assert.equal(ok.statusCode, 200);
   assert.deepEqual(ok.json().contacts, [{ name: "Fin", email: "fin@loja.test", phone: "", role: "financeiro", primary: false, leverId: "" }]);
+});
+
+test("carteira de CS: churn, renovação em negociação, fora na integração, risco, atenção e saudável", () => {
+  assert.equal(csStageOf({}, { lifecycle: "churn" }), "churn");
+  assert.equal(csStageOf({}, { lifecycle: "ativo", followups: [{ kind: "renovacao", status: "aberto" }] }), "renovacao");
+  assert.equal(csStageOf({}, { lifecycle: "integracao" }), "", "em integração fica no pipeline da integração");
+  assert.equal(csStageOf({ health: 40 }, { lifecycle: "ativo" }), "em_risco");
+  assert.equal(csStageOf({ health: 60 }, { lifecycle: "ativo" }), "atencao");
+  assert.equal(csStageOf({ health: 85 }, { lifecycle: "ativo", followups: [{ kind: "renovacao", status: "feito" }] }), "saudavel");
 });

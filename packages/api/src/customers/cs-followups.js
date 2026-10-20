@@ -6,6 +6,14 @@
 
 import { randomUUID } from "node:crypto";
 import { appendTimeline } from "../events/timeline.js";
+import { refreshLifecycle } from "./lifecycle.js";
+
+// O acompanhamento de renovação aberto põe o cliente na coluna "renovação" da
+// carteira de CS: criar ou fechar um recalcula o cliente.
+async function refreshCustomer(repo, customerId, now) {
+  const c = await repo.get("customers", customerId);
+  if (c) await refreshLifecycle(repo, c, { now });
+}
 
 export const FOLLOWUPS = "cs_followups";
 export const FOLLOWUP_KINDS = ["check_in", "qbr", "renovacao", "risco"];
@@ -34,6 +42,7 @@ export async function createFollowup(repo, body, { by = "", now = new Date() } =
     id: `tl:followup:${f.id}`, kind: "followup.created", source: "cockpit", at: now.toISOString(),
     customer: customer.id, lead: "", data: { followup: f.id, kind },
   });
+  await refreshCustomer(repo, customer.id, now);
   return f;
 }
 
@@ -67,6 +76,7 @@ export async function updateFollowup(repo, id, body, { by = "", now = new Date()
       customer: cur.customer, lead: "", data: { followup: id, kind: saved.kind, sentiment: saved.sentiment, nextSteps: saved.nextSteps },
     });
   }
+  if (closing) await refreshCustomer(repo, cur.customer, now);
   return saved;
 }
 
