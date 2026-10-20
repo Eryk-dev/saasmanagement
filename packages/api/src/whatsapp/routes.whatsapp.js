@@ -13,6 +13,7 @@ import { transcribeInbound } from "./wa-transcribe.js";
 import { formatSummaryText } from "../calls/call-summaries.js";
 import { logActivity, onOutboundMessage } from "../crm/lead-flow.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "../platform/http-status.js";
+import { threadOwner, ticketFromThread } from "./thread-owner.js";
 import { makeTtlCache } from "../platform/ttl-cache.js";
 
 // Mensagem enviada pelo inbox: lead NOVO ganha o toque de 1º contato e lead
@@ -400,7 +401,43 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
     return { ...stats, health: waHealthSummary(health), form, costs };
   });
 
-  app.get("/api/whatsapp/threads", async () => ({ threads: await listThreads(repo) }));
+  // Cada conversa sai com o dono (Lever CRM, Fase 2): o manual, senão o da fase
+  // do lead (SDR, closer, CS/integrador); vazio = fila do time.
+  app.get("/api/whatsapp/threads", async () => {
+    const [threads, raw, leads, products, customers] = await Promise.all([
+      listThreads(repo), repo.list("wa_threads"), repo.list("leads"), repo.list("products"), repo.list("customers"),
+    ]);
+    const byId = (list) => new Map(list.map((x) => [x.id, x]));
+    const [rawById, leadById, productById, customerById] = [byId(raw), byId(leads), byId(products), byId(customers)];
+    return {
+      threads: threads.map((t) => {
+        const lead = t.leadId ? leadById.get(t.leadId) : null;
+        const { owner, role } = threadOwner(rawById.get(t.id), {
+          lead, product: productById.get(t.saas) || null, customer: lead?.customerId ? customerById.get(lead.customerId) : null,
+        });
+        return { ...t, owner, ownerRole: role, ticketId: rawById.get(t.id)?.ticketId || "" };
+      }),
+    };
+  });
+
+  // Atribuição manual da conversa (vence a regra); `owner: ""` devolve pra regra.
+  app.post("/api/whatsapp/threads/:id/owner", async (req, reply) => {
+    const thread = await repo.get("wa_threads", req.params.id);
+    if (!thread) return reply.code(404).send({ error: "Conversa não encontrada." });
+    const owner = String(req.body?.owner || "").trim();
+    if (owner && !(await repo.get("users", owner))) return reply.code(422).send({ error: "usuário não encontrado" });
+    return repo.update("wa_threads", thread.id, { owner, ownerAt: new Date().toISOString(), ownerBy: req.authUser?.id || "api" }, { silent: true });
+  });
+
+  // Mensagem de cliente vira ticket com um clique, ligado ao lead, ao cliente e à conversa.
+  app.post("/api/whatsapp/threads/:id/ticket", async (req, reply) => {
+    try {
+      return reply.code(201).send(await ticketFromThread(repo, req.params.id, { by: req.authUser?.id || "api" }));
+    } catch (err) {
+      if (err.statusCode) return reply.code(err.statusCode).send({ error: err.message });
+      throw err;
+    }
+  });
 
   // Mensagens por qualquer grafia do número (o drawer pede pelo telefone do
   // lead, COM o nono dígito; a conversa pode viver no wa_id sem ele).

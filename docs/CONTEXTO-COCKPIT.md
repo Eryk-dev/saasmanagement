@@ -1509,6 +1509,28 @@ Lever CRM.
   atrasados.
 - **Teste:** `crm-commercial.test.js`.
 
+**WhatsApp: dono da conversa e virar ticket (20/10/2026).** Fase 2 do plano
+do Lever CRM, em `whatsapp/thread-owner.js`.
+
+- **Dono da conversa:** o `GET /api/whatsapp/threads` devolve `owner` e
+  `ownerRole` de cada conversa.
+  - Pela fase do lead: SDR nas etapas de pré-venda, closer na venda e, depois
+    do ganho, o dono da conta (CS) ou o integrador.
+  - Vazio significa fila do time.
+  - A atribuição manual (`POST /api/whatsapp/threads/:id/owner`, com `""`
+    para devolver à regra) vence a regra.
+  - No Inbox, os filtros "Minhas" e "Fila do time" ficam no "mais ▾".
+- **Virar ticket:** `POST /api/whatsapp/threads/:id/ticket` cria o ticket.
+  - Canal whatsapp; assunto da última mensagem do cliente e descrição com as
+    últimas 5 dele.
+  - Fica ligado ao lead e ao cliente (só se ele existe) e grava `ticketId` na
+    conversa: 409 na segunda vez.
+  - No menu "⋯" da conversa: assumir, devolver pro dono da fase, virar ticket
+    e ver o ticket.
+- **Teste:** `crm-whatsapp-owner.test.js`.
+- **Ainda não feito:** número por finalidade (vendas, CS, suporte) e registro
+  explícito de opt-in. Os dois dependem de decisão sobre os números.
+
 **Carteira de CS, acompanhamentos e modelos de integração (20/10/2026).**
 Fase 3 do plano do Lever CRM.
 

@@ -381,6 +381,9 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
     if (answerFilter === "handoff") return open.filter((t) => botStateOf(t) === "handoff");
     if (answerFilter === "lead") return open.filter((t) => t.leadId);
     if (answerFilter === "orphan") return open.filter((t) => !t.leadId);
+    // Dono da conversa (Lever CRM): as minhas e a fila do time (sem dono).
+    if (answerFilter === "mine") return open.filter((t) => t.owner && t.owner === currentUser()?.id);
+    if (answerFilter === "fila") return open.filter((t) => !t.virtual && !t.noThread && !t.owner);
     return open;
   }, [entries, q, answerFilter]);
   const answerCounts = React.useMemo(() => {
@@ -396,6 +399,8 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
       closed: base.length - open.length,
       bot: open.filter((t) => botStateOf(t) === "bot").length,
       handoff: open.filter((t) => botStateOf(t) === "handoff").length,
+      mine: open.filter((t) => t.owner && t.owner === currentUser()?.id).length,
+      fila: open.filter((t) => !t.virtual && !t.noThread && !t.owner).length,
     };
   }, [entries]);
 
@@ -571,11 +576,11 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
           <div className="inbox-list-controls">
             <div className="inbox-search-row">
               <input className="inp" aria-label="Buscar conversa" value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar conversa" />
-              <button className="inbox-filter" aria-expanded={maisFiltros} title="Com lead · encerradas · pra humano · sem lead · aguardando cliente" onClick={() => setMaisFiltros((v) => !v)}>{maisFiltros ? "menos ▴" : "mais ▾"}</button>
+              <button className="inbox-filter" aria-expanded={maisFiltros} title="Minhas · fila do time · encerradas · pra humano" onClick={() => setMaisFiltros((v) => !v)}>{maisFiltros ? "menos ▴" : "mais ▾"}</button>
             </div>
             <div className="inbox-filters">
               {[["in", "Sem resposta"], ["novos", "Novos"], ["all", "Todas"], ["bot", "Robô"], ["lead", "Com lead"], ["orphan", "Sem lead"], ["out", "Aguardando cliente"],
-                ...[["closed", "Encerradas"], ["handoff", "Pra humano"]].filter(([id]) => maisFiltros || id === answerFilter),
+                ...[["mine", "Minhas"], ["fila", "Fila do time"], ["closed", "Encerradas"], ["handoff", "Pra humano"]].filter(([id]) => maisFiltros || id === answerFilter),
               ].map(([id, label]) => <button key={id} className="inbox-filter" aria-pressed={answerFilter === id}
                 onClick={() => setAnswerFilter(id)} title={id === "in" ? "O cliente falou por último e espera nossa resposta" : id === "out" ? "Nossa equipe falou por último e espera o cliente" : id === "novos" ? `Leads que entraram nos últimos ${NEW_LEAD_DAYS} dias, por ordem de entrada, com ou sem conversa` : label}>
                 {label} <span className="tnum">{answerCounts[id]}</span>
@@ -664,7 +669,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
                 {current.leadId ? (
                   <span className="inbox-next-action"><NextActionButton key={current.id} thread={current} onScheduled={(draft) => composerApi.current?.insert?.(draft)} onResolved={markResolved} /></span>
                 ) : <PrimaryButton onClick={() => setCreatingLead(true)}>cadastrar como lead</PrimaryButton>}
-                <ConversationMenu key={current.id} current={current} onClosed={toggleClosed} onOpenLead={openLead} onToggleSide={toggleSide} sideOpen={sideOpen} />
+                <ConversationMenu key={current.id} current={current} onClosed={toggleClosed} onOpenLead={openLead} onToggleSide={toggleSide} sideOpen={sideOpen} onChanged={() => setReadAttempt((n) => n + 1)} />
               </div>
 
               <div className="inbox-chat-history">
@@ -735,10 +740,19 @@ function WindowNote({ messages }) {
   </div>;
 }
 
-function ConversationMenu({ current, onClosed, onOpenLead, onToggleSide, sideOpen }) {
+function ConversationMenu({ current, onClosed, onOpenLead, onToggleSide, sideOpen, onChanged }) {
   const [open, setOpen] = React.useState(false);
   const anchor = React.useRef(null);
   const action = (fn) => () => { setOpen(false); fn(); };
+  const me = currentUser()?.id || "";
+  const real = !current.virtual && !current.noThread; // existe conversa de verdade
+  // Dono da conversa e ticket (Lever CRM): assumir, devolver pra regra e
+  // virar ticket com as últimas mensagens do cliente.
+  const run = (fn, ok) => async () => {
+    setOpen(false);
+    try { const r = await fn(); if (ok) window.toast?.(typeof ok === "function" ? ok(r) : ok, "pos"); onChanged?.(); }
+    catch (e) { window.toast?.(`${e.message || "Não foi possível"} · tente de novo`, "neg"); }
+  };
   return <>
     <button className="inbox-more" ref={anchor} onClick={() => setOpen((v) => !v)} aria-label="Mais ações da conversa" aria-expanded={open}
       title="Abrir lead · mostrar card · pausar robô · encerrar conversa · ligar no app">⋯</button>
@@ -748,6 +762,10 @@ function ConversationMenu({ current, onClosed, onOpenLead, onToggleSide, sideOpe
         <button onClick={action(onToggleSide)}>{sideOpen ? "Esconder" : "Mostrar"} card do cliente</button>
         {current.leadId && <BotStopButton leadId={current.leadId} />}
         {!current.virtual && <button onClick={action(onClosed)}>{current.status === "closed" ? "Reabrir" : "Encerrar"} a conversa</button>}
+        {real && me && current.owner !== me && <button onClick={run(() => api.waThreadOwner(current.id, me), "Conversa é sua agora")}>Assumir a conversa</button>}
+        {real && current.ownerRole === "manual" && <button onClick={run(() => api.waThreadOwner(current.id, ""), "Conversa voltou pro dono da fase")}>Devolver pro dono da fase</button>}
+        {real && !current.ticketId && <button onClick={run(() => api.waThreadTicket(current.id), (t) => `Ticket #${t.number || ""} aberto`)}>Virar ticket</button>}
+        {current.ticketId && <a href={`#tickets/${encodeURIComponent(current.ticketId)}`} onClick={() => setOpen(false)}>Ver o ticket ↗</a>}
         {waLink(current.phone) && <a href={waLink(current.phone)} target="_blank" rel="noopener noreferrer" onClick={() => setOpen(false)}>Ligar no app ↗</a>}
       </div>
     </Popover>}

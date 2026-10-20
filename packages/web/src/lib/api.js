@@ -377,6 +377,9 @@ export const api = {
   savedViews: (screen) => req("GET", `/api/views?screen=${encodeURIComponent(screen)}`),
   saveView: (screen, name, filters) => req("POST", "/api/views", { screen, name, filters }),
   deleteView: (id) => req("DELETE", `/api/views/${id}`),
+  // Conversa do WhatsApp: dono manual ("" devolve pra regra) e virar ticket.
+  waThreadOwner: (threadId, owner) => req("POST", `/api/whatsapp/threads/${encodeURIComponent(threadId)}/owner`, { owner }),
+  waThreadTicket: (threadId) => req("POST", `/api/whatsapp/threads/${encodeURIComponent(threadId)}/ticket`, {}),
   customerRecordMeetings: (customerId) => req("GET", `/api/customers/${customerId}/record-meetings`),
   scheduleRecordMeeting: (host, id, body) => req("POST", `/api/customers/${host}/${id}/meetings`, body),
   rescheduleRecordMeeting: (host, id, mid, at) => req("PATCH", `/api/customers/${host}/${id}/meetings/${mid}`, { at }),
