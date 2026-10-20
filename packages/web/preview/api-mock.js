@@ -99,8 +99,40 @@ let notificacoes = [
 ];
 
 // Atividades ligadas a registro (components/activity-cards.jsx), em memória.
-const atividadesPreview = [];
+const atividadesPreview = [
+  { id: "task_prev_0", title: "Ligar para o financeiro · Galante Comércio", activityType: "ligacao", assignees: ["leo"], dueDate: "2026-09-18",
+    record: { kind: "customer", id: "c2", label: "Galante Comércio" }, crmCustomer: "c2", crmLead: "", completed: false },
+];
+// Exemplos do Lever CRM na prévia: uma integração e um acompanhamento do
+// Galante Comércio (c2), com reunião marcada, e o placar de comparecimento.
+const integracaoPreview = {
+  id: "ob_prev_1", customer: "c2", lead: "", kind: "novo_produto", stage: "configuracao", integrator: "lucas",
+  kickoffAt: "2026-09-15T13:00:00.000Z", plannedGoLiveAt: "2026-09-29T13:00:00.000Z", notes: "Conta OEM liberada; falta conectar a segunda conta do ML.",
+  items: [
+    { id: "i1", title: "Kickoff com o cliente", side: "lever", dueAt: "", doneAt: "2026-09-15T14:00:00.000Z" },
+    { id: "i2", title: "Conectar as contas do Mercado Livre", side: "cliente", dueAt: "2026-09-19", doneAt: "" },
+    { id: "i3", title: "Primeira cópia de anúncios", side: "lever", dueAt: "2026-09-22", doneAt: "" },
+    { id: "i4", title: "Treinamento da equipe do cliente", side: "lever", dueAt: "2026-09-26", doneAt: "" },
+  ],
+  progress: 25,
+  meetings: [{ id: "mt1", at: "2026-09-19T17:00:00.000Z", status: "scheduled", meetUrl: "https://meet.google.com/abc-defg-hij", title: "Configuração das contas" }],
+};
+const acompanhamentoPreview = {
+  id: "fu_prev_1", customer: "c2", kind: "check_in", status: "aberto", owner: "leo", dueAt: "2026-09-24T15:00:00.000Z",
+  sentiment: "", notes: "", nextSteps: "", meetings: [],
+};
 const RESPOSTAS = {
+  get: (col, id) => (window.SEED?.[String(col).toUpperCase()] || []).find((r) => r.id === id) || null,
+  customerOnboardings: (id) => ({ onboardings: id === "c2" ? [integracaoPreview] : [] }),
+  onboarding: () => integracaoPreview,
+  customerFollowups: (id) => ({ followups: id === "c2" ? [acompanhamentoPreview] : [] }),
+  followup: () => acompanhamentoPreview,
+  customerRecordMeetings: (id) => ({ meetings: id === "c2" ? integracaoPreview.meetings.map((m) => ({ ...m, host: { collection: "onboardings", id: integracaoPreview.id, label: "Integração · Produto novo" } })) : [] }),
+  meetingsReport: () => {
+    const users = (window.SEED?.USERS || []).slice(0, 3);
+    const rows = [[82, 9, 2, 3], [64, 7, 4, 2], [90, 9, 1, 1]];
+    return { total: 38, closers: users.map((u, i) => ({ closer: u.id, comparecimento: rows[i][0], realizada: rows[i][1], no_show: rows[i][2], agendada: rows[i][3] })) };
+  },
   createCrmActivity: (b) => {
     const label = { ligacao: "Ligar", whatsapp: "WhatsApp", email: "E-mail", reuniao: "Reunião", tarefa: "Tarefa", followup: "Follow-up" }[b.type] || "Tarefa";
     const t = { id: `task_prev_${atividadesPreview.length + 1}`, title: b.title || `${label} · registro`, activityType: b.type, assignees: b.owner ? [b.owner] : [], dueDate: b.dueDate,

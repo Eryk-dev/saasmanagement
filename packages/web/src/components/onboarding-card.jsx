@@ -147,7 +147,8 @@ export function OnboardingDrawer({ id, onClose }) {
           <RecordMeetings host="onboardings" record={draft} onChanged={reloadMeetings} />
           <section>
             <div className="customer-peek-kicker"><span>checklist</span><b>{items.length - pending} de {items.length}</b></div>
-            <div className="customer-peek-checks">
+            {/* Sem a classe customer-peek-checks: ela é da régua de marcos e estica os spans do Checkbox. */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 10 }}>
               {items.map((it, i) => <div key={it.id || `novo-${i}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 4px" }}>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <Checkbox checked={!!it.doneAt} onChange={(v) => set({ items: items.map((x, j) => (j === i ? { ...x, doneAt: v ? new Date().toISOString() : "" } : x)) })}>
