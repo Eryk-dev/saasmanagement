@@ -1530,6 +1530,25 @@ de SDR.
   · M no-show" na linha do cabeçalho do card do Negócio.
 - **Teste:** `crm-meetings.test.js`.
 
+**Pacotes e pedidos (20/10/2026).** Fase 2 do plano do Lever CRM, em
+`billing/bundles.js`.
+
+- **Pacote** (`bundles`): planos de produtos **diferentes** por um preço só.
+  - Rotas: `GET|POST /api/bundles` e `PATCH /api/bundles/:id` (escrita só
+    admin).
+  - A criação recusa dois planos do mesmo produto: o fechamento abre uma
+    assinatura viva por produto, e o segundo sumiria em silêncio.
+- **Aplicar no negócio:** `POST /api/leads/:id/bundle` preenche
+  `lead.dealItems`, rateando o preço pela tabela do `dealCatalogFromPlans`
+  (o último item absorve o arredondamento). Também grava `amount` = preço do
+  pacote e `bundleId`. No Ganho, cada produto vira a sua assinatura.
+- **Pedido** (`deal_orders`): nasce no `convertWonLead` com as assinaturas
+  criadas, o pacote e o total. Leitura em `GET /api/customers/:id/orders`.
+- **Web:** card "Pacotes" na tela de Planos, para criar, ver o rateio e o
+  desconto sobre a tabela e arquivar. No card do Negócio, o "⋯" das ações tem
+  "aplicar pacote: …".
+- **Teste:** `crm-bundles.test.js`.
+
 **WhatsApp: dono da conversa e virar ticket (20/10/2026).** Fase 2 do plano
 do Lever CRM, em `whatsapp/thread-owner.js`.
 

@@ -8,6 +8,7 @@ import { isPostSaleStage, isWon } from "./stages.js";
 import { CREATE_DEFAULTS } from "./create-defaults.js";
 import { newManual, sameFamily } from "../calls/deliverables.js";
 import { logActivity } from "./lead-flow.js";
+import { recordOrder } from "../billing/bundles.js";
 
 // Conversão lead → cliente: quando um lead chega no estágio de ganho (kind
 // `ganho` no funil do produto; fallback por nome "Ganho"/"Closed Won" pra SaaS
@@ -177,6 +178,8 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
     }
     // Mais de um produto: o cadastro lista todos e espelha a assinatura principal.
     if (items.length > 1 && created.length) await syncCustomerPlanFromSub(repo, created[created.length - 1]).catch(() => null);
+    // Pedido: o agrupador comercial do fechamento (e do pacote, se houve).
+    await recordOrder(repo, { lead, customer, subscriptions: created }).catch(() => null);
   } catch { /* assinatura é best-effort */ }
   await recordPlanChange(repo, {
     type: "start", saas: lead.saas, customer: customer.id, subscription: wonSubId, lead: lead.id,

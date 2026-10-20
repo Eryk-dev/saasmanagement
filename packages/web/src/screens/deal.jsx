@@ -330,6 +330,21 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
   const integBusyMsg = !integAt ? ""
     : `${displayName(lead.integrator) || "o integrador"} já tem ${integAt.kind === "call" ? "integração" : (integAt.reason || "compromisso")} nesse horário`;
 
+  // Pacotes do produto (Lever CRM): aplicar um preenche os itens do fechamento
+  // com o preço rateado por produto (billing/bundles.js).
+  const [bundles, setBundles] = React.useState([]);
+  React.useEffect(() => {
+    let alive = true;
+    if (lead.saas) api.bundles(lead.saas).then((r) => alive && setBundles(((r && r.bundles) || []).filter((b) => b.status === "active"))).catch(() => {});
+    return () => { alive = false; };
+  }, [lead.saas]);
+  async function applyBundle(b) {
+    try {
+      const saved = await api.applyLeadBundle(lead.id, b.id);
+      setLead((prev) => ({ ...prev, ...saved }));
+      window.toast?.(`Pacote "${b.name}" aplicado: ${window.fmt.moneyFull(b.price)} em ${b.dealItems.length} produtos`, "pos");
+    } catch (e) { window.toast?.(`${e.message || "Não foi possível aplicar o pacote"} · tente de novo`, "neg"); }
+  }
   function patch(p) {
     dirty.current = true;
     setLead((prev) => ({ ...prev, ...p }));
@@ -1134,6 +1149,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
               <MoreMenu size={32} label="Mais ações" items={[
                 onOpenWhatsapp && wa && { label: "abrir no WhatsApp Web ↗", onClick: () => window.open(wa, "_blank", "noopener,noreferrer") },
                 ...altDecks.map((t) => ({ label: `gerar ${t.pickLabel || t.name}`, onClick: () => gerarCom(t) })),
+                ...bundles.map((b) => ({ label: `aplicar pacote: ${b.name}${lead.bundleId === b.id ? " ✓" : ""}`, onClick: () => applyBundle(b) })),
                 lead.customProposalUrl && { label: "abrir proposta personalizada ↗", onClick: () => window.open(cockpitProposalUrl(lead.customProposalUrl), "_blank", "noreferrer") },
                 { label: lead.customProposalUrl ? "editar proposta personalizada" : "montar proposta personalizada", onClick: () => setCustomProp(true) },
               ]} />

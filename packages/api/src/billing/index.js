@@ -2,12 +2,15 @@
 // orgs nos produtos.
 
 import { registerBillingRoutes } from "./routes.billing.js";
+import { registerBundleRoutes } from "./routes.bundles.js";
 import { registerLeveradsAccessRoutes, startLeveradsAccessSync } from "./leverads-access.js";
 import { startBilling } from "./billing-runner.js";
 
 export function register(app, repo, ctx) {
   // Billing (fase 5): mudança de plano c/ pró-rata, baixa de fatura, tick do motor.
   registerBillingRoutes(app, repo, { mp: ctx.mp, discord: ctx.discord });
+  // Pacotes (vários planos por um preço, rateado por produto) e pedidos.
+  registerBundleRoutes(app, repo);
   // LeverAds: liga/corta o paywall das orgs do produto conforme o billing daqui
   // (tick manual + report do dry-run; o poller sobe no start deste domínio).
   registerLeveradsAccessRoutes(app, repo, { ...(ctx.opts.leveradsAccess || {}) });

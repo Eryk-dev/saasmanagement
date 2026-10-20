@@ -375,6 +375,12 @@ export const api = {
   // Calls de venda como registro: as do lead e o placar de comparecimento.
   leadMeetings: (leadId) => req("GET", `/api/leads/${leadId}/meetings`),
   meetingsReport: ({ from = "", to = "", saas = "" } = {}) => req("GET", `/api/meetings/report?from=${from}&to=${to}&saas=${encodeURIComponent(saas)}`),
+  // Pacotes (vários planos por um preço) e o pedido do fechamento.
+  bundles: (saas) => req("GET", `/api/bundles?saas=${encodeURIComponent(saas)}`),
+  createBundle: (body) => req("POST", "/api/bundles", body),
+  updateBundle: (id, patch) => req("PATCH", `/api/bundles/${id}`, patch),
+  applyLeadBundle: (leadId, bundleId) => req("POST", `/api/leads/${leadId}/bundle`, { bundleId }),
+  customerOrders: (customerId) => req("GET", `/api/customers/${customerId}/orders`),
   leadProposalVersions: (leadId) => req("GET", `/api/leads/${leadId}/proposals`),
   // Views salvas por usuário (filtros com nome) de uma tela.
   savedViews: (screen) => req("GET", `/api/views?screen=${encodeURIComponent(screen)}`),

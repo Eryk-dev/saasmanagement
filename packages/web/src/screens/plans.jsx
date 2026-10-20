@@ -10,6 +10,7 @@ import { Drawer } from "../components/overlay.jsx";
 import { BarraComposicao } from "../components/story.jsx";
 import { PlanModal } from "../components/plan-editor.jsx";
 import { SwitchRow } from "../components/form-controls.jsx";
+import { BundlesCard } from "../components/bundles-card.jsx";
 import { CYCLE_TITLE } from "../lib/payments.js";
 import { PLAN_LIMITS, PLAN_FEATURES, PLAN_PRODUCTS, planProductOf, limitsSummary, featuresIncluded } from "../../../api/src/shared/plan-resources.js";
 
@@ -226,6 +227,7 @@ export function PlansScreen() {
             </div></div>
           )}
         </section>
+        <BundlesCard saas={saas} plans={plans} />
       </>}
 
       {openPlan && <PlanDrawer plan={openPlan} stat={statOf(openPlan.code)} onClose={() => setOpen(null)} onEdit={() => setEditing(openPlan)} />}

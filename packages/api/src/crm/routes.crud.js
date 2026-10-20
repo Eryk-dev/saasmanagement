@@ -75,7 +75,7 @@ const PRIVATE = new Set(["users", "product_updates", "product_update_assets", "s
   "leverads_orgs",
   // Eventos dos produtos e timeline imutável: escritos só pelo servidor
   // (events/), lidos pelas rotas próprias.
-  "crm_events", "timeline_events", "workspaces", "onboardings", "cs_followups", "saved_views", "meetings"]);
+  "crm_events", "timeline_events", "workspaces", "onboardings", "cs_followups", "saved_views", "meetings", "bundles", "deal_orders"]);
 
 const isExposed = (c) => COLLECTION_NAMES.includes(c) && !PRIVATE.has(c);
 
