@@ -96,6 +96,7 @@ export const COLLECTIONS = {
   timeline_events: [], // timeline imutável do cliente/lead alimentada pelos eventos (events/timeline.js): só inserção; PRIVATE, lida por /api/customers/:id/timeline e /api/leads/:id/timeline
   workspaces: [], // tenant de cada produto (id produto:tenant), com o cliente dono (customers/lifecycle.js); PRIVATE, lido por /api/customers/workspaces e pelo perfil do cliente
   onboardings: [], // integração do cliente como registro próprio, separada do ganho (Fase 1B); PRIVATE
+  saved_views: [], // filtros salvos por usuário e tela (crm/routes.views.js); PRIVATE
   cs_followups: [], // acompanhamento de CS do cliente: check-in, QBR, renovação, com reunião e próximos passos (customers/cs-followups.js); PRIVATE
   leverads_orgs: [], // espelho das orgs do LeverAds (customers/leverads-orgs.js): contas gratuitas, pagantes sem cliente e o vínculo cliente × org; PRIVATE, rotas em /api/customers/leverads-orgs
   mp_preapprovals: [], // espelho das ASSINATURAS RECORRENTES do Mercado Pago (inclusive as criadas fora do cockpit), com o vínculo à assinatura do cliente (mp-subscriptions.js)

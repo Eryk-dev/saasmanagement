@@ -21,6 +21,7 @@ import { useActiveSaas, pinActiveSaas } from "../lib/workspace.js";
 import { bizDay } from "../lib/format.js";
 import { KanbanBoard, KanbanColumn } from "../components/kanban/board.jsx";
 import { useBoardDnd } from "../components/kanban/dnd.js";
+import { SavedViewsPicker } from "../components/saved-views.jsx";
 // Pipeline — Kanban + Lista. Drag-and-drop between columns.
 // Funil unificado: os LEADS são os cards do pipeline (window.SEED.LEADS). Cada
 // lead já carrega seu `saas` + `stage`. Uma cópia local deixa o drag-and-drop
@@ -231,9 +232,12 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
     const t = buscaBoard.trim().toLowerCase();
     if (!t) return lateOnly;
     const out = {};
+    // "#tag" filtra só pela tag (Lever CRM); texto comum também acha a tag.
+    const tag = t.startsWith("#") ? t.slice(1) : "";
     for (const st of Object.keys(lateOnly)) {
-      out[st] = (lateOnly[st] || []).filter((l) =>
-        `${l.name || ""} ${l.company || ""} ${l.phone || ""}`.toLowerCase().includes(t));
+      out[st] = (lateOnly[st] || []).filter((l) => (tag
+        ? (l.tags || []).some((x) => x.startsWith(tag))
+        : `${l.name || ""} ${l.company || ""} ${l.phone || ""} ${(l.tags || []).map((x) => `#${x}`).join(" ")}`.toLowerCase().includes(t)));
     }
     return out;
   }, [lateOnly, buscaBoard]);
@@ -306,6 +310,8 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
         <header className="pipeline-header">
           <div><h1 className="page-title">Pipeline</h1><div style={{marginTop:6}} /></div>
           <div className="pipeline-header-actions">
+            <SavedViewsPicker screen="pipeline" filters={{ busca: buscaBoard, phase, person, segment, sortMode, onlyLate }}
+              onApply={(f) => { setBuscaBoard(f.busca || ""); setPhase(f.phase || "all"); setPerson(f.person || ""); setSegment(f.segment || ""); setSortMode(f.sortMode || "toque"); setOnlyLate(!!f.onlyLate); }} />
             <ViewToggle view={view} onChange={setView} />
             <button className="pipeline-create" onClick={() => openForm("leads", { saas: activeSaas })}>Cadastrar lead</button>
           </div>
@@ -313,7 +319,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
         <section className="pipeline-filters" aria-label="Filtros do pipeline">
           <label className="pipeline-search">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20.4 20.4-4.2-4.2"/></svg>
-            <input aria-label="Buscar lead ou empresa" value={buscaBoard} onChange={e => setBuscaBoard(e.target.value)} placeholder="buscar lead ou empresa…" />
+            <input aria-label="Buscar lead ou empresa" value={buscaBoard} onChange={e => setBuscaBoard(e.target.value)} placeholder="buscar lead, empresa ou #tag…" />
           </label>
           <span className="pipeline-kicker">fase</span>
           <div className="pipeline-segment" aria-label="Fase">

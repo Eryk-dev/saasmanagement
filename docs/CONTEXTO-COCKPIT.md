@@ -1483,6 +1483,32 @@ Lever CRM.
   card certo.
 - **Teste:** `crm-portfolio.test.js`.
 
+**Comercial: tipo de negócio, distribuição, tags, propostas e views
+(20/10/2026).** Fase 2 do plano do Lever CRM.
+
+- **Tipo de negócio:** o lead ganha `dealType` (nova_venda por padrão, upsell,
+  renovacao ou reativacao; `crm/lead-tags.js` normaliza no POST/PATCH).
+  - "Novo negócio" no card do cliente (`components/deal-meta.jsx`) abre um
+    lead já com `customerId`, na etapa de proposta.
+  - Negócio extra ganho carimba `wonAt` sem criar cliente (`won-lead.js`).
+  - Puxado de volta da região de venda, ele perde só o `wonAt`, nunca o
+    vínculo (`lead-flow.js`).
+- **Distribuição de leads:** com `product.leadDistribution = "round_robin"`,
+  o `autoLeadOwner` passa a vez entre os SDRs presentes (pula `awayUntil` no
+  futuro e inativos; estado em `app_config/lead_rr_<saas>`). Sem a opção,
+  continua escolhendo só quando há um SDR.
+- **Tags:** `lead.tags`, em minúsculas, até 12. A busca do Pipeline casa as
+  tags, e `#tag` filtra só por tag.
+- **Versões da proposta** (`proposals/proposal-versions.js`): o
+  `GET /api/leads/:id/proposals` numera as propostas do lead e dá o estado
+  (aceita, expirada pela validade, aberta, enviada). O card do Negócio mostra
+  isso no bloco "Negócio".
+- **Views salvas** (`crm/routes.views.js`, coleção PRIVATE `saved_views`):
+  `GET|POST /api/views`, `DELETE /api/views/:id`, por usuário e tela. No
+  Pipeline, o seletor "Views" guarda busca, fase, pessoa, segmento, ordem e
+  atrasados.
+- **Teste:** `crm-commercial.test.js`.
+
 **Carteira de CS, acompanhamentos e modelos de integração (20/10/2026).**
 Fase 3 do plano do Lever CRM.
 

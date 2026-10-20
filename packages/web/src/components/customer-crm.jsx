@@ -6,6 +6,7 @@ import React, { useEffect, useState } from "react";
 import { api } from "../lib/api.js";
 import { openCustomer, openLeadById, openOnboarding } from "../lib/open-record.js";
 import { displayName } from "../lib/users.js";
+import { NewDealButton } from "./deal-meta.jsx";
 // O desenho de gaveta do card do cliente: estes blocos também abrem fora da
 // tela de Clientes (card do Negócio, card da Integração).
 import "../screens/customers.css";
@@ -38,13 +39,14 @@ export function CustomerStateChips({ customer }) {
 // renovação). Cada um abre o card do Negócio.
 export function CustomerDeals({ customer, onLeave }) {
   const leads = (window.SEED?.LEADS || []).filter((l) => l.id === customer.leadId || l.customerId === customer.id);
-  if (!leads.length) return null;
   return <section>
     <div className="customer-peek-kicker"><span>negócios</span><b>{leads.length}</b></div>
     {leads.map((l) => <div key={l.id} className="customer-peek-fact">
-      <span>{l.id === customer.leadId ? "venda de origem" : "negócio"}</span>
+      <span>{l.id === customer.leadId ? "venda de origem" : ({ upsell: "upsell", renovacao: "renovação", reativacao: "reativação" })[l.dealType] || "negócio"}</span>
       <strong><button type="button" className="customer-peek-link" onClick={() => { onLeave?.(); openLeadById(l.id); }}>{l.stage || "—"}{l.closer ? ` · ${displayName(l.closer)}` : ""} →</button></strong>
     </div>)}
+    {!leads.length && <p className="customer-peek-note">Nenhum negócio ligado a este cliente.</p>}
+    <NewDealButton customer={customer} onLeave={onLeave} />
   </section>;
 }
 

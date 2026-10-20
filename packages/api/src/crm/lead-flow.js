@@ -32,14 +32,36 @@ export function rollToBusinessDay(date) {
 
 // Dono automático de um lead novo sem responsável: o ÚNICO usuário com papel
 // "sdr" do produto vira o dono (owner) — todo card entra com um SDR responsável.
-// Com 0 ou 2+ SDRs ninguém é escolhido (o time decide na mão). Espelha o
+// Com 2+ SDRs, só com a distribuição ligada no produto
+// (`product.leadDistribution = "round_robin"`, Lever CRM Fase 2): a vez passa
+// pelos SDRs presentes em ordem, pulando quem está ausente (`awayUntil` no
+// futuro) ou inativo; a última escolha fica em app_config/lead_rr_<saas>. Sem
+// a opção, ninguém é escolhido (o time decide na mão). Espelha o
 // auto-integrador do applyStageMove.
-export async function autoLeadOwner(repo, saas) {
+export async function autoLeadOwner(repo, saas, { now = Date.now() } = {}) {
   try {
     const users = await repo.list("users");
     const sdrs = users.filter((u) => Array.isArray(u.roles) && u.roles.includes("sdr") && (!u.saas || u.saas === saas));
-    return sdrs.length === 1 ? sdrs[0].id : null;
+    if (sdrs.length === 1) return sdrs[0].id;
+    const product = saas ? await repo.get("products", saas) : null;
+    if (product?.leadDistribution !== "round_robin") return null;
+    return await nextInRotation(repo, saas, sdrs, now);
   } catch { return null; }
+}
+
+async function nextInRotation(repo, saas, sdrs, now) {
+  const present = sdrs
+    .filter((u) => u.active !== false && !(Date.parse(u.awayUntil || "") > now))
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  if (!present.length) return null;
+  const key = `lead_rr_${saas}`;
+  const state = await repo.get("app_config", key);
+  const i = present.findIndex((u) => u.id === state?.last);
+  const pick = present[(i + 1) % present.length];
+  const at = new Date(now).toISOString();
+  if (state) await repo.update("app_config", key, { last: pick.id, at }, { silent: true });
+  else await repo.create("app_config", { id: key, last: pick.id, at });
+  return pick.id;
 }
 
 export async function logActivity(repo, { saas = "", lead = "", type = "note", text = "", meta = {}, author = "system", at } = {}) {
@@ -239,7 +261,12 @@ export async function applyStageMove(repo, { lead, toStage, patch = {}, author =
     // criado na conversão fica vivo em Clientes/MRR. Perda NÃO desfaz (cai no
     // ramo de cima): churn depois de vender é outra história.
     const fromKind = kindOf(product, lead.stage);
-    if (SOLD_KINDS.has(fromKind) && !SOLD_KINDS.has(kind) && (lead.customerId || lead.wonAt)) {
+    const extraDeal = lead.dealType && lead.dealType !== "nova_venda";
+    if (SOLD_KINDS.has(fromKind) && !SOLD_KINDS.has(kind) && extraDeal) {
+      // Upsell/renovação/reativação pertence ao cliente que já existe: voltar
+      // o card desfaz só o QUANDO, nunca o vínculo nem o cliente.
+      out.wonAt = "";
+    } else if (SOLD_KINDS.has(fromKind) && !SOLD_KINDS.has(kind) && (lead.customerId || lead.wonAt)) {
       out.customerId = "";
       out.wonAt = "";
       try { await revertWonLead(repo, lead, { author }); } catch { /* nunca trava o movimento */ }

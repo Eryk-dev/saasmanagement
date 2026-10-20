@@ -69,7 +69,13 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
     }
     return null;
   }
-  if (lead.customerId && customers.some((c) => c.id === lead.customerId)) return null;
+  if (lead.customerId && customers.some((c) => c.id === lead.customerId)) {
+    // Upsell, renovação ou reativação (Lever CRM, Fase 2): o negócio nasce no
+    // card do cliente, já com customerId. Ganhar carimba QUANDO; o cliente é
+    // o mesmo de sempre.
+    if (lead.dealType && lead.dealType !== "nova_venda" && !lead.wonAt) await repo.update("leads", lead.id, { wonAt: new Date().toISOString() });
+    return null;
+  }
   // CS automático: o integrador do lead (escolhido no bloco Entrega do card)
   // nasce como owner do cliente; sem ele, com UM integrador no escopo do
   // produto, é esse. É por customer.owner que o placar de CS agrupa e que a

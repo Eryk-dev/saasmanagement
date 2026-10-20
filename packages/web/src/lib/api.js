@@ -371,6 +371,12 @@ export const api = {
   updateOnboarding: (id, patch) => req("PATCH", `/api/customers/onboardings/${id}`, patch),
   openOnboardings: () => req("GET", "/api/customers/onboardings?open=1"),
   // Reunião com Meet próprio num registro do cliente (host = "onboardings" | "followups").
+  // Versões da proposta do lead, com o estado de cada uma.
+  leadProposalVersions: (leadId) => req("GET", `/api/leads/${leadId}/proposals`),
+  // Views salvas por usuário (filtros com nome) de uma tela.
+  savedViews: (screen) => req("GET", `/api/views?screen=${encodeURIComponent(screen)}`),
+  saveView: (screen, name, filters) => req("POST", "/api/views", { screen, name, filters }),
+  deleteView: (id) => req("DELETE", `/api/views/${id}`),
   customerRecordMeetings: (customerId) => req("GET", `/api/customers/${customerId}/record-meetings`),
   scheduleRecordMeeting: (host, id, body) => req("POST", `/api/customers/${host}/${id}/meetings`, body),
   rescheduleRecordMeeting: (host, id, mid, at) => req("PATCH", `/api/customers/${host}/${id}/meetings/${mid}`, { at }),

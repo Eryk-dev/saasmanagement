@@ -24,6 +24,7 @@ import { customerPlanPatch, customerPlanState, recordPlanChange, stampSubscripti
 import { syncProposalLeadSnapshot } from "../proposals/proposal.js";
 import { convertWonLead, syncWonLeadDeal } from "./won-lead.js";
 import { syncLeadOnboarding } from "../customers/onboardings.js";
+import { leadTagPatch } from "./lead-tags.js";
 import { completeMilestoneTasks } from "../customers/customer-milestones.js";
 import { CLOSED_PLAN_ANNUAL_FACTOR } from "../shared/plan-cycles.js";
 import { syncPersonalCalendar } from "../google/google-user.js";
@@ -73,7 +74,7 @@ const PRIVATE = new Set(["users", "product_updates", "product_update_assets", "s
   "leverads_orgs",
   // Eventos dos produtos e timeline imutável: escritos só pelo servidor
   // (events/), lidos pelas rotas próprias.
-  "crm_events", "timeline_events", "workspaces", "onboardings", "cs_followups"]);
+  "crm_events", "timeline_events", "workspaces", "onboardings", "cs_followups", "saved_views"]);
 
 const isExposed = (c) => COLLECTION_NAMES.includes(c) && !PRIVATE.has(c);
 
@@ -220,6 +221,8 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
     const { collection } = req.params;
     if (!WRITABLE.has(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
     if (!req.body || typeof req.body !== "object") return reply.code(400).send({ error: "JSON body required" });
+    // Lead: tags normalizadas e tipo de negócio conhecido (lead-tags.js).
+    if (collection === "leads") req.body = { ...req.body, ...leadTagPatch(req.body) };
     // TAREFAS: composição, regras de coluna, seguidores, eventos e notificações
     // vivem em tasks-core.js (mesmo caminho das rotas dedicadas).
     if (collection === "tasks" || collection === "task_boards") {
@@ -465,6 +468,7 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
     // toque pela cadência e loga a activity `stage` (histórico do funil). Renome
     // de estágio NÃO passa por aqui (vai via PUT /funnel → repo.update direto).
     let patch = req.body;
+    if (collection === "leads" && patch && typeof patch === "object") patch = { ...patch, ...leadTagPatch(patch) };
     // Linhas, régua contas → pacote e adicionais do catálogo de planos moram em
     // app_config/plan_catalog_<saas>: tem preço (conta extra), então só admin.
     const catalogConfigFor = collection === "app_config" ? catalogConfigSaas(id) : null;

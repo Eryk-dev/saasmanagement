@@ -91,6 +91,7 @@ const INDEXES = [
   ["cs_followups_customer_idx", "cs_followups", `((json->>'customer'))`],
   // Dedupe dos alertas do CRM: cada aviso confere a própria chave antes de criar.
   ["notifications_key_idx", "notifications", `((json->>'key'))`],
+  ["saved_views_user_idx", "saved_views", `((json->>'user'), (json->>'screen'))`],
   ["subscriptions_status_idx", "subscriptions", `((json->>'status'))`],
   ["mp_payments_status_idx", "mp_payments", `((json->>'status'))`],
   ["subscriptions_customer_idx", "subscriptions", `((json->>'customer'))`],

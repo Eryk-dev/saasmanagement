@@ -7,6 +7,7 @@ import { registerBootstrapRoutes } from "./routes.bootstrap.js";
 import { registerActivityAssetRoutes } from "./routes.activities.js";
 import { registerCrudRoutes } from "./routes.crud.js";
 import { registerFunnelRoutes } from "./routes.funnel.js";
+import { registerViewRoutes } from "./routes.views.js";
 import { startCadencia } from "./cadencia-runner.js";
 
 export function register(app, repo, ctx) {
@@ -16,6 +17,8 @@ export function register(app, repo, ctx) {
   registerBootstrapRoutes(app, repo, { googleClient: ctx.google, mpClient: ctx.mp, asaasClient: ctx.asaas, appmaxClient: ctx.appmax, metaClient: ctx.meta, anthropicClient: ctx.anthropic, discordClient: ctx.discord, whatsappClient: ctx.whatsapp });
   // Foto anexada a um toque da timeline.
   registerActivityAssetRoutes(app, repo);
+  // Views salvas por usuário (filtros com nome), antes do CRUD genérico.
+  registerViewRoutes(app, repo);
   // CRUD genérico sobre as coleções (/api/:collection).
   registerCrudRoutes(app, repo, {
     discordClient: ctx.discord, googleUser: ctx.googleUser, metaCapiClient: ctx.metaCapi, briefer: ctx.briefer,

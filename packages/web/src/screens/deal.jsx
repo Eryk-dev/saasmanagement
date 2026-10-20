@@ -28,6 +28,7 @@ import { DayPicker } from "../components/followup-contact.jsx";
 import { followupBadge, followupNextContact, followupDayOf } from "../lib/followup.js";
 import { CustomerCard } from "./tickets/customer-card.jsx";
 import { LeadCustomerBar } from "../components/customer-crm.jsx";
+import { LeadDealMeta } from "../components/deal-meta.jsx";
 // Lead detail drawer — slides over the pipeline when a card is opened.
 // (Funil unificado: o card do pipeline é um lead, então o detalhe é do lead.)
 // Seções: header → números → GPS (etapa gateada + próximo toque + call) →
@@ -1095,6 +1096,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
           </header>
           <div className="lead-panel-body">
           <LeadCustomerBar lead={lead} onLeave={close} />
+          <LeadDealMeta lead={lead} onPatch={patch} />
           {/* Próximo passo e agendamento mantêm os handlers da ficha. */}
         {scheduleCard}
 
