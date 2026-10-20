@@ -14,6 +14,7 @@ import { Checkbox } from "./form-controls.jsx";
 import { RecordTimeline } from "./record-timeline.jsx";
 import { RecordMeetings } from "./record-meetings.jsx";
 import { ActivitySection } from "./activity-cards.jsx";
+import { AccountLine } from "./leverads-accounts.jsx";
 import { allUsers } from "../lib/users.js";
 import { openCustomer, openLeadById } from "../lib/open-record.js";
 import { toast } from "../atoms.jsx";
@@ -122,6 +123,7 @@ export function OnboardingDrawer({ id, onClose }) {
           <div>
             <div className="customer-peek-title"><h2>{draft ? kindLabel(draft.kind) : "Integração"}</h2></div>
             <p>{customer ? <button type="button" className="customer-peek-link" onClick={() => { onClose(); openCustomer(customer.id); }}>{customer.name} →</button> : (draft ? "cliente" : "")}</p>
+            {customer?.saas === "leverads" && <AccountLine customer={customer} onOpenCustomer={() => { onClose(); openCustomer(customer.id); }} />}
           </div>
           <button aria-label="Fechar integração" onClick={close} disabled={busy}>✕</button>
         </header>

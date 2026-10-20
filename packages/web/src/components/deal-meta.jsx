@@ -9,6 +9,7 @@ import { api } from "../lib/api.js";
 import { openCustomer, openLeadById, openOnboarding } from "../lib/open-record.js";
 import { stageByKind, firstStage } from "../lib/funnel.js";
 import { Popover } from "./popover.jsx";
+import { AccountLine } from "./leverads-accounts.jsx";
 
 export const DEAL_TYPES = [
   { value: "nova_venda", label: "Nova venda" },
@@ -98,7 +99,8 @@ export function LeadCrmStrip({ lead, onPatch, onLeave }) {
   const links = useCustomerLinks(lead);
   const calls = useCallCount(lead);
   const tags = Array.isArray(lead.tags) ? lead.tags : [];
-  return <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 12 }}>
+  return <>
+  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 12 }}>
     <DealTypePill value={lead.dealType} onChange={(v) => onPatch({ dealType: v })} />
     <TagsEditor tags={tags} onChange={(next) => onPatch({ tags: next })} />
     {calls && (calls.done + calls.noShow) > 0 && <span style={{ fontSize: 11.5, color: calls.noShow ? "var(--warn)" : "var(--fg-3)", marginLeft: 2 }}
@@ -109,7 +111,11 @@ export function LeadCrmStrip({ lead, onPatch, onLeave }) {
       {links.onboarding && <button type="button" style={link} onClick={() => { onLeave?.(); openOnboarding(links.onboarding.id); }} title="Abrir o card da integração">
         integração {links.onboarding.progress ?? 0}% →</button>}
     </>}
-  </div>;
+  </div>
+  {/* Conta LeverId: a vinculada ao cliente ou a que o lead criou com o mesmo e-mail. */}
+  {lead.saas === "leverads" && (!lead.customerId || links) && <AccountLine customer={links?.customer || null} lead={lead}
+    onOpenCustomer={links?.customer ? () => { onLeave?.(); openCustomer(links.customer.id); } : undefined} />}
+  </>;
 }
 
 // As versões da proposta, em uma linha (v1 expirada · v2 aberta).

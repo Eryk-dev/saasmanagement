@@ -1,5 +1,5 @@
 /* Contas do LeverAds (leverads-accounts.jsx): aba Gratuitas da tela Clientes,
-   bloco "conta do LeverAds" da ficha e os seletores no Popover compartilhado. */
+   bloco "conta LeverId" da ficha, a linha dos cards da Agenda e os seletores no Popover compartilhado. */
 .lva-tab { padding: 16px var(--pad-x) 56px; display: grid; gap: 14px; }
 .lva-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .lva-note { font-size: 11.5px; color: var(--fg-4); }
@@ -27,9 +27,6 @@
 .lva-linked strong { font-size: 13px; font-weight: 650; color: var(--fg-1); }
 .lva-linked small { font-size: 11.5px; color: var(--fg-3); line-height: 1.4; }
 .lva-err { color: var(--neg); font-size: 11.5px; margin: 6px 0 0; }
-.lva-invite { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-.lva-invite .inp { flex: 1; min-width: 180px; font-size: 11.5px; }
-.lva-invite small { font-size: 11.5px; color: var(--fg-3); }
 
 .lva-picker { display: flex; flex-direction: column; gap: 6px; padding: 2px 4px; }
 .lva-picker-head { display: flex; gap: 6px; }
@@ -39,3 +36,14 @@
 .lva-picker li button { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; font: inherit; background: transparent; border: 0; border-radius: var(--r-2); padding: 8px; cursor: pointer; }
 .lva-picker li button:hover { background: var(--hover); }
 .lva-picker li small { font-size: 11.5px; color: var(--fg-3); }
+
+/* Bloco "conta LeverId" enxuto: as ações na linha do estado. */
+.lva-linked > .lva-actions { display: flex; flex-direction: row; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+/* Linha da conta nos cards da Agenda (AccountLine). */
+.lva-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; font-size: 12px; color: var(--fg-3); }
+.lva-line strong { color: var(--fg-1); font-weight: 600; }
+.lva-line-kicker { height: 20px; padding: 0 8px; display: inline-flex; align-items: center; border-radius: 999px; font-size: 10.5px; font-weight: 700; letter-spacing: .02em; background: var(--bg-2); color: var(--fg-3); }
+.lva-line[data-tone=pos] .lva-line-kicker { background: var(--pos-soft); color: var(--pos); }
+.lva-line[data-tone=warn] .lva-line-kicker { background: var(--warn-soft, var(--bg-2)); color: var(--warn); }
+.lva-line > button { height: 22px; padding: 0 8px; border-radius: var(--r-2); border: 1px solid var(--line-1); background: var(--bg-1); font-size: 11.5px; color: var(--fg-2); cursor: pointer; }
+.lva-line > button.lva-line-link { border: 0; padding: 0; background: transparent; color: var(--accent); }

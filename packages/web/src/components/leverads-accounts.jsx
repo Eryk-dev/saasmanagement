@@ -8,10 +8,13 @@ import "./leverads-accounts.css";
 // customers/leverads-orgs.js):
 //   · FreeAccountsTab   aba Gratuitas: contas sem venda e as pagantes sem
 //                       cliente, com "Vincular a cliente";
-//   · CustomerOrgLink   bloco da ficha: a conta vinculada (e por onde veio),
-//                       desfazer e "Vincular conta" com as mais novas primeiro;
-//                       sem conta, o "Link de cadastro" com convite: o cliente
-//                       cria a conta por ele e já entra no plano da venda.
+//   · CustomerOrgLink   bloco "conta LeverId" da ficha: a conta vinculada (e
+//                       por onde veio), desfazer e "Vincular" com as mais
+//                       novas primeiro; sem conta, o "Link de cadastro" com
+//                       convite: o cliente cria a conta por ele e já entra no
+//                       plano da venda;
+//   · AccountLine       a mesma informação em uma linha, nos cards que a
+//                       Agenda abre (Negócio, Integração).
 // Conta gratuita não é cliente: não entra em KPI, churn nem régua.
 
 const { useCallback, useEffect, useMemo, useRef, useState } = React;
@@ -63,7 +66,7 @@ function OrgPicker({ anchor, orgs, emails, busy, onPick, onRefresh, refreshing, 
       .slice(0, 60);
   }, [orgs, q, emails]);
   return (
-    <Popover anchor={anchor} onClose={onClose} width={380} label="Vincular conta do LeverAds">
+    <Popover anchor={anchor} onClose={onClose} width={380} label="Vincular conta LeverId">
       <div className="lva-picker">
         <div className="lva-picker-head">
           <input className="inp" autoFocus placeholder="buscar por nome ou e-mail" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -87,6 +90,10 @@ function OrgPicker({ anchor, orgs, emails, busy, onPick, onRefresh, refreshing, 
   );
 }
 
+// "loja@x.com · pagante · 3 pessoas"
+const orgFacts = (o) => [o.email || "sem e-mail", o.paymentActive ? "pagante" : "gratuita",
+  (o.members || []).length > 1 ? `${o.members.length} pessoas` : ""].filter(Boolean).join(" · ");
+
 const VIA = { convite: "vinculada pelo link de cadastro", email: "vinculada pelo e-mail", manual: "vinculada na ficha" };
 
 // Link de cadastro da venda (convite): copiar e mandar pro cliente. A conta
@@ -104,11 +111,11 @@ function SignupInviteLink({ customer }) {
     } catch (e) { setState(e?.message || "não deu pra gerar o link"); }
   }
   return (
-    <div className="lva-invite">
-      <button type="button" onClick={copy} disabled={state === "…"} title="o cliente cria a conta por este link e já entra no plano da venda">Link de cadastro</button>
-      {invite && <input className="inp" readOnly value={invite.url} onFocus={(e) => e.target.select()} aria-label="link de cadastro" />}
-      {state && state !== "…" && <small>{state}</small>}
-    </div>
+    <>
+      <button type="button" onClick={copy} disabled={state === "…"} title={invite ? invite.url : "o cliente cria a conta por este link e já entra no plano da venda"}>
+        {state === "copiado" ? "link copiado" : "Link de cadastro"}</button>
+      {state && state !== "…" && state !== "copiado" && <small className="lva-err">{state}</small>}
+    </>
   );
 }
 
@@ -137,28 +144,56 @@ export function CustomerOrgLink({ customer, lead, onChanged }) {
 
   return (
     <section className="customer-peek-orglink">
-      <div className="customer-peek-kicker"><span>conta do LeverAds</span>
+      <div className="customer-peek-kicker"><span>conta LeverId</span>
         {orgId && customer.orgLink?.via && VIA[customer.orgLink.via] && <span className="customer-peek-state">{VIA[customer.orgLink.via]}</span>}
       </div>
       {orgId ? (
         <div className="lva-linked">
           <div>
-            <strong>{org?.name || "org vinculada"}</strong>
-            <small>{org ? `${org.email || "sem e-mail"} · criada ${whenLabel(org.createdAt)}` : `org ${orgId.slice(0, 8)}…`}</small>
+            <strong>{org?.name || "conta vinculada"}</strong>
+            <small>{org ? orgFacts(org) : `org ${orgId.slice(0, 8)}…`}</small>
           </div>
           <button type="button" onClick={unlink} disabled={!!busy}>{busy === "unlink" ? "…" : "desfazer"}</button>
         </div>
       ) : (
         <div className="lva-linked">
-          <div><small>{mirror.configured ? "Sem conta vinculada. O sync de acesso, os resultados e a badge de LeverId dependem dela." : "Lista de contas do LeverAds desligada neste ambiente."}</small></div>
-          {mirror.configured && <button ref={ref} type="button" className="lva-primary" onClick={() => setOpen(true)} disabled={!!busy}>Vincular conta</button>}
+          <div><small>{mirror.configured ? "sem conta vinculada" : "lista de contas desligada aqui"}</small></div>
+          <div className="lva-actions">
+            {mirror.configured && <button ref={ref} type="button" className="lva-primary" onClick={() => setOpen(true)} disabled={!!busy}>Vincular</button>}
+            <SignupInviteLink customer={customer} />
+          </div>
         </div>
       )}
-      {!orgId && <SignupInviteLink customer={customer} />}
       {err && <p className="lva-err" role="alert">{err}</p>}
       {open && <OrgPicker anchor={ref} orgs={mirror.orgs} emails={emails} busy={busy} onPick={link}
         onRefresh={mirror.refresh} refreshing={mirror.loading} onClose={() => setOpen(false)} />}
     </section>
+  );
+}
+
+// ── Linha da conta (cards abertos pela Agenda) ──────────────────────────────
+// Negócio ou Integração: a conta vinculada ao cliente; sem vínculo, a conta
+// cujo e-mail bate com o do cliente ou do lead (criou na call?); sem nenhuma,
+// o link de cadastro quando já há cliente. Vincular e desfazer ficam no card
+// do cliente. Quem não vê Clientes não recebe o espelho (guard da API) e a
+// linha some.
+export function AccountLine({ customer = null, lead = null, onOpenCustomer }) {
+  const mirror = useLeveradsMirror();
+  if (mirror.loading || mirror.error || !mirror.configured) return null;
+  const orgId = norm(customer?.leveradsOrgId);
+  const linked = orgId ? mirror.orgs.find((o) => o.id === orgId) : null;
+  const emails = emailsOf(customer, lead);
+  const match = orgId ? null : mirror.orgs.find((o) => o.active !== false && !o.customerId && orgMatches(o, emails));
+  return (
+    <div className="lva-line" data-tone={orgId ? "pos" : match ? "warn" : "mut"}>
+      <span className="lva-line-kicker">LeverId</span>
+      {orgId ? <span><strong>{linked?.name || "conta vinculada"}</strong>{linked ? ` · ${orgFacts(linked)}` : ""}</span>
+        : match ? <>
+          <span><strong>{match.name || match.email}</strong> · criada {whenLabel(match.createdAt)} · e-mail bate, não vinculada</span>
+          {customer && onOpenCustomer && <button type="button" className="lva-line-link" onClick={onOpenCustomer}>vincular no cliente →</button>}
+        </>
+        : <><span>sem conta{emails.length ? " com este e-mail" : ""}</span>{customer && <SignupInviteLink customer={customer} />}</>}
+    </div>
   );
 }
 

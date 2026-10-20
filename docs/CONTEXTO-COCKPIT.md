@@ -462,7 +462,7 @@ internos; depois a comparação de modelos com o mesmo conjunto.
    `orgs.cockpit_invite` e avisa `POST /public/leverads/org-created` com
    `X-Cockpit-Service-Key` = `LEVERADS_SERVICE_KEY`, que relê as orgs, vincula
    com `orgLink.via = "convite"` e roda o sync de acesso na hora — vale mesmo com
-   outro e-mail), da ficha ("Vincular conta", as mais
+   outro e-mail), da ficha (bloco "conta LeverId", botão "Vincular", as mais
    novas primeiro, para o integrador que cria a conta com o cliente na call),
    do cadastro, ou sozinho pelo e-mail quando o e-mail do cliente ou do lead é
    exatamente o da org ou de uma conta dela e o par é único
@@ -472,6 +472,10 @@ internos; depois a comparação de modelos com o mesmo conjunto.
    tela, exceções e acessos administrativos; `lib/users.js` espelha a UI.
    `roles` já participa de regras de acesso — não assumir que é só etiqueta.
    Credenciais e tokens não entram no CRUD/JSON público nem no guia.
+   Nos cards que a Agenda abre (Negócio e Integração, produto leverads), a
+   `AccountLine` mostra a mesma conta em uma linha: a vinculada, a que tem o
+   e-mail do lead mas não está vinculada, ou "sem conta" com o link de
+   cadastro. Vincular e desfazer só no card do cliente.
 5. **Atualização não pode apagar edição em curso:** o app atual preserva as
    telas durante refresh (sem `key={dataVersion}`) e contém proteções para quem
    está digitando. Estado que deve sobreviver segue os stores e padrões
