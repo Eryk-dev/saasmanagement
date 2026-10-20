@@ -4,6 +4,10 @@
 // em plano-no-cadastro.test.js, atrás de applyLimits).
 
 import test from "node:test";
+
+// Estes testes cobrem o CORTE de acesso, que só existe com LEVERADS_ACCESS_CUT=1
+// (o padrão é "só libera", testado em acesso-so-libera.test.js).
+process.env.LEVERADS_ACCESS_CUT = "1";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
@@ -117,7 +121,7 @@ async function seed(repo) {
 test("sync: limites saem só como relatório; com apply o único write continua sendo payment_active", async () => {
   const repo = makeMemRepo();
   const client = await seed(repo);
-  const report = await runLeveradsAccessSync(repo, { client, apply: true });
+  const report = await runLeveradsAccessSync(repo, { client, apply: true, allowCut: true });
 
   assert.deepEqual(client.updates, [{ id: "org-4", payment_active: false }], "nenhum limite é escrito");
   assert.equal(report.applied, 1);
@@ -139,7 +143,7 @@ test("sync: org cuja listagem não traz os campos de limite cai em unsupported, 
   await repo.create("subscriptions", { id: "s1", status: "active", cycle: "annual", price: 11988, customer: "c1", saas: "leverads", planSnapshot: SNAP() });
   // Rota de serviço (auth novo) devolve só id/nome/ativo/payment_active.
   const client = fakeClient([{ id: "org-1", name: "Org 1", active: true, payment_active: true }]);
-  const report = await runLeveradsAccessSync(repo, { client, apply: true });
+  const report = await runLeveradsAccessSync(repo, { client, apply: true, allowCut: true });
   assert.equal(report.errors.length, 0);
   assert.equal(report.inSync, 1);
   assert.deepEqual(report.limits.planned, []);
@@ -222,7 +226,7 @@ test("sync: módulo que o plano inclui e está desligado na org aparece no relat
     edit_enabled: true, copy_rules_enabled: true, stock_mirror_enabled: false, messages_enabled: true,
     questions_enabled: true, auto_answer_enabled: true, compat_enabled: true, creator_enabled: true,
   }]);
-  const report = await runLeveradsAccessSync(repo, { client, apply: true });
+  const report = await runLeveradsAccessSync(repo, { client, apply: true, allowCut: true });
   assert.deepEqual(report.limits.planned[0].changes, {
     per_seller_daily_limit: { from: null, to: 8000 },
     stock_mirror_enabled: { from: false, to: true },

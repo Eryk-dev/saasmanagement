@@ -5,6 +5,10 @@
 //   · dry-run planeja sem escrever; apply escreve SÓ o diff (idempotente).
 
 import test from "node:test";
+
+// Estes testes cobrem o CORTE de acesso, que só existe com LEVERADS_ACCESS_CUT=1
+// (o padrão é "só libera", testado em acesso-so-libera.test.js).
+process.env.LEVERADS_ACCESS_CUT = "1";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
@@ -63,7 +67,7 @@ test("dry-run: planeja o corte do past_due mas NÃO escreve no produto", async (
   const repo = makeMemRepo();
   await seed(repo, { subStatus: "past_due" });
   const client = fakeClient([{ id: "org-1", name: "Org 1", payment_active: true }]);
-  const report = await runLeveradsAccessSync(repo, { client, apply: false });
+  const report = await runLeveradsAccessSync(repo, { client, apply: false, allowCut: true });
   assert.equal(report.mode, "dry-run");
   assert.equal(report.planned.length, 1);
   assert.equal(report.planned[0].to, false);
@@ -80,12 +84,12 @@ test("apply: escreve só o diff e fica idempotente no tick seguinte", async () =
     { id: "org-1", name: "Devedora", payment_active: true },
     { id: "org-2", name: "Em dia", payment_active: true }, // já certo → não toca
   ]);
-  const report = await runLeveradsAccessSync(repo, { client, apply: true });
+  const report = await runLeveradsAccessSync(repo, { client, apply: true, allowCut: true });
   assert.equal(report.applied, 1);
   assert.equal(report.inSync, 1);
   assert.deepEqual(client.updates, [{ id: "org-1", payment_active: false }]);
   // Segundo tick: nada muda, nada escreve.
-  const again = await runLeveradsAccessSync(repo, { client, apply: true });
+  const again = await runLeveradsAccessSync(repo, { client, apply: true, allowCut: true });
   assert.equal(again.applied, 0);
   assert.equal(again.inSync, 2);
   assert.equal(client.updates.length, 1);
@@ -97,7 +101,7 @@ test("escopo: sem leveradsOrgId ou de outro saas fica de fora; sem assinatura é
   await repo.create("customers", { name: "Outro produto", saas: "elo", leveradsOrgId: "org-9" });
   await seed(repo, { subStatus: null, leveradsOrgId: "org-1" }); // vínculo sem assinatura
   const client = fakeClient([{ id: "org-1", name: "Org 1", payment_active: false }]);
-  const report = await runLeveradsAccessSync(repo, { client, apply: true });
+  const report = await runLeveradsAccessSync(repo, { client, apply: true, allowCut: true });
   assert.equal(report.checked, 1);
   assert.equal(report.skipped.length, 1);
   assert.equal(client.updates.length, 0);
@@ -107,7 +111,7 @@ test("org do de-para que não existe no produto vira erro, não escrita", async 
   const repo = makeMemRepo();
   await seed(repo, { subStatus: "active", leveradsOrgId: "org-fantasma" });
   const client = fakeClient([{ id: "org-1", name: "Org 1", payment_active: false }]);
-  const report = await runLeveradsAccessSync(repo, { client, apply: true });
+  const report = await runLeveradsAccessSync(repo, { client, apply: true, allowCut: true });
   assert.equal(report.errors.length, 1);
   assert.match(report.errors[0].error, /não existe/);
   assert.equal(client.updates.length, 0);

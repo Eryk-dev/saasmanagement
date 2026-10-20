@@ -1140,7 +1140,10 @@ pagamento, valor anual, cliente desde, churn). Teste: `multi-product.test.js`.
 
 **Acesso e limites.** `entitlements.js` calcula, por cliente × produto, o acesso
 (status da assinatura) e os limites (do `planSnapshot`, não do plano vivo). O
-adaptador do LeverAds (`leverads-access.js`) escreve `payment_active` e compara
+adaptador do LeverAds (`leverads-access.js`) **só libera** por padrão (decisão de
+19/10/2026: cliente com acesso legado não perde acesso por cobrança desatualizada
+aqui): corte de `payment_active` só com `LEVERADS_ACCESS_CUT=1`; sem ele o corte
+vai para `report.held`, nem o run manual corta. Ele escreve `payment_active` e compara
 os limites (contas → `paid_seats`, cota de OEM → `creator_quota_*`, Price →
 `leverprice_enabled`) em `report.limits`. Por padrão os limites são só
 relatório; com `apply` **e** `LEVERADS_LIMITS_APPLY=1` (ou `{applyLimits:true}`

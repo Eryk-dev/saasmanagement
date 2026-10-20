@@ -14,8 +14,15 @@
 //   · só clientes do saas do Levercopy COM leveradsOrgId preenchido (de-para
 //     explícito) — org fora do de-para nunca é tocada;
 //   · assinatura past_due → corta; ativa em dia → garante liberado; cliente
-//     encerrado (endedAt) ou só com assinatura cancelada/pausada → corta;
+//     encerrado (endedAt) ou só com assinatura cancelada/pausada → corta
+//     (corte só com LEVERADS_ACCESS_CUT=1; sem ele vai para `report.held`);
 //   · cliente sem assinatura no cockpit → não mexe (não dá pra inferir).
+//
+// SÓ LIBERA por padrão (decisão do usuário, 19/10/2026): cliente com acesso
+// legado não pode perder acesso por causa de cobrança desatualizada no cockpit.
+// Sem LEVERADS_ACCESS_CUT=1, o corte (payment_active true → false) nunca é
+// escrito — vai para `report.held`, para alguém decidir. Liberar segue
+// automático (é o que faz a conta criada pelo link de cadastro entrar sozinha).
 //
 // DRY-RUN por padrão: sem LEVERADS_ACCESS_APPLY=1 o tick só reporta o que faria
 // (report.planned em GET /api/leverads-access/status) — a ativação em produção
@@ -128,12 +135,13 @@ function makeServiceClient({ base, serviceKey, fetchImpl }) {
 
 // Um tick do sync. Sempre devolve o report completo — em dry-run, `planned`
 // lista o que seria feito; em apply, `applied` conta o que foi.
-export async function runLeveradsAccessSync(repo, { client, apply = false, applyLimits = false, log } = {}) {
+export async function runLeveradsAccessSync(repo, { client, apply = false, applyLimits = false, allowCut = false, log } = {}) {
   const writeLimits = apply && applyLimits && typeof client.applyEntitlements === "function";
   const saasId = process.env.LEVERCOPY_SAAS_ID || "leverads";
   const report = {
-    mode: apply ? "apply" : "dry-run", at: new Date().toISOString(),
-    checked: 0, inSync: 0, applied: 0, planned: [], skipped: [], errors: [],
+    mode: apply ? "apply" : "dry-run", cuts: allowCut ? "corta" : "só libera", at: new Date().toISOString(),
+    // `held`: cortes que a régua pediria e que o modo "só libera" segurou.
+    checked: 0, inSync: 0, applied: 0, planned: [], held: [], skipped: [], errors: [],
     // Limites do plano (contas, cota de OEM, Lever Price) × o que a org tem no
     // produto. SÓ RELATÓRIO: nada daqui é escrito, com apply ou sem.
     limits: { mode: writeLimits ? "apply" : "report", inSync: 0, applied: 0, planned: [], skipped: [], unsupported: [], errors: [] },
@@ -170,6 +178,7 @@ export async function runLeveradsAccessSync(repo, { client, apply = false, apply
       customer: customer.id, name: customer.name, org: org.id, orgName: org.name,
       from: Boolean(org.payment_active), to: want.paymentActive, reason: want.reason,
     };
+    if (!want.paymentActive && !allowCut) { report.held.push(action); continue; }
     report.planned.push(action);
     if (!apply) continue;
     try {
@@ -246,6 +255,7 @@ export async function syncLeveradsAccessNow(repo, { client, log } = {}) {
     client: cli, log,
     apply: process.env.LEVERADS_ACCESS_APPLY === "1",
     applyLimits: process.env.LEVERADS_LIMITS_APPLY === "1",
+    allowCut: process.env.LEVERADS_ACCESS_CUT === "1",
   });
   return lastReport;
 }
@@ -258,11 +268,12 @@ export function startLeveradsAccessSync(repo, { log, intervalMs, client } = {}) 
   }
   const apply = process.env.LEVERADS_ACCESS_APPLY === "1";
   const applyLimits = process.env.LEVERADS_LIMITS_APPLY === "1";
+  const allowCut = process.env.LEVERADS_ACCESS_CUT === "1";
   let running = false;
   const tick = async () => {
     if (running) return;
     running = true;
-    try { lastReport = await runLeveradsAccessSync(repo, { client: cli, apply, applyLimits, log }); }
+    try { lastReport = await runLeveradsAccessSync(repo, { client: cli, apply, applyLimits, allowCut, log }); }
     catch (err) { log?.warn({ err: err.message }, "leverads-access: tick falhou"); }
     finally { running = false; }
   };
@@ -287,7 +298,9 @@ export function registerLeveradsAccessRoutes(app, repo, { client } = {}) {
     }
     const apply = req.body?.apply === true || process.env.LEVERADS_ACCESS_APPLY === "1";
     const applyLimits = req.body?.applyLimits === true || process.env.LEVERADS_LIMITS_APPLY === "1";
-    lastReport = await runLeveradsAccessSync(repo, { client: cli, apply, applyLimits, log: req.log });
+    // Cortar acesso nunca vem do botão: só com LEVERADS_ACCESS_CUT=1 no ambiente.
+    const allowCut = process.env.LEVERADS_ACCESS_CUT === "1";
+    lastReport = await runLeveradsAccessSync(repo, { client: cli, apply, applyLimits, allowCut, log: req.log });
     return lastReport;
   };
   app.post("/api/leverads-access/run", run);
