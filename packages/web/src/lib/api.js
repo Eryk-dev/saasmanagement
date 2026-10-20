@@ -370,6 +370,17 @@ export const api = {
   onboarding: (id) => req("GET", `/api/customers/onboardings/${id}`),
   updateOnboarding: (id, patch) => req("PATCH", `/api/customers/onboardings/${id}`, patch),
   openOnboardings: () => req("GET", "/api/customers/onboardings?open=1"),
+  // Reunião com Meet próprio num registro do cliente (host = "onboardings" | "followups").
+  customerRecordMeetings: (customerId) => req("GET", `/api/customers/${customerId}/record-meetings`),
+  scheduleRecordMeeting: (host, id, body) => req("POST", `/api/customers/${host}/${id}/meetings`, body),
+  rescheduleRecordMeeting: (host, id, mid, at) => req("PATCH", `/api/customers/${host}/${id}/meetings/${mid}`, { at }),
+  cancelRecordMeeting: (host, id, mid) => req("DELETE", `/api/customers/${host}/${id}/meetings/${mid}`),
+  summarizeRecordMeeting: (host, id, mid, force = false) => req("POST", `/api/customers/${host}/${id}/meetings/${mid}/summary`, { force }),
+  // Acompanhamento de CS (check-in, QBR, renovação, risco).
+  customerFollowups: (customerId) => req("GET", `/api/customers/${customerId}/followups`),
+  createFollowup: (customerId, body) => req("POST", `/api/customers/${customerId}/followups`, body),
+  updateFollowup: (id, patch) => req("PATCH", `/api/customers/followups/${id}`, patch),
+  openFollowups: () => req("GET", "/api/customers/followups?open=1"),
   // Briefing de passagem pro integrador (lê a transcrição da call de VENDA).
   integrationBrief: (leadId, force = false) => req("POST", `/api/leads/${leadId}/integration-brief`, { force }),
   // Insight de pitch: analisa os resumos das calls do produto e sugere uma

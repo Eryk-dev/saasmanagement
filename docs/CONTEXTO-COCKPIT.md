@@ -1424,8 +1424,29 @@ vem antes da Integração), e a integração é do cliente.
     integração (`managed: true`).
 - **Venda desfeita:** `revertWonLead` cancela a integração que nasceu dela e
   ainda não começou.
-- **Ainda no lead:** a reunião da implantação inicial (Meet, resumo, agenda
-  pessoal) continua no lead; reunião própria da integração é a 1B-b.
+- **Reunião com Meet próprio (1B-b),** em `calls/record-meetings.js`: a
+  integração e o acompanhamento de CS (`cs_followups`) guardam `meetings[]`.
+  - **Rotas:** `POST|PATCH|DELETE /api/customers/{onboardings|followups}/:id/meetings[/:mid]`,
+    `.../summary` e `GET /api/customers/:id/record-meetings`.
+  - **Comportamento:**
+    - a sala nasce na conta @leverads do responsável, ou na do time onde
+      `teamMayOrganize`;
+    - o convite vai para os contatos do cliente;
+    - remarcar move o evento e cancelar apaga;
+    - há conflito com outra reunião do mesmo responsável, com o card do lead e
+      com a agenda do Google.
+  - **Resumo:** o job `recordMeetingSummaries` resume pela IA de integração,
+    grava `meeting.summarized` na timeline e leva as pendências para o
+    checklist.
+  - **Reunião da ficha:** `POST /api/customers/:id/meeting` agora cai na
+    integração aberta mais recente ou num check-in novo (`meetingHostFor`). Não
+    mexe mais no lead nem exige `leadId`; data e responsável são validados antes
+    de criar qualquer registro.
+  - **Ainda no lead:** a reunião da implantação marcada no card
+    (`integrationAt`, `/api/leads/:id/integration-meeting`).
+  - **Utilitários de horário:** `google/meet-time.js` (`callMoment`,
+    `wallClockBrt`, `teamMayOrganize`), extraídos de `routes.google.js`.
+  - **Teste:** `customer-meeting.test.js`.
 - **Teste:** `crm-onboardings.test.js`.
 
 **Cards por tipo de registro (20/10/2026).** Fase 1B do plano do Lever CRM,

@@ -13,41 +13,13 @@ import { makeIntegrationBriefer } from "../calls/integration-brief.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "../platform/http-status.js";
 import { integrationSlotConflict, integrationConflictMessage, integrationEventIds } from "../crm/integration-slot.js";
 import { makeBookingSync } from "./booking-sync.js";
+import { TZ, callMoment, teamMayOrganize, wallClockBrt } from "./meet-time.js";
+import { checkMeetingInput, makeRecordMeetings } from "../calls/record-meetings.js";
+import { meetingHostFor } from "../customers/cs-followups.js";
 
-const TZ = "America/Sao_Paulo";
+// Reexportado: quem já importava daqui segue funcionando.
+export { callMoment, wallClockBrt };
 
-// Horário de call/integração → INSTANTE (Date), aceitando os dois formatos que
-// existem na base: "YYYY-MM-DDTHH:MM[:SS]" (naive, do input datetime-local, que
-// significa hora de Brasília) e ISO com fuso ("…Z" ou "…±HH:MM", de lead que
-// entrou por integração). Devolve null pra vazio ou lixo — quem chama decide o
-// fallback, em vez de estourar RangeError lá na frente.
-export function callMoment(whenRaw) {
-  const raw = String(whenRaw || "").trim();
-  if (!raw) return null;
-  const hasZone = /([Zz]|[+-]\d{2}:?\d{2})$/.test(raw);
-  const d = new Date(hasZone ? raw : `${raw}${raw.length === 16 ? ":00" : ""}-03:00`);
-  return Number.isFinite(d.getTime()) ? d : null;
-}
-
-// Hora de PAREDE em São Paulo ("YYYY-MM-DDTHH:MM:SS"), pro Calendar receber o
-// horário cru + timeZone. Sai do fuso de verdade, não do fuso do servidor: com
-// getHours() o mesmo instante virava horário diferente em máquina UTC.
-export function wallClockBrt(date) {
-  const p = new Intl.DateTimeFormat("sv-SE", {
-    timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
-  }).format(date);
-  return p.replace(" ", "T");
-}
-
-// A conta do TIME (contato@uniquebox) só organiza sala da UniqueKids — é o
-// Workspace dela. Nos demais produtos a operação vive nos @leverads (decisão
-// do Leo, 01/09/2026): sala organizada pela uniquebox com closer @leverads
-// dentro conta como convidado externo e o Google NÃO grava nem transcreve.
-// Sem a conta pessoal do responsável pronta, é melhor call sem sala do que
-// sala que não grava — o erro/aviso aponta o conserto.
-const TEAM_ORGANIZER_SAAS = new Set(["uniquekids"]);
-const teamMayOrganize = (saas) => TEAM_ORGANIZER_SAAS.has(String(saas || ""));
 
 export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic } = {}) {
   const client = google || makeGoogle({
@@ -64,6 +36,7 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
   });
   const summarizer = anthropic ? makeCallSummarizer({ repo, google: client, googleUser: gu, anthropic, log: app.log }) : null;
   const briefer = anthropic ? makeIntegrationBriefer({ repo, google: client, googleUser: gu, anthropic, log: app.log }) : null;
+  const recordMeetings = makeRecordMeetings({ repo, google: client, googleUser: gu, anthropic, log: app.log });
 
   // Anti-CSRF do callback (rota aberta): só aceita state emitido por aqui, com
   // validade curta. O valor guarda { exp, userId }: userId preenchido = conexão
@@ -477,23 +450,24 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
   }
   const meetingError = (reply, r) => reply.code(r.code).send(r.reason ? { error: r.error, reason: r.reason, previous: r.previous } : { error: r.error });
 
+  // Reunião com o cliente marcada pela ficha (Lever CRM, Fase 1B-b): mora na
+  // integração aberta mais recente ou, sem ela, num check-in de CS novo, com
+  // Meet próprio (calls/record-meetings.js). Não sobrescreve mais o horário de
+  // integração do lead da venda nem exige lead vinculado.
   app.post("/api/customers/:id/meeting", async (req, reply) => {
     const customer = await repo.get("customers", req.params.id);
     if (!customer) return reply.code(404).send({ error: "Not found" });
-    const lead = customer.leadId ? await repo.get("leads", customer.leadId) : null;
-    if (!lead) return reply.code(422).send({ error: "esse cliente não tem lead vinculado: a reunião e o resumo moram no lead" });
-    const r = await scheduleIntegrationMeeting(lead, req.body, { integrationMeetLabel: "Reunião" });
-    if (!r.ok) return meetingError(reply, r);
-    const { when, at, fresh, meetError, room } = r;
-    await logActivity(repo, {
-      saas: lead.saas || "", lead: lead.id, type: "system", author: req.authUser?.id || "cockpit",
-      text: `Reunião com o cliente marcada para ${at.toLocaleString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`,
-      meta: { event: "customer_meeting", customerId: customer.id, at: when, callUrl: fresh.integrationCallUrl || "" },
-    });
-    return {
-      ok: true, at: when, callUrl: fresh.integrationCallUrl || "", meetError,
-      released: room.released, previous: room.previous || null,
-    };
+    const by = req.authUser?.id || "cockpit";
+    try {
+      const body = { at: req.body?.at, responsible: req.body?.responsible, label: "Reunião" };
+      await checkMeetingInput(repo, body);
+      const host = await meetingHostFor(repo, customer, { by });
+      const { meeting, meetError } = await recordMeetings.schedule(host.collection, host.id, body, { by });
+      return { ok: true, at: meeting.at, callUrl: meeting.meetUrl || "", meetError, host, meeting };
+    } catch (err) {
+      if (err.statusCode) return reply.code(err.statusCode).send({ error: err.message, ...(err.reason ? { reason: err.reason } : {}) });
+      throw err;
+    }
   });
 
   // Remarcar da atividade de Integração (Minhas atividades): mesma régua da

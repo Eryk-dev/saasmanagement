@@ -4,6 +4,8 @@
 import { registerPitchRoutes } from "./routes.pitch.js";
 import { registerConsultationRoutes } from "./routes.consultations.js";
 import { registerCopilotRoutes } from "./copilot.js";
+import { registerRecordMeetingRoutes } from "./routes.record-meetings.js";
+import { startRecordMeetingSummaries } from "./record-meetings.js";
 import { startCallSummaries } from "./call-summaries.js";
 import { startIntegrationBriefs } from "./integration-brief.js";
 import { startConsultationSummaries } from "./consultations.js";
@@ -18,6 +20,9 @@ export function register(app, repo, ctx) {
   // browser) + cues da IA sobre o roteiro. Rotas sob /api/leads → guard do
   // pipeline já cobre.
   registerCopilotRoutes(app, repo, { transcriber: ctx.opts.transcriber, anthropic: ctx.anthropic });
+  // Reunião com Meet próprio na integração e no acompanhamento do cliente
+  // (Lever CRM, Fases 1B-b e 3), sem passar pelo lead.
+  registerRecordMeetingRoutes(app, repo, { google: ctx.google, googleUser: ctx.googleUser, anthropic: ctx.anthropic });
 }
 
 export function start(repo, { clients, log, jobOn }) {
@@ -28,4 +33,6 @@ export function start(repo, { clients, log, jobOn }) {
   if (jobOn("integrationBriefs")) startIntegrationBriefs(repo, { ...clients, log });
   // Resumo automático das consultas 1:1 (UniqueKids): mesmo circuito, poller próprio.
   if (jobOn("consultationSummaries")) startConsultationSummaries(repo, { ...clients, log });
+  // Resumo das reuniões dos registros do cliente (integração, acompanhamento).
+  if (jobOn("recordMeetingSummaries")) startRecordMeetingSummaries(repo, { ...clients, log });
 }

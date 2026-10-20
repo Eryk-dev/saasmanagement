@@ -45,7 +45,7 @@ function googleFake({ transcript = null } = {}) {
 
 const anthropicFake = () => ({
   configured: () => true,
-  summarizeIntegration: async () => ({ summary: { sentimento: "satisfeito", resumo: "Reunião anterior.", configurado: [], pendencias: [], proximosPassos: [] } }),
+  summarizeIntegration: async () => ({ summary: { sentimento: "satisfeito", resumo: "Reunião anterior.", configurado: [], pendencias: [{ item: "Enviar acesso ao ML", responsavel: "cliente" }], proximosPassos: [] } }),
 });
 
 async function setup({ lead = {}, transcript = null, customer = {} } = {}) {
@@ -69,109 +69,78 @@ const pastRoom = (summarized) => ({
   ...(summarized ? { integrationSummaryFor: "ev_old" } : {}),
 });
 
-test("reunião anterior já resumida: a nova nasce com sala própria e entra no histórico", async () => {
+test("reunião da ficha sem integração aberta: vira check-in com Meet próprio e o lead não muda", async () => {
   const { repo, app, google } = await setup({ lead: pastRoom(true) });
   const at = brtIn(3);
   const r = await app.inject({ method: "POST", url: "/api/customers/c1/meeting", payload: { at, responsible: "eryk" } });
   assert.equal(r.statusCode, 200, r.body);
   const body = r.json();
-  assert.equal(body.released, true);
+  assert.equal(body.host.collection, "cs_followups");
   assert.equal(body.callUrl, "https://meet.google.com/new-room-c1");
-
-  const lead = await repo.get("leads", "l1");
-  assert.equal(lead.integrationAt, at);
-  assert.equal(lead.integrator, "eryk");
-  assert.equal(lead.integrationMeetEventId, "ev_new1", "evento novo, que o dedup do resumo ainda não viu");
-  assert.notEqual(lead.integrationSummaryFor, lead.integrationMeetEventId);
   assert.equal(google.created.length, 1);
-  assert.ok(google.created[0].summary.startsWith("Reunião UniqueKids"));
-  assert.equal(google.patched.length, 0, "a sala velha não é movida");
-  assert.equal(google.deleted.length, 0, "o evento da reunião que já aconteceu fica na agenda");
-
-  const acts = (await repo.list("activities")).filter((a) => a.lead === "l1" && a.meta?.event === "customer_meeting");
-  assert.equal(acts.length, 1);
-  assert.equal(acts[0].meta.customerId, "c1");
+  assert.deepEqual(google.created[0].attendees, ["danilo@example.com"], "o contato do lead que gerou o cliente vai no convite");
+  const f = await repo.get("cs_followups", body.host.id);
+  assert.equal(f.kind, "check_in");
+  assert.equal(f.meetings.length, 1);
+  assert.equal(f.meetings[0].eventId, "ev_new1");
+  const lead = await repo.get("leads", "l1");
+  assert.equal(lead.integrationMeetEventId, "ev_old", "o lead da venda não é tocado");
+  assert.equal(lead.integrationMeetLabel, undefined);
+  assert.ok((await repo.list("timeline_events")).some((t) => t.kind === "meeting.scheduled" && t.customer === "c1"));
   await app.close();
 });
 
-test("reunião anterior sem transcrição: pede confirmação e só solta a sala com force", async () => {
-  const { repo, app, google } = await setup({ lead: pastRoom(false), transcript: null });
-  const at = brtIn(3);
-  const blocked = await app.inject({ method: "POST", url: "/api/customers/c1/meeting", payload: { at } });
-  assert.equal(blocked.statusCode, 409);
-  assert.equal(blocked.json().reason, "previous_without_summary");
-  assert.equal((await repo.get("leads", "l1")).integrationMeetEventId, "ev_old", "nada mudou sem a confirmação");
-  assert.equal(google.created.length, 0);
-
-  const forced = await app.inject({ method: "POST", url: "/api/customers/c1/meeting", payload: { at, force: true } });
-  assert.equal(forced.statusCode, 200, forced.body);
-  assert.equal((await repo.get("leads", "l1")).integrationMeetEventId, "ev_new1");
-  await app.close();
-});
-
-test("reunião anterior com transcrição pronta: resume antes de soltar a sala", async () => {
-  const transcript = { text: "Cliente: tudo certo.", startTime: new Date(Date.now() - 2 * 86_400_000).toISOString(), endTime: new Date(Date.now() - 2 * 86_400_000 + 3_600_000).toISOString() };
-  const { repo, app } = await setup({ lead: pastRoom(false), transcript });
-  const r = await app.inject({ method: "POST", url: "/api/customers/c1/meeting", payload: { at: brtIn(3) } });
+test("com integração aberta, a reunião da ficha entra nela", async () => {
+  const { repo, app } = await setup();
+  await repo.create("onboardings", { id: "ob1", customer: "c1", stage: "configuracao", integrator: "eryk", createdAt: "2026-10-01T00:00:00Z", items: [] });
+  const r = await app.inject({ method: "POST", url: "/api/customers/c1/meeting", payload: { at: brtIn(2) } });
   assert.equal(r.statusCode, 200, r.body);
-  assert.equal(r.json().previous?.ok, true);
-  const summaries = (await repo.list("activities")).filter((a) => a.lead === "l1" && a.meta?.event === "call_summary");
-  assert.equal(summaries.length, 1);
-  assert.equal(summaries[0].meta.kind, "integracao");
-  assert.equal(summaries[0].meta.meetEventId, "ev_old", "o resumo é da reunião anterior");
-  assert.equal((await repo.get("leads", "l1")).integrationMeetEventId, "ev_new1");
+  assert.deepEqual(r.json().host, { collection: "onboardings", id: "ob1" });
+  const o = await repo.get("onboardings", "ob1");
+  assert.equal(o.meetings[0].responsible, "eryk", "o integrador da integração responde pela reunião");
   await app.close();
 });
 
-test("reunião ainda por acontecer: remarca a mesma sala (move o evento)", async () => {
-  const future = brtIn(1);
-  const { repo, app, google } = await setup({ lead: {
-    integrationAt: future, integrationCallUrl: "https://meet.google.com/old-room-aa", integrationMeetEventId: "ev_old",
-    integrationScheduledAt: new Date(Date.now() + 86_400_000).toISOString(),
-  } });
-  const r = await app.inject({ method: "POST", url: "/api/customers/c1/meeting", payload: { at: brtIn(4) } });
-  assert.equal(r.statusCode, 200, r.body);
-  assert.equal(r.json().released, false);
-  assert.equal(google.created.length, 0);
-  assert.equal(google.patched.length, 1);
-  assert.equal(google.patched[0].id, "ev_old");
-  assert.equal((await repo.get("leads", "l1")).integrationMeetEventId, "ev_old");
+test("cliente sem lead marca reunião; valida data no passado, responsável e cliente inexistentes", async () => {
+  const { repo, app } = await setup({ customer: { leadId: "" } });
+  const ok = await app.inject({ method: "POST", url: "/api/customers/c1/meeting", payload: { at: brtIn(2) } });
+  assert.equal(ok.statusCode, 200, ok.body);
+  assert.equal((await app.inject({ method: "POST", url: "/api/customers/c1/meeting", payload: { at: brtIn(-1) } })).statusCode, 422);
+  assert.equal((await app.inject({ method: "POST", url: "/api/customers/c1/meeting", payload: { at: brtIn(2), responsible: "ninguem" } })).statusCode, 422);
+  assert.equal((await app.inject({ method: "POST", url: "/api/customers/zz/meeting", payload: { at: brtIn(2) } })).statusCode, 404);
+  assert.equal((await repo.list("cs_followups")).length, 1, "só a reunião válida criou acompanhamento");
   await app.close();
 });
 
-test("valida cliente sem lead, data no passado e responsável inexistente", async () => {
-  const { app, repo } = await setup();
-  await repo.create("customers", { id: "c2", saas: "uniquekids", name: "Sem lead" });
-  const semLead = await app.inject({ method: "POST", url: "/api/customers/c2/meeting", payload: { at: brtIn(2) } });
-  assert.equal(semLead.statusCode, 422);
-  const passado = await app.inject({ method: "POST", url: "/api/customers/c1/meeting", payload: { at: brtIn(-1) } });
-  assert.equal(passado.statusCode, 422);
-  const vazio = await app.inject({ method: "POST", url: "/api/customers/c1/meeting", payload: {} });
-  assert.equal(vazio.statusCode, 422);
-  const ninguem = await app.inject({ method: "POST", url: "/api/customers/c1/meeting", payload: { at: brtIn(2), responsible: "fantasma" } });
-  assert.equal(ninguem.statusCode, 422);
-  const naoExiste = await app.inject({ method: "POST", url: "/api/customers/zz/meeting", payload: { at: brtIn(2) } });
-  assert.equal(naoExiste.statusCode, 404);
+test("reunião do registro: remarcar move o evento, conflito do mesmo responsável recusa, cancelar apaga", async () => {
+  const { repo, app, google } = await setup();
+  await repo.create("onboardings", { id: "ob1", customer: "c1", stage: "kickoff", integrator: "eryk", createdAt: "2026-10-01T00:00:00Z", items: [] });
+  const at = brtIn(2);
+  const first = (await app.inject({ method: "POST", url: "/api/customers/onboardings/ob1/meetings", payload: { at } })).json();
+  const mid = first.meeting.id;
+  const clash = await app.inject({ method: "POST", url: "/api/customers/onboardings/ob1/meetings", payload: { at } });
+  assert.equal(clash.statusCode, 409);
+  const moved = await app.inject({ method: "PATCH", url: `/api/customers/onboardings/ob1/meetings/${mid}`, payload: { at: brtIn(4) } });
+  assert.equal(moved.statusCode, 200, moved.body);
+  assert.equal(google.patched[0].id, "ev_new1");
+  const gone = await app.inject({ method: "DELETE", url: `/api/customers/onboardings/ob1/meetings/${mid}` });
+  assert.equal(gone.json().status, "canceled");
+  assert.deepEqual(google.deleted, ["ev_new1"]);
   await app.close();
 });
 
-test("gerar resumo pela ficha do cliente resume a última reunião do lead dele", async () => {
-  const transcript = { text: "Cliente: tudo certo.", startTime: new Date(Date.now() - 86_400_000).toISOString(), endTime: new Date(Date.now() - 86_400_000 + 3_600_000).toISOString() };
-  const { repo, app } = await setup({ lead: pastRoom(false), transcript });
-  const r = await app.inject({ method: "POST", url: "/api/customers/c1/meeting-summary", payload: {} });
+test("resumo da reunião do registro vai pra timeline e a pendência do cliente entra no checklist", async () => {
+  const { repo, app } = await setup({ transcript: { text: "conversa", endTime: new Date().toISOString() } });
+  await repo.create("onboardings", { id: "ob1", customer: "c1", stage: "kickoff", integrator: "eryk", createdAt: "2026-10-01T00:00:00Z", items: [] });
+  await repo.update("onboardings", "ob1", { meetings: [{ id: "mt1", at: new Date(Date.now() - 2 * 3600_000).toISOString(), status: "scheduled", meetUrl: "https://meet.google.com/abc-defg-hij", eventId: "ev1", organizer: "", responsible: "eryk" }] });
+  const r = await app.inject({ method: "POST", url: "/api/customers/onboardings/ob1/meetings/mt1/summary", payload: {} });
   assert.equal(r.statusCode, 200, r.body);
   assert.equal(r.json().ok, true);
-  assert.equal((await repo.get("leads", "l1")).integrationSummaryFor, "ev_old");
-  const again = await app.inject({ method: "POST", url: "/api/customers/c1/meeting-summary", payload: {} });
-  assert.equal(again.json().reason, "already_done");
-  await repo.create("customers", { id: "c2", saas: "uniquekids", name: "Sem lead" });
-  assert.equal((await app.inject({ method: "POST", url: "/api/customers/c2/meeting-summary", payload: {} })).statusCode, 422);
+  assert.ok((await repo.list("timeline_events")).some((t) => t.kind === "meeting.summarized" && t.customer === "c1"));
+  assert.ok((await repo.get("onboardings", "ob1")).meetings[0].summaryAt);
   await app.close();
 });
 
-// Remarcar da atividade de Integração (Minhas atividades, 06/10/2026): a mesma
-// régua, pelo lead. A integração que já aconteceu ganha sala nova e o card não
-// sai da etapa.
 test("remarcar a integração pelo lead: sala nova, confirmação zerada e o card fica na etapa", async () => {
   const { repo, app, google } = await setup({ lead: { ...pastRoom(true), stage: "Integração", integrator: "eryk", integrationConfirmed: true } });
   const at = brtIn(2);

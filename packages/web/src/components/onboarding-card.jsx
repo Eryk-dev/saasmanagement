@@ -12,6 +12,7 @@ import { SelectPopover } from "./select-popover.jsx";
 import { DateTimeField } from "./datetime-field.jsx";
 import { Checkbox } from "./form-controls.jsx";
 import { RecordTimeline } from "./record-timeline.jsx";
+import { RecordMeetings } from "./record-meetings.jsx";
 import { allUsers, displayName } from "../lib/users.js";
 import { openCustomer, openLeadById } from "../lib/open-record.js";
 import { toast } from "../atoms.jsx";
@@ -68,6 +69,13 @@ export function OnboardingDrawer({ id, onClose }) {
   }, [id]);
 
   const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
+  // Reunião marcada/cancelada/resumida grava direto no servidor: só as
+  // reuniões são relidas, sem descartar o que está sendo editado no rascunho.
+  async function reloadMeetings() {
+    const fresh = await api.onboarding(id);
+    setO((p) => ({ ...p, meetings: fresh.meetings }));
+    setDraft((d) => ({ ...d, meetings: fresh.meetings }));
+  }
   const dirty = o && draft && JSON.stringify(o) !== JSON.stringify(draft);
   const items = draft?.items || [];
   const pending = items.filter((i) => !i.doneAt).length;
@@ -133,6 +141,7 @@ export function OnboardingDrawer({ id, onClose }) {
             {draft.goLiveAt && <div className="customer-peek-fact"><span>Go-live real</span><strong>{new Date(draft.goLiveAt).toLocaleDateString("pt-BR")}</strong></div>}
             {draft.lead && <div className="customer-peek-fact"><span>Negócio de origem</span><strong><button type="button" className="customer-peek-link" onClick={() => { onClose(); openLeadById(draft.lead); }}>abrir negócio →</button></strong></div>}
           </section>
+          <RecordMeetings host="onboardings" record={draft} onChanged={reloadMeetings} />
           <section>
             <div className="customer-peek-kicker"><span>checklist</span><b>{items.length - pending} de {items.length}</b></div>
             <div className="customer-peek-checks">
