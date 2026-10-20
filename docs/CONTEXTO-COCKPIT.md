@@ -1449,6 +1449,40 @@ vem antes da Integração), e a integração é do cliente.
   - **Teste:** `customer-meeting.test.js`.
 - **Teste:** `crm-onboardings.test.js`.
 
+**Pós-venda: health, receita e alertas (20/10/2026).** Fase 3 do plano do
+Lever CRM.
+
+- **Health score** (`customers/health.js`, job `crmHealth` a cada 6 h,
+  `POST /api/customers/health/run`): soma de quatro partes, com valor neutro
+  quando falta o dado:
+  - pagamento, 40 (pelo `financialStatus`);
+  - NPS, 20 (última nota);
+  - suporte, 20 (tickets abertos, prioridade);
+  - resultado, 20 (pedidos dos anúncios em 30 dias pelo `orgSnapshot`).
+
+  Grava `health`, `healthParts` e `healthAt`. A troca de faixa (< 50, < 70)
+  vai para a timeline, e a queda avisa o dono da conta (`health_drop`).
+- **Receita** (`customers/revenue.js`, `GET /api/customers/revenue?from&to&saas`):
+  movimentos de MRR do `plan_changes` (novo, expansão, contração, churn,
+  líquido), renovações em 7/15/30/60 dias e aging das faturas vencidas
+  (1-30, 31-60, 61-90, 90+). O card `RecurringRevenueCard` fica na análise de
+  Clientes.
+- **Alertas** (`customers/crm-alerts.js`, job `crmAlerts` de hora em hora,
+  `POST /api/customers/alerts/run`): cada aviso tem chave própria (índice
+  `notifications_key_idx`) e vai para o dono do registro.
+  - Renovação a 30/15/7 dias; aos 30, abre um acompanhamento `renovacao`.
+  - Pagamento recusado no MP nas últimas 24 h.
+  - Ganho há 7+ dias sem fatura paga.
+  - Go-live previsto vencido.
+  - Proposta não aceita vencendo em 24 h (`state.validUntil` dd/mm/aaaa).
+  - Lead novo com o 1º contato vencido.
+  - Follow-up sem próximo contato, só para quem entrou na etapa nos últimos
+    30 dias.
+
+  A notificação com `link.customer`, `link.onboarding` ou `link.lead` abre o
+  card certo.
+- **Teste:** `crm-portfolio.test.js`.
+
 **Cards por tipo de registro (20/10/2026).** Fase 1B do plano do Lever CRM,
 na web. **Regra:** Negócio, Cliente e Integração têm um card cada, o mesmo de
 onde quer que se abram, com links entre eles.

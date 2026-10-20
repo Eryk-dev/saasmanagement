@@ -6,6 +6,7 @@ import { displayName, canSeeScreen } from "../lib/users.js";
 import { setActiveSaas, getActiveSaasId } from "../lib/workspace.js";
 import { taskHash } from "../lib/tasks.js";
 import { BookingLinkModal } from "./booking-link.jsx";
+import { openCustomer, openLeadById, openOnboarding } from "../lib/open-record.js";
 
 // Sino da topbar: caixa de entrada das tarefas (atribuído, mencionado,
 // comentário, prazo). Badge de não lidas; abas Todas / Menções / Atribuídas;
@@ -27,7 +28,10 @@ const TABS = [["all", "Todas"], ["mention", "Menções"], ["assigned", "Atribuí
 // Suporte (14/09) entra nas mesmas abas: menção em nota e ticket atribuído.
 const inTab = (n, tab) => tab === "all" || (tab === "mention" ? (n.type === "mention" || n.type === "ticket_mention") : (n.type === "assigned" || n.type === "ticket_assigned"));
 const DOT = { wa_waiting: "var(--neg)", ticket_sla_breach: "var(--neg)", ticket_sla_warning: "var(--warn)" };
-const ACTION = { wa_waiting: "Responder", mention: "Responder", assigned: "Abrir tarefa", ticket_reply: "Ver resposta", ticket_mention: "Responder", ticket_sla_breach: "Atender agora", ticket_sla_warning: "Atender", ticket_assigned: "Abrir ticket", ticket_new: "Abrir ticket" };
+const ACTION = { wa_waiting: "Responder", mention: "Responder", assigned: "Abrir tarefa", ticket_reply: "Ver resposta", ticket_mention: "Responder", ticket_sla_breach: "Atender agora", ticket_sla_warning: "Atender", ticket_assigned: "Abrir ticket", ticket_new: "Abrir ticket",
+  // Alertas do Lever CRM (customers/crm-alerts.js e health.js).
+  renewal_due: "Abrir cliente", payment_failed: "Abrir cliente", first_payment_missing: "Abrir cliente", health_drop: "Abrir cliente",
+  golive_late: "Abrir integração", offer_expiring: "Abrir negócio", lead_first_touch_late: "Abrir lead", followup_without_next: "Abrir lead" };
 
 export function NotificationsBell() {
   const [open, setOpen] = useState(false);
@@ -80,6 +84,10 @@ export function NotificationsBell() {
     if (n.link?.screen) {
       if (!canSeeScreen(n.link.screen)) { toast("Você não tem acesso a essa tela", "warn"); return; }
       if (n.saas && n.saas !== getActiveSaasId()) setActiveSaas(n.saas);
+      // Aviso do CRM aponta um registro: abre o card dele (lib/open-record.js).
+      if (n.link.onboarding) { openOnboarding(n.link.onboarding); return; }
+      if (n.link.customer) { openCustomer(n.link.customer); return; }
+      if (n.link.lead && !n.link.thread) { openLeadById(n.link.lead); return; }
       location.hash = n.link.thread ? `${n.link.screen}/${n.link.thread}` : n.link.screen;
       return;
     }

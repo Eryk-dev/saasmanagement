@@ -10,6 +10,9 @@ import { registerLeveradsOrgRoutes } from "./routes.leverads-orgs.js";
 import { registerLifecycleRoutes } from "./routes.lifecycle.js";
 import { registerOnboardingRoutes } from "./routes.onboardings.js";
 import { registerFollowupRoutes } from "./routes.cs-followups.js";
+import { registerRevenueRoutes } from "./routes.revenue.js";
+import { startHealthSweep } from "./health.js";
+import { startCrmAlerts } from "./crm-alerts.js";
 import { startLifecycleSweep } from "./lifecycle.js";
 import { makeLeveradsOrgMirror, startLeveradsOrgMirror } from "./leverads-orgs.js";
 import { makeIdentityAdmin } from "../auth/identity-admin.js";
@@ -47,6 +50,8 @@ export function register(app, repo, ctx) {
   registerOnboardingRoutes(app, repo);
   // Acompanhamento de CS (check-in, QBR, renovação, risco), Fase 3.
   registerFollowupRoutes(app, repo);
+  // Receita da carteira (MRR, renovações, aging), health e alertas, Fase 3.
+  registerRevenueRoutes(app, repo);
 }
 
 export function start(repo, { clients, log, stops, jobOn }) {
@@ -69,6 +74,12 @@ export function start(repo, { clients, log, stops, jobOn }) {
   // Estágio de vida e status financeiro de todo cliente + workspaces, a
   // cada 15 min (cada mudança vira item datado da timeline).
   if (jobOn("crmLifecycle")) stops.push(startLifecycleSweep(repo, { log }));
+  // Health score de todo cliente ativo (pagamento, NPS, suporte, resultado), a
+  // cada 6 h; a queda de faixa avisa o dono da conta.
+  if (jobOn("crmHealth")) stops.push(startHealthSweep(repo, { log }));
+  // Alertas do CRM (renovação, pagamento recusado, 1º pagamento, go-live,
+  // oferta vencendo, 1º contato e follow-up sem próximo passo), de hora em hora.
+  if (jobOn("crmAlerts")) stops.push(startCrmAlerts(repo, { log }));
   if (jobOn("leveradsOrgMirror")) stops.push(startLeveradsOrgMirror(orgMirror || makeLeveradsOrgMirror(repo, { log }), { log }));
   // Aquece os resultados das propostas (incluindo o resumo do deck C) e
   // renova a cada seis horas, mesmo sem uma nova abertura para disparar o cache.

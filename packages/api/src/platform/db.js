@@ -89,6 +89,10 @@ const INDEXES = [
   ["onboardings_customer_idx", "onboardings", `((json->>'customer'))`],
   ["onboardings_lead_idx", "onboardings", `((json->>'lead'))`],
   ["cs_followups_customer_idx", "cs_followups", `((json->>'customer'))`],
+  // Dedupe dos alertas do CRM: cada aviso confere a própria chave antes de criar.
+  ["notifications_key_idx", "notifications", `((json->>'key'))`],
+  ["subscriptions_status_idx", "subscriptions", `((json->>'status'))`],
+  ["mp_payments_status_idx", "mp_payments", `((json->>'status'))`],
   ["subscriptions_customer_idx", "subscriptions", `((json->>'customer'))`],
   ["invoices_customer_idx", "invoices", `((json->>'customer'))`],
   // proposals é a maior coleção do banco (47 MB de snapshots, acima do teto do

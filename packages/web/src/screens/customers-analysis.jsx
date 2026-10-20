@@ -5,6 +5,7 @@ import { usePeriod } from "../components/period-picker.jsx";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
+import { RecurringRevenueCard } from "../components/revenue-card.jsx";
 import { InfoNota } from "../components/story.jsx";
 import { CYCLE_LABEL } from "../lib/payments.js";
 
@@ -222,6 +223,9 @@ export function CustomersAnalysis({ customers, subs = [], invoices = [], isKids 
           </div>
         </div>
       </Card>
+
+      {/* Receita recorrente: movimentos de MRR, renovações e aging (Lever CRM). */}
+      {!isKids && <RecurringRevenueCard saas={product?.id || ""} />}
 
       {/* ── 1.2 Saúde da carteira ───────────────────────────────────────────── */}
       <Card>

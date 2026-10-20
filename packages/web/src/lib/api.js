@@ -381,6 +381,8 @@ export const api = {
   createFollowup: (customerId, body) => req("POST", `/api/customers/${customerId}/followups`, body),
   updateFollowup: (id, patch) => req("PATCH", `/api/customers/followups/${id}`, patch),
   openFollowups: () => req("GET", "/api/customers/followups?open=1"),
+  // Receita da carteira: movimentos de MRR, renovações 7/15/30/60 e aging.
+  customerRevenue: ({ from = "", to = "", saas = "" } = {}) => req("GET", `/api/customers/revenue?from=${from}&to=${to}&saas=${encodeURIComponent(saas)}`),
   // Briefing de passagem pro integrador (lê a transcrição da call de VENDA).
   integrationBrief: (leadId, force = false) => req("POST", `/api/leads/${leadId}/integration-brief`, { force }),
   // Insight de pitch: analisa os resumos das calls do produto e sugere uma
