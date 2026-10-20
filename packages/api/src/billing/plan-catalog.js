@@ -283,7 +283,13 @@ export const slimPlan = (p) => ({
   id: p.id, code: p.code, name: p.name, kind: p.kind, pricing: p.pricing, product: planProductOf(p), group: p.group,
   line: p.line, tier: p.tier, order: Number(p.order) || 0, status: p.status, prices: p.prices || {}, options: p.options || [],
   limits: p.limits || {}, features: p.features || {}, accessProduct: p.access?.product || "", priceVersion: Number(p.priceVersion) || 1,
+  requiresIntegration: requiresIntegration(p),
 });
+
+// O plano pede integração com o cliente depois da venda? Decide se o Ganho
+// sugere abrir a integração (Fase 1B) ou se o cliente vai direto para o CS.
+// Ausente = não exige: o admin marca na tela de Planos (PATCH do plano).
+export const requiresIntegration = (plan) => plan?.requiresIntegration === true;
 
 // ── Normalização e versão de preço (escrita pelo REST) ─────────────────────
 function normalizePrices(prices) {
@@ -356,6 +362,7 @@ export function newPlanDoc(body, opts) {
     status: body.status === "archived" ? "archived" : "active",
     prices: body.prices, options: body.options, limits: body.limits,
     features: body.features && typeof body.features === "object" ? body.features : {},
+    requiresIntegration: body.requiresIntegration === true,
     deliverables: body.deliverables && typeof body.deliverables === "object" ? body.deliverables : {},
     labels: body.labels && typeof body.labels === "object" ? body.labels : {},
     extra: {},
