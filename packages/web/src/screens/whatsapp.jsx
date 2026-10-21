@@ -19,7 +19,8 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { waLink, leadTier } from "../lib/ui.js";
 import { useIsMobile } from "../lib/responsive.js";
 import { clientSummary, ClientSummaryCard, AttributionCard } from "../components/lead-blocks.jsx";
-import { LeadGrade, LeadSection } from "../components/lead-card.jsx";
+import { LeadGrade, LeadSection, LeadPhoneCopy } from "../components/lead-card.jsx";
+import { SelectPopover } from "../components/select-popover.jsx";
 import { currentUser, usersByRole } from "../lib/users.js";
 import { scriptChecklist } from "../lib/scripts.js";
 import { moveGate, MoveLeadModal, applyGatedMove, moveErrorText } from "../components/stage-move.jsx";
@@ -1006,26 +1007,28 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
     <aside className="inbox-client inbox-panel lead-panel" style={{ "--lead-inset": "14px" }}>
       <div className="inbox-client-heading">
         <div className="inbox-client-title"><span className="inbox-kicker">O lead</span><button onClick={onOpenLead}>abrir ↗</button></div>
-        <h2>{lead.name || lead.company}</h2>
-        <p>{lead.company || prettyPhone(lead.phone)}</p>
+        {/* Telefone ao lado do nome, como na ficha do lead: um clique copia. */}
+        <div className="lead-panel-name-row"><h2>{lead.name || lead.company}</h2><LeadPhoneCopy phone={lead.phone} /></div>
+        {lead.name && lead.company ? <p>{lead.company}</p> : <div style={{ height: 10 }} />}
         <div className="inbox-client-badges">
           <LeadGrade tier={tier} size={20} />
           {/* Etapa EDITÁVEL: mover daqui vale como mover no pipeline (mesmos
               gates de ganho/perda/handoff; o servidor agenda o GPS e o resto). */}
-          <select value={lead.stage || ""} title="Mover o card de etapa (mesmo efeito do pipeline)"
-            onChange={(e) => {
-              const toStage = e.target.value;
-              if (!toStage || toStage === base.stage) return;
-              const gate = moveGate(saasCfg, base, toStage);
-              if (gate) { setPendingMove({ toStage, gate }); return; }
-              patch({ stage: toStage });
-              onResolved?.(base.id); // moveu o card daqui: sai da fila do inbox na hora
-            }}
-            style={{ maxWidth: 170, height: 24, padding: "0 6px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600 }}>
-            {!lead.stage && <option value="">sem etapa</option>}
-            {(saasCfg?.funnel || []).map((f) => <option key={f.stage} value={f.stage}>{f.stage}</option>)}
-            {lead.stage && !(saasCfg?.funnel || []).some((f) => f.stage === lead.stage) && <option value={lead.stage}>{lead.stage}</option>}
-          </select>
+          <span title="Mover o card de etapa (mesmo efeito do pipeline)" style={{ display: "inline-flex", maxWidth: 170, minWidth: 0 }}>
+            <SelectPopover label="Etapa" placeholder="sem etapa" size="sm" value={lead.stage || ""} width={200}
+              options={[
+                ...(saasCfg?.funnel || []).map((f) => ({ value: f.stage, label: f.stage })),
+                ...(lead.stage && !(saasCfg?.funnel || []).some((f) => f.stage === lead.stage) ? [{ value: lead.stage, label: lead.stage }] : []),
+              ]}
+              onChange={(toStage) => {
+                if (!toStage || toStage === base.stage) return;
+                const gate = moveGate(saasCfg, base, toStage);
+                if (gate) { setPendingMove({ toStage, gate }); return; }
+                patch({ stage: toStage });
+                onResolved?.(base.id); // moveu o card daqui: sai da fila do inbox na hora
+              }}
+              style={{ height: 24, padding: "0 8px", borderRadius: 999, background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600 }} />
+          </span>
           {lead.callAt && <span className="chip accent" title="call marcada">▦ {fmtDT(lead.callAt)}</span>}
           {/* Quem começou a conversa: lead que preencheu o form E disparou a
               mensagem é mais quente do que o que só recebeu nosso template. */}
@@ -1107,12 +1110,14 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
                     <span className="dim" style={{ fontSize: 10.5, lineHeight: 1.3, minWidth: 0 }}>{c.label}</span>
                   </div>
                   {c.type === "select" ? (
-                    <select value={c.raw || ""} onChange={(e) => patch({ [c.key]: e.target.value })}
-                      style={{ width: "100%", height: 26, padding: "0 6px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 11.5, fontWeight: 500 }}>
-                      <option value="">selecionar…</option>
-                      {c.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                      {c.raw && !c.options.some((o) => o.value === c.raw) && <option value={c.raw}>{c.raw}</option>}
-                    </select>
+                    <SelectPopover label={c.label} placeholder="selecionar…" size="sm" value={c.raw || ""}
+                      options={[
+                        ...(c.raw ? [{ value: "", label: "sem resposta" }] : []),
+                        ...c.options,
+                        ...(c.raw && !c.options.some((o) => o.value === c.raw) ? [{ value: c.raw, label: c.raw }] : []),
+                      ]}
+                      onChange={(v) => patch({ [c.key]: v })}
+                      style={{ height: 26, padding: "0 8px", borderRadius: 999, fontSize: 11.5, fontWeight: 500 }} />
                   ) : (
                     <input key={base.id + c.key} type="text" defaultValue={c.raw || ""} placeholder="preencher…"
                       onBlur={(e) => { if (e.target.value !== (c.raw || "")) patch({ [c.key]: e.target.value }); }}

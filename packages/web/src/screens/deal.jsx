@@ -1,13 +1,13 @@
 import React from "react";
-import { MoreMenu, toast } from "../atoms.jsx";
+import { MoreMenu } from "../atoms.jsx";
 import { Pill } from "../components/viz.jsx";
 import { Drawer, Modal } from "../components/overlay.jsx";
-import { LeadGrade, LeadSection, LeadDisclosure } from "../components/lead-card.jsx";
+import { LeadGrade, LeadSection, LeadDisclosure, LeadPhoneCopy } from "../components/lead-card.jsx";
 import { ActivityList, ActivityComposer, mergeTimeline } from "../components/timeline.jsx";
 import { RoutineSuggestion } from "../components/routine-suggestion.jsx";
 import { moveGate, MoveLeadModal, applyGatedMove, moveErrorText } from "../components/stage-move.jsx";
 import { clientSummary, leadBox, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks } from "../components/lead-blocks.jsx";
-import { waLink, leadTier, cockpitProposalUrl, phoneLabel } from "../lib/ui.js";
+import { waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
 import { meetingInviteText } from "../lib/wa-copy.js";
 import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind, isLossKind, phaseOf } from "../lib/funnel.js";
 import { SelectPopover } from "../components/select-popover.jsx";
@@ -210,41 +210,6 @@ function LeadStageMoves({ saasCfg, lead, isOpen, onMove, compact = false }) {
         </div>
       )}
     </div>
-  );
-}
-
-// Telefone do cliente no topo do card (09/10/2026), ao lado do nome e sem
-// borda (uma linha só pra ele ocupava espaço demais): abrir o card pela Agenda
-// pra ligar ou mandar mensagem obrigava a descer até "Editar" pra achar o
-// número. Um clique copia; o rótulo vira "copiado" por um instante e o aviso
-// confirma (ou diz que o navegador bloqueou, sem diálogo nativo).
-function LeadPhoneCopy({ phone }) {
-  const [copied, setCopied] = React.useState(false);
-  const t = React.useRef(0);
-  React.useEffect(() => () => clearTimeout(t.current), []);
-  const label = phoneLabel(phone);
-  if (!label) return null;
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(label);
-      setCopied(true); clearTimeout(t.current); t.current = setTimeout(() => setCopied(false), 1600);
-      toast("Telefone copiado", "pos", 2000);
-    } catch {
-      toast("O navegador não deixou copiar · selecione o número", "warn");
-    }
-  };
-  return (
-    <button type="button" className="lead-panel-phone" onClick={copy} data-copied={copied ? "true" : undefined}
-      title="Copiar telefone" aria-label={`Copiar telefone ${label}`}>
-      <span className="tnum">{label}</span>
-      <span className="lead-panel-phone-hint" aria-hidden="true">
-        {copied ? "copiado" : (
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" />
-          </svg>
-        )}
-      </span>
-    </button>
   );
 }
 
