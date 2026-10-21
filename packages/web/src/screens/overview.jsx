@@ -14,6 +14,8 @@ import { buildPeople, roleLabel, scaledGoal } from "../components/team-cards.jsx
 import { usePeriod, businessDaysBetween, periodWindow, PeriodPicker } from "../components/period-picker.jsx";
 import { isChurned } from "../lib/churn.js";
 import { dealProductLabel, closedPlanLabel } from "../lib/payments.js";
+import { leadTier } from "../lib/ui.js";
+import { LeadGrade } from "../components/lead-card.jsx";
 // CRM final: meta/funil e vendas na primeira linha; equipe/atenção e
 // carteira/aquisição na segunda. As réguas e fontes financeiras são mantidas.
 
@@ -883,9 +885,16 @@ function VendasCard({ leads, invoices, product, customers, onNav, onOpenLead, ex
   // no Financeiro); sem cliente convertido ainda, a empresa do lead e, por
   // último, o nome da pessoa.
   const nomeDoCadastro = (id) => String((customers || []).find((x) => x.id === id)?.name || "").trim();
+  // Classificação (A/B/C) do cliente no lugar da foto de quem vendeu: a foto
+  // parecia ser do cliente. O upsell não tem lead próprio, então a nota vem do
+  // lead que originou o cliente (customer.leadId ou lead.customerId).
+  const leadDoCliente = (id) => {
+    const leadId = (customers || []).find((x) => x.id === id)?.leadId;
+    return (leads || []).find((l) => (leadId && l.id === leadId) || (id && l.customerId === id)) || null;
+  };
   const todas = useMemo(() => {
     const doLead = (leads || []).filter((l) => isWonLead(product, l)).map((l) => ({
-      id: `l_${l.id}`, lead: l, at: wonAtOf(l), amount: l.amount, who: l.closer || l.owner || "",
+      id: `l_${l.id}`, lead: l, tier: leadTier(l), at: wonAtOf(l), amount: l.amount, who: l.closer || l.owner || "",
       cliente: nomeDoCadastro(l.customerId) || String(l.company || l.name || "").trim() || "cliente sem nome",
       // O produto do fechamento (dealItems/dealProduct, o que o gate de Ganho
       // grava); sem ele, a oferta que estava na mesa. Ler só a proposta
@@ -896,7 +905,7 @@ function VendasCard({ leads, invoices, product, customers, onNav, onOpenLead, ex
       upsell: false,
     }));
     const doUpsell = (invoices || []).filter((i) => i.kind === "upsell").map((i) => ({
-      id: `i_${i.id}`, at: upsellSoldAtOf(i), amount: i.amount, who: i.soldBy || "",
+      id: `i_${i.id}`, tier: leadTier(leadDoCliente(i.customer)), at: upsellSoldAtOf(i), amount: i.amount, who: i.soldBy || "",
       cliente: nomeDoCadastro(i.customer) || "cliente sem nome",
       produto: String(i.title || "").trim() || dealProductLabel(i.product, i.saas),
       upsell: true,
@@ -956,7 +965,7 @@ function VendasCard({ leads, invoices, product, customers, onNav, onOpenLead, ex
         {naTela.map((v, i) => (
             <button key={v.id} onClick={() => abrir(v)} className="vg-sale">
               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                {v.who && <Avatar id={v.who} name={displayName(v.who)} size={26} />}
+                <LeadGrade tier={v.tier} size={26} placeholder />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                     <span style={{ fontSize: 12.5, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{v.cliente}</span>
