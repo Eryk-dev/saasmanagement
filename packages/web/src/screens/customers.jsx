@@ -177,6 +177,15 @@ function CustomersScreen({ initialTab }) {
     try { id = sessionStorage.getItem("cockpit_customers_open"); sessionStorage.removeItem("cockpit_customers_open"); } catch { /* ignore */ }
     if (id) { setTab("base"); setSel(id); }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Com a tela já aberta (busca ⌘K), o pedido chega por evento.
+  useEffect(() => {
+    const open = (e) => {
+      try { sessionStorage.removeItem("cockpit_customers_open"); } catch { /* ignore */ }
+      if (e.detail) { setTab("base"); setSel(e.detail); }
+    };
+    window.addEventListener("cockpit:open-customer", open);
+    return () => window.removeEventListener("cockpit:open-customer", open);
+  }, []);
   useEffect(() => {
     if (!product?.id) return;
     let alive = true;

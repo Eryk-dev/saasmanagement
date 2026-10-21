@@ -3,6 +3,7 @@ import { Avatar } from "../atoms.jsx";
 import { NAV, GROUP_LABELS } from "../chrome.jsx";
 import { canSeeScreen } from "../lib/users.js";
 import { Modal } from "./overlay.jsx";
+import { setActiveSaas } from "../lib/workspace.js";
 
 // Busca ⌘K. Até 13/09 só achava LEAD; com 35 telas no menu, ir pra tela é
 // metade do uso (decisão do Leo, 13/09: telas + ações). Agora devolve três
@@ -24,6 +25,20 @@ function scoreLead(l, q, qDigits) {
   else if (company.includes(q)) best = Math.max(best, 45);
   if (norm(l.email).includes(q)) best = Math.max(best, 40);
   if (qDigits && digits(l.phone).includes(qDigits)) best = Math.max(best, 55);
+  return best;
+}
+
+// Cliente pelo CADASTRO (nome, contato, e-mail, telefone): renomear o cliente
+// não muda o lead de origem, e a busca só olhava o lead.
+function scoreCustomer(c, q, qDigits) {
+  const name = norm(c.name), contact = norm(c.contact);
+  let best = -1;
+  if (q && name.startsWith(q)) best = Math.max(best, 100);
+  else if (q && name.includes(q)) best = Math.max(best, 70);
+  if (q && contact.startsWith(q)) best = Math.max(best, 60);
+  else if (q && contact.includes(q)) best = Math.max(best, 45);
+  if (q && norm(c.email).includes(q)) best = Math.max(best, 40);
+  if (qDigits && digits(c.phone).includes(qDigits)) best = Math.max(best, 55);
   return best;
 }
 
@@ -60,6 +75,13 @@ function CommandSearch({ open, onClose, onOpenLead, onNav, onNewLead, activeSaas
         .sort((a, b) => (b.score + (b.l.saas === activeSaasId ? 5 : 0)) - (a.score + (a.l.saas === activeSaasId ? 5 : 0)))
         .slice(0, 8));
 
+    const clientes = (!query && !qDigits) || !canSeeScreen("customers") ? [] : (window.SEED?.CUSTOMERS || [])
+      .filter((c) => c.name)
+      .map((c) => ({ kind: "cliente", c, score: scoreCustomer(c, query, qDigits) }))
+      .filter((x) => x.score >= 0)
+      .sort((a, b) => (b.score + (b.c.saas === activeSaasId ? 5 : 0)) - (a.score + (a.c.saas === activeSaasId ? 5 : 0)))
+      .slice(0, 6);
+
     // Telas: as MESMAS regras do menu (permissão da pessoa, produto ativo,
     // ocultas de fora) — a busca não pode abrir porta que o menu tranca.
     const telas = !query ? [] : NAV
@@ -73,7 +95,7 @@ function CommandSearch({ open, onClose, onOpenLead, onNav, onNewLead, activeSaas
     // Ações: o que dá pra FAZER com o texto digitado.
     const acoes = !query ? [] : [{ kind: "acao", id: "novo-lead", label: `Criar lead “${q.trim()}”`, sub: "abre o cadastro com o nome preenchido" }];
 
-    return [...leads, ...telas, ...acoes];
+    return [...leads, ...clientes, ...telas, ...acoes];
   }, [q, activeSaasId]);
 
   useEffect(() => { setSel((s) => Math.min(s, Math.max(0, results.length - 1))); }, [results.length]);
@@ -99,11 +121,20 @@ function CommandSearch({ open, onClose, onOpenLead, onNav, onNewLead, activeSaas
   function escolher(r) {
     if (!r) return;
     if (r.kind === "lead") return onOpenLead(r.l);
+    if (r.kind === "cliente") {
+      // Abre a ficha em Clientes (no produto do cliente). A tela lê o pedido ao
+      // montar; já aberta, recebe o evento, que vai depois da troca de produto.
+      onClose();
+      if (r.c.saas && r.c.saas !== activeSaasId) setActiveSaas(r.c.saas);
+      try { sessionStorage.setItem("cockpit_customers_open", r.c.id); } catch { /* ignore */ }
+      setTimeout(() => window.dispatchEvent(new CustomEvent("cockpit:open-customer", { detail: r.c.id })), 0);
+      return onNav?.("customers");
+    }
     if (r.kind === "tela") { onClose(); return onNav?.(r.nav.id); }
     if (r.kind === "acao") { onClose(); return onNewLead?.(q.trim()); }
   }
   // Cabeçalho de grupo antes do primeiro item de cada tipo.
-  const TITULO = { lead: "Leads e clientes", tela: "Ir para", acao: "Ações" };
+  const TITULO = { lead: "Leads", cliente: "Clientes", tela: "Ir para", acao: "Ações" };
 
   return (
     <Modal onClose={onClose} label="Busca global" largura={520}
@@ -158,6 +189,25 @@ function CommandSearch({ open, onClose, onOpenLead, onNav, onNewLead, activeSaas
                     <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)" }}>{r.sub}</div>
                   </div>
                 </>, `acao-${r.id}`);
+            }
+            if (r.kind === "cliente") {
+              const c = r.c;
+              const otherC = c.saas && c.saas !== activeSaasId;
+              return linha(
+                <>
+                  <Avatar id={c.id} name={c.name} size={26} />
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--fg-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                      {c.contact && c.contact !== c.name && <span className="dim" style={{ fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.contact}</span>}
+                    </div>
+                    <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", display: "flex", gap: 8, marginTop: 1 }}>
+                      <span>cliente</span>
+                      {c.phone && <span>{c.phone}</span>}
+                      {otherC && <span style={{ color: "var(--accent)" }}>{saasName[c.saas] || c.saas}</span>}
+                    </div>
+                  </div>
+                </>, `cliente-${c.id}`);
             }
             const l = r.l;
             const other = l.saas && l.saas !== activeSaasId;
