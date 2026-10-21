@@ -442,13 +442,14 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
   const utm = lead.utm || {};
   const tier = leadTier(lead);
   // Lead que virou cliente: o vínculo gravado na venda (lead.customerId) ou o
-  // cadastro que aponta pra este lead. O nome dele no cabeçalho abre o cartão.
+  // cadastro que aponta pra este lead. O próprio nome no título vira o link
+  // pro cartão do cliente (nada de linha nova no cabeçalho).
   const customer = (window.SEED?.CUSTOMERS || []).find((c) =>
     (lead.customerId && c.id === lead.customerId) || (c.leadId && c.leadId === lead.id)) || null;
-  const customerLink = customer && (
-    <button type="button" className="lead-customer-link" title={`Ver dados de ${customer.name}`}
-      onClick={(e) => setCustomerAnchor(e.currentTarget)}>{customer.name}</button>
-  );
+  const leadName = customer
+    ? <button type="button" className="lead-customer-link" title={`Ver dados do cliente ${customer.name}`}
+        onClick={(e) => setCustomerAnchor(e.currentTarget)}>{lead.name}</button>
+    : lead.name;
   // Resumo do cliente: MESMA compilação do roteiro do Meu dia (clientSummary em
   // components/lead-blocks.jsx), com `full` acrescentando no fim o que só a
   // ficha mostra (contato, integrador, perda). Os fatos de cima ficam idênticos
@@ -1040,7 +1041,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
         style={pipeline ? {padding:"80px 18px 18px",background:"transparent"} : undefined}
         painelStyle={{ background: pipeline ? "var(--bg-1)" : "var(--bg-0)", overflow:pipeline?"hidden":"auto" }}>
         {pipeline ? <div className="pipeline-lead-panel">
-          <header><LeadGrade tier={tier} size={28} placeholder/><div><div className="lead-panel-name-row"><h2>{lead.name}</h2><LeadPhoneCopy phone={lead.phone} /></div><p>{customerLink || lead.company}</p></div><button aria-label="Fechar lead" onClick={close}>✕</button></header>
+          <header><LeadGrade tier={tier} size={28} placeholder/><div><div className="lead-panel-name-row"><h2>{leadName}</h2><LeadPhoneCopy phone={lead.phone} /></div><p>{lead.company}</p></div><button aria-label="Fechar lead" onClick={close}>✕</button></header>
           <div className="pipeline-lead-body">
             {summaryCard}
             <LeadDisclosure title="Respostas do formulário" hint={`${checklist.filter(c=>c.value).length} de ${checklist.length}`}><LeadChecklist key={lead.id} checklist={checklist} onPatch={patch} leadId={lead.id}/></LeadDisclosure>
@@ -1071,12 +1072,10 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
             <div className="lead-panel-title-row">
               <div>
                 <div className="lead-panel-name-row">
-                  <h2 className="lead-panel-title"><LeadGrade tier={tier} />{lead.name}</h2>
+                  <h2 className="lead-panel-title"><LeadGrade tier={tier} />{leadName}</h2>
                   <LeadPhoneCopy phone={lead.phone} />
                 </div>
-                <div className="lead-panel-subtitle">{customerLink
-                  ? <>{customerLink}{lead.source && ` · ${lead.source}`}</>
-                  : [lead.company, lead.source].filter(Boolean).join(" · ")}</div>
+                <div className="lead-panel-subtitle">{[lead.company, lead.source].filter(Boolean).join(" · ")}</div>
               </div>
               <button className="lead-panel-close" onClick={close} aria-label="Fechar lead">✕</button>
             </div>

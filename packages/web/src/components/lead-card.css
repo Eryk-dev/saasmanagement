@@ -23,10 +23,12 @@
    letra do selo e subia ~5px). */
 .lead-panel-title > .lead-grade { align-self: center; }
 .lead-panel-subtitle { margin-top: 3px; font-size: 13px; line-height: 1.5; color: var(--fg-3); overflow-wrap: anywhere; }
-/* Lead que virou cliente: o nome abre o cartão do cliente (o mesmo dos Tickets). */
-.lead-customer-link { font: inherit; color: var(--fg-2); text-align: left; text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 3px; cursor: pointer; overflow-wrap: anywhere; }
+/* Lead que virou cliente: o nome no título abre o cartão do cliente (o mesmo
+   dos Tickets). Mantém a cara do título, só com o sublinhado de link. */
+.lead-customer-link { font: inherit; color: inherit; letter-spacing: inherit; text-align: left; text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 3px; cursor: pointer; overflow-wrap: anywhere; }
 .lead-customer-link:hover { color: var(--accent); text-decoration-color: currentColor; }
 .lead-customer-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.lead-panel .lead-customer-link { min-height: 0; } /* o alvo de 44px do celular é pra botão, não pro nome */
 /* Telefone ao lado do nome, sem borda: clique copia (LeadPhoneCopy em
    deal.jsx). CENTRO ÓPTICO: o meio dos dígitos na altura do meio das letras
    do nome. Centrar só as caixas deixava os dígitos ~1,3px acima (Outfit 20px
