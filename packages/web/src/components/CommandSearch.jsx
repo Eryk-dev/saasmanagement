@@ -4,6 +4,7 @@ import { NAV, GROUP_LABELS } from "../chrome.jsx";
 import { canSeeScreen } from "../lib/users.js";
 import { Modal } from "./overlay.jsx";
 import { setActiveSaas } from "../lib/workspace.js";
+import { openCustomer } from "../lib/open-record.js";
 
 // Busca ⌘K. Até 13/09 só achava LEAD; com 35 telas no menu, ir pra tela é
 // metade do uso (decisão do Leo, 13/09: telas + ações). Agora devolve três
@@ -122,13 +123,12 @@ function CommandSearch({ open, onClose, onOpenLead, onNav, onNewLead, activeSaas
     if (!r) return;
     if (r.kind === "lead") return onOpenLead(r.l);
     if (r.kind === "cliente") {
-      // Abre a ficha em Clientes (no produto do cliente). A tela lê o pedido ao
-      // montar; já aberta, recebe o evento, que vai depois da troca de produto.
+      // Abre o card do Cliente pelo openCustomer (o mesmo dos outros cards), no
+      // produto do cliente; o pedido vai depois da troca de produto.
       onClose();
       if (r.c.saas && r.c.saas !== activeSaasId) setActiveSaas(r.c.saas);
-      try { sessionStorage.setItem("cockpit_customers_open", r.c.id); } catch { /* ignore */ }
-      setTimeout(() => window.dispatchEvent(new CustomEvent("cockpit:open-customer", { detail: r.c.id })), 0);
-      return onNav?.("customers");
+      setTimeout(() => openCustomer(r.c.id), 0);
+      return;
     }
     if (r.kind === "tela") { onClose(); return onNav?.(r.nav.id); }
     if (r.kind === "acao") { onClose(); return onNewLead?.(q.trim()); }
