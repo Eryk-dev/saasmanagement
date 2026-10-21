@@ -7,7 +7,9 @@ import { isDone, fold } from "../../lib/tickets.js";
 
 // Cartão do cliente vinculado ao ticket: abre no nome do card do Kanban, com o
 // essencial do cadastro sem sair da fila. A ficha completa (cobranças,
-// marcos, histórico) continua em Clientes — "Abrir ficha" leva até ela.
+// marcos, histórico) continua em Clientes — "Abrir ficha" leva até ela. A ficha
+// do lead usa o mesmo cartão (`note` troca a linha de origem e `onOpenFile`
+// fecha o drawer antes de navegar).
 
 export const OPEN_CUSTOMER_KEY = "cockpit_customers_open";
 // Cliente do ticket: o vínculo gravado (customerId) ou, sem ele, o cadastro do
@@ -38,7 +40,7 @@ export function customerOf(t) {
 
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "");
 
-export function CustomerCard({ customer, via, ticket, anchor, tickets, onLink, onClose }) {
+export function CustomerCard({ customer, via, ticket, anchor, tickets, note, onLink, onOpenFile, onClose }) {
   const mine = (tickets || []).filter((t) => t.customerId === customer.id);
   const open = mine.filter((t) => !isDone(t)).length;
   const churned = isChurned(customer);
@@ -55,6 +57,7 @@ export function CustomerCard({ customer, via, ticket, anchor, tickets, onLink, o
   const openFile = () => {
     try { sessionStorage.setItem(OPEN_CUSTOMER_KEY, customer.id); } catch { /* ignore */ }
     onClose();
+    onOpenFile?.();
     location.hash = "customers";
   };
   return (
@@ -63,7 +66,7 @@ export function CustomerCard({ customer, via, ticket, anchor, tickets, onLink, o
         <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div className="support-ellipsis" style={{ fontSize: 15, fontWeight: 700, color: "var(--fg-1)", letterSpacing: "-0.01em" }}>{customer.name}</div>
-            <div style={{ fontSize: 11.5, color: "var(--fg-3)" }}>{via ? `reconhecido pelo ${via} · ticket sem vínculo` : "cliente vinculado ao ticket"}</div>
+            <div style={{ fontSize: 11.5, color: "var(--fg-3)" }}>{note || (via ? `reconhecido pelo ${via} · ticket sem vínculo` : "cliente vinculado ao ticket")}</div>
           </div>
           {churned && <span className="chip neg" style={{ fontSize: 11, minHeight: 0 }}>encerrado</span>}
         </div>

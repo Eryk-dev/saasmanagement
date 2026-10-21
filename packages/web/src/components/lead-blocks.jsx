@@ -187,12 +187,18 @@ export function LeadChecklist({ checklist, onPatch, leadId, title = "Dados do le
       <span style={{ color: c.value ? "var(--pos)" : "var(--warn)", flexShrink: 0, fontSize: 12 }}>{c.value ? "✓" : "○"}</span>
       <span className="dim" style={{ flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.35 }}>{c.label}</span>
       {c.type === "select" ? (
-        <select aria-label={c.label} value={c.raw || ""} onChange={(e) => onPatch({ [c.key]: e.target.value })}
-          style={{ flexShrink: 0, maxWidth: "48%", height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 12, fontWeight: 500 }}>
-          <option value="">selecionar…</option>
-          {c.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          {c.raw && !c.options.some((o) => o.value === c.raw) && <option value={c.raw}>{c.raw}</option>}
-        </select>
+        // Lista no desenho do cockpit (SelectPopover), não a do navegador. Com
+        // resposta, "sem resposta" limpa; valor fora das opções segue visível.
+        <div style={{ flexShrink: 0, width: "48%", minWidth: 0 }}>
+          <SelectPopover label={c.label} placeholder="selecionar…" size="sm" value={c.raw || ""}
+            options={[
+              ...(c.raw ? [{ value: "", label: "sem resposta" }] : []),
+              ...c.options,
+              ...(c.raw && !c.options.some((o) => o.value === c.raw) ? [{ value: c.raw, label: c.raw }] : []),
+            ]}
+            onChange={(v) => onPatch({ [c.key]: v })}
+            style={{ height: 26, padding: "0 8px", fontSize: 12, fontWeight: 500 }} />
+        </div>
       ) : (
         <input aria-label={c.label} key={leadId + c.key} type="text" defaultValue={c.raw || ""} placeholder="preencher…"
           onBlur={(e) => { if (e.target.value !== (c.raw || "")) onPatch({ [c.key]: e.target.value }); }}

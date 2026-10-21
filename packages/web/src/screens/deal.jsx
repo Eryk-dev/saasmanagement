@@ -26,6 +26,7 @@ import { LeadSendActions, useLeadProposalActions } from "../components/lead-send
 import { useData } from "../data.jsx";
 import { DayPicker } from "../components/followup-contact.jsx";
 import { followupBadge, followupNextContact, followupDayOf } from "../lib/followup.js";
+import { CustomerCard } from "./tickets/customer-card.jsx";
 // Lead detail drawer — slides over the pipeline when a card is opened.
 // (Funil unificado: o card do pipeline é um lead, então o detalhe é do lead.)
 // Seções: header → números → GPS (etapa gateada + próximo toque + call) →
@@ -271,6 +272,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
   const [showEntrega, setShowEntrega] = React.useState(false); // "Entrega" (briefing/vídeo integração) recolhido
   const [showFrom, setShowFrom] = React.useState(false); // atribuição do anúncio recolhida
   const [pendingMove, setPendingMove] = React.useState(null); // { toStage, gate }
+  const [customerAnchor, setCustomerAnchor] = React.useState(null); // nome do cliente clicado → cartão do cliente
   // Timeline: fetch por lead (fora do bootstrap) + refetch quando o tempo real
   // avisa (version) — o drawer vive fora da árvore remontada do App.
   const [activities, setActivities] = React.useState(null);
@@ -474,6 +476,14 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
   const cat = useAttribution(lead.saas, !!lead.utm);
   const utm = lead.utm || {};
   const tier = leadTier(lead);
+  // Lead que virou cliente: o vínculo gravado na venda (lead.customerId) ou o
+  // cadastro que aponta pra este lead. O nome dele no cabeçalho abre o cartão.
+  const customer = (window.SEED?.CUSTOMERS || []).find((c) =>
+    (lead.customerId && c.id === lead.customerId) || (c.leadId && c.leadId === lead.id)) || null;
+  const customerLink = customer && (
+    <button type="button" className="lead-customer-link" title={`Ver dados de ${customer.name}`}
+      onClick={(e) => setCustomerAnchor(e.currentTarget)}>{customer.name}</button>
+  );
   // Resumo do cliente: MESMA compilação do roteiro do Meu dia (clientSummary em
   // components/lead-blocks.jsx), com `full` acrescentando no fim o que só a
   // ficha mostra (contato, integrador, perda). Os fatos de cima ficam idênticos
@@ -1065,7 +1075,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
         style={pipeline ? {padding:"80px 18px 18px",background:"transparent"} : undefined}
         painelStyle={{ background: pipeline ? "var(--bg-1)" : "var(--bg-0)", overflow:pipeline?"hidden":"auto" }}>
         {pipeline ? <div className="pipeline-lead-panel">
-          <header><LeadGrade tier={tier} size={28} placeholder/><div><h2>{lead.name}</h2><p>{lead.company}</p></div><button aria-label="Fechar lead" onClick={close}>✕</button></header>
+          <header><LeadGrade tier={tier} size={28} placeholder/><div><div className="lead-panel-name-row"><h2>{lead.name}</h2><LeadPhoneCopy phone={lead.phone} /></div><p>{customerLink || lead.company}</p></div><button aria-label="Fechar lead" onClick={close}>✕</button></header>
           <div className="pipeline-lead-body">
             {summaryCard}
             <LeadDisclosure title="Respostas do formulário" hint={`${checklist.filter(c=>c.value).length} de ${checklist.length}`}><LeadChecklist key={lead.id} checklist={checklist} onPatch={patch} leadId={lead.id}/></LeadDisclosure>
@@ -1099,7 +1109,9 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
                   <h2 className="lead-panel-title"><LeadGrade tier={tier} />{lead.name}</h2>
                   <LeadPhoneCopy phone={lead.phone} />
                 </div>
-                <div className="lead-panel-subtitle">{[lead.company, lead.source].filter(Boolean).join(" · ")}</div>
+                <div className="lead-panel-subtitle">{customerLink
+                  ? <>{customerLink}{lead.source && ` · ${lead.source}`}</>
+                  : [lead.company, lead.source].filter(Boolean).join(" · ")}</div>
               </div>
               <button className="lead-panel-close" onClick={close} aria-label="Fechar lead">✕</button>
             </div>
@@ -1234,6 +1246,11 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
             onClose={() => setPayLink(false)}
             onSaved={(r) => { dirty.current = true; setLead((prev) => ({ ...prev, ...(r.lead || {}) })); }}
           />
+        )}
+
+        {customer && customerAnchor && (
+          <CustomerCard customer={customer} anchor={customerAnchor} note="cliente deste negócio"
+            onOpenFile={close} onClose={() => setCustomerAnchor(null)} />
         )}
     </>
   );
