@@ -49,6 +49,9 @@ export const PRESETS = [
   { key: "lastWeek", label: "Semana passada", anchor: "week", back: 1 },
   { key: "month", label: "Este mês", anchor: "month", back: 0 },
   { key: "lastMonth", label: "Mês passado", anchor: "month", back: 1 },
+  // Sem começo: só entra onde a tela pede (presets), nunca no filtro global —
+  // não há janela anterior nem dias úteis pra comparar.
+  { key: "all", label: "Todos", all: true, optIn: true },
 ];
 
 // Intervalo cru (since/until) de um preset. Período de calendário em curso para
@@ -82,6 +85,10 @@ export function periodWindow(period, custom, now = new Date()) {
     label = shortRange(since, until);
   } else {
     const p = PRESETS.find((x) => x.key === period) || PRESETS.find((x) => x.key === "30d");
+    if (p.all) {
+      const until = ymd(new Date(now));
+      return { since: "", until, prevSince: "", prevUntil: "", days: null, businessDays: null, short: "todos", label: "todos", range: "desde o início", all: true };
+    }
     const r = rangeOfPreset(p, now);
     since = ymd(r.since); until = ymd(r.until);
     label = p.label.toLowerCase();
@@ -191,7 +198,7 @@ export function PeriodPicker({ period, custom, onChange, presets, variant }) {
   const [view, setView] = useState(() => startOfMonth(new Date()));
   const ref = useRef(null);
   const today = ymd(new Date());
-  const list = useMemo(() => (presets ? PRESETS.filter((p) => presets.includes(p.key)) : PRESETS), [presets]);
+  const list = useMemo(() => (presets ? PRESETS.filter((p) => presets.includes(p.key)) : PRESETS.filter((p) => !p.optIn)), [presets]);
   const applied = useMemo(() => periodWindow(period, custom), [period, custom?.since, custom?.until]);
 
   // Abrir sempre parte do que está aplicado (e não do rascunho anterior), e o

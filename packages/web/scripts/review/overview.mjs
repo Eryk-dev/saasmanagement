@@ -93,6 +93,36 @@ try {
     await page.getByRole('dialog').waitFor({state:'hidden'});
     assert.ok(await page.locator('.vg-sale').first().evaluate(el=>el === document.activeElement));
     assert.equal(await page.evaluate(()=>localStorage.getItem('cockpit_period')),period);
+    // "Ver todas" divide a linha da meta meio a meio, com período próprio; a
+    // meta dá a altura e a lista rola por dentro.
+    const collapsedHeight = (await page.locator('.vg-meta-card').boundingBox()).height;
+    await page.locator('.vg-sales-all').click();
+    await page.locator('.vg-sales.is-expanded').waitFor();
+    assert.ok(await page.getByRole('button',{name:'Recolher',exact:true}).evaluate(el=>el === document.activeElement));
+    const expandedBox = await page.locator('.vg-sales.is-expanded').boundingBox();
+    const metaBox = await page.locator('.vg-meta-card').boundingBox();
+    assert.ok(Math.abs(expandedBox.width - metaBox.width) <= 1 && Math.abs(expandedBox.y - metaBox.y) <= 1, 'vendas e meta não dividem a linha');
+    assert.ok(Math.abs(expandedBox.height - metaBox.height) <= 1, 'lista de vendas esticou a linha da meta');
+    assert.ok(Math.abs(metaBox.height - collapsedHeight) <= 1, `seção mudou de altura ao expandir: ${collapsedHeight} → ${metaBox.height}`);
+    assert.ok(await page.locator('.vg-meta-columns').evaluate(el=>el.children.length < 2 || el.children[0].getBoundingClientRect().top === el.children[1].getBoundingClientRect().top), 'meta quebrou em duas linhas');
+    assert.ok(await page.locator('.vg-sales-row:not(.is-head)').count() > 0, 'lista expandida vazia');
+    await page.locator('.vg-sales-tools > div > button').click();
+    await page.getByRole('button',{name:'Mês passado',exact:true}).click();
+    await page.getByRole('button',{name:'aplicar',exact:true}).click();
+    assert.equal(await page.evaluate(()=>localStorage.getItem('cockpit_period')),period, 'período da lista mexeu no filtro global');
+    // "Todos" só existe na lista de vendas; "28 dias" saiu dela.
+    await page.locator('.vg-sales-tools > div > button').click();
+    assert.equal(await page.getByRole('button',{name:'Últimos 28 dias',exact:true}).count(), 0, '28 dias segue na lista de vendas');
+    await page.getByRole('button',{name:'Todos',exact:true}).click();
+    await page.getByRole('button',{name:'aplicar',exact:true}).click();
+    assert.ok(await page.locator('.vg-sales-row:not(.is-head)').count() > 0, '"Todos" sem vendas');
+    await page.locator('.chrome-period-button').click();
+    assert.equal(await page.getByRole('button',{name:'Todos',exact:true}).count(), 0, '"Todos" vazou pro filtro global');
+    await page.keyboard.press('Escape');
+    await page.screenshot({path:path.join(output,`expanded-${width}.png`)});
+    await page.getByRole('button',{name:'Recolher',exact:true}).click();
+    await page.locator('.vg-meta-card').waitFor();
+    assert.ok(await page.locator('.vg-sales-all').evaluate(el=>el === document.activeElement));
     await page.locator('.vg-team-person').first().click();
     await page.waitForURL(/#today/);
     assert.equal(await page.evaluate(()=>localStorage.getItem('cockpit_today_person')), 'rafael');
@@ -109,7 +139,14 @@ try {
   await mobile.locator('.vg-sale').first().click();
   const dialog = mobile.getByRole('dialog'); await dialog.waitFor();
   const bounds = await dialog.boundingBox(); assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 391);
-  await mobile.keyboard.press('Escape'); await dialog.waitFor({state:'hidden'}); await mobile.close();
+  await mobile.keyboard.press('Escape'); await dialog.waitFor({state:'hidden'});
+  await mobile.locator('.vg-sales-all').click();
+  await mobile.locator('.vg-sales.is-expanded').waitFor();
+  assert.ok(await mobile.evaluate(()=>document.documentElement.scrollWidth <= innerWidth), 'vendas expandidas vazam no celular');
+  const rowSizes = await mobile.locator('.vg-sales-row:not(.is-head)').evaluateAll(els=>els.map(el=>el.getBoundingClientRect().height));
+  assert.ok(rowSizes.length && rowSizes.every(h=>h>=44), 'linha de venda menor que 44px no celular');
+  await mobile.screenshot({path:path.join(output,'expanded-390.png'), fullPage:true});
+  await mobile.close();
   const empty = await open(1440,'&state=empty');
   await empty.getByText('Nenhuma venda registrada ainda.').waitFor();
   await empty.getByText('Sem atividade nesse período.').waitFor();

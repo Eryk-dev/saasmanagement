@@ -195,6 +195,49 @@
 .vg-sale:hover { background: var(--vg-soft); }
 .vg-sale-amount { font: 700 14px var(--display); white-space: nowrap; letter-spacing: -.02em; }
 .vg-sales-all { margin: auto 0 0 10px; padding-top: 12px; font-size: 12px; font-weight: 600; color: var(--accent); align-self: flex-start; }
+/* Todas as vendas: a linha de cima vira meio a meio. `.vg-top` é invisível
+   ao layout com as vendas fechadas (os cards seguem nas colunas do grid) e
+   vira um grid próprio quando abrem. A meta encolhe (termômetro e números
+   menores) e é ela quem dá a altura da linha: a lista toma o espaço que sobra
+   e rola por dentro, o mesmo truque do `flex-basis: 0` da lista curta. */
+.vg-top { display: contents; }
+.vg-layout.is-sales-open .vg-top { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-items: stretch; gap: 12px; }
+.vg-layout.is-sales-open .vg-meta-thermometer { flex-basis: 176px; padding-inline: 14px; }
+.vg-layout.is-sales-open .vg-meta-target { font-size: 20px; }
+.vg-layout.is-sales-open .vg-meta-thermometer-bar { width: 68px; }
+.vg-layout.is-sales-open .vg-meta-percent { padding: 0 14px; }
+.vg-layout.is-sales-open .vg-meta-percent strong { font-size: 19px; }
+.vg-layout.is-sales-open .vg-meta-story { flex-basis: 260px; gap: 14px; padding: 20px 20px 18px; }
+.vg-layout.is-sales-open .vg-meta-facts { margin-top: 12px; }
+.vg-layout.is-sales-open .vg-funnel { padding-top: 12px; }
+.vg-layout.is-sales-open .vg-funnel-row { padding-block: 6px; }
+.vg-layout.is-sales-open .vg-sold { font-size: 44px; }
+.vg-layout.is-sales-open .vg-meta-facts { gap: 6px; }
+.vg-layout.is-sales-open .vg-meta-fact { gap: 6px; padding: 7px 12px; }
+.vg-layout.is-sales-open .vg-meta-fact strong { font-size: 15px; }
+.vg-sales.is-expanded { padding: 22px 18px 16px; gap: 14px; }
+.vg-sales.is-expanded > .vg-sales-head h2 { margin: 0 0 0 4px; }
+.vg-sales-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.vg-sales-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vg-sales-collapse { height: 32px; padding: 0 14px; border-radius: 999px; background: var(--btn-bg); color: var(--btn-fg); font-size: 12.5px; font-weight: 600; }
+.vg-sales-summary { margin: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.vg-sales-summary > div { display: flex; align-items: baseline; gap: 7px; padding: 7px 13px; border-radius: 999px; background: var(--vg-pill); }
+.vg-sales-summary dt { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--fg-3); }
+.vg-sales-summary dd { margin: 0; font: 700 15px var(--display); letter-spacing: -.02em; }
+.vg-sales-empty { padding: 18px 10px; font-size: 13px; color: var(--fg-3); }
+.vg-sales-table { flex: 1 1 0; min-height: 320px; display: flex; flex-direction: column; }
+.vg-sales-rows { flex: 1 1 0; min-height: 0; overflow: auto; }
+.vg-sales-row { width: 100%; display: grid; grid-template-columns: 46px minmax(0,1fr) minmax(0,128px) 96px; gap: 12px; align-items: center; text-align: left; padding: 8px 10px; border-radius: 999px; font-size: 12.5px; transition: background 150ms ease; }
+.vg-sales-row:not(.is-head):hover { background: var(--vg-soft); }
+.vg-sales-row.is-head { padding-block: 0 8px; border-radius: 0; border-bottom: 1px solid var(--vg-line); margin-bottom: 4px; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--fg-3); }
+.vg-sales-row.is-head > :last-child,.vg-sales-value { text-align: right; }
+.vg-sales-date { color: var(--fg-3); font-size: 11.5px; }
+.vg-sales-deal { display: flex; flex-direction: column; min-width: 0; }
+.vg-sales-client { display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 650; }
+.vg-sales-client > :first-child,.vg-sales-product,.vg-sales-who > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vg-sales-upsell { flex-shrink: 0; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; color: var(--accent); background: var(--accent-soft); border-radius: var(--r-1); padding: 1px 5px; }
+.vg-sales-product { font-size: 11px; color: var(--fg-3); margin-top: 1px; }
+.vg-sales-who { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12px; color: var(--fg-2); }
 .vg-team-section > h2 { margin-bottom: 16px; }
 .vg-team-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,255px),1fr)); gap: 12px; align-items: stretch; }
 .vg-team-card { min-width: 0; display: grid; gap: 12px; align-content: start; padding: 16px; border-radius: 20px; background: var(--vg-soft); transition: background 160ms ease,box-shadow 160ms ease; }
@@ -260,7 +303,14 @@
 .vg-origins small { display: block; font-size: 10px; color: var(--fg-3); margin-top: 3px; }
 .vg-origins dd { margin: 0; font: 700 15px var(--display); }
 body[data-theme="dark"] .overview-screen { --vg-soft: var(--bg-inset); --vg-pill: var(--bg-2); --vg-line: var(--line-1); }
-@media (max-width: 1200px) { .vg-layout { grid-template-columns: minmax(0,1fr); } }
+@media (max-width: 1200px) {
+  .vg-layout { grid-template-columns: minmax(0,1fr); }
+  /* Coluna única: a meta volta inteira e as vendas descem, sem par pra dar a
+     altura, então a lista ganha teto próprio. */
+  .vg-layout.is-sales-open .vg-top { grid-template-columns: minmax(0,1fr); min-height: 0 !important; }
+  .vg-sales-table { flex: none; min-height: 0; }
+  .vg-sales-rows { flex: none; max-height: min(640px,70vh); }
+}
 @media (max-width: 650px) {
   .vg-meta-columns { flex-direction: column; }
   .vg-meta-thermometer { flex-basis: auto; flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 18px; padding: 20px 14px; }
@@ -285,7 +335,16 @@ body[data-theme="dark"] .overview-screen { --vg-soft: var(--bg-inset); --vg-pill
   .vg-funnel-row { gap: 6px; min-height: 44px; padding-inline: 8px; }
   .vg-funnel-row > span:first-child { flex-basis: 112px; }
   .vg-funnel-row > span:last-child { width: 42px; }
-  .vg-team-person,.vg-team-details summary,.vg-sales-all,.vg-attention-action { min-height: 44px; }
+  .vg-team-person,.vg-team-details summary,.vg-sales-all,.vg-attention-action,.vg-sales-collapse,.vg-sales-row { min-height: 44px; }
+  /* No celular a linha vira cartão de duas colunas e a rolagem é a da página. */
+  .vg-sales.is-expanded { padding-inline: 14px; }
+  .vg-sales-rows { max-height: none; overflow: visible; }
+  .vg-sales-row { grid-template-columns: minmax(0,1fr) auto; grid-template-areas: "deal value" "deal date" "who who"; gap: 2px 10px; border-radius: 18px; }
+  .vg-sales-row.is-head { display: none; }
+  .vg-sales-date { grid-area: date; text-align: right; font-size: 11px; }
+  .vg-sales-deal { grid-area: deal; }
+  .vg-sales-who { grid-area: who; font-size: 11.5px; margin-top: 4px; }
+  .vg-sales-value { grid-area: value; }
   .vg-team-meter-line { flex-wrap: wrap; }
   .vg-attention-row { flex-wrap: wrap; border-radius: 18px; padding: 12px 6px; }
   .vg-attention-action { margin-left: 18px; }

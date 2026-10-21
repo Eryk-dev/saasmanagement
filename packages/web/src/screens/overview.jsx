@@ -11,7 +11,7 @@ import { canSeeScreen, userById, displayName } from "../lib/users.js";
 import { levelLabel } from "../lib/levels.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { buildPeople, roleLabel, scaledGoal } from "../components/team-cards.jsx";
-import { usePeriod, businessDaysBetween } from "../components/period-picker.jsx";
+import { usePeriod, businessDaysBetween, periodWindow, PeriodPicker } from "../components/period-picker.jsx";
 import { isChurned } from "../lib/churn.js";
 import { dealProductLabel, closedPlanLabel } from "../lib/payments.js";
 // CRM final: meta/funil e vendas na primeira linha; equipe/atenção e
@@ -878,12 +878,12 @@ const produtoFechadoOf = (l) => {
   return ids.map((id) => dealProductLabel(String(id || "").trim(), l?.saas)).filter(Boolean).join(" + ");
 };
 
-function VendasCard({ leads, invoices, product, customers, onNav, onOpenLead }) {
+function VendasCard({ leads, invoices, product, customers, onNav, onOpenLead, expanded = false, onToggle }) {
   // Nome do CLIENTE: o cadastro vence (é o nome que o time usa em Clientes e
   // no Financeiro); sem cliente convertido ainda, a empresa do lead e, por
   // último, o nome da pessoa.
   const nomeDoCadastro = (id) => String((customers || []).find((x) => x.id === id)?.name || "").trim();
-  const vendas = useMemo(() => {
+  const todas = useMemo(() => {
     const doLead = (leads || []).filter((l) => isWonLead(product, l)).map((l) => ({
       id: `l_${l.id}`, lead: l, at: wonAtOf(l), amount: l.amount, who: l.closer || l.owner || "",
       cliente: nomeDoCadastro(l.customerId) || String(l.company || l.name || "").trim() || "cliente sem nome",
@@ -903,10 +903,21 @@ function VendasCard({ leads, invoices, product, customers, onNav, onOpenLead }) 
     }));
     return [...doLead, ...doUpsell]
       .filter((v) => v.at)
-      .sort((a, b) => String(b.at).localeCompare(String(a.at)))
-      .slice(0, MAX_VENDAS);
+      .sort((a, b) => String(b.at).localeCompare(String(a.at)));
   }, [leads, invoices, customers, product]); // eslint-disable-line react-hooks/exhaustive-deps
+  const vendas = useMemo(() => todas.slice(0, MAX_VENDAS), [todas]);
   const dia = (at) => { const d = bizDay(at); return d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : ""; };
+  const abrir = (v) => (v.lead && onOpenLead ? onOpenLead(v.lead) : onNav?.("customers"));
+  // Período PRÓPRIO da lista expandida: começa no filtro do topo, mas mexer
+  // aqui não muda o resto do cockpit (o store global segue intacto).
+  const global = usePeriod();
+  const [filtro, setFiltro] = useState(() => ({ period: global.period, custom: global.custom }));
+  // Foco acompanha a troca: abrir leva ao "Recolher", fechar volta ao "Ver todas".
+  const verTodasRef = useRef(null), recolherRef = useRef(null), montou = useRef(false);
+  useEffect(() => {
+    if (!montou.current) { montou.current = true; return; }
+    (expanded ? recolherRef : verTodasRef).current?.focus();
+  }, [expanded]);
   // Preenche o card: conta quantas linhas inteiras cabem na altura disponível.
   // A lista é `flex: 1` com overflow escondido, então ela NUNCA é quem define a
   // altura — medir o espaço e re-renderizar não entra em laço.
@@ -933,14 +944,17 @@ function VendasCard({ leads, invoices, product, customers, onNav, onOpenLead }) 
     document.fonts?.ready?.then(medir);
     window.addEventListener("resize", medir);
     return () => { ro.disconnect(); window.removeEventListener("resize", medir); };
-  }, [vendas]);
+  }, [vendas, expanded]);
   const naTela = vendas.slice(0, cabem);
+  if (expanded) {
+    return <TodasVendas todas={todas} filtro={filtro} onFiltro={setFiltro} onOpen={abrir} onClose={onToggle} recolherRef={recolherRef} />;
+  }
   return (
     <OverviewCard title="Últimas vendas" className="vg-sales">
       <div className="vg-sales-list" ref={listaRef}>
         {!vendas.length && <div style={{ fontSize: 12.5, color: "var(--fg-4)", padding: "6px 0" }}>Nenhuma venda registrada ainda.</div>}
         {naTela.map((v, i) => (
-            <button key={v.id} onClick={() => v.lead && onOpenLead ? onOpenLead(v.lead) : onNav?.("customers")} className="vg-sale">
+            <button key={v.id} onClick={() => abrir(v)} className="vg-sale">
               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                 {v.who && <Avatar id={v.who} name={displayName(v.who)} size={26} />}
                 <div style={{ minWidth: 0 }}>
@@ -948,7 +962,7 @@ function VendasCard({ leads, invoices, product, customers, onNav, onOpenLead }) 
                     <span style={{ fontSize: 12.5, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{v.cliente}</span>
                     {v.upsell && (
                       <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.04em", color: "var(--accent)", background: "var(--accent-soft)", borderRadius: "var(--r-1)", padding: "1px 5px" }}
-                        title="Upsell: venda registrada na ficha do cliente, creditada a quem vendeu (conta na meta desde 09/09).">UPSELL</span>
+                        title={UPSELL_TITLE}>UPSELL</span>
                     )}
                   </div>
                   {/* Sem .kicker aqui: nome de produto e de pessoa em caixa
@@ -965,8 +979,70 @@ function VendasCard({ leads, invoices, product, customers, onNav, onOpenLead }) 
             </button>
         ))}
       </div>
-      {onNav && <button className="vg-sales-all" onClick={() => onNav("pipeline", { saas: product.id })}>Ver todas no pipeline →</button>}
+      {onToggle && <button ref={verTodasRef} className="vg-sales-all" aria-expanded="false" onClick={onToggle}>Ver todas as vendas →</button>}
     </OverviewCard>
+  );
+}
+
+// ── Todas as vendas (21/10) ─────────────────────────────────────────────────
+// O "ver todas" abria o pipeline, que mostra LEADS e não vendas. Agora o card
+// se expande na própria Visão geral: divide a linha meio a meio com a meta
+// (que encolhe), com as mesmas duas fontes da lista curta, filtradas por um
+// período próprio. Mesma régua de dia do resto da tela: bizDay em string.
+// Atalhos do período da lista: sem "28 dias" (redundante com 30) e com "Todos".
+const VENDAS_PRESETS = ["today", "yesterday", "7d", "14d", "30d", "90d", "week", "lastWeek", "month", "lastMonth", "all"];
+const UPSELL_TITLE = "Upsell: venda registrada na ficha do cliente, creditada a quem vendeu (conta na meta desde 09/09).";
+function TodasVendas({ todas, filtro, onFiltro, onOpen, onClose, recolherRef }) {
+  const win = useMemo(() => periodWindow(filtro.period, filtro.custom), [filtro.period, filtro.custom?.since, filtro.custom?.until]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lista = useMemo(() => todas.filter((v) => { const d = bizDay(v.at); return d && d >= win.since && d <= win.until; }), [todas, win.since, win.until]);
+  const total = lista.reduce((a, v) => a + (Number(v.amount) || 0), 0);
+  const upsells = lista.filter((v) => v.upsell).length;
+  const anoAtual = bizDay(new Date()).slice(0, 4);
+  const data = (at) => {
+    const d = bizDay(at);
+    return d ? `${d.slice(8, 10)}/${d.slice(5, 7)}${d.slice(0, 4) !== anoAtual ? `/${d.slice(2, 4)}` : ""}` : "";
+  };
+  return (
+    <section className="vg-card vg-sales is-expanded" aria-label="Todas as vendas">
+      <div className="vg-sales-head">
+        <h2 className="vg-section-label">Vendas</h2>
+        <div className="vg-sales-tools">
+          <PeriodPicker period={filtro.period} custom={filtro.custom} presets={VENDAS_PRESETS}
+            onChange={(period, custom) => onFiltro({ period, custom: custom || { since: "", until: "" } })} />
+          <button ref={recolherRef} type="button" className="vg-sales-collapse" aria-expanded="true" onClick={onClose}>Recolher</button>
+        </div>
+      </div>
+      <dl className="vg-sales-summary">
+        <div><dt>Vendas</dt><dd>{int(lista.length)}</dd></div>
+        <div><dt>Valor somado</dt><dd>{moneyFull(total)}</dd></div>
+        <div><dt>Ticket médio</dt><dd>{lista.length ? moneyFull(total / lista.length) : "—"}</dd></div>
+        <div><dt>Upsells</dt><dd>{int(upsells)}</dd></div>
+      </dl>
+      {!lista.length
+        ? <div className="vg-sales-empty">{win.all ? "Nenhuma venda registrada ainda." : `Nenhuma venda em ${win.label} (${win.range}).`}</div>
+        : <div className="vg-sales-table">
+          <div className="vg-sales-row is-head" aria-hidden="true"><span>Data</span><span>Cliente · produto</span><span>Responsável</span><span>Valor</span></div>
+          <div className="vg-sales-rows">
+            {lista.map((v) => (
+              <button key={v.id} type="button" className="vg-sales-row" onClick={() => onOpen(v)}>
+                <span className="vg-sales-date tnum">{data(v.at)}</span>
+                <span className="vg-sales-deal">
+                  <span className="vg-sales-client">
+                    <span>{v.cliente}</span>
+                    {v.upsell && <span className="vg-sales-upsell" title={UPSELL_TITLE}>UPSELL</span>}
+                  </span>
+                  <span className="vg-sales-product">{v.produto || "produto não informado"}</span>
+                </span>
+                <span className="vg-sales-who">
+                  {v.who && <Avatar id={v.who} name={displayName(v.who)} size={22} />}
+                  <span>{v.who ? displayName(v.who) : "sem responsável"}</span>
+                </span>
+                <span className="vg-sale-amount vg-sales-value">{moneyFull(v.amount)}</span>
+              </button>
+            ))}
+          </div>
+        </div>}
+    </section>
   );
 }
 
@@ -1066,6 +1142,15 @@ function OverviewScreen({ onNav, onOpenLead }) {
   const { version } = useData();
   const [product] = useActiveSaas();
   const { period, win } = usePeriod();
+  const [vendasAbertas, setVendasAbertas] = useState(false);
+  // Altura da linha de cima ANTES de abrir: a meta compacta é mais baixa e a
+  // seção encolhia ao expandir. Vira o piso da linha dividida.
+  const [alturaTopo, setAlturaTopo] = useState(0);
+  const layoutRef = useRef(null);
+  const alternarVendas = () => {
+    if (!vendasAbertas) setAlturaTopo(layoutRef.current?.querySelector(".vg-sales")?.getBoundingClientRect().height || 0);
+    setVendasAbertas((v) => !v);
+  };
   const periodKey = `${product?.id}:${win.since}:${win.until}:${period}`;
   const marketingState = useOverviewRead(() => api.marketingMetrics(product.id, { since: win.since, until: win.until }), periodKey, version);
   const bizState = useOverviewRead(() => api.metrics(product.id, { days: win.days }), periodKey, version);
@@ -1152,12 +1237,18 @@ function OverviewScreen({ onNav, onOpenLead }) {
       <header className="vg-page-head" title={`${today} · ${win.label}`}>
         <h1 className="page-title">Visão geral</h1>
       </header>
-      <div className="vg-layout">
+      <div ref={layoutRef} className={`vg-layout${vendasAbertas ? " is-sales-open" : ""}`}>
+        {/* Linha de cima: meta + vendas. Fechada, a caixa some do layout
+            (display: contents) e os dois cards seguem nas colunas do grid; com
+            as vendas abertas ela vira uma linha própria, meio a meio. */}
+        <div className="vg-top" style={vendasAbertas && alturaTopo ? { minHeight: alturaTopo } : undefined}>
         {goal ? <MetaMesCard pace={pace} goal={goal}>
           {paceState.error && <OverviewState state={paceState} label="ritmo" />}
           <FunilPeriodo team={score?.team} state={scoreState} win={win} pLabel={win.label} bare onNav={canSeeScreen("pipeline") ? onNav : null} />
         </MetaMesCard> : <OverviewCard title="Meta do período" className="vg-meta-pending"><OverviewState state={goalState} label="meta" /></OverviewCard>}
-        <VendasCard leads={leads} invoices={invoices} product={product} customers={productCustomers} onNav={onNav} onOpenLead={onOpenLead} />
+        <VendasCard leads={leads} invoices={invoices} product={product} customers={productCustomers} onNav={onNav} onOpenLead={onOpenLead}
+          expanded={vendasAbertas} onToggle={alternarVendas} />
+        </div>
         <div className="vg-main">
           <TeamBoard score={score} state={scoreState} win={win} onPerson={canSeeScreen("today") ? openPerson : null} />
           <AtencaoCard items={atencao} />
