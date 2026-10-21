@@ -965,7 +965,7 @@ function VendasCard({ leads, invoices, product, customers, onNav, onOpenLead, ex
         {naTela.map((v, i) => (
             <button key={v.id} onClick={() => abrir(v)} className="vg-sale">
               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                <LeadGrade tier={v.tier} size={26} placeholder />
+                <LeadGrade tier={v.tier} size={20} placeholder />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                     <span style={{ fontSize: 12.5, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{v.cliente}</span>
@@ -1037,7 +1037,8 @@ function TodasVendas({ todas, filtro, onFiltro, onOpen, onClose, recolherRef }) 
                 <span className="vg-sales-date tnum">{data(v.at)}</span>
                 <span className="vg-sales-deal">
                   <span className="vg-sales-client">
-                    <span>{v.cliente}</span>
+                    <LeadGrade tier={v.tier} size={18} placeholder />
+                    <span className="vg-sales-name">{v.cliente}</span>
                     {v.upsell && <span className="vg-sales-upsell" title={UPSELL_TITLE}>UPSELL</span>}
                   </span>
                   <span className="vg-sales-product">{v.produto || "produto não informado"}</span>
