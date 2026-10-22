@@ -206,12 +206,18 @@ ficam em `packages/web/preview/` e não entram no build de produção.
 
 ## Deploy
 
-**Produção (EasyPanel).** Build a partir do `Dockerfile.allinone`: um container com
-nginx na porta 80 servindo a UI e fazendo proxy de `/api`, `/mcp` e das rotas
-públicas (`/f`, `/fi`, `/p`, `/u`, `/m`, `/public`, `/embed.js`) para a API e o MCP.
-O container não guarda estado; os dados ficam no Supabase indicado em
-`COCKPIT_DB_URL`. As variáveis de produção são configuradas no EasyPanel. Push na
-`main` dispara o deploy (ver [`AGENTS.md`](AGENTS.md)).
+**Produção (Coolify, desde 19/10/2026).** App `cockpit` no Coolify da VPS
+`187.127.50.132`, servindo `https://levermoney.com.br`. Build a partir do
+`Dockerfile.allinone`: um container com nginx na porta 80 servindo a UI e fazendo
+proxy de `/api`, `/mcp` e das rotas públicas (`/f`, `/fi`, `/p`, `/u`, `/m`,
+`/public`, `/embed.js`) para a API e o MCP. O container não guarda estado; os
+dados ficam no banco `cockpit` do Postgres `leverads-db` da mesma VPS, indicado
+em `COCKPIT_DB_URL` (variáveis configuradas no Coolify). Push na `main` **não**
+sobe sozinho: o deploy é manual, `python3 /opt/cockpit-migracao/cockpit-coolify.py deploy`
+na VPS, e leva tudo que estiver na `main` (ver [`AGENTS.md`](AGENTS.md) e
+`docs/CONTEXTO-COCKPIT.md`). O serviço antigo do EasyPanel está aposentado e
+não pode ser reativado: ele aponta para o Supabase Cloud, que a API agora
+recusa no boot.
 
 Verificação: `GET /api/health` devolve `ok`, `service` e `build`, a impressão de
 `packages/api/src`. Compare com `node packages/api/src/build-info.js` no commit
