@@ -409,9 +409,13 @@ export function registerAuthRoutes(app, repo, { identity = makeIdentityAdmin() }
     const product = s ? await repo.get("products", s).catch(() => null) : null;
     const page = user && bookingPreview({ user, brand: product?.name || "", what: String(req.query?.t || ""), base: publicBase(req) });
     if (!page) return reply.code(404).type("text/html; charset=utf-8").send(bookingMissingHtml());
-    // ?l= card do lead: o clique (gente, não robô de preview) liga a marcação
-    // que aparecer na agenda ao card certo (google/booking-sync.js).
-    if (req.query?.l) { try { await recordBookingClick(repo, { userId: user.id, leadId: String(req.query.l), ua: req.headers["user-agent"] }); } catch { /* o redirecionamento vale mais */ } }
+    // ?l= card do lead (ou ?c= cliente, link mandado pela ficha): o clique
+    // (gente, não robô de preview) liga a marcação que aparecer na agenda ao
+    // card ou ao registro certo (google/booking-sync.js).
+    if (req.query?.l || req.query?.c) {
+      try { await recordBookingClick(repo, { userId: user.id, leadId: String(req.query.l || ""), customerId: String(req.query.c || ""), ua: req.headers["user-agent"] }); }
+      catch { /* o redirecionamento vale mais */ }
+    }
     reply.header("cache-control", "private, no-store");
     return reply.type("text/html; charset=utf-8").send(bookingPageHtml(page));
   });

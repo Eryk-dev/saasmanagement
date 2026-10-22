@@ -467,7 +467,14 @@ internos; depois a comparação de modelos com o mesmo conjunto.
    do cadastro, ou sozinho pelo e-mail quando o e-mail do cliente ou do lead é
    exatamente o da org ou de uma conta dela e o par é único
    (`orgLink.via = "email"`); desfazer guarda a org em `orgLinkRejected` para o
-   automático não religar. Rotas em `/api/customers/leverads-orgs` e
+   automático não religar. Vinculado (qualquer via), o cliente guarda o nome
+   da org em `leveradsOrgName`. As buscas ⌘K e de Clientes leem esse campo.
+   Se o nome do cliente ainda é o da pessoa (vazio, igual ao contato ou ao
+   lead, ou o primeiro nome deles), ele vira o nome da empresa, a pessoa vai
+   para o contato e fica o carimbo `nameFrom`. O nome que veio da org
+   acompanha a renomeação no LeverAds. O lead da venda sem empresa ganha a da
+   org (`orgNamePatches`, 22/10/2026; caso Luciana → Via Original). Nome de
+   empresa dado à mão não muda. Rotas em `/api/customers/leverads-orgs` e
    `/api/customers/:id/leverads-org`. `screens.js` controla permissões por
    tela, exceções e acessos administrativos; `lib/users.js` espelha a UI.
    `roles` já participa de regras de acesso — não assumir que é só etiqueta.
@@ -1452,6 +1459,20 @@ vem antes da Integração), e a integração é do cliente.
     integração aberta mais recente ou num check-in novo (`meetingHostFor`). Não
     mexe mais no lead nem exige `leadId`; data e responsável são validados antes
     de criar qualquer registro.
+  - **Tipo e link da agenda (22/10/2026):** a ficha ("+ novo → Reunião de
+    integração ou CS") escolhe o tipo: uma integração ou acompanhamento aberto,
+    ou um acompanhamento de CS novo (check-in, QBR, renovação, risco). O
+    `host` vai no corpo e o nome do tipo vira o `label` da reunião. Call de
+    venda com vendedor não é por aqui: é pelo Negócio. "Enviar link da agenda"
+    chama `POST /api/customers/:id/meeting-link`, que carimba `bookingLink` no
+    registro, e o link curto leva `?c=<cliente>`. A `booking-sync` procura
+    esses registros antes dos cards. A marcação que casar por e-mail ou
+    telefone de um contato, ou pelo clique, entra em `meetings[]` do registro
+    com a sala da marcação (`bookedVia: "link"`). Remarcar ou cancelar no Google
+    acompanha. O link vale 14 dias. Reuniões que o cockpit criou nos registros
+    contam como eventos conhecidos; antes, casavam com o lead da venda pelo
+    e-mail e viravam "integração marcada pelo link". Testes:
+    `booking-sync.test.js` e `customer-meeting.test.js`.
   - **Ainda no lead:** a reunião da implantação marcada no card
     (`integrationAt`, `/api/leads/:id/integration-meeting`).
   - **Utilitários de horário:** `google/meet-time.js` (`callMoment`,

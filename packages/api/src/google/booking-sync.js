@@ -19,7 +19,14 @@
 //
 // Ritmo: passe a cada 2 min; cada agenda é lida a cada 15 min, ou a cada passe
 // nas 24h depois de um clique no link dela (quando a marcação é provável).
+//
+// Link mandado pela FICHA DO CLIENTE (22/10/2026): o registro onde a reunião
+// vai morar (integração ou acompanhamento de CS) guarda `bookingLink` e a
+// marcação que casar com os contatos do cliente entra em `meetings[]` dele,
+// com a sala da marcação, em vez de virar integração no lead da venda. Esses
+// registros são procurados ANTES dos cards (o link foi mandado pra eles).
 
+import { randomUUID } from "node:crypto";
 import { toNaiveBrt } from "../crm/agenda-slots.js";
 import { appointmentAt, applyStageMove, logActivity } from "../crm/lead-flow.js";
 import { kindOf, stageByKind } from "../crm/stages.js";
@@ -28,6 +35,8 @@ import { upsertNotification } from "../tasks/tasks-core.js";
 import { waMatchKey } from "../whatsapp/wa-store.js";
 import { syncPersonalCalendar } from "./google-user.js";
 import { integrationSlotConflict } from "../crm/integration-slot.js";
+import { appendTimeline } from "../events/timeline.js";
+import { contactsOf } from "../customers/lifecycle.js";
 
 const CAL_URL = "https://www.googleapis.com/calendar/v3";
 const MIN = 60_000;
@@ -35,20 +44,24 @@ export const BOOKING_TICK_MS = 2 * MIN;
 const IDLE_MS = 15 * MIN;          // agenda sem clique recente
 const HOT_MS = 24 * 60 * MIN;      // janela "quente" depois de um clique no link
 const CLICK_MATCH_MS = 48 * 60 * MIN;
+const LINK_WAIT_MS = 14 * 24 * 60 * MIN; // link mandado pela ficha espera a marcação por 14 dias
+const RECORD_HOSTS = ["onboardings", "cs_followups"];
 const stateId = (userId) => `booking_sync_${userId}`;
 const TZ = "America/Sao_Paulo";
 
-// Clique no link curto (/a/:id?l=lead): marca o lead e esquenta a agenda de
-// quem integra. Robô de preview (WhatsApp, Facebook…) não conta como clique.
+// Clique no link curto (/a/:id?l=lead ou ?c=cliente): marca o lead (ou o
+// cliente, quando o link saiu da ficha) e esquenta a agenda de quem atende.
+// Robô de preview (WhatsApp, Facebook…) não conta como clique.
 const BOT_UA = /whatsapp|facebookexternalhit|facebot|bot\b|crawler|spider|preview|slack|telegram|discord|skype/i;
-export async function recordBookingClick(repo, { userId, leadId, ua = "", now = new Date() }) {
-  if (!userId || !leadId || BOT_UA.test(String(ua))) return false;
-  const lead = await repo.get("leads", String(leadId)).catch(() => null);
-  if (!lead) return false;
+export async function recordBookingClick(repo, { userId, leadId = "", customerId = "", ua = "", now = new Date() }) {
+  if (!userId || !(leadId || customerId) || BOT_UA.test(String(ua))) return false;
+  const collection = leadId ? "leads" : "customers";
+  const rec = await repo.get(collection, String(leadId || customerId)).catch(() => null);
+  if (!rec) return false;
   const at = now.toISOString();
-  const prev = Date.parse(lead.bookingClick?.at || "");
-  if (lead.bookingClick?.user === userId && Number.isFinite(prev) && now.getTime() - prev < MIN) return false;
-  await repo.update("leads", lead.id, { bookingClick: { user: userId, at } });
+  const prev = Date.parse(rec.bookingClick?.at || "");
+  if (rec.bookingClick?.user === userId && Number.isFinite(prev) && now.getTime() - prev < MIN) return false;
+  await repo.update(collection, rec.id, { bookingClick: { user: userId, at } });
   const st = await repo.get("app_config", stateId(userId)).catch(() => null);
   if (st) await repo.update("app_config", st.id, { lastClickAt: at });
   else await repo.create("app_config", { id: stateId(userId), lastClickAt: at });
@@ -68,6 +81,13 @@ export function emailKey(email) {
     domain = "gmail.com";
   }
   return `${user}@${domain}`;
+}
+
+// Link da agenda mandado pela ficha do cliente: o registro (integração ou
+// acompanhamento) fica esperando a marcação de `userId` (ver o cabeçalho).
+export async function stampRecordBookingLink(repo, { collection, id, userId, label = "", by = "", now = new Date() }) {
+  if (!RECORD_HOSTS.includes(collection)) throw Object.assign(new Error("Registro sem reunião."), { statusCode: 400 });
+  return repo.update(collection, id, { bookingLink: { user: userId, label: String(label || "Reunião").slice(0, 60), sentAt: now.toISOString(), by } });
 }
 
 // Telefones escritos no evento (o formulário da marcação pode pedir): sequências
@@ -120,6 +140,10 @@ export function makeBookingSync({ repo, googleUser: gu, google = null, fetch: f 
     const ids = new Set();
     for (const l of await repo.list("leads")) for (const k of ["meetEventId", "integrationMeetEventId", "calCallEventId", "calIntegEventId"]) if (l[k]) ids.add(l[k]);
     for (const c of await repo.list("consultations").catch(() => [])) for (const k of ["meetEventId", "calEventId"]) if (c[k]) ids.add(c[k]);
+    // Reuniões que o cockpit criou nos registros do cliente: com o contato do
+    // cliente convidado, elas casavam com o lead da venda pelo e-mail e viravam
+    // "integração marcada pelo link" no card.
+    for (const c of RECORD_HOSTS) for (const r of await repo.list(c).catch(() => [])) for (const m of r.meetings || []) if (m.eventId) ids.add(m.eventId);
     return ids;
   }
 
@@ -192,6 +216,87 @@ export function makeBookingSync({ repo, googleUser: gu, google = null, fetch: f 
     await notify(user.id, `booking-move:${ev.id}:${when}`, `${lead.name || "Cliente"} remarcou a integração pelo seu link: ${whenLabel(when)}`, { screen: "today", lead: lead.id }, lead.saas || "");
   }
 
+  // ── Registros do cliente (link mandado pela ficha) ────────────────────────
+  async function applyRecordBooking(user, host, ev, why, now) {
+    const { collection, r, customer } = host;
+    const meetUrl = meetOf(ev);
+    const label = r.bookingLink?.label || "Reunião";
+    const meeting = {
+      id: "mt_" + randomUUID(), at: new Date(ev.start.dateTime).toISOString(), label, responsible: user.id, guests: [],
+      status: "scheduled", createdAt: now.toISOString(), by: "link", meetUrl, eventId: ev.id, organizer: user.id, bookedVia: "link",
+    };
+    // A passada lê os registros uma vez: o da memória acompanha (outra marcação
+    // no mesmo lote não casa de novo com o link já usado).
+    host.r = await repo.update(collection, r.id, { meetings: [...(r.meetings || []), meeting], bookingLink: null });
+    const code = (meetUrl.match(/meet\.google\.com\/([a-z0-9-]+)/i) || [])[1];
+    if (code && google?.forUser) { try { await google.forUser(gu, user.id).configureSpace(code); } catch { /* best-effort */ } }
+    await appendTimeline(repo, {
+      id: `tl:meeting:${meeting.id}`, kind: "meeting.scheduled", source: "cockpit", at: now.toISOString(),
+      customer: r.customer, lead: r.lead || "", data: { host: collection, record: r.id, at: meeting.at, label, meetUrl, via: "link", match: why },
+    });
+    const when = toNaiveBrt(ev.start.dateTime);
+    await notify(user.id, `booking:${ev.id}:${when}`, `${customer?.name || "Cliente"} marcou ${label.toLowerCase()} pelo seu link: ${whenLabel(when)}`, { screen: "customers", customer: r.customer }, customer?.saas || "");
+  }
+
+  // Remarcação ou cancelamento na página do Google acompanham no registro.
+  async function followRecordBooked(user, { collection, r, customer }, meeting, ev) {
+    const set = (patch) => repo.update(collection, r.id, { meetings: (r.meetings || []).map((m) => (m.id === meeting.id ? { ...m, ...patch } : m)) });
+    const what = String(meeting.label || "a reunião").toLowerCase();
+    if (ev.status === "cancelled") {
+      if (meeting.status !== "scheduled") return;
+      await set({ status: "canceled", canceledAt: new Date().toISOString() });
+      await notify(user.id, `booking-cancel:${ev.id}`, `${customer?.name || "Cliente"} cancelou ${what} marcada pelo seu link`, { screen: "customers", customer: r.customer }, customer?.saas || "");
+      return;
+    }
+    if (!ev.start?.dateTime || meeting.status !== "scheduled") return;
+    const at = new Date(ev.start.dateTime).toISOString();
+    if (at === meeting.at) return;
+    await set({ at });
+    const when = toNaiveBrt(ev.start.dateTime);
+    await notify(user.id, `booking-move:${ev.id}:${when}`, `${customer?.name || "Cliente"} remarcou ${what} pelo seu link: ${whenLabel(when)}`, { screen: "customers", customer: r.customer }, customer?.saas || "");
+  }
+
+  async function recordHosts() {
+    const customers = new Map((await repo.list("customers").catch(() => [])).map((c) => [c.id, c]));
+    const out = [];
+    for (const collection of RECORD_HOSTS) {
+      for (const r of await repo.list(collection).catch(() => [])) out.push({ collection, r, customer: customers.get(r.customer) || null });
+    }
+    return out;
+  }
+
+  // Registro esperando a marcação deste link: e-mail ou telefone de um contato
+  // do cliente, senão o clique no link curto que saiu da ficha (?c=).
+  async function matchRecord(user, hosts, { emails, phones, created }) {
+    const sentMs = (h) => Date.parse(h.r.bookingLink?.sentAt || "");
+    const waiting = hosts.filter((h) => h.customer && h.r.bookingLink?.user === user.id
+      && created + 10 * MIN >= sentMs(h) && created - sentMs(h) <= LINK_WAIT_MS);
+    if (!waiting.length) return { hit: null, why: "" };
+    const leads = new Map();
+    const contacts = async (h) => {
+      if (!leads.has(h.customer.id)) leads.set(h.customer.id, h.customer.leadId ? await repo.get("leads", h.customer.leadId).catch(() => null) : null);
+      return contactsOf(h.customer, leads.get(h.customer.id));
+    };
+    const clicked = (c) => {
+      const t = Date.parse(c.bookingClick?.at || "");
+      return c.bookingClick?.user === user.id && Number.isFinite(t) && t <= created + 10 * MIN && created - t <= CLICK_MATCH_MS;
+    };
+    // O mesmo cliente com dois registros esperando: vale o link mais recente.
+    const one = (list) => {
+      if (new Set(list.map((h) => h.customer.id)).size !== 1) return null;
+      return [...list].sort((a, b) => sentMs(b) - sentMs(a))[0];
+    };
+    const byEmail = [], byPhone = [];
+    for (const h of waiting) {
+      const cs = await contacts(h);
+      if (cs.some((c) => c.email && emails.has(emailKey(c.email)))) byEmail.push(h);
+      if (cs.some((c) => c.phone && phones.has(waMatchKey(c.phone)))) byPhone.push(h);
+    }
+    const hit = one(byEmail) || one(byPhone) || one(waiting.filter((h) => clicked(h.customer)));
+    const why = !hit ? "" : byEmail.includes(hit) ? "email" : byPhone.includes(hit) ? "telefone" : "clique";
+    return { hit, why };
+  }
+
   // Texto que a página de agendamento do Google põe no evento. Junto com o
   // clique recente, é o que separa a marcação de uma reunião que o próprio
   // integrador criou com convidado de fora (essa não vira aviso).
@@ -204,11 +309,14 @@ export function makeBookingSync({ repo, googleUser: gu, google = null, fetch: f 
     const kind = (l) => kindOf(products.get(l.saas), l.stage);
     const inDelivery = (l) => ["integracao", "posvenda"].includes(kind(l));
     const pools = [leads.filter(inDelivery), leads.filter((l) => kind(l) === "ganho")];
+    const hosts = await recordHosts();
     let known = null;
     let done = 0;
     for (const ev of items) {
       const booked = leads.find((l) => l.integrationBookedVia === "link" && l.integrationBookedEventId === ev.id && l.integrator === user.id);
       if (booked) { await followBooked(user, booked, ev); done++; continue; }
+      const bookedRecord = hosts.map((h) => ({ h, m: (h.r.meetings || []).find((m) => m.bookedVia === "link" && m.eventId === ev.id && m.organizer === user.id) })).find((x) => x.m);
+      if (bookedRecord) { await followRecordBooked(user, bookedRecord.h, bookedRecord.m, ev); done++; continue; }
       if (ev.status === "cancelled" || !ev.start?.dateTime) continue;
       const created = Date.parse(ev.created || "");
       if (!Number.isFinite(created) || created <= since) continue;            // evento antigo editado
@@ -222,6 +330,8 @@ export function makeBookingSync({ repo, googleUser: gu, google = null, fetch: f 
 
       const emails = new Set(guests.map((a) => emailKey(a.email)));
       const phones = new Set(phonesIn(`${ev.description || ""}\n${ev.location || ""}`));
+      const rec = await matchRecord(user, hosts, { emails, phones, created });
+      if (rec.hit) { await applyRecordBooking(user, rec.hit, ev, rec.why, now); done++; continue; }
       const mine = (list) => (list.length > 1 ? list.filter((l) => l.integrator === user.id) : list);
       const clicked = (l) => {
         const t = Date.parse(l.bookingClick?.at || "");

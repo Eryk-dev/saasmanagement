@@ -20,11 +20,12 @@ export { bookingCandidates, sentAgo };
 // do Google abre no WhatsApp com o preview fixo em inglês; o nosso mostra
 // "Agende sua integração com Eryk · LeverAds" e redireciona pra mesma agenda.
 // O "abrir agenda" (conferência de quem opera) segue indo direto ao Google.
-// ?l= card do lead: quando o cliente clica e marca, a marcação cai no card certo
-// sozinha (google/booking-sync.js no servidor).
-export function bookingShareUrl(userId, saas, what = "integracao", leadId = "") {
+// ?l= card do lead (ou ?c= cliente, link mandado pela ficha): quando o cliente
+// clica e marca, a marcação cai no card ou no registro certo sozinha
+// (google/booking-sync.js no servidor).
+export function bookingShareUrl(userId, saas, what = "integracao", leadId = "", customerId = "") {
   const base = import.meta.env?.VITE_API_BASE || (typeof window !== "undefined" && window.location?.origin) || "";
-  const q = new URLSearchParams({ ...(saas ? { s: saas } : {}), t: what, ...(leadId ? { l: leadId } : {}) });
+  const q = new URLSearchParams({ ...(saas ? { s: saas } : {}), t: what, ...(leadId ? { l: leadId } : customerId ? { c: customerId } : {}) });
   return `${base}/a/${encodeURIComponent(userId)}?${q}`;
 }
 

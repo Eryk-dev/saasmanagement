@@ -356,6 +356,7 @@ export const api = {
   // Reunião com o cliente (Clientes): marca no lead dele, com Meet novo quando
   // a anterior já aconteceu, e resume a última pela permissão da tela Clientes.
   customerMeeting: (customerId, body) => req("POST", `/api/customers/${customerId}/meeting`, body),
+  customerMeetingLink: (customerId, body) => req("POST", `/api/customers/${customerId}/meeting-link`, body),
   // Remarcar da atividade de Integração: solta a sala usada e o Meet acompanha.
   integrationMeeting: (leadId, body) => req("POST", `/api/leads/${leadId}/integration-meeting`, body),
   customerMeetingSummary: (customerId, force = false) => req("POST", `/api/customers/${customerId}/meeting-summary`, { force }),

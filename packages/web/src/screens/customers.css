@@ -162,6 +162,13 @@
 .customer-meeting-fields > * { display:flex; flex-direction:column; gap:6px; min-width:0; }
 .customer-meeting-fields .inp { height:34px; width:100%; }
 .customer-meeting-hint { margin:0; font-size:12px; line-height:1.5; color:var(--fg-3); }
+.customer-meeting-when { display:flex; flex-direction:column; gap:6px; max-width:280px; }
+.customer-meeting-when .inp { height:34px; width:100%; }
+.customer-meeting-link { display:flex; flex-direction:column; gap:8px; padding:12px 14px; border:1px solid var(--line-1); border-radius:16px; background:var(--bg-2); }
+.customer-meeting-link p { margin:0; font-size:12.5px; line-height:1.5; color:var(--fg-2); }
+.customer-meeting-link p.mono { font-size:11px; }
+.customer-meeting-link-actions { display:flex; flex-wrap:wrap; gap:6px; }
+.customer-meeting-link-actions > * { height:30px; padding:0 14px; border-radius:999px; border:1px solid var(--line-1); background:var(--bg-1); color:var(--fg-2); font-size:12px; display:inline-flex; align-items:center; text-decoration:none; cursor:pointer; }
 .customer-meeting-error { margin:0; font-size:12.5px; color:var(--neg); }
 .customer-meeting-actions { display:flex; justify-content:flex-end; gap:8px; }
 .customer-meeting-actions button { height:36px; padding:0 16px; border-radius:999px; font-size:12.5px; font-weight:600; background:var(--bg-2); color:var(--fg-1); }
@@ -169,7 +176,8 @@
 .customer-meeting-actions button:disabled { opacity:.6; cursor:default; }
 @media (max-width:600px) {
   .customer-meeting-fields { grid-template-columns:minmax(0,1fr); }
-  .customer-peek-action, .customer-peek-pending > button, .customer-meeting-actions button, .customer-meeting-fields .inp { min-height:44px; }
+  .customer-peek-action, .customer-peek-pending > button, .customer-meeting-actions button, .customer-meeting-fields .inp, .customer-meeting-when .inp, .customer-meeting-link-actions > * { min-height:44px; }
+  .customer-meeting-when { max-width:none; }
 }
 @media(max-width:700px) {
  [role=dialog]:has(> .customer-peek) { right:14px!important; top:14px!important; bottom:14px!important; }

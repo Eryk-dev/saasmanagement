@@ -828,6 +828,33 @@ try {
     failed++;
   } finally { window.SEED.USERS = savedUsers; }
 
+  // Reunião com o cliente pela ficha (22/10/2026): o tipo é explícito
+  // (integração aberta, acompanhamento aberto ou um de CS novo), o responsável
+  // vem do registro, e o link da agenda leva o cliente (?c=), não o lead.
+  try {
+    window.SEED.USERS = [{ id: "eryk", name: "Eryk" }, { id: "cs", name: "Carla" }];
+    const { meetingTypeOptions } = await server.ssrLoadModule("/src/components/customer-meeting.jsx");
+    const { bookingShareUrl } = await server.ssrLoadModule("/src/components/booking-link.jsx");
+    const customer = { id: "c1", owner: "cs", saas: "leverads" };
+    const ops = meetingTypeOptions({
+      customer,
+      onboardings: [{ id: "ob1", kind: "implantacao", stage: "kickoff", integrator: "eryk" }, { id: "ob0", stage: "concluida" }],
+      followups: [{ id: "fu1", kind: "qbr", status: "aberto", owner: "cs" }, { id: "fu0", kind: "check_in", status: "feito" }],
+    });
+    if (ops.map((o) => o.value).join(",") !== "onboardings:ob1,cs_followups:fu1,new:check_in,new:qbr,new:renovacao,new:risco") throw new Error(`tipos: ${ops.map((o) => o.value).join(",")}`);
+    if (ops[0].label !== "Integração · implantação" || ops[0].responsible !== "eryk" || ops[0].group !== "Integração aberta") throw new Error("integração aberta com quem integra");
+    if (ops[1].label !== "QBR (aberto)" || ops[2].label !== "Check-in (novo)" || ops[2].responsible !== "cs") throw new Error("acompanhamentos com o dono de CS");
+    if (JSON.stringify(ops[2].host) !== '{"kind":"check_in"}' || JSON.stringify(ops[0].host) !== '{"collection":"onboardings","id":"ob1"}') throw new Error("host que vai pro servidor");
+    if (meetingTypeOptions({ customer })[0].value !== "new:check_in") throw new Error("sem nada aberto, o padrão é check-in novo (a regra de antes)");
+    const url = bookingShareUrl("eryk", "leverads", "reuniao", "", "c1");
+    if (!url.endsWith("/a/eryk?s=leverads&t=reuniao&c=c1")) throw new Error(`link curto da ficha: ${url}`);
+    if (!bookingShareUrl("eryk", "leverads", "integracao", "l1", "c1").endsWith("&l=l1")) throw new Error("com lead, vale o lead");
+    console.log("✓ reuniao-da-ficha-tipo-e-link");
+  } catch (err) {
+    console.error(`✗ reuniao-da-ficha-tipo-e-link: ${err.message}`);
+    failed++;
+  } finally { window.SEED.USERS = savedUsers; }
+
   // Cadência de 7 dias por coluna (Dia 2…Dia 7, #881): cada dia tem roteiro
   // próprio, linha em Scripts/Próximos passos, e o Depois da ação oferece
   // "Qualificando" (ele respondeu). Com as colunas, o Retomar do Novo lead não

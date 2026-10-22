@@ -82,13 +82,34 @@ export async function updateFollowup(repo, id, body, { by = "", now = new Date()
 
 export const followupsOf = (repo, customerId) => repo.listWhere(FOLLOWUPS, { customer: customerId });
 
-// Onde mora a "reunião com o cliente" marcada pela ficha: na integração aberta
-// mais recente; sem ela, num check-in novo. Nunca no lead da venda.
-export async function meetingHostFor(repo, customer, { by = "" } = {}) {
+// Nome da reunião pelo registro onde ela mora: vai no título do evento, no
+// convite e na timeline ("Check-in LeverAds · Cliente").
+export const FOLLOWUP_LABEL = { check_in: "Check-in", qbr: "QBR", renovacao: "Renovação", risco: "Conversa de risco" };
+const ONBOARDING_DONE = new Set(["concluida", "cancelada"]);
+const hostLabel = (collection, rec) => (collection === "onboardings" ? "Integração" : FOLLOWUP_LABEL[rec.kind] || "Acompanhamento");
+
+// Onde mora a "reunião com o cliente" marcada pela ficha. Nunca no lead da
+// venda. `host` é a escolha da ficha (22/10/2026: a tela não dizia que tipo de
+// reunião era): { collection, id } de uma integração ou acompanhamento ABERTO
+// do cliente, ou { kind } de um acompanhamento novo. Sem escolha, a regra de
+// antes: a integração aberta mais recente; sem ela, um check-in novo.
+export async function meetingHostFor(repo, customer, { by = "", host = null } = {}) {
+  if (host?.collection) {
+    const rec = ["onboardings", FOLLOWUPS].includes(host.collection) ? await repo.get(host.collection, String(host.id || "")) : null;
+    if (!rec || rec.customer !== customer.id) throw fail(404, "Registro não encontrado.");
+    const open = host.collection === "onboardings" ? !ONBOARDING_DONE.has(rec.stage) : rec.status === "aberto";
+    if (!open) throw fail(409, "Esse registro já foi encerrado: escolha outro tipo de reunião.");
+    return { collection: host.collection, id: rec.id, label: hostLabel(host.collection, rec) };
+  }
+  if (host?.kind) {
+    if (!FOLLOWUP_KINDS.includes(host.kind)) throw fail(400, `Tipo inválido: ${host.kind}`);
+    const f = await createFollowup(repo, { customer: customer.id, kind: host.kind, source: "reuniao" }, { by });
+    return { collection: FOLLOWUPS, id: f.id, label: hostLabel(FOLLOWUPS, f) };
+  }
   const open = (await repo.listWhere("onboardings", { customer: customer.id }))
-    .filter((o) => !["concluida", "cancelada"].includes(o.stage))
+    .filter((o) => !ONBOARDING_DONE.has(o.stage))
     .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-  if (open.length) return { collection: "onboardings", id: open[0].id };
+  if (open.length) return { collection: "onboardings", id: open[0].id, label: "Integração" };
   const f = await createFollowup(repo, { customer: customer.id, kind: "check_in", source: "reuniao" }, { by });
-  return { collection: FOLLOWUPS, id: f.id };
+  return { collection: FOLLOWUPS, id: f.id, label: hostLabel(FOLLOWUPS, f) };
 }

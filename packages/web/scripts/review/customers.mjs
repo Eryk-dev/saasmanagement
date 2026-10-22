@@ -93,6 +93,22 @@ try {
  assert.ok(await mobile.locator('.customers-table-scroll').evaluate(e=>e.scrollWidth>e.clientWidth));await mobile.locator('.customers-table-row').first().click();const box=await mobile.getByRole('dialog').boundingBox();assert.ok(box.x>=0&&box.x+box.width<=390&&box.y+box.height<=844);await h.capture(mobile,'mobile-drawer');assert.ok(await mobile.getByRole('button',{name:'Virar case',exact:true}).evaluate(e=>{const r=e.getBoundingClientRect();return e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}));
  await mobile.getByRole('button',{name:'Fechar ficha',exact:true}).click();await mobile.getByRole('button',{name:'Cobranças',exact:true}).click();await mobile.locator('.customers-billing-row').first().waitFor();assert.ok(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await h.capture(mobile,'mobile-billing');await mobile.close();
  const dark=await h.open(1440);await dark.evaluate(()=>document.body.setAttribute('data-theme','dark'));await dark.locator('.customers-table-row').first().click();await h.capture(dark,'dark');await dark.close();
+ // Reunião pela ficha (22/10): o tipo é explícito (a integração aberta, com quem
+ // integra) e o link da agenda registra o envio no registro da integração.
+ for(const width of [1440,390]){
+  const mp=await h.open(width);await mp.locator('.customers-table-row').first().click();
+  const peek=mp.getByRole('dialog',{name:/^Cliente ·/});await peek.waitFor();
+  await peek.getByRole('button',{name:'+ novo',exact:true}).click();await mp.getByRole('button',{name:'Reunião de integração ou CS',exact:true}).click();
+  const act=mp.getByRole('dialog',{name:'Ação do cliente',exact:true});await act.getByRole('heading',{name:/^Reunião com o cliente/}).waitFor();
+  await act.getByText('Integração · implantação').first().waitFor();
+  assert.equal(await act.getByText(/Call de venda com vendedor/).isVisible(),true);
+  assert.ok(await mp.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await h.capture(mp,`meeting-${width}`);
+  await act.getByRole('radio',{name:'Enviar link da agenda',exact:true}).click();
+  await act.getByRole('button',{name:'Copiar mensagem',exact:true}).click();
+  await mp.waitForFunction(()=>window.__reviewMutations.some(m=>m.method==='customerMeetingLink'&&m.body.host.collection==='onboardings'&&m.body.responsible==='leo'));
+  await act.getByText('link enviado · aguardando o cliente marcar',{exact:true}).waitFor();
+  assert.ok(await mp.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await h.capture(mp,`meeting-link-${width}`);await mp.close();
+ }
 
  await h.write('geometry.json',measurements);assert.deepEqual(h.errors,[]);console.log(`Clientes: ${assertions} medidas ≤1px; fluxos, teclado, vazio, falhas, lento, mobile e tema conferidos.`);
 } finally {await h.close();}

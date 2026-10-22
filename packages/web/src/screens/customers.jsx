@@ -469,7 +469,7 @@ function CustomersScreen({ initialTab }) {
     if (!needle) return sortedCustomers;
     return sortedCustomers.filter((c) => {
       const lead = (LEADS || []).find((l) => l.id === c.leadId);
-      return [c.name, c.contact, c.email, lead?.name, lead?.email].some((v) => fold(v).includes(needle));
+      return [c.name, c.contact, c.email, c.leveradsOrgName, lead?.name, lead?.email, lead?.company].some((v) => fold(v).includes(needle));
     });
   }, [sortedCustomers, q, LEADS]); // eslint-disable-line react-hooks/exhaustive-deps
   const filteredCustomers = baseFilter === "active"
@@ -1342,7 +1342,7 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
     <Modal onClose={onClose} fechavel={!chuSaving && !chSaving && !invBusy && !reverting && !meetingBusy} label={operation ? "Ação do cliente" : "ficha do cliente"} largura={operation === "history" ? 1000 : operation || editing ? 640 : 1080} padding={20}
       painelStyle={{ maxHeight: "min(92dvh, 100%)", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "18px 24px 14px", borderBottom: "1px solid var(--line-faint)", flexShrink: 0 }}>
-          {operation && <div className="customer-operation-head"><h2>{({edit:"Editar cliente", money:"Gerenciar cobranças", referral:"Registrar indicação", upsell:"Registrar upsell", churn:"Registrar churn", meeting:"Marcar reunião", history:"Histórico e resumos"})[operation]} · {customer.name}</h2><button aria-label="Fechar ação" onClick={onClose}>✕</button></div>}
+          {operation && <div className="customer-operation-head"><h2>{({edit:"Editar cliente", money:"Gerenciar cobranças", referral:"Registrar indicação", upsell:"Registrar upsell", churn:"Registrar churn", meeting:"Reunião com o cliente", history:"Histórico e resumos"})[operation]} · {customer.name}</h2><button aria-label="Fechar ação" onClick={onClose}>✕</button></div>}
           {/* Faixa de churn: o cliente saiu — quando, por quê e o desfazer. */}
           {churned && (!operation || operation === "churn") && (
             <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "9px 12px", borderRadius: "var(--r-2)", background: "var(--neg-soft)", border: "1px solid color-mix(in srgb, var(--neg) 30%, transparent)" }}>

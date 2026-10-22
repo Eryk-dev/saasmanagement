@@ -13,7 +13,7 @@
 //   POST   /public/leverads/org-created           aviso do cadastro do LeverAds
 //                                                  (X-Cockpit-Service-Key)
 
-import { ORGS, ensureSignupInvite, handleOrgCreated, serviceKeyOk } from "./leverads-orgs.js";
+import { ORGS, applyOrgName, ensureSignupInvite, handleOrgCreated, serviceKeyOk } from "./leverads-orgs.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const norm = (v) => String(v || "").trim().toLowerCase();
@@ -52,6 +52,9 @@ export function registerLeveradsOrgRoutes(app, repo, { mirror }) {
     const prev = norm(customer.leveradsOrgId);
     if (prev && prev !== orgId) await repo.update(ORGS, prev, { customerId: "" }).catch(() => {});
     await repo.update(ORGS, orgId, { customerId: customer.id });
+    // O cliente ganha o nome da empresa da conta (leverads-orgs.js, orgNamePatches).
+    const lead = saved.leadId ? await repo.get("leads", saved.leadId).catch(() => null) : null;
+    await applyOrgName(repo, saved, org, lead);
     return saved;
   });
 

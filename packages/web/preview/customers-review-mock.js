@@ -33,6 +33,8 @@ export function setupCustomersReview(seed) {
   if(params.has('many')){const base=seed.CUSTOMERS[0];for(let i=8;i<72;i++)seed.CUSTOMERS.push({...base,id:`many-${i}`,name:`Cliente ${i}`});}
   seed.CASES=[];
   seed.INVOICES=invoices;seed.SUBSCRIPTIONS=subs;seed.PLANS=plans;
+  // Reunião pela ficha: o Leo integra e tem o link de convite da agenda.
+  const leo=(seed.USERS||[]).find(u=>u.id==='leo');if(leo)leo.bookingUrl='https://calendar.app.google/review';
   window.__reviewMutations=[];
 }
 // Histórico do lead do cliente: resumos de reunião (integração e venda), o
@@ -85,6 +87,13 @@ export const customersReviewMock={
     {id:'u3',email:'operacao@zpack.example',role:'member',createdAt:'2026-10-08T19:00:00Z',lastSignInAt:null,emailConfirmed:true,mfa:false,source:'leverads'},
   ]}}}),
   listActivities:async()=>reviewActivities.map(a=>({...a})),
+  // Ficha do cliente: uma integração aberta (implantação, com o Leo) e nenhum
+  // acompanhamento, pra conferir o tipo de reunião e o link da agenda.
+  customerOnboardings:async id=>({onboardings:[{id:`ob-${id}`,customer:id,kind:'implantacao',stage:'configuracao',integrator:'leo',progress:40,createdAt:'2026-09-20T12:00:00Z'}]}),
+  customerFollowups:async()=>({followups:[]}),
+  customerRecordMeetings:async()=>({meetings:[]}),
+  customerMeeting:async(id,body)=>{window.__reviewMutations.push({method:'customerMeeting',id,body});return {ok:true,host:{...body.host,label:'Integração'}};},
+  customerMeetingLink:async(id,body)=>{window.__reviewMutations.push({method:'customerMeetingLink',id,body});return {ok:true,host:{...body.host,label:'Integração'}};},
   list:async col=>{if(col==='subscriptions'&&++subscriptionReads===2&&params.has('billingFail'))throw new Error('Falha na leitura das cobranças');return col==='invoices'?invoices:col==='subscriptions'?subs:col==='plans'?plans:window.SEED[col.toUpperCase()]||[];},
   planStats:async()=>{
     const blank=()=>({active:0,churned:0,arr:0,mrr:0,received:0,customers:[]});

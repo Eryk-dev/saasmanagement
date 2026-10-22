@@ -12,7 +12,7 @@ import { makeCallSummarizer } from "../calls/call-summaries.js";
 import { makeIntegrationBriefer } from "../calls/integration-brief.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "../platform/http-status.js";
 import { integrationSlotConflict, integrationConflictMessage, integrationEventIds } from "../crm/integration-slot.js";
-import { makeBookingSync } from "./booking-sync.js";
+import { makeBookingSync, stampRecordBookingLink } from "./booking-sync.js";
 import { TZ, callMoment, teamMayOrganize, wallClockBrt } from "./meet-time.js";
 import { checkMeetingInput, makeRecordMeetings } from "../calls/record-meetings.js";
 import { meetingHostFor } from "../customers/cs-followups.js";
@@ -454,18 +454,40 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
   // integração aberta mais recente ou, sem ela, num check-in de CS novo, com
   // Meet próprio (calls/record-meetings.js). Não sobrescreve mais o horário de
   // integração do lead da venda nem exige lead vinculado.
+  // `host` (opcional) = o tipo escolhido na ficha: { collection, id } de um
+  // registro aberto ou { kind } de um acompanhamento novo (meetingHostFor).
   app.post("/api/customers/:id/meeting", async (req, reply) => {
     const customer = await repo.get("customers", req.params.id);
     if (!customer) return reply.code(404).send({ error: "Not found" });
     const by = req.authUser?.id || "cockpit";
     try {
-      const body = { at: req.body?.at, responsible: req.body?.responsible, label: "Reunião" };
+      const body = { at: req.body?.at, responsible: req.body?.responsible };
       await checkMeetingInput(repo, body);
-      const host = await meetingHostFor(repo, customer, { by });
-      const { meeting, meetError } = await recordMeetings.schedule(host.collection, host.id, body, { by });
+      const host = await meetingHostFor(repo, customer, { by, host: req.body?.host || null });
+      const { meeting, meetError } = await recordMeetings.schedule(host.collection, host.id, { ...body, label: host.label }, { by });
       return { ok: true, at: meeting.at, callUrl: meeting.meetUrl || "", meetError, host, meeting };
     } catch (err) {
       if (err.statusCode) return reply.code(err.statusCode).send({ error: err.message, ...(err.reason ? { reason: err.reason } : {}) });
+      throw err;
+    }
+  });
+
+  // Link da agenda mandado pela ficha (o cliente escolhe o horário): o registro
+  // da reunião fica esperando a marcação de `responsible`, e a rotina do link
+  // de convite (booking-sync.js) liga a marcação a ele.
+  app.post("/api/customers/:id/meeting-link", async (req, reply) => {
+    const customer = await repo.get("customers", req.params.id);
+    if (!customer) return reply.code(404).send({ error: "Not found" });
+    const by = req.authUser?.id || "cockpit";
+    const user = await repo.get("users", String(req.body?.responsible || ""));
+    if (!user) return reply.code(422).send({ error: "escolha quem vai atender" });
+    if (!user.bookingUrl) return reply.code(422).send({ error: `${user.name || user.id} ainda não cadastrou o link de convite da agenda (Configurações → Integrações)` });
+    try {
+      const host = await meetingHostFor(repo, customer, { by, host: req.body?.host || null });
+      await stampRecordBookingLink(repo, { collection: host.collection, id: host.id, userId: user.id, label: host.label, by });
+      return { ok: true, host };
+    } catch (err) {
+      if (err.statusCode) return reply.code(err.statusCode).send({ error: err.message });
       throw err;
     }
   });

@@ -32,7 +32,7 @@ test("reunião da ficha: integração aberta mais recente, senão check-in novo"
   await repo.create("onboardings", { id: "nova", customer: c.id, stage: "kickoff", createdAt: "2026-10-01" });
   await repo.create("onboardings", { id: "feita", customer: c.id, stage: "concluida", createdAt: "2026-10-10" });
   host = await meetingHostFor(repo, c);
-  assert.deepEqual(host, { collection: "onboardings", id: "nova" });
+  assert.deepEqual(host, { collection: "onboardings", id: "nova", label: "Integração" });
 });
 
 test("rotas: lista abertas, cria e edita com validação", async () => {

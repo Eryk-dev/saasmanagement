@@ -243,3 +243,67 @@ test("POST /api/customers/:id/leverads-invite: devolve o link e 404 para cliente
   assert.match(res.json().url, /\/signup\?convite=cvt_/);
   assert.equal((await app.inject({ method: "POST", url: "/api/customers/nao-existe/leverads-invite", payload: {} })).statusCode, 404);
 });
+
+// ── Nome da empresa pela conta do LeverAds (22/10/2026) ─────────────────────
+// Caso real: cliente "Luciana" (contato Luciana) se cadastrou como "Via
+// Original" e a busca do cockpit só achava "Luciana".
+
+test("convite: cliente com o nome da pessoa vira o nome da empresa da conta; a pessoa fica no contato e o lead ganha a empresa", async () => {
+  const repo = makeMemRepo();
+  await repo.create("leads", { id: "l1", name: "Luciana Prado", email: "lu@gmail.test", saas: "leverads" });
+  const c = await repo.create("customers", { name: "Luciana", contact: "Luciana", saas: "leverads", leadId: "l1", signupInvite: { token: "cvt_abcdefghijklmnop" } });
+  const client = { configured: () => true, listOrgs: async () => [{ ...novaOrg({ name: "Via Original" }), cockpit_invite: "cvt_abcdefghijklmnop" }] };
+  const report = await runLeveradsOrgMirror(repo, { client, now: () => new Date("2026-10-22T15:00:00Z") });
+  assert.equal(report.renamed, 1);
+  const saved = await repo.get("customers", c.id);
+  assert.equal(saved.name, "Via Original");
+  assert.equal(saved.contact, "Luciana");
+  assert.equal(saved.leveradsOrgName, "Via Original");
+  assert.deepEqual(saved.nameFrom, { via: "leverads_org", previous: "Luciana", at: "2026-10-22T15:00:00.000Z" });
+  assert.equal((await repo.get("leads", "l1")).company, "Via Original");
+  // Segunda passada não mexe de novo.
+  assert.equal((await runLeveradsOrgMirror(repo, { client })).renamed, 0);
+});
+
+test("nome de empresa dado à mão fica; a conta só entra no leveradsOrgName (a busca acha pelos dois)", async () => {
+  const repo = makeMemRepo();
+  await repo.create("leads", { id: "l1", name: "Luciana", company: "Via Original Ltda", saas: "leverads" });
+  const c = await repo.create("customers", { name: "Via Original Ltda", contact: "Luciana", saas: "leverads", leadId: "l1", leveradsOrgId: ORG });
+  const client = { configured: () => true, listOrgs: async () => [novaOrg({ name: "Via Original" })] };
+  await runLeveradsOrgMirror(repo, { client });
+  const saved = await repo.get("customers", c.id);
+  assert.equal(saved.name, "Via Original Ltda");
+  assert.equal(saved.leveradsOrgName, "Via Original");
+  assert.equal((await repo.get("leads", "l1")).company, "Via Original Ltda", "empresa do lead já preenchida não muda");
+});
+
+test("empresa renomeada no LeverAds: o nome que veio da conta acompanha; conta com o nome da própria pessoa não renomeia", async () => {
+  const repo = makeMemRepo();
+  const orgs = [novaOrg({ name: "Via Original" })];
+  const client = { configured: () => true, listOrgs: async () => orgs.map((o) => ({ ...o })) };
+  const c = await repo.create("customers", { name: "Luciana", contact: "Luciana", saas: "leverads", leveradsOrgId: ORG });
+  await runLeveradsOrgMirror(repo, { client });
+  orgs[0].name = "Via Original Calçados";
+  await runLeveradsOrgMirror(repo, { client });
+  assert.equal((await repo.get("customers", c.id)).name, "Via Original Calçados");
+
+  const p = await repo.create("customers", { name: "Marcos", contact: "Marcos Lima", saas: "leverads", leveradsOrgId: OUTRA });
+  const own = { configured: () => true, listOrgs: async () => [...orgs, novaOrg({ id: OUTRA, name: "Marcos", email: "m@x.test" })] };
+  await runLeveradsOrgMirror(repo, { client: own });
+  const saved = await repo.get("customers", p.id);
+  assert.equal(saved.name, "Marcos");
+  assert.equal(saved.nameFrom, undefined);
+});
+
+test("vínculo manual na ficha também troca o nome da pessoa pelo da empresa", async () => {
+  const repo = makeMemRepo();
+  const c = await repo.create("customers", { name: "Luciana", contact: "Luciana", saas: "leverads" });
+  await repo.create("leverads_orgs", { id: ORG, name: "Via Original", email: "x@y.test", active: true, members: [] });
+  const app = Fastify();
+  registerLeveradsOrgRoutes(app, repo, { mirror: { configured: () => true, run: async () => ({}), last: () => null } });
+  const r = await app.inject({ method: "POST", url: `/api/customers/${c.id}/leverads-org`, payload: { orgId: ORG } });
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(r.json().name, "Via Original", "a resposta já traz o nome novo pra ficha");
+  assert.equal((await repo.get("customers", c.id)).leveradsOrgName, "Via Original");
+  await app.close();
+});

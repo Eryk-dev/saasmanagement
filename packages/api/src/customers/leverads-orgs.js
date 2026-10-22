@@ -112,6 +112,42 @@ export function planEmailLinks({ orgs, customers, leads, saasId = SAAS_ID() }) {
   return links;
 }
 
+// Nome da empresa pela conta do LeverAds (22/10/2026): o cliente nasce com o
+// nome da pessoa do lead ("Luciana") e se cadastra no LeverAds como empresa
+// ("Via Original"); a busca do cockpit só achava "Luciana" e alguém renomeava à
+// mão. Vinculado, o cliente guarda o nome da org (`leveradsOrgName`, que a busca
+// lê) e, se o nome dele ainda é o da pessoa (vazio, igual ao contato ou ao lead,
+// ou o primeiro nome deles), passa a ser o da empresa, com a pessoa no contato.
+// Nome de empresa dado à mão não é tocado; nome que já veio da org acompanha a
+// org quando ela é renomeada no LeverAds. O lead da venda ganha a empresa
+// quando está sem.
+export function orgNamePatches(customer, org, lead = null, nowIso = new Date().toISOString()) {
+  const orgName = String(org?.name || "").trim();
+  if (!orgName) return { customer: null, lead: null };
+  const patch = {};
+  if (customer.leveradsOrgName !== orgName) patch.leveradsOrgName = orgName;
+  const name = norm(customer.name);
+  const people = [customer.contact, lead?.name].map(norm).filter(Boolean);
+  const personal = !name || people.some((p) => p === name || p.startsWith(`${name} `));
+  const followsOrg = customer.nameFrom?.via === "leverads_org" && name === norm(customer.leveradsOrgName);
+  if ((personal || followsOrg) && name !== norm(orgName)) {
+    patch.name = orgName;
+    if (!customer.contact && customer.name) patch.contact = customer.name;
+    patch.nameFrom = { via: "leverads_org", previous: customer.name || "", at: nowIso };
+  }
+  return {
+    customer: Object.keys(patch).length ? patch : null,
+    lead: lead && !String(lead.company || "").trim() ? { company: orgName } : null,
+  };
+}
+
+export async function applyOrgName(repo, customer, org, lead, nowIso = new Date().toISOString()) {
+  const p = orgNamePatches(customer, org, lead, nowIso);
+  if (p.customer) { await repo.update("customers", customer.id, p.customer); Object.assign(customer, p.customer); }
+  if (p.lead) { await repo.update("leads", lead.id, p.lead); Object.assign(lead, p.lead); }
+  return !!p.customer?.name;
+}
+
 // Linha do espelho a partir da org do LeverAds (+ e-mails das contas no LeverId).
 function mirrorRow(org, prev, { members, nowIso }) {
   return {
@@ -184,6 +220,16 @@ export async function runLeveradsOrgMirror(repo, { client, identity = null, now 
   }
   const links = [...inviteLinks, ...emailLinks];
 
+  // Nome da empresa em todo cliente vinculado (o vínculo novo, os antigos e a
+  // org renomeada no LeverAds); ver orgNamePatches.
+  const leadById = new Map(leads.map((l) => [l.id, l]));
+  let renamed = 0;
+  for (const c of customers) {
+    const row = rows.get(norm(c.leveradsOrgId));
+    if (!row || row.gone) continue;
+    if (await applyOrgName(repo, c, row, c.leadId ? leadById.get(c.leadId) || null : null, nowIso)) renamed++;
+  }
+
   const customerByOrg = new Map();
   for (const c of customers) if (norm(c.leveradsOrgId)) customerByOrg.set(norm(c.leveradsOrgId), c.id);
   let created = 0;
@@ -203,9 +249,10 @@ export async function runLeveradsOrgMirror(repo, { client, identity = null, now 
     payingWithoutCustomer: live.filter((r) => !r.customerId && r.paymentActive).length,
     autoLinked: links.length,
     inviteLinked: inviteLinks.length,
+    renamed,
     created, updated,
   };
-  if (links.length || created) log?.info?.(report, "leverads-orgs: espelho atualizado");
+  if (links.length || created || renamed) log?.info?.(report, "leverads-orgs: espelho atualizado");
   return report;
 }
 

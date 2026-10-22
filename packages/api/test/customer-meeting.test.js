@@ -95,7 +95,7 @@ test("com integração aberta, a reunião da ficha entra nela", async () => {
   await repo.create("onboardings", { id: "ob1", customer: "c1", stage: "configuracao", integrator: "eryk", createdAt: "2026-10-01T00:00:00Z", items: [] });
   const r = await app.inject({ method: "POST", url: "/api/customers/c1/meeting", payload: { at: brtIn(2) } });
   assert.equal(r.statusCode, 200, r.body);
-  assert.deepEqual(r.json().host, { collection: "onboardings", id: "ob1" });
+  assert.deepEqual(r.json().host, { collection: "onboardings", id: "ob1", label: "Integração" });
   const o = await repo.get("onboardings", "ob1");
   assert.equal(o.meetings[0].responsible, "eryk", "o integrador da integração responde pela reunião");
   await app.close();
@@ -173,5 +173,57 @@ test("remarcar a integração pelo lead: mesma confirmação quando a anterior n
   assert.equal(passado.statusCode, 422);
   const naoExiste = await app.inject({ method: "POST", url: "/api/leads/zz/integration-meeting", payload: { at } });
   assert.equal(naoExiste.statusCode, 404);
+  await app.close();
+});
+
+// ── Tipo da reunião escolhido na ficha e link da agenda (22/10/2026) ─────────
+
+test("tipo escolhido na ficha: QBR novo vira acompanhamento de QBR e a reunião leva o nome no convite", async () => {
+  const { repo, app, google } = await setup();
+  await repo.create("onboardings", { id: "ob1", customer: "c1", stage: "configuracao", integrator: "eryk", createdAt: "2026-10-01T00:00:00Z", items: [] });
+  const r = await app.inject({ method: "POST", url: "/api/customers/c1/meeting", payload: { at: brtIn(2), responsible: "eryk", host: { kind: "qbr" } } });
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(r.json().host.collection, "cs_followups", "escolheu QBR: não cai na integração aberta");
+  assert.equal(r.json().host.label, "QBR");
+  const f = await repo.get("cs_followups", r.json().host.id);
+  assert.equal(f.kind, "qbr");
+  assert.equal(f.meetings[0].label, "QBR");
+  assert.match(google.created[0].summary, /^QBR UniqueKids · Bordados/);
+  assert.equal((await repo.get("onboardings", "ob1")).meetings, undefined);
+  await app.close();
+});
+
+test("tipo escolhido na ficha: registro encerrado ou de outro cliente é recusado sem criar nada", async () => {
+  const { repo, app, google } = await setup();
+  await repo.create("onboardings", { id: "ob-fim", customer: "c1", stage: "concluida", integrator: "eryk", createdAt: "2026-10-01T00:00:00Z", items: [] });
+  await repo.create("customers", { id: "c2", saas: "uniquekids", name: "Outro" });
+  await repo.create("cs_followups", { id: "fu-c2", customer: "c2", kind: "check_in", status: "aberto", meetings: [] });
+  const fechado = await app.inject({ method: "POST", url: "/api/customers/c1/meeting", payload: { at: brtIn(2), host: { collection: "onboardings", id: "ob-fim" } } });
+  assert.equal(fechado.statusCode, 409);
+  const alheio = await app.inject({ method: "POST", url: "/api/customers/c1/meeting", payload: { at: brtIn(2), host: { collection: "cs_followups", id: "fu-c2" } } });
+  assert.equal(alheio.statusCode, 404);
+  const tipo = await app.inject({ method: "POST", url: "/api/customers/c1/meeting", payload: { at: brtIn(2), host: { kind: "venda" } } });
+  assert.equal(tipo.statusCode, 400);
+  assert.equal(google.created.length, 0);
+  assert.equal((await repo.list("cs_followups")).length, 1, "só o do outro cliente");
+  await app.close();
+});
+
+test("link da agenda pela ficha: registro fica esperando a marcação de quem atende; sem link cadastrado, recusa", async () => {
+  const { repo, app } = await setup();
+  const semLink = await app.inject({ method: "POST", url: "/api/customers/c1/meeting-link", payload: { responsible: "eryk", host: { kind: "check_in" } } });
+  assert.equal(semLink.statusCode, 422);
+  assert.match(semLink.json().error, /link de convite/);
+  assert.equal((await repo.list("cs_followups")).length, 0, "recusado antes de criar o acompanhamento");
+  await repo.update("users", "eryk", { bookingUrl: "https://calendar.app.google/x" });
+  await repo.create("onboardings", { id: "ob1", customer: "c1", stage: "kickoff", integrator: "eryk", createdAt: "2026-10-01T00:00:00Z", items: [] });
+  const r = await app.inject({ method: "POST", url: "/api/customers/c1/meeting-link", payload: { responsible: "eryk", host: { collection: "onboardings", id: "ob1" } } });
+  assert.equal(r.statusCode, 200, r.body);
+  assert.deepEqual(r.json().host, { collection: "onboardings", id: "ob1", label: "Integração" });
+  const o = await repo.get("onboardings", "ob1");
+  assert.equal(o.bookingLink.user, "eryk");
+  assert.equal(o.bookingLink.label, "Integração");
+  assert.ok(o.bookingLink.sentAt);
+  assert.equal((await repo.get("leads", "l1")).integrationLinkSentAt, undefined, "o lead da venda não é tocado");
   await app.close();
 });

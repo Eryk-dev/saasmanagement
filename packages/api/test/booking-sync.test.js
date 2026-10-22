@@ -296,3 +296,74 @@ test("aviso de marcação sem card fica no topo do sino até alguém ligar, mesm
   list = await listNotifications(repo, "eryk", { now });
   assert.ok(!list.items.some((n) => n.id === aviso.id), "ligado a um card, sai do topo");
 });
+
+// ── Link mandado pela ficha do cliente (22/10/2026) ─────────────────────────
+// O registro (integração ou acompanhamento) espera a marcação; ela entra nas
+// reuniões dele, nunca no lead da venda.
+async function withCustomer(repo, followup = {}) {
+  await repo.create("customers", { id: "c1", saas: "leverads", name: "Prado Pet", email: "ana@prado.com", leadId: "ana" });
+  await repo.create("cs_followups", { id: "fu1", customer: "c1", saas: "leverads", kind: "check_in", status: "aberto", meetings: [], ...followup });
+}
+const waitingLink = { bookingLink: { user: "eryk", label: "Check-in", sentAt: new Date(NOW.getTime() - 3600_000).toISOString() } };
+
+test("link da ficha: a marcação com o e-mail do cliente entra no acompanhamento, com a sala da marcação, e o lead não muda", async () => {
+  const { repo, cal, sync, eryk } = await setup();
+  await withCustomer(repo, waitingLink);
+  cal.queue.push([booking()]);
+  assert.equal(await sync.syncUser(eryk, NOW), 1);
+  const f = await repo.get("cs_followups", "fu1");
+  assert.equal(f.meetings.length, 1);
+  assert.equal(f.meetings[0].eventId, "bk1");
+  assert.equal(f.meetings[0].meetUrl, "https://meet.google.com/abc-defg-hij");
+  assert.equal(f.meetings[0].label, "Check-in");
+  assert.equal(f.meetings[0].bookedVia, "link");
+  assert.equal(f.meetings[0].at, "2026-10-09T13:00:00.000Z");
+  assert.equal(f.bookingLink, null, "o registro sai do 'aguardando o cliente marcar'");
+  assert.equal((await repo.get("leads", "ana")).integrationAt, undefined, "a ana tem o mesmo e-mail e está em Integração, mas o link foi do registro");
+  assert.ok((await repo.list("timeline_events")).some((t) => t.kind === "meeting.scheduled" && t.customer === "c1" && t.data.via === "link"));
+  const [n] = await repo.list("notifications");
+  assert.match(n.text, /Prado Pet marcou check-in pelo seu link/);
+  assert.deepEqual(n.link, { screen: "customers", customer: "c1" });
+});
+
+test("link da ficha: sem e-mail igual, liga pelo clique no link curto com ?c=", async () => {
+  const { repo, cal, sync, eryk } = await setup();
+  await withCustomer(repo, waitingLink);
+  assert.equal(await recordBookingClick(repo, { userId: "eryk", customerId: "c1", ua: "Mozilla/5.0", now: new Date(NOW.getTime() - 5 * 60_000) }), true);
+  cal.queue.push([booking({ attendees: [{ email: "socio@outra.com" }] })]);
+  await sync.syncUser(eryk, NOW);
+  assert.equal((await repo.get("cs_followups", "fu1")).meetings[0]?.eventId, "bk1");
+});
+
+test("reunião que o cockpit criou no registro não vira 'integração marcada pelo link' no lead", async () => {
+  const { repo, cal, sync, eryk } = await setup();
+  await withCustomer(repo, { meetings: [{ id: "mt1", at: "2026-10-09T13:00:00.000Z", status: "scheduled", eventId: "bk1", meetUrl: "https://meet.google.com/abc-defg-hij", responsible: "eryk", organizer: "eryk" }] });
+  cal.queue.push([booking({ description: "Check-in do cliente Prado Pet" })]);
+  assert.equal(await sync.syncUser(eryk, NOW), 0);
+  assert.equal((await repo.get("leads", "ana")).integrationAt, undefined);
+  assert.equal((await repo.list("notifications")).length, 0);
+});
+
+test("link da ficha: remarcar e cancelar na página do Google acompanham no registro", async () => {
+  const { repo, cal, sync, eryk } = await setup();
+  await withCustomer(repo, waitingLink);
+  cal.queue.push([booking()]);
+  await sync.syncUser(eryk, NOW);
+  cal.queue.push([booking({ start: { dateTime: "2026-10-10T15:00:00-03:00" } })]);
+  await sync.syncUser(eryk, NOW);
+  assert.equal((await repo.get("cs_followups", "fu1")).meetings[0].at, "2026-10-10T18:00:00.000Z");
+  cal.queue.push([booking({ status: "cancelled" })]);
+  await sync.syncUser(eryk, NOW);
+  const m = (await repo.get("cs_followups", "fu1")).meetings[0];
+  assert.equal(m.status, "canceled");
+  assert.ok((await repo.list("notifications")).some((n) => /cancelou check-in/.test(n.text)));
+});
+
+test("link da ficha vencido (mais de 14 dias) não prende a marcação: segue a regra dos cards", async () => {
+  const { repo, cal, sync, eryk } = await setup();
+  await withCustomer(repo, { bookingLink: { user: "eryk", label: "Check-in", sentAt: new Date(NOW.getTime() - 15 * 86_400_000).toISOString() } });
+  cal.queue.push([booking()]);
+  await sync.syncUser(eryk, NOW);
+  assert.equal((await repo.get("cs_followups", "fu1")).meetings.length, 0);
+  assert.equal((await repo.get("leads", "ana")).integrationBookedEventId, "bk1");
+});

@@ -115,6 +115,9 @@ export function CustomerNow({ customer, lead, onLeave, onScheduleMeeting }) {
   const next = live.filter((m) => Date.parse(m.at) > now).sort((a, b) => Date.parse(a.at) - Date.parse(b.at))[0];
   const pending = live.find((m) => !m.summaryAt && m.meetUrl && Date.parse(m.at) + 50 * 60_000 < now);
   const legacy = !next && lead?.integrationAt && Date.parse(lead.integrationAt) > now ? lead : null;
+  // Link da agenda mandado pela ficha, esperando o cliente marcar (a marcação
+  // cai no registro sozinha; o servidor limpa o bookingLink).
+  const waitingLink = [...onboardings, ...followups].filter((r) => r.bookingLink?.user);
   const empty = data && !onboardings.length && !followups.length && !next && !legacy && !pending;
 
   async function summarize() {
@@ -127,7 +130,7 @@ export function CustomerNow({ customer, lead, onLeave, onScheduleMeeting }) {
   const groups = [
     ["Integração", [{ label: (data?.onboardings || []).length ? "Nova integração (produto novo)" : "Nova integração", onClick: newOnboarding }]],
     ["Acompanhamento", Object.entries(FOLLOWUP).map(([k, l]) => ({ label: l, onClick: () => newFollowup(k) }))],
-    ["Reunião", [{ label: "Marcar reunião", onClick: onScheduleMeeting }]],
+    ["Reunião", [{ label: "Reunião de integração ou CS", onClick: onScheduleMeeting }]],
     ["Negócio", Object.entries(NEW_DEAL).map(([k, l]) => ({ label: l, onClick: () => newDeal(k) }))],
   ];
 
@@ -145,6 +148,10 @@ export function CustomerNow({ customer, lead, onLeave, onScheduleMeeting }) {
     {legacy && <Row label="Próxima reunião" sub="implantação (no negócio)">
       {when(legacy.integrationAt)}{legacy.integrationCallUrl ? <> · <a className="customer-peek-link" href={legacy.integrationCallUrl} target="_blank" rel="noopener noreferrer">Meet ↗</a></> : null}
     </Row>}
+    {waitingLink.map((r) => <Row key={`link-${r.id}`} label="Link da agenda enviado"
+      sub={`${displayName(r.bookingLink.user) || r.bookingLink.user} · ${r.bookingLink.label || "reunião"}`}>
+      aguardando o cliente marcar · {day(r.bookingLink.sentAt)}
+    </Row>)}
     {pending && <div className="customer-peek-pending">
       <span>{`Reunião de ${day(pending.at)} sem resumo`}</span>
       <button type="button" onClick={summarize} disabled={busy}>{busy ? "Gerando…" : "Gerar resumo"}</button>
