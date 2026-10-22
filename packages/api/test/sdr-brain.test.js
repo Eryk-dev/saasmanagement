@@ -1327,6 +1327,37 @@ test("teto diário: com alerta há menos de 24h não repete o alerta; com alerta
   assert.equal((await old.list("wa_alerts")).length, 1);
 });
 
+// ── 21/10: lembrete da manhã estourava o teto e calava o robô no dia da call ─
+
+test("teto conta só a fala: envios do poller (lembrete, toque) não estouram o teto da conversa #R-082", async () => {
+  // Agendou na véspera numa conversa longa (12 falas) e recebeu o lembrete da
+  // manhã (texto · foto · texto) + a confirmação do lembrete: 16 mensagens do
+  // robô em 24h, mas só 12 são conversa.
+  const talk = Array.from({ length: 12 }, (_, i) => ({ direction: "out", author: "sdr-bot", text: "fala " + i, at: ISO(`2026-08-18T2${i % 4}:0${i % 6}:00Z`) }));
+  const flow = ["Bom dia Rafael, temos um horário reservado hoje", "", "Posso contar com sua presença?", "Perfeito Rafael, o link pra entrar é este"]
+    .map((text, i) => ({ direction: "out", author: "sdr-bot", via: "flow", text, at: ISO(`2026-08-19T11:0${i}:00Z`) }));
+  const repo = await world({ messages: [...talk, ...flow, { direction: "in", text: "consigo entrar pelo celular?", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Consegue sim Rafael" }] });
+  assert.equal(await brainOf(repo, fakes).handleInbound(INBOUND), "responder");
+  assert.equal((await repo.list("wa_alerts")).length, 0, "sem alerta de teto");
+  assert.equal((await repo.get("leads", "L1")).sdrLog?.handoffKind, undefined);
+});
+
+test("handoff de teto da manhã não cala a janela da call; fora dela segue calado #R-082 #R-039", async () => {
+  // Nicolas (21/10): teto às 08:08 pelo lembrete, pergunta 9 min antes da call
+  // das 14h ficou 51 min sem resposta.
+  const mk = (callAt, handoffKind = "teto") => world({
+    lead: { stage: "Call agendada", callAt, closer: "pl", callUrl: "https://meet.google.com/abc", sdrLog: { handoffAt: ISO("2026-08-19T11:08:00Z"), handoffKind, capAlertAt: ISO("2026-08-19T11:08:00Z") } },
+    messages: [{ direction: "in", text: "consigo acessar pelo celular, to na rua", at: ISO("2026-08-19T12:59:00Z") }],
+  });
+  const naJanela = await mk("2026-08-19T10:10");
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Consegue sim, é só entrar pelo link" }] });
+  assert.notEqual(await brainOf(naJanela, fakes).handleInbound(INBOUND), "waiting-human");
+  assert.equal(fakes.calls.length, 1, "a IA decide a resposta na janela da call");
+  assert.equal(await brainOf(await mk("2026-08-19T16:00"), makeFakes()).handleInbound(INBOUND), "waiting-human", "fora da janela o teto segura");
+  assert.equal(await brainOf(await mk("2026-08-19T10:10", "ia"), makeFakes()).handleInbound(INBOUND), "waiting-human", "handoff pedido pela IA segue esperando gente");
+});
+
 // ── Raio-x 30/09: hoje na oferta, janela da call, aceite + preço, objeção, motivo do handoff ─
 
 test("hoje entra na oferta espontânea com 2h de folga (10h BRT → primeiro horário hoje às 13h) #R-022", async () => {

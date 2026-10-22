@@ -27,6 +27,21 @@ const PROD_HOST_MARKERS = [
   "lp-tunnel", // túnel da VPS2 para o Postgres da VPS1
 ];
 const DB_VARS = ["COCKPIT_DB_URL", "LEVERCOPY_DB_URL", "ELO_DB_URL"];
+// Banco do Cockpit APOSENTADO: desde 19/10/2026 o Cockpit mora no Postgres da
+// VPS (docs/PLANO-MIGRACAO-COCKPIT-VPS.md). Em 21/10 um deploy pelo EasyPanel
+// religou a instância antiga, ainda apontada pro Supabase Cloud, e ela mandou
+// 34 retomadas com dados parados. Com o COCKPIT_DB_URL aqui a API não sobe em
+// ambiente NENHUM, produção inclusive: rotina nenhuma roda num banco que
+// ninguém lê. LEVERCOPY_DB_URL e ELO_DB_URL seguem no Supabase Cloud e não
+// entram nesta trava.
+const RETIRED_COCKPIT_DB_MARKERS = ["hsooljludhobvsznvnir", "pooler.supabase.com", "supabase.co"];
+
+export function retiredCockpitDb(env = process.env) {
+  const value = String(env.COCKPIT_DB_URL || "");
+  if (!value) return "";
+  const haystack = hostOf(value) || value.toLowerCase();
+  return RETIRED_COCKPIT_DB_MARKERS.some((m) => haystack.includes(m)) ? (hostOf(value) || "supabase") : "";
+}
 // URLs HTTP de outros produtos: produção é o domínio sem o prefixo `dev.`.
 const PROD_APP_DOMAINS = ["leverads.com.br", "leverprice.com.br", "levermoney.com.br"];
 const APP_URL_VARS = ["LEVERADS_API_URL", "LEVERCOPY_API_URL", "AUTH_JWKS_URL", "IDENTITY_AUTH_URL", "IDENTITY_REST_URL"];
@@ -66,10 +81,15 @@ export function prodTargets(env = process.env) {
   return found;
 }
 
-// Chamado no boot, antes do initDb(): lança erro fora de produção se o env
-// aponta para produção. Devolve o ambiente resolvido.
+// Chamado no boot, antes do initDb(): lança erro com o banco aposentado do
+// Cockpit em qualquer ambiente e, fora de produção, se o env aponta para
+// produção. Devolve o ambiente resolvido.
 export function assertSafeBoot(env = process.env) {
   const appEnv = resolveAppEnv(env);
+  const retired = retiredCockpitDb(env);
+  if (retired) {
+    throw new Error(`COCKPIT_DB_URL (${retired}) é o banco aposentado do Cockpit (migração de 19/10/2026): esta instância não sobe. A produção está no Coolify.`);
+  }
   if (appEnv === "production") return appEnv;
   const found = prodTargets(env);
   if (found.length) {

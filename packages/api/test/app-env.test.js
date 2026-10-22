@@ -23,8 +23,21 @@ test("trava de boot: fora de prod, banco ou API de produção no env recusa subi
   assert.throws(() => assertSafeBoot({ APP_ENV: "dev", LEVERADS_API_URL: "https://copy.levermoney.com.br" }), /LEVERADS_API_URL/);
   assert.throws(() => assertSafeBoot({ APP_ENV: "dev", LEVERCOPY_API_URL: "https://leverads.com.br" }), /LEVERCOPY_API_URL/);
   assert.throws(() => assertSafeBoot({ APP_ENV: "dev", COCKPIT_DB_URL: "postgres://u:p@db.interno:5432/x", PROD_HOSTS: "db.interno" }), /COCKPIT_DB_URL/);
-  // Em produção a trava não se aplica.
-  assert.equal(assertSafeBoot({ APP_ENV: "production", COCKPIT_DB_URL: CLOUD }), "production");
+  // Em produção a trava de destino não se aplica.
+  assert.equal(assertSafeBoot({ APP_ENV: "production", COCKPIT_DB_URL: "postgres://u:p@leverads-db:5432/cockpit", LEVERCOPY_DB_URL: CLOUD }), "production");
+});
+
+test("banco aposentado do Cockpit: nenhuma instância sobe com ele, produção inclusive (EasyPanel religado em 21/10)", () => {
+  // O container do EasyPanel é NODE_ENV=production sem APP_ENV, apontado pro Supabase Cloud.
+  assert.throws(() => assertSafeBoot({ NODE_ENV: "production", COCKPIT_DB_URL: CLOUD }), /banco aposentado/);
+  assert.throws(() => assertSafeBoot({ APP_ENV: "production", COCKPIT_DB_URL: "postgresql://u:p@db.hsooljludhobvsznvnir.supabase.co:5432/postgres" }), /banco aposentado/);
+  try {
+    assertSafeBoot({ NODE_ENV: "production", COCKPIT_DB_URL: CLOUD });
+  } catch (err) {
+    assert.ok(!err.message.includes("segredo"), "mensagem sem senha");
+  }
+  // Levercopy e Elo continuam no Supabase Cloud em produção.
+  assert.equal(assertSafeBoot({ NODE_ENV: "production", COCKPIT_DB_URL: "postgres://u:p@leverads-db:5432/cockpit", LEVERCOPY_DB_URL: CLOUD, ELO_DB_URL: CLOUD }), "production");
 });
 
 test("trava de boot: destinos de dev e locais passam", () => {

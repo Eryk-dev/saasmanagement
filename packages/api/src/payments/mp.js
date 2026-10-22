@@ -103,8 +103,11 @@ export function makeMp({ fetch: f = globalThis.fetch, accessToken, webhookSecret
     // Busca paginada das assinaturas recorrentes DA CONTA — inclusive as criadas
     // fora do cockpit (painel do MP, copylever). É a janela pro vínculo
     // assinatura do MP ↔ cliente do cockpit (mp-subscriptions.js).
+    // Sem `sort`/`criteria`: desde 21/10 o MP responde 400 "Invalid sorting
+    // value format" a sort=date_created&criteria=desc, e o espelho parou. A
+    // varredura percorre a conta inteira, então a ordem não importa.
     searchPreapprovals({ limit = 50, offset = 0, status, payerEmail } = {}) {
-      const q = new URLSearchParams({ limit: String(limit), offset: String(offset), sort: "date_created", criteria: "desc" });
+      const q = new URLSearchParams({ limit: String(limit), offset: String(offset) });
       if (status) q.set("status", status);
       if (payerEmail) q.set("payer_email", payerEmail);
       return request("GET", `/preapproval/search?${q.toString()}`);

@@ -324,8 +324,8 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 
 ### R-082 · Teto de 15 mensagens do robô por conversa em 24h
 
-- Origem: 2026-08-22, Leo (#736)
-- Regra: Na 16ª mensagem do robô em 24h a conversa vira handoff com alerta (um alerta a cada 24h). Não vale na janela da call.
+- Origem: 2026-08-22, Leo (#736; só a fala conta 22/10 (Nicolas e Francisco: lembrete da manhã estourou o teto no dia da call))
+- Regra: Na 16ª mensagem do robô em 24h a conversa vira handoff com alerta (um alerta a cada 24h). Conta só a fala da conversa: 1º toque, lembretes, escada, resgate e a confirmação do lembrete (envios do poller) ficam fora. Não vale na janela da call, nem o handoff de teto carimbado antes dela.
 - Vale em: estados todos; roteiro todos; executada por state, alerta
 
 ### R-083 · Desinteresse acolhe e para

@@ -1,9 +1,10 @@
 # Working agreement
 
 - After completing and testing a requested code change, commit only the files that belong to that request and push the commit to `origin/main`.
-- The EasyPanel production service deploys automatically from pushes to `main`; treat a successful push as the deployment trigger and verify production afterward when a safe health/page check is available.
+- Since 19/10/2026 production runs on Coolify (VPS `187.127.50.132`, `https://levermoney.com.br`, database `cockpit` in its Postgres). A push to `main` does not deploy; the deploy is manual and documented in the context guide. Verify production afterward when a safe health/page check is available.
+- **Never deploy, scale up, or trigger the webhook of the retired EasyPanel service** (`extrator_mp_saasmngmnt`): it still points to the retired Supabase Cloud database, and on 21/10/2026 reviving it sent 34 stale WhatsApp messages to leads. The API refuses to boot against that database (`platform/app-env.js`).
 - Never include unrelated pre-existing working-tree changes in the task commit. Never force-push.
-- If deployment cannot be completed safely (tests fail, remote diverged, authentication fails, or EasyPanel does not update), stop and report the exact blocker instead of hiding it.
+- If deployment cannot be completed safely (tests fail, remote diverged, authentication fails, or Coolify does not update), stop and report the exact blocker instead of hiding it.
 
 # Project context
 

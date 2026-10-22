@@ -32,7 +32,7 @@ import { transcriber as defaultTranscriber } from "../whatsapp/transcribe.js";
 import { FORM_MSG_RX, SLOTS_RX, OFFER_CUE_RX, isOfferMsg, ACCEPT_RX, offeredSlotsIn, acceptedSlot, AUTO_REPLY_RX, BARE_HOUR_RX, collapseSameDay, expandSameDay, DEMO_RX, PITCH_RX } from "./sdr-signals.js";
 import { transcribeInbound } from "../whatsapp/wa-transcribe.js";
 import { AFFILIATE_RX, DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, NO_INTEREST_RX, LEAD_MOBILE_RX, DENY_CALL_RX, PERIOD_ASK_RX, PRICE_ASK_RX, WAITING_ROOM_RX, OBJECTION_RX, OEM_NO_RX, bareHour, leadEngaged, lastInboundText, plainReply, requestsCancellation, rescheduleReply, classifyInbound } from "./sdr-intents.js";
-import { stateOf, HUMAN_MUTE_MS, GREETING_GAP_MS, DAILY_CAP } from "./sdr-state.js";
+import { stateOf, HUMAN_MUTE_MS, GREETING_GAP_MS, DAILY_CAP, botTalkLast24h, handoffHolds } from "./sdr-state.js";
 import { PRICE_RX, REDIRECT_RX, DRY_REFUSAL_RX, FAKE_OFFER_RX, PROMISE_RX, SCHEDULE_ASK_Q_RX, DEVICE_ASK_RX, stripDuration, stripDeviceAsk, sameSentence, alreadySaid, makeDraft, validateDraft } from "./sdr-guards.js";
 import { reofferText, offerLine, NO_SLOT_TEXT } from "./sdr-offer.js";
 // Compat: quem importava daqui continua funcionando (replay, testes).
@@ -644,8 +644,6 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // Gente falou há pouco: a conversa é dela. Handoff pendente (sem humano
     // depois dele): o robô segue calado esperando gente assumir.
     if (lastHumanOut && nowMs - Date.parse(lastHumanOut.at || 0) < HUMAN_MUTE_MS) return "human-active";
-    const handoffAt = lead.sdrLog?.handoffAt ? Date.parse(lead.sdrLog.handoffAt) : 0;
-    if (handoffAt && !(lastHumanOut && Date.parse(lastHumanOut.at || 0) > handoffAt)) return "waiting-human";
     // JANELA DA CALL (raio-x 30/09): de 30 min antes a 60 min depois do
     // horário marcado o lead está entrando (ou esperando) na sala. Aqui o robô
     // não sobe escada de preço, não estoura teto e não entrega por repetição:
@@ -653,8 +651,11 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // viraram "teto do dia" a minutos da call ("ok ja vou acessar" → handoff).
     const callMsNow = lead.callAt ? Date.parse(brtToIso(lead.callAt)) : NaN;
     const inCallWindow = Number.isFinite(callMsNow) && nowMs >= callMsNow - 30 * MIN && nowMs <= callMsNow + 60 * MIN;
-    // Teto diário por conversa: rajada nunca vira metralhadora.
-    const botToday = msgs.filter((m) => m.direction === "out" && m.author === SDR_AUTHOR && nowMs - Date.parse(m.at || 0) < 24 * HOUR).length;
+    // Handoff de teto carimbado de manhã não cala a janela da call (21/10).
+    if (handoffHolds({ log: lead.sdrLog || {}, lastHumanOut, inCallWindow })) return "waiting-human";
+    // Teto diário por conversa: rajada nunca vira metralhadora. Só a fala do
+    // robô conta; lembrete e toque automático (via "flow") ficam fora.
+    const botToday = botTalkLast24h(msgs, nowMs);
     if (botToday >= DAILY_CAP && !inCallWindow) {
       // Um alerta por 24h (a comparação antiga era com o horário da CALL, que
       // nunca bate com um timestamp: o alerta repetia a cada mensagem).

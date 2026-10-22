@@ -542,25 +542,40 @@ produto e `seed:leverads-questions`); o único aviso esperado é
 
 Após a validação, seguir a autorização do Leonardo: verificar `origin/main`,
 commitar os arquivos da tarefa na branch de trabalho, fazer push, abrir e
-mesclar o PR para `main`, sem force-push nem mudanças alheias. O redeploy no
-EasyPanel é manual pelo Leonardo (o serviço `extrator_mp_saasmngmnt` está com
-`autoDeploy` desligado, conferido em 23/09/2026: merge na `main` não sobe
-sozinho); lembrar após o merge e verificar a produção
-quando a nova versão estiver disponível.
+mesclar o PR para `main`, sem force-push nem mudanças alheias.
 
-Endereço registrado e acessível na análise:
-`https://extrator-mp-saasmngmnt.gnnc3f.easypanel.host`.
+**Produção desde 19/10/2026: Coolify** na VPS `187.127.50.132`
+(`https://levermoney.com.br`), banco `cockpit` no Postgres `leverads-db` da
+mesma VPS (`docs/PLANO-MIGRACAO-COCKPIT-VPS.md`). Push na `main` não sobe: o
+deploy é manual, `python3 /opt/cockpit-migracao/cockpit-coolify.py deploy` na
+VPS (~80 s), e leva junto tudo que estiver na `main`. Cada deploy reinicia o
+processo; decisão do robô em curso é retomada pela varredura (`sdrBrainSweep`).
+Backup: `/usr/local/sbin/leverads-backup.sh` (cron 07:00 UTC) faz `pg_dump`
+dos bancos `postgres` e `cockpit` (este só desde 22/10/2026; antes ficou fora)
+em `/opt/backups`, com 7 dias de retenção e sem cópia fora da VPS.
+
+**EasyPanel aposentado (incidente de 21/10/2026):** o serviço
+`extrator_mp_saasmngmnt` (VPS `82.25.70.107`) fica com 0 réplicas e ainda
+aponta para o Supabase Cloud com as rotinas ligadas. O webhook de deploy dele
+foi disparado por engano e o container antigo rodou 9 minutos em paralelo,
+mandando 34 retomadas do robô com dados de 19/10 (copiadas depois para o
+histórico da produção, marcadas `importedFrom: "easypanel-2026-10-21"`). Nunca
+disparar deploy, escalar ou reconstruir esse serviço. Desde então a API se
+recusa a subir com `COCKPIT_DB_URL` no Supabase Cloud em qualquer ambiente
+(`retiredCockpitDb` em `app-env.js`, teste em `app-env.test.js`); Levercopy e
+Elo continuam lá e não entram nessa trava.
 
 ```sh
-curl --fail --silent --show-error --max-time 20 https://extrator-mp-saasmngmnt.gnnc3f.easypanel.host/api/health
+curl --fail --silent --show-error --max-time 20 https://levermoney.com.br/api/health
 node packages/api/src/build-info.js
 ```
 
 O health retorna `ok`, `service` e `build`. `build-info.js` calcula a impressão
-do **conteúdo local de `packages/api/src`**; compará-la com produção usando os
-arquivos exatos do commit enviado, sem alterações locais de outras tarefas.
-HTTP 200 sozinho não comprova atualização, e o hash da API não comprova o build
-web. Mudança apenas documental não altera esse hash; mudança de UI também pede
+do **conteúdo local de `packages/api/src`**; o hash calculado no Windows não
+bate com o da produção, então conferir o deploy pelo commit publicado no
+Coolify e pelo `Last-Modified` do `index.html` mais um texto novo no chunk da
+tela em `/assets/`. HTTP 200 sozinho não comprova atualização, e o hash da API
+não comprova o build web. Mudança apenas documental não altera esse hash; mudança de UI também pede
 verificação da página/assets correspondentes. Reportar qualquer divergência ou
 falha de deploy com a evidência, conforme o acordo de trabalho.
 

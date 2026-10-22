@@ -529,7 +529,7 @@ test("1º toque OEM por template: o v2 do roteiro leva só o nome; sem nome util
   assert.equal(byPhone["41922222222"].params.length, 3);
 });
 
-test("lembretes do lead de OEM (janela aberta): manhã = texto · FOTO · texto pedindo presença, 2h com o link, 10min com o link #R-073", async () => {
+test("lembretes do lead de OEM (janela aberta): manhã = texto · FOTO · texto pedindo presença, 2h com o link, 10min com o link; envio do poller fora do teto #R-073 #R-082", async () => {
   const nowRef = { t: new Date("2026-08-20T11:05:00Z") }; // quinta 8h05 BRT
   const repo = await world({
     product: { sdrBot: { enabled: true, enabledAt: ISO("2026-08-01T00:00:00Z") }, painMap: { OEM: "OEM" } },
@@ -548,6 +548,9 @@ test("lembretes do lead de OEM (janela aberta): manhã = texto · FOTO · texto 
   const img = (await repo.list("wa_messages")).find((m) => m.media?.kind === "image");
   assert.equal(img?.media?.id, "media_1");
   assert.equal((await repo.get("app_config", "sdr_oem_media_leverads_default"))?.mediaId, "media_1");
+  // Os três envios da manhã são do poller: marcados, fora do teto da conversa.
+  const morning = (await repo.list("wa_messages")).filter((m) => m.direction === "out");
+  assert.deepEqual(morning.map((m) => m.via), ["flow", "flow", "flow"]);
   await r.tick(); // mesmo instante: nada repete
   assert.equal(wa.sent.length, 3);
   nowRef.t = new Date("2026-08-20T15:05:00Z"); // 12h05: 2h antes

@@ -25,6 +25,24 @@ export const DAILY_CAP = 15;             // mensagens do robô por conversa por 
 export const CALL_WINDOW_BEFORE_MS = 30 * MIN;
 export const CALL_WINDOW_AFTER_MS = 60 * MIN;
 
+// Mensagens do robô que contam pro teto (R-082): só a FALA da conversa. Envio
+// automático do poller (via "flow": 1º toque, lembrete, escada, resgate e a
+// confirmação do lembrete) fica fora; em 21/10 o lembrete da manhã (3 envios)
+// estourou o teto de quem agendou na véspera e calou o robô no dia da call
+// (Nicolas: pergunta 9 min antes da call ficou 51 min sem resposta).
+export function botTalkLast24h(msgs, nowMs) {
+  return msgs.filter((m) => m.direction === "out" && m.author === SDR_AUTHOR && m.via !== "flow" && nowMs - Date.parse(m.at || 0) < 24 * HOUR).length;
+}
+
+// Handoff que ainda segura o robô: sem fala humana depois dele. O de teto não
+// vale na janela da call (R-039): é ali que o lead pergunta pelo link.
+export function handoffHolds({ log = {}, lastHumanOut = null, inCallWindow = false } = {}) {
+  const handoffMs = Date.parse(log.handoffAt || "") || 0;
+  if (!handoffMs) return false;
+  if (lastHumanOut && Date.parse(lastHumanOut.at || 0) > handoffMs) return false;
+  return !(log.handoffKind === "teto" && inCallWindow);
+}
+
 // Mensagens que valem pra agenda: depois de um cancelamento, as datas e ofertas
 // da call cancelada não autorizam a nova marcação (sdrLog.reschedule).
 export function agendaMessagesOf(msgs, reschedule) {
@@ -49,9 +67,8 @@ export function stateOf({ lead = {}, msgs = [], now = new Date(), product = null
   const lastHumanOut = [...msgs].reverse().find((m) => m.direction === "out" && humanIds.has(m.author));
   const lastHumanMs = lastHumanOut ? Date.parse(lastHumanOut.at || 0) : 0;
   const humanActive = !!lastHumanOut && nowMs - lastHumanMs < HUMAN_MUTE_MS;
-  const handoffMs = Date.parse(log.handoffAt || "") || 0;
-  const handoffPending = !!handoffMs && !(lastHumanOut && lastHumanMs > handoffMs);
-  const botToday = msgs.filter((m) => m.direction === "out" && m.author === SDR_AUTHOR && nowMs - Date.parse(m.at || 0) < 24 * HOUR).length;
+  const handoffPending = handoffHolds({ log, lastHumanOut, inCallWindow });
+  const botToday = botTalkLast24h(msgs, nowMs);
   const prevMsg = msgs.length >= 2 ? msgs[msgs.length - 2] : null;
   const gapMin = prevMsg ? Math.round((nowMs - Date.parse(prevMsg.at || 0)) / MIN) : null;
   const canGreet = gapMin == null || gapMin >= GREETING_GAP_MS / MIN;

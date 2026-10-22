@@ -534,7 +534,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
   // conversa, e nos testes o relógio é injetado.
   async function sendText({ phone, text, phoneId, saas, leadId }) {
     const { messageId } = await wa.sendText(phone, text, { phoneId });
-    await recordMessage(repo, { id: messageId, phone, direction: "out", text, status: "sent", author: SDR_AUTHOR, waPhoneId: phoneId || "", saas, leadId, at: now().toISOString() });
+    await recordMessage(repo, { id: messageId, phone, direction: "out", text, status: "sent", author: SDR_AUTHOR, waPhoneId: phoneId || "", saas, leadId, at: now().toISOString(), via: "flow" });
     // Mensagem do robô = lead sendo qualificado: novo ganha o toque, contato
     // vai pra qualificação; lembrete de call e resgate de no-show são no-op.
     await onOutboundMessage(repo, leadId, { author: SDR_AUTHOR, text: "1º toque do SDR" });
@@ -547,7 +547,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
     if (params.length) components.push({ type: "body", parameters: params.map((t) => ({ type: "text", text: String(t || "") })) });
     const { messageId } = await wa.sendTemplate(phone, name, "pt_BR", components, { phoneId });
     const rendered = (TEMPLATE_BODY[name] || name).replace(/\{\{\s*(\d+)\s*\}\}/g, (_, n) => params[Number(n) - 1] || "");
-    await recordMessage(repo, { id: messageId, phone, direction: "out", text: rendered, status: "sent", author: SDR_AUTHOR, waPhoneId: phoneId || "", saas, leadId, at: now().toISOString() });
+    await recordMessage(repo, { id: messageId, phone, direction: "out", text: rendered, status: "sent", author: SDR_AUTHOR, waPhoneId: phoneId || "", saas, leadId, at: now().toISOString(), via: "flow" });
     // moveCard=false: campanha de resgate não mexe no card no ENVIO — o card
     // anda quando o lead RESPONDER (fluxo do inbound), senão a Nutrição
     // esvaziaria na rajada sem nenhum lead ter falado nada.
@@ -558,7 +558,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
   // Foto solta na conversa (janela aberta), gravada no inbox como mídia.
   async function sendImage({ phone, mediaId, phoneId, saas, leadId }) {
     const { messageId } = await wa.sendMedia(phone, { kind: "image", mediaId }, { phoneId });
-    await recordMessage(repo, { id: messageId, phone, direction: "out", text: "", status: "sent", author: SDR_AUTHOR, waPhoneId: phoneId || "", saas, leadId, at: now().toISOString(), media: { kind: "image", id: mediaId, mime: OEM_MORNING_IMAGE.mime, filename: OEM_MORNING_IMAGE.filename } });
+    await recordMessage(repo, { id: messageId, phone, direction: "out", text: "", status: "sent", author: SDR_AUTHOR, waPhoneId: phoneId || "", saas, leadId, at: now().toISOString(), media: { kind: "image", id: mediaId, mime: OEM_MORNING_IMAGE.mime, filename: OEM_MORNING_IMAGE.filename }, via: "flow" });
     return messageId;
   }
   // Media id da foto da manhã do OEM no número: sobe uma vez e reusa por 25
