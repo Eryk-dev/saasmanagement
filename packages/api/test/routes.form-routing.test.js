@@ -106,7 +106,7 @@ test("envio preserva linha do form, classificação, atribuição e telemetria n
   for (const [i, line] of ["oem", "ads", "price"].entries()) {
     const form = FORM_IDS[line];
     const res = await app.inject({ method: "POST", url: `/public/forms/${form}/submissions`, payload: {
-      answers: { niche: "autopecas", ...(line === "oem" ? { channel: "online" } : {}), accounts: "2-3", listings: "1000-5000", trigger: "Preciso aumentar as vendas", orders: "500-1000", ticket: "150-300", nome: "Rafael", whatsapp: `4199999000${i}`, email: `${line}@example.com` },
+      answers: { niche: "autopecas", ...(line === "oem" ? { channel: "online" } : {}), accounts: "2-3", listings: "1000-5000", trigger: "Preciso aumentar as vendas", orders: "500-1000", ticket: "150-300", nome: "Rafael", empresa: "Rafael Peças", whatsapp: `4199999000${i}`, email: `${line}@example.com` },
       utm: { source: "meta", content: `1234${i}` }, pain: line.toUpperCase(),
       sourceUrl: `https://levermoney.com.br/f/${OLD}?utm_content=1234${i}`,
     } });

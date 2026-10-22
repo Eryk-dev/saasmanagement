@@ -103,7 +103,7 @@ test("os três formulários seguem o padrão do form atual", () => {
   for (const f of FORMS_V2) {
     assert.equal(f.saas, "leverads");
     assert.equal(f.status, "draft", `${f.id} não pode nascer publicado`);
-    assert.deepEqual(f.mapping, { name: "nome", email: "email", phone: "whatsapp" });
+    assert.deepEqual(f.mapping, { name: "nome", company: "empresa", email: "email", phone: "whatsapp" });
     assert.equal(f.theme.accent, "#0F766E");
     assert.ok(f.thanks.whatsappPrefill.includes("{{nome}}"));
     // todo tipo de pergunta tem que ser um tipo que o builder conhece
@@ -113,7 +113,7 @@ test("os três formulários seguem o padrão do form atual", () => {
     }
     // as chaves de contato precisam existir de fato, senão o mapping aponta pro vazio
     const chaves = new Set(f.questions.map((q) => q.key));
-    for (const k of ["nome", "email", "whatsapp"]) assert.ok(chaves.has(k), `${f.id}: falta a pergunta ${k}`);
+    for (const k of ["nome", "empresa", "email", "whatsapp"]) assert.ok(chaves.has(k), `${f.id}: falta a pergunta ${k}`);
     // e as que a classificação lê
     for (const k of ["niche", "accounts", "listings", "trigger", "orders", "ticket"]) {
       assert.ok(chaves.has(k), `${f.id}: falta a pergunta ${k} usada na classificação`);
@@ -131,7 +131,7 @@ test("loja física só aparece no formulário de OEM", () => {
 });
 
 test("os três formulários compartilham o mesmo núcleo, e só ele", () => {
-  const nucleo = ["niche", "accounts", "listings", "trigger", "orders", "ticket", "nome", "whatsapp", "email"];
+  const nucleo = ["niche", "accounts", "listings", "trigger", "orders", "ticket", "nome", "empresa", "whatsapp", "email"];
   for (const l of ["ads", "price"]) {
     assert.deepEqual(formV2(l).questions.map((q) => q.key), nucleo);
   }
