@@ -1296,6 +1296,52 @@ export async function migrateFormEmailContato(repo) {
   return true;
 }
 
+// ── Form: nome da empresa logo depois do nome (Leo, 22/10/2026) ─────────────
+// Todos os formulários de lead do LeverAds passam a pedir o nome da empresa na
+// MESMA tela do nome (empilhada), e a resposta vai pro `mapping.company`, que
+// a leva a `lead.company` (leadFromSubmission) e a deixa fora do painel de
+// qualificação do card. Vale pra qualquer form do produto, inclusive rascunho
+// e cópia feita na tela, pra não nascer formulário novo sem o campo.
+// Idempotente: pula form que já tem `mapping.company` ou pergunta `empresa`.
+// `to` que morava no nome (salto depois da tela) migra pra última pergunta da
+// tela, como fez migrateFormEmailContato com o `_end` do WhatsApp.
+export const COMPANY_QUESTION = Object.freeze({
+  key: "empresa",
+  label: "E o nome da sua *empresa*?",
+  type: "text",
+  required: true,
+  stack: true,
+  placeholder: "Nome da empresa ou da loja",
+});
+
+export function withCompanyQuestion(form) {
+  if (!form || form.saas !== "leverads") return null;
+  const mapping = form.mapping || {};
+  const qs = [...(form.questions || [])];
+  if (mapping.company || qs.some((q) => q?.key === COMPANY_QUESTION.key)) return null;
+  const idx = qs.findIndex((q) => q?.key === mapping.name);
+  if (idx < 0) return null;
+  const empresa = { ...COMPANY_QUESTION };
+  if (qs[idx].to != null) {
+    const { to, ...semTo } = qs[idx];
+    qs[idx] = semTo;
+    empresa.to = to;
+  }
+  qs.splice(idx + 1, 0, empresa);
+  return { questions: qs, mapping: { ...mapping, company: COMPANY_QUESTION.key } };
+}
+
+export async function ensureFormCompanyQuestion(repo) {
+  let n = 0;
+  for (const form of await repo.list("forms")) {
+    const patch = withCompanyQuestion(form);
+    if (!patch) continue;
+    await repo.update("forms", form.id, patch);
+    n++;
+  }
+  return n;
+}
+
 // ── Contratos: campos de preenchimento (ago/2026) ───────────────────────────
 // Os 4 modelos de contrato nasceram com espaços em branco desenhados no HTML
 // (______). A tela Contratos ganhou formulário de preenchimento que interpola
@@ -2386,6 +2432,12 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] mensagem pronta do form corrigida em ${n} formulário(s)`);
   } catch (err) {
     console.error("[migration] ensureFormPrefillV2 falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureFormCompanyQuestion(repo);
+    if (n) console.log(`[migration] pergunta "nome da empresa" entrou em ${n} formulário(s)`);
+  } catch (err) {
+    console.error("[migration] ensureFormCompanyQuestion falhou:", err?.message || err);
   }
   try {
     const n = await ensureContractsNoAdDeletionClause(repo);

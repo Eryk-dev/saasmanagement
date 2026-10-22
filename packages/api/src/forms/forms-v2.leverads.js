@@ -18,7 +18,7 @@ const TEMA = {
   radius: 12, logoUrl: "", logoHeight: 24,
 };
 
-const MAPPING = { name: "nome", email: "email", phone: "whatsapp" };
+const MAPPING = { name: "nome", company: "empresa", email: "email", phone: "whatsapp" };
 
 // Núcleo comum. É o que torna os leads comparáveis entre as três linhas e o
 // que permite detectar porta errada (autopeças que entra pelo form de Ads).
@@ -110,8 +110,12 @@ const FISICO = [
 ];
 
 // Contato por último: os campos que mais custam vêm depois do investimento.
+// A empresa entra EMPILHADA na tela do nome (Leo, 22/10/2026): o SDR precisa
+// saber de que loja é o lead antes de ligar, e `mapping.company` leva a
+// resposta pra `lead.company` sem virar pergunta de qualificação no card.
 const CONTATO = [
   { key: "nome", label: "Como você se chama?", type: "text", required: true, placeholder: "Seu primeiro nome" },
+  { key: "empresa", label: "E o nome da sua *empresa*?", type: "text", required: true, stack: true, placeholder: "Nome da empresa ou da loja" },
   { key: "whatsapp", label: "Qual o seu *WhatsApp*?", type: "phone", required: true, stack: false },
   { key: "email", label: "E o seu melhor e-mail?", type: "email", required: true, stack: true },
 ];
