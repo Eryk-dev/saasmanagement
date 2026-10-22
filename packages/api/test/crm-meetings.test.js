@@ -56,3 +56,27 @@ test("pelo app: PATCH do callAt cria o registro; a rotina pega o lead gravado di
   await repo.create("leads", { id: "l4", saas: "leverads", callAt: "2099-01-06T10:00", closer: "bot" });
   assert.equal((await runMeetingsSweep(repo)).written, 1, "só o lead novo; o l3 já estava espelhado");
 });
+
+// Produção 22/10/2026: callHistory com o mesmo horário da call atual (ou o
+// mesmo horário duas vezes) criava o mesmo id duas vezes, o banco recusava
+// ("meetings_pkey") e a rotina parava inteira nesse lead, a cada 15 min.
+test("horário repetido no histórico vira uma call só (a atual vence) e um lead com erro não para a rotina", async () => {
+  const repo = makeMemRepo();
+  await repo.create("leads", { id: "dup", callAt: "2026-10-22T10:00", closer: "leo", callUrl: "https://meet.google.com/x",
+    callHistory: [{ at: "2026-10-22T10:00", closer: "ana" }, { at: "2026-10-18T09:00" }, { at: "2026-10-18T09:00" }] });
+  await repo.create("leads", { id: "depois", callAt: "2026-10-21T10:00", closer: "leo" });
+  const r = await runMeetingsSweep(repo, { now });
+  const rows = (await repo.list(MEETINGS)).sort((a, b) => a.at.localeCompare(b.at));
+  assert.deepEqual(rows.map((m) => [m.lead, m.status, m.closer]), [["dup", "realizada", "leo"], ["depois", "agendada", "leo"], ["dup", "agendada", "leo"]]);
+  assert.equal(r.failed, 0);
+
+  // Um lead que quebra não impede os outros.
+  const broken = makeMemRepo();
+  await broken.create("leads", { id: "a", callAt: "2026-10-22T10:00" });
+  await broken.create("leads", { id: "b", callAt: "2026-10-22T11:00" });
+  const create = broken.create.bind(broken);
+  broken.create = async (col, row) => { if (col === MEETINGS && row.lead === "a") throw new Error("falha simulada"); return create(col, row); };
+  const out = await runMeetingsSweep(broken, { now });
+  assert.equal(out.failed, 1);
+  assert.deepEqual((await broken.list(MEETINGS)).map((m) => m.lead), ["b"]);
+});

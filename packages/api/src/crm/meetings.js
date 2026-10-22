@@ -37,16 +37,20 @@ function statusOf(lead, at, now) {
   return "realizada";
 }
 
-// As calls que o lead carrega hoje: as arquivadas (já passaram) e a atual.
+// As calls que o lead carrega hoje: as arquivadas (já passaram) e a atual. Uma
+// por minuto (é o id): o histórico às vezes repete o horário, ou guarda o mesmo
+// da call atual, e o id repetido derrubava a rotina inteira (22/10/2026). A
+// atual vence; entre as arquivadas, a primeira.
 export function callsOfLead(lead, { now = Date.now() } = {}) {
-  const out = [];
+  const byMinute = new Map();
+  const key = (at) => at.toISOString().slice(0, 16);
+  const cur = momentOf(lead.callAt);
+  if (cur) byMinute.set(key(cur), { at: cur, closer: lead.closer || "", status: statusOf(lead, cur, now), current: true });
   for (const h of Array.isArray(lead.callHistory) ? lead.callHistory : []) {
     const at = momentOf(h?.at);
-    if (at) out.push({ at, closer: h.closer || lead.closer || "", status: "realizada", current: false });
+    if (at && !byMinute.has(key(at))) byMinute.set(key(at), { at, closer: h.closer || lead.closer || "", status: "realizada", current: false });
   }
-  const cur = momentOf(lead.callAt);
-  if (cur) out.push({ at: cur, closer: lead.closer || "", status: statusOf(lead, cur, now), current: true });
-  return out;
+  return [...byMinute.values()].sort((a, b) => a.at - b.at);
 }
 
 const same = (a, b) => ["status", "closer", "meetUrl", "eventId", "summarized"].every((k) => (a[k] ?? "") === (b[k] ?? ""));
@@ -80,13 +84,16 @@ export async function syncLeadMeetings(repo, lead, { now = Date.now() } = {}) {
   return { written };
 }
 
+// Um lead que falha não para os outros: conta e segue (a próxima passada tenta
+// de novo).
 export async function runMeetingsSweep(repo, { now = Date.now() } = {}) {
-  let written = 0;
+  let written = 0, failed = 0, firstError = "";
   for (const l of await repo.list("leads")) {
     if (!l.callAt && !(l.callHistory || []).length) continue;
-    written += (await syncLeadMeetings(repo, l, { now })).written;
+    try { written += (await syncLeadMeetings(repo, l, { now })).written; }
+    catch (err) { failed++; firstError ||= `${l.id}: ${err.message}`; }
   }
-  return { written };
+  return { written, failed, firstError };
 }
 
 // Placar das calls por closer num período: marcadas, realizadas, no-show e a
@@ -111,7 +118,11 @@ export function startMeetingsSweep(repo, { log, intervalMs = 15 * 60_000 } = {})
   const run = async () => {
     if (running) return null;
     running = true;
-    try { return await runMeetingsSweep(repo); } catch (err) { log?.warn?.(`calls: ${err.message}`); return null; } finally { running = false; }
+    try {
+      const r = await runMeetingsSweep(repo);
+      if (r.failed) log?.warn?.(`calls: ${r.failed} lead(s) sem espelho nesta passada (${r.firstError})`);
+      return r;
+    } catch (err) { log?.warn?.(`calls: ${err.message}`); return null; } finally { running = false; }
   };
   const timer = setInterval(run, intervalMs);
   timer.unref?.();
