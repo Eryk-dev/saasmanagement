@@ -109,6 +109,23 @@ test("isWonLead: customerId sustenta a venda depois que o card sai do Ganho", ()
   assert.equal(isWonLead(product, null), false);
 });
 
+test("isWonLead: negócio extra só conta depois de ganho (wonAt), não pelo customerId de nascença", () => {
+  const product = { funnel: [
+    { stage: "Proposta", kind: "proposta" },
+    { stage: "Follow-up", kind: "followup" },
+    { stage: "Ganho", kind: "ganho" },
+    { stage: "Integração", kind: "integracao" },
+  ] };
+  const extra = { customerId: "cus_1", dealType: "upsell" };
+  assert.equal(isWonLead(product, { ...extra, stage: "Proposta" }), false);
+  assert.equal(isWonLead(product, { ...extra, stage: "Follow-up", wonAt: "" }), false);
+  assert.equal(isWonLead(product, { ...extra, stage: "Ganho" }), true);
+  assert.equal(isWonLead(product, { ...extra, stage: "Integração", wonAt: "2026-10-23T12:00:00Z" }), true);
+  assert.equal(isWonLead(product, { ...extra, stage: "Follow-up", wonAt: "2026-10-23T12:00:00Z" }), true);
+  // Venda nova segue pelo customerId.
+  assert.equal(isWonLead(product, { stage: "Follow-up", customerId: "cus_1", dealType: "nova_venda" }), true);
+});
+
 // Regra REVISADA em 20/07 (o Leo decidiu depois de ver 4 cards parados lá): na
 // ordem nova, Integração fica DEPOIS do Ganho, então arrastar direto pra lá é
 // fechar a venda. Antes esta asserção era o contrário — ver isPostSaleStage.

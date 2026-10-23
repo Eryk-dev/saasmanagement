@@ -138,12 +138,19 @@ export function isWon(product, stageName) {
 // pós-venda). Só é limpo quando o fechamento é DESFEITO de propósito — card
 // puxado de volta pra etapa aberta do funil (revertWonLead, lead-flow.js).
 //
+// Negócio extra (upsell/renovação/reativação, "Novo negócio" na ficha) NASCE
+// com o `customerId` do cliente que já existe, então ali o carimbo da venda é o
+// `wonAt` (convertWonLead grava ao ganhar; voltar o card limpa, lead-flow.js).
+// Sem isso o negócio contava como venda desde a criação, ainda em proposta.
+//
 // Use ESTA função em tudo que é dinheiro e placar; `isWon` (por estágio) segue
 // valendo pra decidir o que fazer no MOMENTO do movimento (criar cliente,
 // cobrar valor, sair do drip).
 export function isWonLead(product, lead) {
   if (!lead) return false;
-  return !!lead.customerId || isWon(product, lead.stage) || isPostSaleStage(product, lead.stage);
+  const extraDeal = lead.dealType && lead.dealType !== "nova_venda";
+  const sold = extraDeal ? !!lead.wonAt : !!lead.customerId;
+  return sold || isWon(product, lead.stage) || isPostSaleStage(product, lead.stage);
 }
 
 // Etapa que fica DEPOIS do ganho no funil (entrega, CS). Estar nela significa

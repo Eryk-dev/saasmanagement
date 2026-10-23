@@ -86,9 +86,13 @@ export function isPostSaleStage(saasCfg, stage) {
 // por convertWonLead; `wonAt` guarda a data real (o stageSince é recarimbado a
 // cada movimento e jogaria a venda pro mês da etapa seguinte). Os dois SÃO
 // limpos quando o card é puxado de volta pro funil aberto (revertWonLead na
-// API desfaz o fechamento e desconta o ganho).
-export const isWonLead = (saasCfg, lead) =>
-  !!lead?.customerId || isWonStage(saasCfg, lead?.stage) || isPostSaleStage(saasCfg, lead?.stage);
+// API desfaz o fechamento e desconta o ganho). Negócio extra (upsell etc.) nasce
+// com o customerId do cliente; ali quem marca a venda é o `wonAt`.
+export const isWonLead = (saasCfg, lead) => {
+  const extraDeal = lead?.dealType && lead.dealType !== "nova_venda";
+  const sold = extraDeal ? !!lead?.wonAt : !!lead?.customerId;
+  return sold || isWonStage(saasCfg, lead?.stage) || isPostSaleStage(saasCfg, lead?.stage);
+};
 export const wonAtOf = (lead) => lead?.wonAt || lead?.stageSince || "";
 
 // Lead que conta nas métricas — espelho COMPLETO do isRealLead do metrics-core
