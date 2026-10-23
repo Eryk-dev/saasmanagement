@@ -1,4 +1,4 @@
-import { estimatedRevenue, revenueGrade, REVENUE_GRADE_VERSION } from "../shared/lead-grade.js";
+import { actionFor, defaultRules, estimatedRevenue, leadGradeInfo, mqlFor, revenueGrade, REVENUE_GRADE_VERSION } from "../shared/lead-grade.js";
 // Classificação de porte e intenção. Com pedidos + ticket válidos, OEM/Ads/Price
 // usam a mesma régua de faturamento mensal estimado. Sem essas respostas, as
 // funções históricas abaixo permanecem para compatibilidade do legado.
@@ -269,24 +269,20 @@ export const faixaIntencao = (nota) => (nota >= 70 ? "alta" : nota >= 40 ? "medi
 
 // ── Cruzamento: o que o SDR faz ───────────────────────────────────────────
 // Nota isolada não diz o que fazer. O cruzamento diz — e é o que preserva a
-// hora do SDR: perfil "leve" praticamente já é nutrição.
-const ACOES = {
-  "S/A": { alta: "ligar-15min", media: "ligar-hoje", baixa: "whats-depois-ligar" },
-  "B/C": { alta: "ligar-hoje", media: "whats", baixa: "nutrir" },
-  "D/E": { alta: "whats", media: "nutrir", baixa: "nutrir" },
-};
-const CADENCIA_DA_ACAO = {
+// hora do SDR: perfil "leve" praticamente já é nutrição. A tabela nota ×
+// intenção é da régua do produto (DEFAULT_ACTIONS em shared/lead-grade.js:
+// S/A ligam, B/C ligam ou mandam WhatsApp, D/E nutrem); a cadência sai da ação.
+export const CADENCIA_DA_ACAO = {
   "ligar-15min": "prioritario",
   "ligar-hoje": "prioritario",
   "whats-depois-ligar": "padrao",
   whats: "padrao",
   nutrir: "leve",
 };
-const grupoDe = (letra) =>
-  letra === "S" || letra === "A" ? "S/A" : letra === "B" || letra === "C" ? "B/C" : "D/E";
 
 // ── Entrada única ─────────────────────────────────────────────────────────
-export function classificar(lead, { asked } = {}) {
+export function classificar(lead, { asked, rules } = {}) {
+  const gradeRules = rules && typeof rules === "object" ? rules : defaultRules(lead?.saas);
   const portes = { ads: porteAds(lead), oem: porteOem(lead), price: portePrice(lead) };
 
   // Porta errada: o lead preenche o form do anúncio que clicou, não o do
@@ -335,23 +331,24 @@ export function classificar(lead, { asked } = {}) {
   const medida = perguntouIntencao(lead, asked);
   const q = medida ? qualificacao(lead, asked) : null;
   const intencao = medida ? faixaIntencao(q.total) : "nao-medida";
-  // Porte da linha escolhida; se ela não tem eixo próprio preenchido (form
-  // enxuto), cai no eixo genérico de contas × anúncios, que todo formulário
-  // pergunta. Sem isso o lead de OEM ficaria sem porte e sumiria da fila.
-  const receita = revenueGrade(lead);
-  const letra = receita || (primario ? (portes[primario] || portes.ads || null) : null);
+  // Porte = a nota da RÉGUA do produto (docs/PLANO-ICP-CONFIGURAVEL.md): uma
+  // régua só para métricas, agenda e cadência. Os portes por linha acima ficam
+  // só para escolher primário e cross-sell.
+  const nota = leadGradeInfo(lead, gradeRules);
+  const receita = rankedBy(nota) ? nota.grade : null;
+  const letra = nota.grade || null;
   // Sem intenção medida a tabela de cruzamento não se aplica: cai na coluna
   // neutra (a do meio), que é o tratamento honesto pra quem não foi perguntado.
-  const acao = letra ? ACOES[grupoDe(letra)][medida ? intencao : "media"] : "nutrir";
+  // A tabela (nota × intenção) é da régua do produto.
+  const acao = actionFor(gradeRules, letra, medida ? intencao : "media");
 
   // MQL sai do formulário; SQL é do SDR (decisor + dor + orçamento) e por isso
   // não se calcula aqui — nenhuma dessas três perguntas está no form, de
   // propósito: no form elas assustam e envelhecem mal.
   // MQL sem intenção medida é INDETERMINADO, não falso: não dá pra reprovar
   // alguém por uma pergunta que ninguém fez.
-  const mql = !letra ? false
-    : !medida ? null
-    : LETRAS.indexOf(letra) >= LETRAS.indexOf("C") && q.total >= 40;
+  // O corte (nota mínima C, qualificação 40) também é da régua.
+  const mql = mqlFor(gradeRules, letra, medida, q?.total);
 
   return {
     portes,
@@ -359,6 +356,8 @@ export function classificar(lead, { asked } = {}) {
     crossSell,
     porte: letra,
     ...(receita ? { version: REVENUE_GRADE_VERSION, basis: "revenue", legacy: false } : {}),
+    gradeMethod: nota.method,
+    rulesVersion: gradeRules.version ?? 0,
     qualificacao: medida ? q.total : null,
     detalheQualificacao: q,
     intencaoMedida: medida,
@@ -391,11 +390,49 @@ export function traduzirParaLevercopy(key, valor) {
   return tabela[valor] ?? valor; // já legado, ou valor fora da tabela: passa direto
 }
 
-// Persiste a régua nova sem tocar estágio, responsáveis ou agenda.
-// Ao remover uma resposta, limpa o snapshot de receita e volta ao legado.
-export function revenueClassificationPatch(lead) {
-  if (lead?.saas !== "leverads") return {};
-  if (!revenueGrade(lead) && lead?.classificacao?.version !== REVENUE_GRADE_VERSION) return {};
-  const { version, basis, legacy, ...previous } = lead.classificacao || {};
-  return { classificacao: { ...previous, ...classificar(lead) } };
+// Nota vinda do método principal da régua (pedidos × ticket, pontuação), não
+// da matriz nem do legado: é o que justifica criar a classificação do lead.
+const rankedBy = (info) => !!info?.grade && !info.legacy && info.value != null;
+const snapshotOf = (lead) => (lead?.classificacao && typeof lead.classificacao === "object" ? lead.classificacao : null);
+
+// Respostas do lead mudaram (CRUD, reenvio de formulário): classifica de novo,
+// sem tocar estágio, responsáveis ou agenda. Lead sem classificação só ganha
+// uma quando o método principal da régua o avalia. Ao perder as respostas,
+// limpa a marca de receita e volta ao legado.
+export function classificationPatch(lead, rules) {
+  const r = rules && typeof rules === "object" ? rules : defaultRules(lead?.saas);
+  const info = leadGradeInfo(lead, r);
+  const snap = snapshotOf(lead);
+  const stale = snap && (snap.version === REVENUE_GRADE_VERSION || (snap.porte ?? null) !== (info.grade || null));
+  if (!rankedBy(info) && !stale) return {};
+  const { version, basis, legacy, ...previous } = snap || {};
+  return { classificacao: { ...previous, ...classificar(lead, { rules: r }) } };
+}
+export const revenueClassificationPatch = (lead, rules) => classificationPatch(lead, rules);
+
+// A RÉGUA mudou (versão nova, boot): refaz só o que depende da nota — porte,
+// ação, cadência e MQL —, mantendo a intenção já medida (o formulário mediu com
+// as perguntas dele, que aqui não se sabe). Só devolve patch quando a nota, a
+// ação ou o MQL mudam; snapshot antigo, sem a intenção gravada, só é refeito
+// (por inteiro) quando a nota muda.
+export function regradePatch(lead, rules, now = new Date()) {
+  const r = rules && typeof rules === "object" ? rules : defaultRules(lead?.saas);
+  const info = leadGradeInfo(lead, r);
+  const snap = snapshotOf(lead);
+  if (!snap) return rankedBy(info) ? { classificacao: classificar(lead, { rules: r }) } : null;
+  const letra = info.grade || null;
+  const samePorte = (snap.porte ?? null) === letra;
+  const { version, basis, legacy, ...previous } = snap;
+  if (!("intencaoMedida" in snap)) return samePorte ? null : { classificacao: { ...previous, ...classificar(lead, { rules: r }) } };
+  const medida = !!snap.intencaoMedida;
+  const acao = actionFor(r, letra, medida ? snap.intencao : "media");
+  const mql = mqlFor(r, letra, medida, snap.qualificacao);
+  if (samePorte && snap.acao === acao && (snap.mql ?? null) === mql) return null;
+  return {
+    classificacao: {
+      ...previous, porte: letra, acao, cadencia: CADENCIA_DA_ACAO[acao], mql,
+      ...(rankedBy(info) ? { version: REVENUE_GRADE_VERSION, basis: "revenue", legacy: false } : {}),
+      gradeMethod: info.method, rulesVersion: r.version ?? 0, calculadoEm: now.toISOString(),
+    },
+  };
 }

@@ -919,6 +919,36 @@ alteração funcional nesta preparação.
   em `revenue-grade.test.js`, além da suíte API, smoke web e build.
 - Preview isolado dos badges e ICP: `/?shell=1&review=pipeline&revenueGrades=1#pipeline`
   no Vite preview; inclui S–E, dois legados e um lead sem qualificação.
+- **E-mail e segredos (22/10/2026, `docs/PLANO-DISPAROS.md` fases 0–1):** o mailer mora no
+  domínio `email` e envia pelo Resend quando configurado em Configurações → Integrações (chave
+  na coleção privada `integration_secrets`, nunca devolvida à tela), senão pelo Gmail da conta do
+  sistema. `app_config/google_oauth` não sai mais pelo CRUD com o token nem aceita escrita por ele.
+  Fases 2–4: modelos oficiais da Meta geridos em Disparos → Modelos (`wa-template-manager.jsx`),
+  broadcast de WhatsApp pela API oficial com modelo aprovado e fila no servidor
+  (`marketing/broadcast-wa.js`, `jobOn("waBroadcasts")`), tela de Disparos com abas Broadcasts ·
+  Sequências · Fila do WhatsApp · Modelos, menus em `SelectPopover` (nenhum `<select>` nativo).
+  Fase 5 (23/10/2026): passo de sequência com modelo oficial sai sozinho; webhook do Resend em
+  `/api/webhooks/resend` (devolução → `emailInvalid`, spam → `emailOptOut`); inscrição manual na tela. Na API a coleção segue `campaigns`.
+  Broadcast de e-mail também em fila no servidor (`marketing/broadcast-email.js`, `jobOn("emailBroadcasts")`);
+  um broadcast pode sair pelos dois canais (`channel: "both"`).
+- **Régua configurável (22/10/2026, fase 1 de `docs/PLANO-ICP-CONFIGURAVEL.md`):** a nota
+  e o ICP saem de `leadGradeInfo(lead, rules)`; `gradeRulesOf(product)` lê `product.icp.rules`
+  e, sem ela, usa `defaultRules(saas)` (LeverAds: pedidos × ticket e depois a matriz legada;
+  outros produtos: só a matriz). Quem tem o produto passa a régua (placar, Publicidade,
+  Formulários, agenda do sênior, SDR); a SPA registra a régua dos produtos no `hydrateSeed`
+  (`web/src/lib/grade-rules.js`). `list.filter(isIcpLead)` continua seguro: só objeto é régua.
+  Fase 2 (22/10/2026): API em `crm/routes.icp.js` (ler, prévia, gravar com versão e histórico
+  `icp_versions`) e recálculo da classificação gravada só de quem mudou de nota (`crm/icp.js`).
+  Editar exige a etiqueta admin ou a permissão `icp` marcada na mão (`canEditIcp`); a lista em
+  branco não basta e o CRUD genérico recusa `icp` em `products`.
+  Fase 3 (22/10/2026): a permissão é a etiqueta `icp` ("Editor de ICP" na Equipe), não uma tela;
+  a tela é Configurações → ICP & nota (`screens/settings-icp.jsx`), com prévia obrigatória antes
+  de salvar a régua. Revisão: bloco ICP de `scripts/review/settings.mjs`.
+  Fase 4 (22/10/2026): a régua também define a ação do SDR (nota × intenção) e o corte de MQL
+  (`actions`, `mql`; padrões = os de antes); `GET …/icp/trend` dá a evolução; as métricas expõem
+  `gradeBasis` (de qual método veio cada nota). Fase 5: Elo sem leads no Cockpit; UniqueKids com
+  proposta de régua por pontos no plano, ainda não aplicada (decisão do time).
+  Testes: `icp-rules.test.js`, `icp-edit.test.js`.
 
 - **Card de Minhas atividades (21/09/2026):** segue o desenho “Atalhos.pdf”: atalhos
   em largura inteira, apresentação/respostas lado a lado, histórico e próximo

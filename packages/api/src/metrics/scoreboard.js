@@ -9,7 +9,7 @@
 
 import { careerRuleOf, compGoalFor, compLevelOf, leveledRoleOf, promotionEligibility, teamBonusProducts } from "../comp/comp-plan.js";
 import { RATE_BENCHMARKS, cachedPipelinePace, computeWindowGoal } from "./pipeline-pace.js";
-import { DAY_MS as DAY, REFERRAL_RATES, callCohortIn, callOutcome as coreCallOutcome, callResultOf as coreCallResultOf, cashBucketsIn, churnRateIn, classCounts, contactAttribution, customerStartMap, dayKey, firstResponseAttribution, followupTouches, isIcpLead, isKeyAccountLead, isKeyAccountUpsell, isRealLead, isReferralLead, isSaleLead, isSocialSellingLead, isWonLead, keyAccountIds, mentoriaScore, npsIndex, rangeFromQuery, referralsByCollector, revenueOf, round2, saleValuer, tcvOf, unansweredContacts, upsellContractedOf, upsellRevenueOf, upsellSalesIn, upsellValuer, winsIn } from "./metrics-core.js";
+import { DAY_MS as DAY, REFERRAL_RATES, callCohortIn, callOutcome as coreCallOutcome, callResultOf as coreCallResultOf, cashBucketsIn, churnRateIn, classCounts, contactAttribution, customerStartMap, dayKey, firstResponseAttribution, followupTouches, gradeBasis, gradeRulesOf, isIcpLead, isKeyAccountLead, isKeyAccountUpsell, isRealLead, isReferralLead, isSaleLead, isSocialSellingLead, isWonLead, keyAccountIds, mentoriaScore, npsIndex, rangeFromQuery, referralsByCollector, revenueOf, round2, saleValuer, tcvOf, unansweredContacts, upsellContractedOf, upsellRevenueOf, upsellSalesIn, upsellValuer, winsIn } from "./metrics-core.js";
 import { metricsReader } from "./metrics-reader.js";
 import { META_CATALOG, TEAM_METRICS, deriveGoalsFromPace } from "./metas.js";
 import { isMentoriaLead } from "../customers/mentoria.js";
@@ -73,6 +73,7 @@ export async function teamBonusStatus(repo, product, until, { customers = null, 
 }
 
 export async function computeScoreboard(repo, product, query = {}, { now = () => new Date() } = {}) {
+  const gradeRules = gradeRulesOf(product);
     repo = metricsReader(repo, product.id);
     const { since, until } = rangeFromQuery(query || {});
     // Hoje (dia do negócio): separa call já VENCIDA (não veio) de call marcada
@@ -407,7 +408,7 @@ export async function computeScoreboard(repo, product, query = {}, { now = () =>
       const callsBooked = callsBookedOrganic + (bookedHist.get(uid) || 0);
       // Das agendadas, quantas são ICP (nota S/A/B — a faixa que vai pro closer
       // sênior). Só orgânico: o histórico não tem nota.
-      const icpBooked = booked.filter(isIcpLead);
+      const icpBooked = booked.filter((l) => isIcpLead(l, gradeRules));
       // Social selling que VIROU lead: lead com origem "Social selling" criado
       // na janela com ela de dona (o executado vem do registro diário, na
       // rota /api/desempenho).
@@ -490,7 +491,8 @@ export async function computeScoreboard(repo, product, query = {}, { now = () =>
         contacted,
         reschedules,
         callsBooked,
-        callsBookedIcp: icpBooked.length,   // das agendadas, as com nota S/A/B
+        callsBookedIcp: icpBooked.length,   // das agendadas, as com nota de ICP da régua do produto
+        icpBasis: gradeBasis(booked, gradeRules), // de qual método da régua veio a nota das agendadas
         noReply: noReplyOf.count,           // contatados por ela que nunca responderam
         socialSellingLeads: ssLeads.length, // leads nascidos do social selling dela
         bookingRate,

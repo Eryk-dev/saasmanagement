@@ -16,7 +16,7 @@
 // GET lê o estado — o resultado fica em app_config "sdr_replay" (ou
 // "sdr_replay_<tag>"), com progresso parcial gravado a cada conversa.
 import { kindOf, firstStage } from "../crm/stages.js";
-import { leadGrade } from "../metrics/metrics-core.js";
+import { gradeRulesOf, leadGrade } from "../metrics/metrics-core.js";
 import { slotLabel, wallNow, spreadPair, wholeHourSlots } from "../crm/agenda-slots.js";
 import { sdrSlotsForLead } from "./sdr-agenda.js";
 import { leadDigest, leadPainFocus, SDR_AUTHOR } from "./sdr-flow.js";
@@ -164,7 +164,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
             sdrName: "Manuela",
             lead: { name: lead.name, company: lead.company, email: lead.email, niche: lead.niche },
             digest: leadDigest(product, lead),
-            grade: leadGrade(lead) || "",
+            grade: leadGrade(lead, gradeRulesOf(product)) || "",
             stage: lead.stage || firstStage(product),
             callAt: "", // replay: avalia a condução até a call, sem a call futura real
             nowLabel,

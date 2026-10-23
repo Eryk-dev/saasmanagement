@@ -2,8 +2,9 @@
 // `register(app, repo, ctx)` e, quando tem rotina em segundo plano,
 // `start(repo, { clients, log, stops })`.
 //
-// A ordem segue as dependências entre clientes do ctx: google cria o Meet e o
-// mailer (usados por marketing, calls, suporte, clientes e CRM); whatsapp cria
+// A ordem segue as dependências entre clientes do ctx: google cria o Meet;
+// email cria o mailer (Resend, ou o Gmail do google como reserva), usado por
+// marketing, suporte, clientes e CRM; whatsapp cria
 // o cliente que SDR, clientes e o bootstrap do CRM recebem por valor. O CRM
 // fica por último porque o bootstrap informa o estado de todas as integrações.
 // O roteador do Fastify não depende da ordem das rotas (a estática vence a
@@ -12,6 +13,7 @@
 import * as platform from "./platform/index.js";
 import * as auth from "./auth/index.js";
 import * as google from "./google/index.js";
+import * as email from "./email/index.js";
 import * as forms from "./forms/index.js";
 import * as proposals from "./proposals/index.js";
 import * as billing from "./billing/index.js";
@@ -33,7 +35,7 @@ import * as crm from "./crm/index.js";
 import { makeJobGate } from "./platform/app-env.js";
 
 export const DOMAINS = [
-  platform, auth, google, forms, proposals, billing, payments, marketing, blog,
+  platform, auth, google, email, forms, proposals, billing, payments, marketing, blog,
   calls, training, metrics, tasks, support, whatsapp, sdr, customers, events, releases, comp, crm,
 ];
 

@@ -60,7 +60,7 @@ export async function ensureBootstrapAdmin(repo, env = process.env) {
 // — quem cuida do negócio estuda se quiser, não porque a régua cobra.
 // "support" = atendente do Suporte: recebe ticket novo sem responsável dos
 // produtos em `supportSaas` (support-scope.js — esse sim é ACL).
-export const ROLE_TAGS = ["sdr", "closer", "integrator", "social", "admin", "support"];
+export const ROLE_TAGS = ["sdr", "closer", "integrator", "social", "admin", "support", "icp"]; // icp = edita a régua de nota/ICP (auth/screens.js canEditIcp)
 const sanitizeRoles = (x) => (Array.isArray(x) ? x.filter((r) => ROLE_TAGS.includes(r)) : []);
 // `saas` = escopo de produto: vazio = time de TODOS os produtos; preenchido =
 // só aparece nos pickers do workspace daquele produto (ex.: Ana atende só a

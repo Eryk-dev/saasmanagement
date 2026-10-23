@@ -10,6 +10,9 @@
 //   POST /api/campaigns/ai-copy         — sugere a copy do disparo por IA.
 //   GET  /u/:token                      — descadastro público (opt-out de e-mail).
 // As rotas /api/campaigns/* entram no ROUTE_SCREENS (screens.js) sob "disparos".
+import { enqueueWaBroadcast, hasWhatsappChannel, waBroadcastProgress } from "./broadcast-wa.js";
+import { enqueueEmailBroadcast } from "./broadcast-email.js";
+import { resolveWabaId } from "../whatsapp/wa-health.js";
 import { logActivity } from "../crm/lead-flow.js";
 import { ladderOf, isWon, kindOf } from "../crm/stages.js";
 import { unsubSig, unsubToken, baseUrl, leadTokens, interpolate, emailBodyWithUnsub } from "./disparos-util.js";
@@ -21,7 +24,61 @@ const ATTR_WINDOW = 30 * DAY; // janela de atribuição do disparo → conversã
 
 const unsubPage = (msg) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Descadastro</title><body style="font-family:system-ui,sans-serif;max-width:520px;margin:12vh auto;padding:0 24px;text-align:center;color:#111"><h2 style="font-weight:600">${msg}</h2><p style="color:#666">LeverAds</p></body>`;
 
-export function registerCampaignRoutes(app, repo, { anthropic, mailer } = {}) {
+export function registerCampaignRoutes(app, repo, { anthropic, mailer, whatsapp = () => null } = {}) {
+  // ── Broadcast de WhatsApp pela API oficial (broadcast-wa.js) ──────────────
+  // `whatsapp` é lido na hora: o domínio whatsapp registra depois deste.
+  // Enfileira os leads; o runner do servidor envia em lotes.
+  app.post("/api/campaigns/:id/send-whatsapp", async (req, reply) => {
+    const camp = await repo.get("campaigns", req.params.id);
+    if (!camp) return reply.code(404).send({ error: "broadcast não encontrado" });
+    if (!hasWhatsappChannel(camp)) return reply.code(400).send({ error: "este broadcast não é de WhatsApp" });
+    const wa = whatsapp();
+    if (!wa?.configured?.()) return reply.code(NOT_CONFIGURED).send({ error: "WhatsApp não configurado no servidor" });
+    const leadIds = req.body?.leadIds;
+    if (!Array.isArray(leadIds) || !leadIds.length) return reply.code(400).send({ error: "informe leadIds (lista)" });
+    // O modelo precisa estar aprovado AGORA (pode ter sido pausado/rejeitado depois de escolhido).
+    try {
+      const wabaId = await resolveWabaId(repo, wa);
+      const tpl = camp.wa?.template;
+      if (wabaId && tpl?.name) {
+        const ok = (await wa.listTemplates(wabaId)).some((t) => t.name === tpl.name && (!tpl.language || t.language === tpl.language));
+        if (!ok) return reply.code(400).send({ error: `o modelo "${tpl.name}" não está aprovado na Meta agora` });
+      }
+    } catch (err) {
+      return reply.code(UPSTREAM_FAILED).send({ error: String(err.message || err).slice(0, 300) });
+    }
+    try {
+      const out = await enqueueWaBroadcast(repo, camp, leadIds);
+      return { ok: true, queued: out.queued, skipped: out.skipped, status: out.campaign.status };
+    } catch (err) {
+      if (err.statusCode) return reply.code(err.statusCode).send({ error: err.message });
+      throw err;
+    }
+  });
+
+  app.post("/api/campaigns/:id/pause", async (req, reply) => {
+    const camp = await repo.get("campaigns", req.params.id);
+    if (!camp) return reply.code(404).send({ error: "broadcast não encontrado" });
+    if (camp.status !== "sending") return reply.code(409).send({ error: "só pausa broadcast em envio" });
+    return repo.update("campaigns", camp.id, { status: "paused", pauseReason: "pausado pelo time" });
+  });
+
+  app.post("/api/campaigns/:id/resume", async (req, reply) => {
+    const camp = await repo.get("campaigns", req.params.id);
+    if (!camp) return reply.code(404).send({ error: "broadcast não encontrado" });
+    if (camp.status !== "paused") return reply.code(409).send({ error: "só retoma broadcast pausado" });
+    // E-mail que falhou volta para a fila (a pausa por falha pede para corrigir o
+    // provedor e retomar). WhatsApp que falhou não volta: costuma ser número ruim.
+    const sent = Object.fromEntries(Object.entries(camp.sent || {}).map(([id, s]) => [id, s?.emailStatus === "failed" ? { ...s, emailStatus: "queued", emailError: "" } : s]));
+    return repo.update("campaigns", camp.id, { status: "sending", pauseReason: "", sent });
+  });
+
+  app.get("/api/campaigns/:id/progress", async (req, reply) => {
+    const camp = await repo.get("campaigns", req.params.id);
+    if (!camp) return reply.code(404).send({ error: "broadcast não encontrado" });
+    return { id: camp.id, status: camp.status || "draft", pauseReason: camp.pauseReason || "", ...(await waBroadcastProgress(repo, camp)) };
+  });
+
   // Marca um envio ASSISTIDO feito (o operador clicou pra abrir o Whats/Gmail).
   // Grava o progresso E loga o toque na timeline.
   app.post("/api/campaigns/:id/mark", async (req, reply) => {
@@ -64,46 +121,18 @@ export function registerCampaignRoutes(app, repo, { anthropic, mailer } = {}) {
     const camp = await repo.get("campaigns", req.params.id);
     if (!camp) return reply.code(404).send({ error: "campanha não encontrada" });
     if (!mailer || !(await mailer.ready())) {
-      return reply.code(NOT_CONFIGURED).send({ error: "Conecte o Google com permissão de e-mail (Ajustes → Integrações → reconectar Google)." });
+      return reply.code(NOT_CONFIGURED).send({ error: "Configure o e-mail em Configurações → Integrações (Resend, ou a conta Google do sistema com permissão de e-mail)." });
     }
     const { leadIds } = req.body || {};
     if (!Array.isArray(leadIds) || leadIds.length === 0) return reply.code(400).send({ error: "informe leadIds (lista)" });
-    const subjectT = camp.email?.subject || "";
-    const bodyT = camp.email?.body || "";
-    if (!subjectT && !bodyT) return reply.code(400).send({ error: "campanha sem assunto/corpo de e-mail" });
-
-    const base = baseUrl(req);
-    const sent = { ...(camp.sent || {}) };
-    const results = [];
-    let ok = 0;
-    for (const leadId of leadIds) {
-      const lead = await repo.get("leads", leadId);
-      if (!lead) { results.push({ leadId, ok: false, reason: "lead não encontrado" }); continue; }
-      if (!lead.email) { results.push({ leadId, ok: false, reason: "sem e-mail" }); continue; }
-      if (lead.emailOptOut) { results.push({ leadId, ok: false, reason: "descadastrado" }); continue; }
-      const toks = leadTokens(lead);
-      const unsubUrl = `${base}/u/${unsubToken(lead.id)}`;
-      const subject = interpolate(subjectT, toks);
-      const body = emailBodyWithUnsub(bodyT, toks, unsubUrl);
-      try {
-        await mailer.send({ to: lead.email, subject, text: body, headers: { "List-Unsubscribe": `<${unsubUrl}>` } });
-        const at = new Date().toISOString();
-        sent[leadId] = { ...(sent[leadId] || {}), email: at };
-        await logActivity(repo, {
-          saas: lead.saas || camp.saas || "", lead: leadId, type: "email",
-          text: `disparo: ${camp.name || "campanha"}`,
-          meta: { campaign: camp.id, stageAtSend: lead.stage || "" },
-          author: req.authUser?.id || "", at,
-        });
-        results.push({ leadId, ok: true }); ok++;
-      } catch (e) {
-        results.push({ leadId, ok: false, reason: e.message });
-      }
+    // Só enfileira: o runner do servidor (broadcast-email.js) manda em lotes.
+    try {
+      const out = await enqueueEmailBroadcast(repo, camp, leadIds, { by: req.authUser?.id || "" });
+      return { ok: true, queued: out.queued, skipped: out.skipped, total: leadIds.length, status: out.campaign.status, sent: out.campaign.sent };
+    } catch (err) {
+      if (err.statusCode) return reply.code(err.statusCode).send({ error: err.message });
+      throw err;
     }
-    const patch = { sent };
-    if (camp.status === "draft" && ok > 0) patch.status = "sending";
-    const updated = await repo.update("campaigns", camp.id, patch);
-    return { ok, total: leadIds.length, results, sent: updated.sent };
   });
 
   // Métricas de CONVERSÃO no funil por campanha do produto (o "o que deu certo"):

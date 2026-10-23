@@ -147,6 +147,15 @@ export function isAdminUser(user = currentUser()) {
   return ((fresh || user)?.roles || []).includes("admin");
 }
 
+// Pode editar a régua de nota/ICP? Etiqueta admin ou Editor de ICP (`icp`) —
+// o mesmo canEditIcp da API (auth/screens.js); sem usuário = acesso por key.
+export function canEditIcpUser(user = currentUser()) {
+  if (!user) return true;
+  const fresh = user.id ? userById(user.id) : null;
+  const roles = (fresh || user)?.roles || [];
+  return roles.includes("admin") || roles.includes("icp");
+}
+
 // ── Telas permitidas (user.screens) ─────────────────────────────────────────
 // null = sem restrição (lista vazia/ausente ou acesso por API key). Prefere o
 // registro fresco do bootstrap (SEED.USERS): mudança de permissão em Ajustes →

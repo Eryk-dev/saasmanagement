@@ -4,7 +4,7 @@ import { useData } from "../data.jsx";
 import { Card, Pill } from "./viz.jsx";
 import { EmptyState, PrimaryButton } from "../atoms.jsx";
 import { WA_FLOW } from "../lib/wa-templates.js";
-import { WaTemplateCreator } from "../screens/whatsapp.jsx";
+import { WaTemplateManager } from "./wa-template-manager.jsx";
 // Automações — aba do Inbox: a central do WhatsApp em quatro blocos.
 //   1. Regras automáticas (wa_automations): gatilho → resposta, avaliadas pelo
 //      servidor a cada mensagem RECEBIDA. Regra nova nasce DESATIVADA.
@@ -155,36 +155,11 @@ function RulesCard({ product }) {
   );
 }
 
-const TPL_TONE = { APPROVED: "pos", PENDING: "warn", REJECTED: "neg" };
-
+// Modelos oficiais da Meta: o mesmo gerenciador de Disparos → Modelos.
 function TemplatesCard() {
-  const [data, setData] = useState(null); // { templates, unsupported } | { error }
-  const [creating, setCreating] = useState(false);
-
-  const load = () => api.waMetaTemplates().then(setData).catch((e) => setData({ error: e.message || "não deu pra listar" }));
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   return (
-    <Card title="Templates do WhatsApp (Meta)" hint="mensagem aprovada pela Meta reabre conversa fora da janela de 24h">
-      <div style={{ padding: "12px var(--inset-x) 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button onClick={() => setCreating(true)} style={btn}>+ novo template</button>
-          <button onClick={load} className="mono dim" style={{ fontSize: 11 }}>↻ atualizar</button>
-          {data?.unsupported > 0 && <span className="mono dim" style={{ fontSize: 10.5 }}>{data.unsupported} template(s) com formato que o composer não envia</span>}
-        </div>
-        {data === null && <span className="mono dim" style={{ fontSize: 12 }}>carregando…</span>}
-        {data?.error && <span className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{data.error}</span>}
-        {(data?.templates || []).map((t) => (
-          <div key={t.name + t.language} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", border: "1px solid var(--line-faint)", borderRadius: "var(--r-2)", flexWrap: "wrap" }}>
-            <span className="mono" style={{ fontSize: 12.5, fontWeight: 600 }}>{t.name}</span>
-            <span className="mono dim" style={{ fontSize: 11 }}>{t.language}</span>
-            <span style={{ flex: 1, fontSize: 12, color: "var(--fg-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 120 }} title={t.body || ""}>{t.body || ""}</span>
-            <Pill tone={TPL_TONE[t.status] || "mut"}>{String(t.status || "?").toLowerCase()}</Pill>
-          </div>
-        ))}
-        {data?.templates?.length === 0 && <span className="mono dim" style={{ fontSize: 12 }}>nenhum template ainda — crie o primeiro</span>}
-      </div>
-      {creating && <WaTemplateCreator onClose={() => { setCreating(false); load(); }} />}
+    <Card title="Modelos oficiais do WhatsApp (Meta)" hint="modelo aprovado pela Meta reabre conversa fora da janela de 24h e sai nos disparos">
+      <div style={{ padding: "12px var(--inset-x) 16px" }}><WaTemplateManager compact /></div>
     </Card>
   );
 }

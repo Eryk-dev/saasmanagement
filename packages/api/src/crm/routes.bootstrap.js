@@ -24,7 +24,7 @@ async function peopleObject(repo) {
   return obj;
 }
 
-export function registerBootstrapRoutes(app, repo, { googleClient, mpClient, asaasClient, appmaxClient, metaClient, anthropicClient, discordClient, whatsappClient } = {}) {
+export function registerBootstrapRoutes(app, repo, { googleClient, mpClient, asaasClient, appmaxClient, metaClient, anthropicClient, discordClient, whatsappClient, mailerClient } = {}) {
   // Everything the cockpit web app needs in one shot (mirrors window.SEED).
   // Usuário com telas restritas (user.screens) recebe o payload FILTRADO:
   // esconder o menu no SPA sem cortar os dados aqui não seria restrição —
@@ -149,9 +149,9 @@ export function registerBootstrapRoutes(app, repo, { googleClient, mpClient, asa
     // O que o CONFIG precisa do banco/integrações vai numa leva só: eram cinco
     // awaits em série no meio do objeto (templates, 3× app_config do Google,
     // saúde do WhatsApp), cada um uma ida ao pooler do Supabase.
-    const [proposalTemplates, googleConnected, googleAccount, gmailReady, waHealth, catalogPlans, followupContacts] = await Promise.all([
+    const [proposalTemplates, googleConnected, googleAccount, gmailReady, waHealth, catalogPlans, followupContacts, emailProvider] = await Promise.all([
       repo.list("proposal_templates"), googleClient.connected(), googleClient.account(), googleClient.gmailReady(), getWaHealth(repo), plansOf(repo),
-      loadFollowupContacts(repo),
+      loadFollowupContacts(repo), mailerClient ? mailerClient.provider().catch(() => "") : "",
     ]);
     return {
       SAAS: saas,
@@ -233,6 +233,8 @@ export function registerBootstrapRoutes(app, repo, { googleClient, mpClient, asa
         // Aparece em Ajustes → Integrações porque é a causa nº 1 de "não cria o
         // link": calendário de outra identidade, invisível pra conta conectada.
         google: { configured: googleClient.configured(), connected: googleConnected, account: googleAccount, gmail: gmailReady, meetCalendar: process.env.GOOGLE_MEET_CALENDAR_ID || "primary" },
+        // Provedor de e-mail ativo (Resend configurado em Integrações, senão o Gmail da conta Google).
+        email: { provider: emailProvider, ready: !!emailProvider },
         ai: { configured: anthropicClient.configured() },
         discord: { configured: discordClient.configured() },
         whatsapp: { configured: whatsappClient.configured(), health: waHealthSummary(waHealth) },

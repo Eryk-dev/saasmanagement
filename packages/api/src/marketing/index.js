@@ -9,6 +9,8 @@ import { registerCampaignRoutes } from "./routes.disparos.js";
 import { registerSequenceRoutes } from "./routes.sequences.js";
 import { startMarketingAutoSync } from "./meta-sync.js";
 import { startDripSequences } from "./drip-runner.js";
+import { startWaBroadcasts } from "./broadcast-wa.js";
+import { startEmailBroadcasts } from "./broadcast-email.js";
 import { startStoriesCapture } from "./stories-capture.js";
 import { startShopifySync } from "./shopify-sync.js";
 import { makeShopify } from "./shopify.js";
@@ -30,12 +32,12 @@ export function register(app, repo, ctx) {
   // Disparos: campanhas de e-mail + WhatsApp pros leads qualificados (ferramenta).
   // Depende do googleClient/mailer (domínio google, registrado antes): o envio
   // nativo de e-mail (send-email) e o gate de gmail usam os dois.
-  registerCampaignRoutes(app, repo, { anthropic: ctx.anthropic, google: ctx.google, mailer: ctx.mailer });
+  registerCampaignRoutes(app, repo, { anthropic: ctx.anthropic, google: ctx.google, mailer: ctx.mailer, whatsapp: () => ctx.whatsapp });
   // Sequências de nutrição (drip): rotas de inscrição/avanço/métricas + tick manual.
-  registerSequenceRoutes(app, repo, { mailer: ctx.mailer });
+  registerSequenceRoutes(app, repo, { mailer: ctx.mailer, whatsapp: () => ctx.whatsapp });
 }
 
-export function start(repo, { clients, log, jobOn }) {
+export function start(repo, { clients, log, jobOn, stops }) {
   // Sync automático da Meta no servidor (uma execução pro time inteiro; no-op
   // sem META_ACCESS_TOKEN). O SPA só lê — não faz mais polling por aba.
   if (jobOn("marketingAutoSync")) startMarketingAutoSync(repo, { log });
@@ -46,6 +48,11 @@ export function start(repo, { clients, log, jobOn }) {
   // Sequências de nutrição (drip): auto-inscreve e avança os passos (e-mail pela
   // conta Google; WhatsApp fica na fila assistida). No-op sem sequência ativa.
   if (jobOn("dripSequences")) startDripSequences(repo, { ...clients, log });
+  // Broadcast de WhatsApp pela API oficial: envia a fila em lotes (teto diário
+  // pela faixa do número, pausa por saúde, disjuntor por falha). No-op sem fila.
+  if (jobOn("waBroadcasts")) { const r = startWaBroadcasts(repo, { whatsapp: clients.whatsapp, log }); stops?.push?.(r.stop); }
+  // Broadcast de e-mail: a fila sai em lotes pelo provedor de Integrações (Resend ou Gmail).
+  if (jobOn("emailBroadcasts")) { const r = startEmailBroadcasts(repo, { mailer: clients.mailer, log }); stops?.push?.(r.stop); }
   // Captura de stories do Instagram de hora em hora (a Graph só entrega story
   // vivo): alimenta o "Stories" da Análise de Desempenho. No-op sem token.
   if (jobOn("storiesCapture")) startStoriesCapture(repo, { log });

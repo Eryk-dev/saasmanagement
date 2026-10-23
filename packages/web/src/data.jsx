@@ -1,6 +1,7 @@
 import React from "react";
 import { api } from "./lib/api.js";
 import { computeFunnel } from "./charts.jsx";
+import { setGradeRules } from "./lib/grade-rules.js";
 // Central data layer: load window.SEED from the API, hydrate derived fields, and
 // expose a context so any screen can mutate (create/edit/delete) and refresh.
 //
@@ -15,6 +16,7 @@ function funnelAvgConv(s) {
 // Attach the weighted-health decomposition every product card/health tab expects.
 // Pesos vêm de product.healthWeights (em %, editados em Ajustes); fallback 25/25/25/25.
 export function hydrateSeed(seed) {
+  setGradeRules(seed?.SAAS);
   (seed?.SAAS || []).forEach((s) => {
     const hw = s.healthWeights || {};
     const w = (k) => (Number.isFinite(Number(hw[k])) ? Number(hw[k]) : 25) / 100;

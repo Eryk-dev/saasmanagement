@@ -289,6 +289,51 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     }).filter((t) => t.body);
   }
 
+  // TODOS os modelos da conta (qualquer status), com paginação: a gestão em
+  // Disparos → Modelos mostra aprovado, em análise, rejeitado (com o motivo),
+  // pausado e a qualidade. O composer e o SDR seguem no listTemplates (aprovados).
+  async function listAllTemplates(wabaId, { maxPages = 10 } = {}) {
+    const out = [];
+    let path = `${wabaId}/message_templates?limit=100&fields=id,name,language,status,category,quality_score,rejected_reason,components`;
+    for (let page = 0; path && page < maxPages; page++) {
+      const body = await get(path);
+      for (const t of body.data || []) {
+        const comps = t.components || [];
+        const comp = (type) => comps.find((c) => String(c.type || "").toUpperCase() === type);
+        const bodyText = comp("BODY")?.text || "";
+        const head = comp("HEADER");
+        const nums = (bodyText.match(/\{\{\s*(\d+)\s*\}\}/g) || []).map((s) => Number(s.replace(/\D/g, "")));
+        out.push({
+          id: t.id || "", name: t.name, language: t.language, status: String(t.status || "").toUpperCase(),
+          category: t.category || "", quality: t.quality_score?.score || "", rejectedReason: t.rejected_reason && t.rejected_reason !== "NONE" ? t.rejected_reason : "",
+          header: head ? { format: String(head.format || "").toUpperCase(), text: head.text || "" } : null,
+          body: bodyText, params: nums.length ? Math.max(...nums) : 0,
+          footer: comp("FOOTER")?.text || "",
+          buttons: (comp("BUTTONS")?.buttons || []).map((b) => ({ type: b.type, text: b.text || "", ...(b.url ? { url: b.url } : {}) })),
+        });
+      }
+      // paging.next vem com a URL inteira; o get() já prefixa a Graph.
+      const next = body.paging?.next || "";
+      path = next ? next.replace(/^https:\/\/graph\.facebook\.com\/v[\d.]+\//, "") : "";
+    }
+    return out;
+  }
+
+  // Apaga um modelo da conta pelo nome (todas as línguas) ou, com hsmId, só aquele.
+  async function deleteTemplate(wabaId, name, { hsmId } = {}) {
+    if (!token) throw new Error("WhatsApp não configurado (WHATSAPP_TOKEN)");
+    const q = new URLSearchParams({ name, ...(hsmId ? { hsm_id: hsmId } : {}) });
+    const res = await f(`${GRAPH}/${wabaId}/message_templates?${q}`, { method: "DELETE", headers: { authorization: `Bearer ${token}` } });
+    const text = await res.text();
+    let b; try { b = JSON.parse(text); } catch { b = {}; }
+    if (res.status >= 400 || b.error) {
+      const err = new Error(`WhatsApp API -> ${res.status}: ${b.error?.error_user_msg || b.error?.message || text.slice(0, 300)}`);
+      err.status = res.status; err.code = b.error?.code;
+      throw err;
+    }
+    return { ok: b.success !== false };
+  }
+
   // Cria (submete pra aprovação) um template na conta (WABA). A Meta revisa e o
   // template nasce PENDING; vira APPROVED em minutos/horas e aí entra no
   // composer sozinho (listTemplates só traz APPROVED). Corpo com variáveis
@@ -297,13 +342,17 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
   //           headerImage?: { buffer, mime, filename } }  ← cabeçalho de IMAGEM
   //   (a foto de exemplo sobe pelo upload resumable e vira header_handle; no
   //   ENVIO o header leva o media id do número, ver sendTemplate).
-  async function createTemplate(wabaId, { name, category = "UTILITY", language = "pt_BR", body = "", example = [], headerImage = null } = {}) {
+  //   headerText?: cabeçalho de TEXTO fixo · footer?: rodapé fixo ·
+  //   buttons?: [{ type: "QUICK_REPLY", text } | { type: "URL", text, url }]
+  async function createTemplate(wabaId, { name, category = "UTILITY", language = "pt_BR", body = "", example = [], headerImage = null, headerText = "", footer = "", buttons = [] } = {}) {
     if (!token) throw new Error("WhatsApp não configurado (WHATSAPP_TOKEN)");
     if (!wabaId) throw new Error("sem id da conta do WhatsApp (WABA)");
     const components = [];
     if (headerImage?.buffer) {
       const h = await uploadHeaderHandle(headerImage.buffer, { mime: headerImage.mime, filename: headerImage.filename });
       components.push({ type: "HEADER", format: "IMAGE", example: { header_handle: [h] } });
+    } else if (String(headerText || "").trim()) {
+      components.push({ type: "HEADER", format: "TEXT", text: String(headerText).trim() });
     }
     const nums = (body.match(/\{\{\s*(\d+)\s*\}\}/g) || []).map((s) => Number(s.replace(/\D/g, "")));
     const nVars = nums.length ? Math.max(...nums) : 0;
@@ -314,6 +363,11 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
       bodyComp.example = { body_text: [ex] };
     }
     components.push(bodyComp);
+    if (String(footer || "").trim()) components.push({ type: "FOOTER", text: String(footer).trim() });
+    const btns = (buttons || []).filter((b) => b && String(b.text || "").trim()).map((b) => (String(b.type).toUpperCase() === "URL"
+      ? { type: "URL", text: String(b.text).trim(), url: String(b.url || "").trim() }
+      : { type: "QUICK_REPLY", text: String(b.text).trim() }));
+    if (btns.length) components.push({ type: "BUTTONS", buttons: btns });
     const res = await f(`${GRAPH}/${wabaId}/message_templates`, {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
@@ -383,7 +437,7 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     return null;
   }
 
-  return { configured, sendText, sendTemplate, sendCallPermission, markRead, sendTyping, verifyWebhook, numberInfo, listTemplates, createTemplate, uploadHeaderHandle, tokenWabaIds, initiateCall, terminateCall, conversationCosts, fetchMedia, uploadMedia, sendMedia };
+  return { configured, sendText, sendTemplate, sendCallPermission, markRead, sendTyping, verifyWebhook, numberInfo, listTemplates, listAllTemplates, deleteTemplate, createTemplate, uploadHeaderHandle, tokenWabaIds, initiateCall, terminateCall, conversationCosts, fetchMedia, uploadMedia, sendMedia };
 }
 
 // Número em dígitos (E.164 sem +) pra enviar e pra casar o recebido com o lead.

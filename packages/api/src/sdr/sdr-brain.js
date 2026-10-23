@@ -24,7 +24,7 @@ import { digits } from "../whatsapp/whatsapp.js";
 import { kindOf, firstStage, stageByKind, isWonLead } from "../crm/stages.js";
 import { brtToIso, applyStageMove, onOutboundMessage, autoLeadOwner, logActivity, initialNextActionAt } from "../crm/lead-flow.js";
 import { raiseAlert } from "../whatsapp/wa-call-flow.js";
-import { leadGrade } from "../metrics/metrics-core.js";
+import { gradeRulesOf, leadGrade } from "../metrics/metrics-core.js";
 import { slotLabel, slotLabelFull, wallNow, spreadPair, wholeHourSlots, activeHolds, holdSlots, releaseHolds } from "../crm/agenda-slots.js";
 import { sdrSlotsForLead, sdrAgendaWindow } from "./sdr-agenda.js";
 import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, greetName, SDR_AUTHOR, DEVICE_TIP } from "./sdr-flow.js";
@@ -935,7 +935,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       sdrName: firstName((await repo.get("users", lead.owner).catch(() => null))?.name),
       lead: { name: nome, company: lead.company, email: lead.email, niche: lead.niche },
       digest: leadDigest(product, lead),
-      grade: leadGrade(lead) || "",
+      grade: leadGrade(lead, gradeRulesOf(product)) || "",
       stage: lead.stage || firstStage(product),
       callAt: lead.callAt || "",
       nowLabel: nowLabelOf(wnow),

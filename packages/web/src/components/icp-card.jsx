@@ -1,4 +1,5 @@
-import { REVENUE_BANDS } from "../../../api/src/shared/lead-grade.js";
+import { REVENUE_BANDS, defaultRules, icpGradesOf } from "../../../api/src/shared/lead-grade.js";
+import { gradeRulesFor } from "../lib/grade-rules.js";
 import React from "react";
 import { useActiveSaas } from "../lib/workspace.js";
 import { GRADE_STYLE } from "../lib/ui.js";
@@ -31,14 +32,34 @@ function ListCol({ title, tone, mark, items }) {
   );
 }
 
-export function GradeCol() {
+// Faixas da régua do produto (o 1º método com faixas) e as notas de ICP. Na
+// régua padrão do LeverAds os rótulos são os de sempre (REVENUE_BANDS).
+const fmtShort = (n) => (n >= 1e6 ? `${(n / 1e6).toLocaleString("pt-BR")} mi` : n >= 1e3 ? `${(n / 1e3).toLocaleString("pt-BR")} mil` : n.toLocaleString("pt-BR"));
+export function GradeCol({ product: productIn } = {}) {
+  const [active] = useActiveSaas();
+  const product = productIn || active;
+  const rules = gradeRulesFor(product?.id);
+  const method = (rules.methods || []).find((m) => Array.isArray(m.bands) && m.bands.length);
+  if (!method) return null;
+  const bands = [...method.bands].sort((a, b) => b.min - a.min);
+  const v = rules.value || {};
+  const money = (n) => `${v.prefix ? `${v.prefix} ` : ""}${fmtShort(n)}`;
+  const labelOf = (b, i) => {
+    const std = REVENUE_BANDS.find((x) => x.grade === b.grade && x.min === b.min);
+    if (std && rules === defaultRules(product?.id)) return std.label;
+    const upper = bands[i - 1];
+    if (!upper) return `${money(b.min)} ou mais`;
+    return b.min > 0 ? `${money(b.min)} a menos de ${money(upper.min)}` : `abaixo de ${money(upper.min)}`;
+  };
+  const icp = [...icpGradesOf(rules)].join("/");
+  const legacy = (rules.methods || []).some((m) => m.legacy);
   return <div style={{ flex: "1 1 260px", minWidth: 240 }}>
-    <div className="kicker accent" style={{ marginBottom: 8 }}>Nota · faturamento mensal estimado</div>
-    {REVENUE_BANDS.map(({ grade, label }) => <div key={grade} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, fontSize: 12 }}>
-      <span style={{ color: GRADE_STYLE[grade].ink, fontWeight: 700, width: 14 }}>{grade}</span><span>{label}</span>
+    <div className="kicker accent" style={{ marginBottom: 8 }}>Nota · {v.label || method.label || "régua do produto"}</div>
+    {bands.map((b, i) => <div key={b.grade} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, fontSize: 12 }}>
+      <span style={{ color: GRADE_STYLE[b.grade].ink, fontWeight: 700, width: 14 }}>{b.grade}</span><span>{labelOf(b, i)}</span>
     </div>)}
-    <p style={{ fontSize: 11.5, color: "var(--fg-3)", lineHeight: 1.5 }}>Pedidos/mês × ticket médio, pelos valores representativos das faixas. ICP: S/A/B. Intenção avaliada separadamente.</p>
-    <p style={{ fontSize: 11.5, color: "var(--fg-3)", lineHeight: 1.5 }}><b>L = Legado:</b> sem pedidos ou ticket válidos, preserva a nota anterior por contas × anúncios.</p>
+    <p style={{ fontSize: 11.5, color: "var(--fg-3)", lineHeight: 1.5 }}>{method.label ? `${method.label[0].toUpperCase()}${method.label.slice(1)}, pelos valores representativos das faixas. ` : ""}ICP: {icp}. Intenção avaliada separadamente.</p>
+    {legacy && <p style={{ fontSize: 11.5, color: "var(--fg-3)", lineHeight: 1.5 }}><b>L = Legado:</b> sem as respostas do método principal, preserva a nota anterior.</p>}
   </div>;
 }
 
@@ -57,8 +78,8 @@ export function IcpCard({ compact, grade }) {
         <ListCol title="Perfil ideal" tone="var(--pos)" mark="✓" items={icp.profile} />
         <ListCol title="Sinais vermelhos" tone="var(--neg)" mark="✕" items={icp.redFlags} />
         {/* `grade` liga a coluna de faixas (Treinamentos); a Visão geral segue
-            só com as listas. A régua é a do diagnóstico LeverAds. */}
-        {grade && product?.id === "leverads" && <GradeCol />}
+            só com as listas. As faixas vêm da régua do produto. */}
+        {grade && <GradeCol product={product} />}
       </div>
       {icp.contact && (
         <div style={{ marginTop: 12, fontSize: 12.5, color: "var(--fg-2)" }}>
