@@ -1085,9 +1085,12 @@ export async function migrateGanhoAntesIntegracao(repo) {
 // sem cliente vinculado, cai no stageSince, que ainda é o do ganho porque
 // esses cards nunca saíram do Ganho. Sem isso, o primeiro card a andar pra
 // Integração perderia a data e cairia no mês errado.
+// Negócio extra (upsell/renovação/reativação) fica de fora: ele NASCE com o
+// customerId do cliente, e carimbar aqui transformava o negócio aberto em
+// venda a cada boot (caso yudi/Lever Money, 23/10/2026).
 export async function backfillWonAt(repo) {
   const leads = await repo.list("leads");
-  const pending = leads.filter((l) => l.customerId && !l.wonAt);
+  const pending = leads.filter((l) => l.customerId && !l.wonAt && (!l.dealType || l.dealType === "nova_venda"));
   if (!pending.length) return 0;
   const byId = new Map((await repo.list("customers")).map((c) => [c.id, c]));
   let n = 0;

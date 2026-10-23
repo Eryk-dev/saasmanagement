@@ -1593,7 +1593,8 @@ Lever CRM.
     Como ele nasce com `customerId`, `isWonLead` (API `stages.js` e espelho
     `web/src/lib/funnel.js`) conta o negócio extra pelo `wonAt` ou pela etapa,
     nunca pelo `customerId` (23/10/2026: antes ele aparecia em "Últimas vendas"
-    e no placar desde a criação).
+    e no placar desde a criação). A migração de boot `backfillWonAt` também
+    ignora negócio extra; antes ela carimbava `wonAt` nele a cada deploy.
   - Puxado de volta da região de venda, ele perde só o `wonAt`, nunca o
     vínculo (`lead-flow.js`).
 - **Distribuição de leads:** com `product.leadDistribution = "round_robin"`,
