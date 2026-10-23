@@ -921,6 +921,11 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
     if (collection === "app_config" && catalogConfigSaas(id) !== null && !isAdminSession(req.authUser)) {
       return reply.code(403).send({ error: "Configuração do catálogo de planos exige etiqueta admin" });
     }
+    // BROADCAST em envio não se apaga: o runner (broadcast-wa/-email) está
+    // mandando a fila dele. Pausa primeiro; enviado, pausado ou rascunho pode.
+    if (collection === "campaigns" && (await repo.get("campaigns", id))?.status === "sending") {
+      return reply.code(409).send({ error: "o broadcast está enviando: pause o envio antes de apagar" });
+    }
     // PLANO do catálogo em uso não se apaga: arquiva (status), senão assinatura,
     // cliente e negócio fechado ficam apontando pro vazio.
     if (collection === "plans") {

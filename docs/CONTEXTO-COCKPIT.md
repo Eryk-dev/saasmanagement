@@ -953,6 +953,13 @@ alteração funcional nesta preparação.
   - Seleção em massa (todos, lista filtrada, caixa do cabeçalho, limpar, só os
     que falharam), filtro Todos/Selecionados/Não selecionados/Falharam e o
     mesmo selecionar/limpar no "Inscrever leads".
+  - Pausado é editável: lead na fila não trava a mensagem (a situação mostra
+    "na fila"). "Salvar alterações" tira da fila quem saiu do público
+    (`POST /api/campaigns/:id/unqueue` com `keep`, recusado em envio).
+    "Retomar envio (N)" salva, ajusta a fila, enfileira quem entrou e retoma.
+  - Apagar: vale para rascunho, enviado, pausado e o antigo. Em envio, o CRUD
+    recusa com 409 e a tela pede para pausar antes. O que já saiu não volta; o
+    histórico na timeline e no Inbox continua.
   - Testes: `broadcast-wa.test.js` e `test:review:disparos`.
 - **Régua configurável (22/10/2026, fase 1 de `docs/PLANO-ICP-CONFIGURAVEL.md`):** a nota
   e o ICP saem de `leadGradeInfo(lead, rules)`; `gradeRulesOf(product)` lê `product.icp.rules`

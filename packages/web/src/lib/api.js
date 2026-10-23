@@ -487,6 +487,8 @@ export const api = {
   campaignSendWhatsapp: (id, leadIds) => req("POST", `/api/campaigns/${encodeURIComponent(id)}/send-whatsapp`, { leadIds }),
   campaignPause: (id) => req("POST", `/api/campaigns/${encodeURIComponent(id)}/pause`, {}),
   campaignResume: (id) => req("POST", `/api/campaigns/${encodeURIComponent(id)}/resume`, {}),
+  // Broadcast pausado editado: tira da fila quem saiu do público (`keep` = quem fica).
+  campaignUnqueue: (id, keep) => req("POST", `/api/campaigns/${encodeURIComponent(id)}/unqueue`, { keep }),
   campaignProgress: (id) => req("GET", `/api/campaigns/${encodeURIComponent(id)}/progress`),
   // Métricas de conversão no funil por campanha do produto.
   campaignMetrics: (saas) => req("GET", `/api/campaigns/metrics/${encodeURIComponent(saas)}`),

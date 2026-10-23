@@ -30,7 +30,7 @@ try{
  const sendBtn=p.getByRole('button',{name:/^Enviar \d+ mensage/});const label=await sendBtn.innerText();const n=Number(label.replace(/\D/g,''));assert.ok(n>0,label);
  p.once('dialog',d=>d.accept());await sendBtn.click();await p.getByText(/mensagem\(ns\) de WhatsApp na fila/).waitFor();
  assert.ok((await writes(p)).includes('campaignSendWhatsapp'));
- await p.getByRole('button',{name:'Pausar envio',exact:true}).click();await p.getByRole('button',{name:'Retomar envio',exact:true}).waitFor();await p.getByText('Pausado: pausado pelo time',{exact:true}).waitFor();
+ await p.getByRole('button',{name:'Pausar envio',exact:true}).click();await p.getByRole('button',{name:/^Retomar envio \(/}).waitFor();await p.getByText('Pausado: pausado pelo time',{exact:true}).waitFor();
  await h.capture(p,'broadcast-whatsapp-pausado');
  await p.getByRole('button',{name:'← Broadcasts',exact:true}).click();await p.getByText('Retomada outubro',{exact:true}).waitFor();await p.getByText('pausado',{exact:true}).waitFor();
 
@@ -50,7 +50,20 @@ try{
  await h.capture(p,'broadcast-falhou');
  p.once('dialog',d=>d.accept());await p.getByRole('button',{name:/^Reenviar 1 mensagem$/}).click();await p.getByText(/mensagem\(ns\) de WhatsApp na fila/).waitFor();
  assert.ok((await writes(p)).includes('campaignSendWhatsapp'));
- await p.getByRole('button',{name:'← Broadcasts',exact:true}).click();await p.getByText('Follow-up com falha',{exact:true}).waitFor();
+ // Apagar broadcast já enviado: em envio pede para pausar; pausado, apaga com aviso.
+ await p.getByText('pause o envio para poder apagar',{exact:true}).waitFor();assert.equal(await p.getByRole('button',{name:'apagar',exact:true}).count(),0);
+ await p.getByRole('button',{name:'Pausar envio',exact:true}).click();await p.getByRole('button',{name:/^Retomar envio \(/}).waitFor();
+ // Pausado é editável: a mensagem destrava (ninguém recebeu), quem sai do público sai da fila e o retomar leva as edições.
+ assert.equal(await p.getByRole('button',{name:/^Modelo aprovado:/}).isDisabled(),false,'modelo editável no pausado');
+ await p.getByRole('button',{name:/^Todos · /}).click();await p.getByText('na fila',{exact:true}).first().waitFor();
+ await p.getByRole('button',{name:'Limpar seleção',exact:true}).click();assert.ok(await p.getByRole('button',{name:'Retomar envio (0)',exact:true}).isDisabled());
+ await p.getByRole('button',{name:'Salvar alterações',exact:true}).click();await p.getByText('Alterações salvas.',{exact:true}).waitFor();assert.ok((await writes(p)).includes('campaignUnqueue'));
+ await p.getByLabel('Incluir Carla Nunes',{exact:true}).check();
+ p.once('dialog',d=>d.accept());await p.getByRole('button',{name:'Retomar envio (1)',exact:true}).click();await p.getByText('Envio retomado. O servidor envia em lotes.',{exact:true}).waitFor();
+ await p.getByRole('button',{name:'Pausar envio',exact:true}).click();await p.getByRole('button',{name:/^Retomar envio \(/}).waitFor();
+ let aviso='';p.once('dialog',d=>{aviso=d.message();d.accept();});await p.getByRole('button',{name:'apagar',exact:true}).click();
+ await p.getByRole('button',{name:'+ Novo broadcast',exact:true}).first().waitFor();assert.equal(await p.getByText('Follow-up com falha',{exact:true}).count(),0);
+ assert.match(aviso,/Apagar o broadcast “Follow-up com falha”\?/);assert.ok((await writes(p)).includes('remove:campaigns'));
 
  // Broadcast de e-mail com modelo livre.
  await p.getByRole('button',{name:'+ Novo broadcast',exact:true}).first().click();await p.getByRole('checkbox',{name:/^E-mail/}).click();await p.getByRole('checkbox',{name:/^WhatsApp/}).click();assert.equal(await p.getByRole('checkbox',{name:/^WhatsApp/}).getAttribute('aria-checked'),'false');
@@ -68,7 +81,7 @@ try{
  await p.getByText('WhatsApp e e-mail',{exact:true}).first().waitFor();await p.getByText('por WhatsApp',{exact:true}).waitFor();await p.getByText('por e-mail',{exact:true}).waitFor();
  await h.capture(p,'broadcast-dois-canais');
  const both=p.getByRole('button',{name:/^Enviar \d+ WhatsApp e \d+ e-mails?$/});p.once('dialog',d=>d.accept());await both.click();await p.getByText(/e-mail\(s\) na fila, saem pelo Resend · \d+ mensagem\(ns\) de WhatsApp na fila/).waitFor();await p.getByLabel('Progresso do envio').getByText('E-mail',{exact:true}).waitFor();await h.capture(p,'broadcast-dois-canais-enviado');
- const bw=await writes(p);assert.equal(bw.filter(w=>w==='campaignSendEmail').length,2);assert.equal(bw.filter(w=>w==='campaignSendWhatsapp').length,3); // novo, reenvio da falha e dois canais
+ const bw=await writes(p);assert.equal(bw.filter(w=>w==='campaignSendEmail').length,2);assert.equal(bw.filter(w=>w==='campaignSendWhatsapp').length,4); // novo, reenvio da falha, retomada do pausado e dois canais
  await p.getByRole('button',{name:'← Broadcasts',exact:true}).click();await p.getByText('WhatsApp + E-mail',{exact:true}).waitFor();await p.close();
 
  // Sequência: o gatilho guarda os motivos de perda ao salvar (bug 3); menus nativos.

@@ -204,3 +204,42 @@ test("progresso reconcilia broadcast antigo: quem consta como enviado mas falhou
   assert.equal(typeof p.sent, "number");
   assert.equal((await repo.get("campaigns", "c1")).sent.a.waStatus, "failed");
 });
+
+test("apagar broadcast: em envio recusa com 409 (pausa antes); enviado ou pausado pode", async (t) => {
+  const repo = makeMemRepo();
+  await seed(repo, [{ id: "a", name: "Ana", phone: "11999990001" }]);
+  await repo.update("campaigns", "c1", { status: "sending", sent: { a: { waStatus: "queued" } } });
+  const app = Fastify();
+  registerRoutes(app, repo, { whatsapp: fakeWa() });
+  t.after(() => app.close());
+  const del = () => app.inject({ method: "DELETE", url: "/api/campaigns/c1" });
+  const busy = await del();
+  assert.equal(busy.statusCode, 409);
+  assert.match(busy.json().error, /pause o envio/);
+  await repo.update("campaigns", "c1", { status: "done", sent: { a: { whatsapp: "2026-10-22T12:00:00Z", waStatus: "sent" } } });
+  assert.equal((await del()).statusCode, 200);
+  assert.equal(await repo.get("campaigns", "c1"), null);
+});
+
+test("pausado editado: unqueue tira da fila quem saiu do público e mantém o que já foi enviado; em envio recusa", async (t) => {
+  const repo = makeMemRepo();
+  await seed(repo, [{ id: "a", name: "Ana", phone: "11999990001" }, { id: "b", name: "Bia", phone: "11999990002" }, { id: "c", name: "Caio", phone: "11999990003" }]);
+  await repo.update("campaigns", "c1", { status: "paused", sent: {
+    a: { waStatus: "queued", queuedAt: "2026-10-22T12:00:00Z" },
+    b: { waStatus: "queued", queuedAt: "2026-10-22T12:00:00Z" },
+    c: { whatsapp: "2026-10-22T11:00:00Z", waStatus: "sent", waMessageId: "wamid.C" },
+  } });
+  const app = Fastify();
+  registerRoutes(app, repo, { whatsapp: fakeWa() });
+  t.after(() => app.close());
+  const r = await app.inject({ method: "POST", url: "/api/campaigns/c1/unqueue", payload: { keep: ["a"] } });
+  assert.equal(r.statusCode, 200);
+  assert.equal(r.json().removed, 1);
+  const c = await repo.get("campaigns", "c1");
+  assert.equal(c.sent.a.waStatus, "queued");
+  assert.equal(c.sent.b, undefined, "a Bia saiu da fila");
+  assert.equal(c.sent.c.waStatus, "sent", "envio feito não muda");
+  await repo.update("campaigns", "c1", { status: "sending" });
+  assert.equal((await app.inject({ method: "POST", url: "/api/campaigns/c1/unqueue", payload: { keep: [] } })).statusCode, 409);
+  assert.equal((await app.inject({ method: "POST", url: "/api/campaigns/c1/unqueue", payload: {} })).statusCode, 409);
+});

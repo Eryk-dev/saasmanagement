@@ -185,6 +185,7 @@ function skipReason(lead, camp, channel, tplParams) {
     if (!waLink(lead.phone)) return "sem telefone";
     if (lead.whatsappOptOut) return "pediu para não receber";
     if (lead.whatsappInvalid) return "número sem WhatsApp";
+    if (st?.waStatus === "queued") return "na fila";
     if (waGot(st)) return "já recebeu";
     if (tplParams && tplParams(lead).some((p) => !p)) return "variável sem valor";
     return "";
@@ -192,6 +193,7 @@ function skipReason(lead, camp, channel, tplParams) {
   if (!lead.email) return "sem e-mail";
   if (lead.emailOptOut) return "descadastrado";
   if (lead.emailInvalid) return "e-mail devolvido";
+  if (st?.emailStatus === "queued") return "na fila";
   if (st?.email) return "já recebeu";
   return "";
 }
@@ -276,10 +278,11 @@ function BroadcastEditor({ initial, product, leads, stageOptions, defaultStages,
     if (set.has(k)) { if (set.size === 1) return c; set.delete(k); } else set.add(k);
     return { ...c, channel: set.size === 2 ? "both" : [...set][0] };
   });
-  // Canal e mensagem travam quando alguém recebeu (ou está na fila); o público
-  // só trava durante o envio. Broadcast que falhou inteiro volta a ser editável,
-  // e quem falhou pode ser reenviado.
-  const locked = legacy || camp.status === "sending" || Object.values(camp.sent || {}).some((s) => waGot(s) || s?.email);
+  // Canal e mensagem travam quando alguém RECEBEU (lead na fila de um broadcast
+  // pausado nunca saiu); o público só trava durante o envio. Broadcast que
+  // falhou ou pausou volta a ser editável, e quem falhou pode ser reenviado.
+  const isQueued = (st) => st?.waStatus === "queued" || st?.emailStatus === "queued";
+  const locked = legacy || camp.status === "sending" || Object.values(camp.sent || {}).some((s) => (waGot(s) && s?.waStatus !== "queued") || (s?.email && s?.emailStatus !== "queued"));
   const audienceLocked = legacy || camp.status === "sending";
   const pid = product.id;
 
@@ -381,7 +384,18 @@ function BroadcastEditor({ initial, product, leads, stageOptions, defaultStages,
     try { await fn(); } catch (e) { setNote({ ok: false, text: e.message || "Não deu certo." }); }
     finally { writing.current = false; setBusy(""); }
   }
-  const save = () => run("save", async () => { await persist(); guard.clean(draft); setNote({ ok: true, text: "Broadcast salvo." }); });
+  // Pausado: quem saiu do público sai da fila do servidor (nunca foi enviado).
+  const keepQueue = async (id) => {
+    const r = await api.campaignUnqueue(id, chosen.map((l) => l.id));
+    setCamp((c) => ({ ...c, sent: r.sent || c.sent }));
+    return r;
+  };
+  const save = () => run("save", async () => {
+    const id = await persist();
+    if (camp.status === "paused") await keepQueue(id);
+    guard.clean(draft);
+    setNote({ ok: true, text: camp.status === "draft" ? "Broadcast salvo." : "Alterações salvas." });
+  });
   const send = () => {
     const parts = [hasWa && eligibleWa.length ? plural(eligibleWa.length, "mensagem de WhatsApp", "mensagens de WhatsApp") : "", hasEmail && eligibleEmail.length ? plural(eligibleEmail.length, "e-mail", "e-mails") : ""].filter(Boolean);
     if (!window.confirm(`Enviar ${parts.join(" e ")} agora? O servidor envia em lotes e pode levar alguns minutos.`)) return;
@@ -408,8 +422,31 @@ function BroadcastEditor({ initial, product, leads, stageOptions, defaultStages,
     const c = camp.status === "sending" ? await api.campaignPause(camp.id) : await api.campaignResume(camp.id);
     setCamp((x) => ({ ...x, status: c.status, pauseReason: c.pauseReason || "" }));
   });
+  // Retomar o pausado com as edições: salva, ajusta a fila ao público atual,
+  // põe na fila quem entrou e retoma o resto.
+  const keptQueued = chosen.filter((l) => isQueued(camp.sent?.[l.id]));
+  const toResume = keptQueued.length + eligible.length;
+  const resumeEdited = () => {
+    if (!window.confirm(`Retomar o envio para ${plural(toResume, "lead", "leads")}? O servidor envia em lotes.`)) return;
+    run("send", async () => {
+      const id = await persist();
+      guard.clean(draft);
+      await keepQueue(id);
+      let queued = 0;
+      if (hasEmail && eligibleEmail.length) queued += (await api.campaignSendEmail(id, eligibleEmail.map((l) => l.id))).queued || 0;
+      if (hasWa && eligibleWa.length) queued += (await api.campaignSendWhatsapp(id, eligibleWa.map((l) => l.id))).queued || 0;
+      // Nada novo na fila: o envio só retoma a fila que já estava lá.
+      const c = queued ? { status: "sending", pauseReason: "" } : await api.campaignResume(id);
+      setCamp((x) => ({ ...x, status: c.status || "sending", pauseReason: c.pauseReason || "" }));
+      setNote({ ok: true, text: "Envio retomado. O servidor envia em lotes." });
+    });
+  };
+  // Apagar vale para rascunho, enviado, pausado e o antigo; em envio, pausa antes
+  // (o servidor recusa com 409). O que já saiu não volta: some só o broadcast.
   const remove = () => {
-    if (!window.confirm(`Apagar o broadcast “${camp.name || "sem nome"}”? O histórico de envios na timeline dos leads continua.`)) return;
+    const reached = Object.values(camp.sent || {}).filter((s) => (waGot(s) && s?.waStatus !== "queued") || s?.email).length;
+    const warn = reached ? ` Ele já foi enviado para ${reached} lead${reached === 1 ? "" : "s"}: as mensagens não voltam, ele só some da lista e das métricas.` : "";
+    if (!window.confirm(`Apagar o broadcast “${camp.name || "sem nome"}”?${warn} O histórico de envios na timeline dos leads continua.`)) return;
     run("remove", async () => { await api.remove("campaigns", camp.id); guard.clean(draft); onClose(); });
   };
   const back = () => { if (guard.confirm()) onClose(); };
@@ -436,7 +473,8 @@ function BroadcastEditor({ initial, product, leads, stageOptions, defaultStages,
         <SecondaryButton onClick={back} disabled={!!busy}>← Broadcasts</SecondaryButton>
         <span style={{ flex: 1 }} />
         <span className={`chip ${st[0]}`} style={{ height: 24 }}>{st[1]}</span>
-        {camp.id && !locked && <SecondaryButton onClick={remove} disabled={!!busy}>apagar</SecondaryButton>}
+        {camp.id && camp.status !== "sending" && <SecondaryButton onClick={remove} disabled={!!busy}>apagar</SecondaryButton>}
+        {camp.id && camp.status === "sending" && <span className="dim" style={{ fontSize: 12 }}>pause o envio para poder apagar</span>}
       </div>
       <label className="disparos-label">Nome do broadcast
         <input aria-label="Nome do broadcast" value={camp.name} disabled={legacy || !!busy} onChange={(e) => setCamp((c) => ({ ...c, name: e.target.value }))} placeholder="ex.: Retomada de outubro" /></label>
@@ -541,8 +579,9 @@ function BroadcastEditor({ initial, product, leads, stageOptions, defaultStages,
         {camp.pauseReason && <div role="alert" style={{ fontSize: 12.5, color: "var(--neg)", marginBottom: 10 }}>Pausado: {camp.pauseReason}</div>}
         <div className="marketing-toolbar" style={{ gap: 8, flexWrap: "wrap" }}>
           {!legacy && (camp.status === "draft" || camp.status === "done") && <PrimaryButton disabled={!eligible.length || !messageReady || !!busy || !channelsOn} onClick={send}>{busy === "send" ? "enviando…" : camp.status === "done" ? sendLabel.replace(/^Enviar/, "Reenviar") : sendLabel}</PrimaryButton>}
-          {["sending", "paused"].includes(camp.status) && <PrimaryButton onClick={pauseResume} disabled={!!busy}>{camp.status === "sending" ? "Pausar envio" : "Retomar envio"}</PrimaryButton>}
-          {!legacy && camp.status === "draft" && <SecondaryButton onClick={save} disabled={!!busy}>{busy === "save" ? "salvando…" : "Salvar rascunho"}</SecondaryButton>}
+          {camp.status === "sending" && <PrimaryButton onClick={pauseResume} disabled={!!busy}>Pausar envio</PrimaryButton>}
+          {!legacy && camp.status === "paused" && <PrimaryButton onClick={resumeEdited} disabled={!!busy || !toResume || !messageReady || !channelsOn}>{busy === "send" ? "retomando…" : `Retomar envio (${toResume})`}</PrimaryButton>}
+          {!legacy && camp.status !== "sending" && <SecondaryButton onClick={save} disabled={!!busy}>{busy === "save" ? "salvando…" : camp.status === "draft" ? "Salvar rascunho" : "Salvar alterações"}</SecondaryButton>}
         </div>
         <InfoNota style={{ marginTop: 12 }}>{[
           hasEmail ? `Os e-mails saem ${emailVia}, em lotes pelo servidor, com link de descadastro; muita falha seguida pausa o envio.` : "",

@@ -73,6 +73,27 @@ export function registerCampaignRoutes(app, repo, { anthropic, mailer, whatsapp 
     return repo.update("campaigns", camp.id, { status: "sending", pauseReason: "", sent });
   });
 
+  // Editar broadcast pausado: quem saiu do público sai da fila (o que nunca foi
+  // enviado). `keep` = os leads que continuam; envio feito não muda.
+  app.post("/api/campaigns/:id/unqueue", async (req, reply) => {
+    const camp = await repo.get("campaigns", req.params.id);
+    if (!camp) return reply.code(404).send({ error: "broadcast não encontrado" });
+    if (camp.status === "sending") return reply.code(409).send({ error: "pause o envio antes de mudar o público" });
+    if (!Array.isArray(req.body?.keep)) return reply.code(400).send({ error: "informe keep (lista de leads que ficam)" });
+    const keep = new Set(req.body.keep.map(String));
+    const sent = {};
+    let removed = 0;
+    for (const [id, s] of Object.entries(camp.sent || {})) {
+      if (keep.has(id)) { sent[id] = s; continue; }
+      const next = { ...s };
+      if (next.waStatus === "queued") { delete next.waStatus; delete next.queuedAt; removed++; }
+      if (next.emailStatus === "queued") { delete next.emailStatus; delete next.emailQueuedAt; delete next.emailBy; removed++; }
+      if (Object.keys(next).length) sent[id] = next;
+    }
+    const updated = await repo.update("campaigns", camp.id, { sent });
+    return { ok: true, removed, status: updated.status, sent: updated.sent };
+  });
+
   app.get("/api/campaigns/:id/progress", async (req, reply) => {
     const found = await repo.get("campaigns", req.params.id);
     if (!found) return reply.code(404).send({ error: "broadcast não encontrado" });
