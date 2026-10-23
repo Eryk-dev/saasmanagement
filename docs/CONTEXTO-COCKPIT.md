@@ -1679,6 +1679,44 @@ do drawer).
   conversa da Carla, e `test:review:whatsapp` cobre velocidade, play e
   transcrição.
 
+**Inbox: aba Robô, só admin (23/10/2026).** `components/sdr-robot.jsx`. A aba
+Automações continua com o card "SDR automático" (ligar o robô e as frentes
+dele); a aba Robô cuida do resto.
+
+- **Acesso:** a aba só aparece com a etiqueta `admin`.
+  - A API recusa quem não é admin em `/api/sdr/config`, `/api/sdr/models`,
+    `/api/sdr/ai-usage`, `/api/sdr/audit` e no replay com `provider` ou
+    `model`.
+  - O CRUD de produto barra quem não é admin de mudar as chaves de admin do
+    `sdrBot` (`sdr/sdr-admin-config.js`); o card da aba Automações segue
+    salvando.
+- **IA do robô:** `sdrBot.ai = { provider, model }`, com provedor `openrouter`,
+  `anthropic` ou vazio (o padrão do servidor, `AI_MODEL`).
+  - `sdr/sdr-ai.js` resolve o cliente; só a conversa do robô e a bateria de
+    replay trocam de IA.
+  - Provedor sem chave no servidor (`OPENROUTER_API_KEY` ou
+    `ANTHROPIC_API_KEY`) cai no padrão, com aviso na aba.
+  - O catálogo vem do provedor, com cache de 1h. Do OpenRouter, entram só
+    modelos com saída estruturada, com preço.
+  - "Testar na bateria de replay" roda a escolha (tag `robo`) e a tabela
+    compara as rodadas.
+- **Ajustes avançados:** as chaves que só mudavam por PATCH (rajada, idade do
+  lead, escada, resgate do backlog, versões de prompt, contrato e validador),
+  com os padrões de `sdrBotConfig`.
+- **Pausa de humano ativo (R-080/R-085):** `humanMuteHours` (padrão 4h).
+  - Com `humanMuteOffHours`, fora de `humanMuteHourStart`–`humanMuteHourEnd`
+    (seg a sex; padrão o expediente do `waCallFlow`; fim de semana sempre
+    fora), a fala recente do time não cala o robô.
+  - O handoff continua calando.
+  - A régua mora em `humanMuteHolds` (`sdr-state.js`), usada pelo cérebro e
+    pelo estado.
+- **Uso e auditoria:** respostas, tokens, cache, tempo médio e custo estimado
+  pelo preço do OpenRouter (sem desconto de cache), por modelo; violações por
+  regra, com o título do rulebook.
+- **Teste:** `sdr-robo-config.test.js`, `sdr-state.test.js` e
+  `sdr-brain.test.js` (`#R-080`, `#R-085`). Na prévia, `&inbox` mostra a aba
+  e `&naoadmin` a esconde; `test:review:whatsapp` cobre os dois.
+
 **Carteira de CS, acompanhamentos e modelos de integração (20/10/2026).**
 Fase 3 do plano do Lever CRM.
 

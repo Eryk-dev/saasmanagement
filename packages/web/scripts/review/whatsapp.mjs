@@ -43,10 +43,20 @@ try{
  await voice.getByRole('button',{name:'tocar áudio'}).click();await voice.getByRole('button',{name:'pausar áudio'}).waitFor();assert.equal(await voice.locator('audio').evaluate(a=>a.playbackRate),2);
  await voice.getByRole('button',{name:'pausar áudio'}).click();
  await voice.getByRole('button',{name:'Transcrever',exact:true}).click();await voice.getByText(/estou dirigindo/).waitFor();await h.capture(audio,'audio');await audio.close();
+ const robo=await open(1440);await robo.getByRole('button',{name:'Robô',exact:true}).click();await robo.getByText('IA do robô',{exact:true}).waitFor();
+ await robo.getByText('openai/gpt-5.6-luna',{exact:true}).first().waitFor();await robo.getByText('Respostas da IA',{exact:true}).waitFor();await robo.getByText(/Nunca fala preço/).waitFor();
+ await robo.getByRole('button',{name:'Claude (Anthropic)',exact:true}).click();await robo.getByText(/ANTHROPIC_API_KEY não está no servidor/).waitFor();
+ await robo.getByRole('button',{name:'OpenRouter',exact:true}).click();await robo.getByRole('button',{name:/padrão do provedor/}).click();await robo.getByRole('option',{name:/Gemini 2\.5 Flash/}).click();
+ await robo.getByRole('button',{name:'Salvar IA',exact:true}).click();await robo.getByText(/Vale a partir da próxima mensagem/).waitFor();await robo.getByText('google/gemini-2.5-flash',{exact:true}).first().waitFor();
+ await robo.getByRole('switch',{name:/Ignorar a pausa fora do horário comercial/}).click();await robo.getByText('Horário comercial, seg a sex, das',{exact:true}).waitFor();
+ await robo.getByRole('button',{name:'Salvar ajustes',exact:true}).click();await robo.getByText('Ajustes salvos.',{exact:true}).waitFor();
+ await h.capture(robo,'robo');await robo.close();
+ const roboMobile=await open(390);await roboMobile.getByRole('button',{name:'Robô',exact:true}).click();await roboMobile.getByText('IA do robô',{exact:true}).waitFor();await h.capture(roboMobile,'robo-390');assert.ok(await roboMobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await roboMobile.close();
+ const naoAdmin=await open(1440,'&naoadmin');await naoAdmin.getByRole('button',{name:'Automações',exact:true}).waitFor();assert.equal(await naoAdmin.getByRole('button',{name:'Robô',exact:true}).count(),0);await naoAdmin.close();
  for(const [width,q]of [[390,''],[1024,''],[1440,'&theme=dark'],[1440,'&empty']]){
   const page=await open(width,q);await h.capture(page,`state-${width}-${q||'default'}`);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
   if(width===390){assert.equal(await page.locator('.inbox-chat').count(),0);await page.locator('.inbox-conversation').first().click();await page.locator('.inbox-compose textarea').waitFor();await h.capture(page,'mobile-chat');await page.getByRole('button',{name:'Voltar pra lista de conversas'}).click();await page.locator('.inbox-list').waitFor();}
   await page.close();
  }
- assert.deepEqual(h.errors,[]);console.log('Inbox: navegação, filtros, envio mock, áudio (velocidade e transcrição), falha/retry, janela fechada, encerramento, canais, mobile e tema escuro OK.');
+ assert.deepEqual(h.errors,[]);console.log('Inbox: navegação, filtros, envio mock, áudio (velocidade e transcrição), aba Robô (só admin), falha/retry, janela fechada, encerramento, canais, mobile e tema escuro OK.');
 }finally{await h.close();}

@@ -30,7 +30,7 @@ import { upsertNotification } from "../tasks/tasks-core.js";
 import { digits } from "../whatsapp/whatsapp.js";
 import { kindOf, firstStage, isNoShowStage, isWonLead, stageByKind } from "../crm/stages.js";
 import { brtToIso, onOutboundMessage, applyStageMove } from "../crm/lead-flow.js";
-import { isBusinessHours } from "../platform/business-hours.js";
+import { isBusinessHours, hourOf } from "../platform/business-hours.js";
 import { resolveWabaId, getWaHealth } from "../whatsapp/wa-health.js";
 import { raiseAlert } from "../whatsapp/wa-call-flow.js";
 import { slotLabel, slotLabelFull, wallNow, spreadPair, wholeHourSlots, activeHolds, holdSlots } from "../crm/agenda-slots.js";
@@ -189,6 +189,16 @@ export function sdrBotConfig(product) {
     // experiência completa no próprio WhatsApp sem tocar nenhum lead real, e
     // sem sujar métrica (lead interno segue fora do isRealLead).
     conversationTest: cfg.conversationTest === true,
+    // IA da conversa (aba Robô da Inbox, só admin): provedor + modelo. Vazio =
+    // o cliente padrão do servidor (sdr-ai.js).
+    ai: { provider: String(cfg.ai?.provider || ""), model: String(cfg.ai?.model || "") },
+    // PAUSA DE HUMANO ATIVO (R-080): gente falou há menos disso, a conversa é
+    // dela. Com humanMuteOffHours, fora do horário do robô (seg a sex, horas
+    // abaixo; padrão o expediente do fluxo de ligação) a pausa não vale (R-085).
+    humanMuteHours: num(cfg.humanMuteHours, 4),
+    humanMuteOffHours: cfg.humanMuteOffHours === true,
+    humanMuteHourStart: hourOf(cfg.humanMuteHourStart, hourOf(product?.waCallFlow?.hourStart, 8)),
+    humanMuteHourEnd: hourOf(cfg.humanMuteHourEnd, hourOf(product?.waCallFlow?.hourEnd, 18)),
     firstTouchDelayMin: num(cfg.firstTouchDelayMin, 3), // "um humano viu" > resposta em 2s
     // Debounce de RAJADA (Leo, 23/08): ao receber mensagem, o cérebro espera
     // esse tempo; chegou outra no meio, só a última responde, compilando a

@@ -500,7 +500,15 @@ export const api = {
   sdrStatus: (saas) => req("GET", `/api/sdr/status?saas=${encodeURIComponent(saas)}`),
   sdrTemplateSetup: () => req("POST", "/api/whatsapp/templates/sdr-setup", {}),
   sdrReplayStart: (saas, opts = {}) => req("POST", "/api/sdr/replay", { saas, ...opts }),
-  sdrReplayStatus: () => req("GET", "/api/sdr/replay"),
+  sdrReplayStatus: (tag = "") => req("GET", `/api/sdr/replay${tag ? `?tag=${encodeURIComponent(tag)}` : ""}`),
+  sdrReplayRuns: () => req("GET", "/api/sdr/replay/runs"),
+  // Aba Robô da Inbox (só admin): IA do robô, ajustes avançados, catálogo de
+  // modelos do provedor, uso da IA e auditoria das regras.
+  sdrConfig: (saas) => req("GET", `/api/sdr/config?saas=${encodeURIComponent(saas)}`),
+  sdrConfigSave: (saas, patch) => req("PATCH", `/api/sdr/config/${encodeURIComponent(saas)}`, patch),
+  sdrModels: (provider) => req("GET", `/api/sdr/models?provider=${encodeURIComponent(provider)}`),
+  sdrAiUsage: (saas, days = 14) => req("GET", `/api/sdr/ai-usage?saas=${encodeURIComponent(saas)}&days=${days}`),
+  sdrAudit: (saas, days = 7) => req("GET", `/api/sdr/audit?saas=${encodeURIComponent(saas)}&days=${days}`),
   freeSlots: (saas, { lead, grade, days, limit } = {}) => {
     const q = new URLSearchParams({ saas });
     if (lead) q.set("lead", lead);

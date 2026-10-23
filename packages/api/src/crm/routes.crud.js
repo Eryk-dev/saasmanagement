@@ -7,6 +7,8 @@ import { brtToday, createTask, deleteTask, patchTask, sanitizeBoardPatch } from 
 import { applyTemplateCatalogEdit, catalogConfigSaas, isPlanV2, newPlanDoc, nextPlan, planReferences, plansOf, syncPlanCatalogProjection, templateCatalogChange } from "../billing/plan-catalog.js";
 import { FOLLOWUP_CONTACTS_KEY, followupDayOf } from "../shared/followup-contacts.js";
 import { canEditIcp, canScreen } from "../auth/screens.js";
+import { isAdmin } from "../auth/roles.js";
+import { sdrAdminKeysChanged } from "../sdr/sdr-admin-config.js";
 import { randomUUID } from "node:crypto";
 import { formKind } from "../forms/integration-form.js";
 import { newManual, sameFamily } from "../calls/deliverables.js";
@@ -196,6 +198,15 @@ async function syncLeadQuestions(repo, form) {
   }
 }
 
+
+// IA e ajustes avançados do robô SDR (aba Robô da Inbox) são de admin. O
+// `!user` é a chave mestre, como em canEditIcp.
+function sdrAdminBlocked(user, prevSdrBot, nextSdrBot) {
+  if (!user || isAdmin(user)) return "";
+  const changed = sdrAdminKeysChanged(prevSdrBot || {}, nextSdrBot || {});
+  return changed.length ? `Só admin muda a IA e os ajustes avançados do robô (${changed.join(", ")})` : "";
+}
+
 export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaCapiClient, briefer, autoCallMeet, autoIntegrationMeet, cancelIntegrationMeet, googleClient, mpClient } = {}) {
   // ── Generic CRUD over every collection ───────────────────────────────────
   app.get("/api/:collection", async (req, reply) => {
@@ -243,6 +254,10 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
     // A régua de nota/ICP só muda pela rota dela (versão, histórico, recálculo).
     if (collection === "products" && "icp" in req.body && !canEditIcp(req.authUser)) {
       return reply.code(403).send({ error: "Editar o ICP exige a etiqueta Editor de ICP (Ajustes → Equipe)" });
+    }
+    if (collection === "products" && req.body.sdrBot) {
+      const blocked = sdrAdminBlocked(req.authUser, {}, req.body.sdrBot);
+      if (blocked) return reply.code(403).send({ error: blocked });
     }
     // Lead: tags normalizadas e tipo de negócio conhecido (lead-tags.js).
     if (collection === "leads") req.body = { ...req.body, ...leadTagPatch(req.body) };
@@ -477,6 +492,10 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
     // A régua de nota/ICP só muda pela rota dela (versão, histórico, recálculo).
     if (collection === "products" && "icp" in req.body && !canEditIcp(req.authUser)) {
       return reply.code(403).send({ error: "Editar o ICP exige a etiqueta Editor de ICP (Ajustes → Equipe)" });
+    }
+    if (collection === "products" && "sdrBot" in req.body) {
+      const blocked = sdrAdminBlocked(req.authUser, (await repo.get("products", id))?.sdrBot, req.body.sdrBot);
+      if (blocked) return reply.code(403).send({ error: blocked });
     }
     if (collection === "leads") canonWhen(req.body);
     // Horário de integração novo: confere de novo no cockpit e na agenda do

@@ -3,7 +3,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { stateOf, agendaMessagesOf, HUMAN_MUTE_MS } from "../src/sdr/sdr-state.js";
+import { stateOf, agendaMessagesOf, humanMuteHolds, HUMAN_MUTE_MS } from "../src/sdr/sdr-state.js";
+import { sdrBotConfig } from "../src/sdr/sdr-flow.js";
 
 const NOW = new Date("2026-08-19T13:00:00Z"); // quarta, 10h BRT
 const ago = (min) => new Date(NOW.getTime() - min * 60_000).toISOString();
@@ -53,6 +54,36 @@ test("estado: roteiro vem da dor de origem (OEM só em autopeças ou nicho vazio
 test("estado: humano calado há mais de 4h deixa de valer como ativo #R-080", () => {
   const msgs = [out("fala comigo", HUMAN_MUTE_MS / 60_000 + 1, { author: "us_leo" }), inn("oi", 1)];
   assert.equal(st({}, msgs).facts.humanActive, false);
+});
+
+test("pausa de humano ativo: prazo configurável na aba Robô #R-080", () => {
+  const human = { direction: "out", author: "us_leo", at: ago(90) }; // falou há 1h30
+  const cfg = (sdrBot) => sdrBotConfig({ sdrBot: { enabled: true, ...sdrBot } });
+  assert.equal(humanMuteHolds(cfg({}), human, NOW.getTime()), true); // padrão 4h
+  assert.equal(humanMuteHolds(cfg({ humanMuteHours: 1 }), human, NOW.getTime()), false);
+  assert.equal(humanMuteHolds(cfg({}), null, NOW.getTime()), false);
+  // O fato do estado segue a mesma régua do produto.
+  const product = { sdrBot: { humanMuteHours: 1 } };
+  assert.equal(stateOf({ lead: {}, msgs: [{ id: "h", ...human, text: "oi" }, inn("oi", 1)], now: NOW, product, humanIds: HUMANS }).facts.humanActive, false);
+});
+
+test("pausa de humano ativo: fora do horário do robô a opção ignora a pausa; dentro, segue valendo #R-085", () => {
+  const human = { direction: "out", author: "us_leo", at: ago(30) };
+  const at = (iso) => new Date(iso).getTime();
+  const ligado = sdrBotConfig({ sdrBot: { enabled: true, humanMuteOffHours: true, humanMuteHourStart: 9, humanMuteHourEnd: 18 } });
+  // Quarta 10h BRT: dentro do horário, a pausa vale.
+  assert.equal(humanMuteHolds(ligado, { ...human, at: "2026-08-19T12:30:00Z" }, at("2026-08-19T13:00:00Z")), true);
+  // Quarta 19h BRT (fim às 18h): fora, o robô responde.
+  assert.equal(humanMuteHolds(ligado, { ...human, at: "2026-08-19T21:30:00Z" }, at("2026-08-19T22:00:00Z")), false);
+  // Sábado 11h BRT: fim de semana é sempre fora.
+  assert.equal(humanMuteHolds(ligado, { ...human, at: "2026-08-22T13:30:00Z" }, at("2026-08-22T14:00:00Z")), false);
+  // Opção desligada (padrão): a pausa vale a qualquer hora.
+  const desligado = sdrBotConfig({ sdrBot: { enabled: true } });
+  assert.equal(humanMuteHolds(desligado, { ...human, at: "2026-08-19T21:30:00Z" }, at("2026-08-19T22:00:00Z")), true);
+  // Sem horas próprias, vale o expediente do fluxo de ligação (waCallFlow).
+  const herdado = sdrBotConfig({ waCallFlow: { hourStart: 7, hourEnd: 20 }, sdrBot: { enabled: true, humanMuteOffHours: true } });
+  assert.equal(herdado.humanMuteHourStart, 7);
+  assert.equal(humanMuteHolds(herdado, { ...human, at: "2026-08-19T21:30:00Z" }, at("2026-08-19T22:00:00Z")), true); // 19h < 20h
 });
 
 test("agendaMessagesOf: depois do cancelamento só valem as mensagens posteriores #R-036", () => {

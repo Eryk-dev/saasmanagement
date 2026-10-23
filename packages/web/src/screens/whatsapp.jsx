@@ -21,10 +21,11 @@ import { useIsMobile } from "../lib/responsive.js";
 import { clientSummary, ClientSummaryCard, AttributionCard } from "../components/lead-blocks.jsx";
 import { LeadGrade, LeadSection, LeadPhoneCopy } from "../components/lead-card.jsx";
 import { SelectPopover } from "../components/select-popover.jsx";
-import { currentUser, usersByRole } from "../lib/users.js";
+import { currentUser, isAdminUser, usersByRole } from "../lib/users.js";
 import { scriptChecklist } from "../lib/scripts.js";
 import { moveGate, MoveLeadModal, applyGatedMove, moveErrorText } from "../components/stage-move.jsx";
 import { WaAutomationsPanel } from "../components/wa-automations.jsx";
+import { SdrRobotPanel } from "../components/sdr-robot.jsx";
 
 // Inbox de WhatsApp: um WhatsApp Web dentro do cockpit. Lista de conversas à
 // esquerda (não-lidas primeiro na cara, ordenadas por recência) + conversa
@@ -497,6 +498,8 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
         <div className="inbox-channels">
           <div role="group" aria-label="Canal do Inbox">{[
             ["whatsapp", "WhatsApp"], ["instagram", "Instagram"], ["facebook", "Messenger"], ["automacoes", "Automações"],
+            // Robô: IA, ajustes avançados e uso do robô SDR. Só admin (a API recusa os outros).
+            ...(isAdminUser() ? [["robo", "Robô"]] : []),
           ].map(([id, name]) => <button key={id} aria-pressed={channel === id} onClick={() => setChannel(id)}>{name}</button>)}</div>
         </div>
       </header>
@@ -506,6 +509,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
       {/* Central de automações do WhatsApp: regras reativas, templates da
           Meta, fluxos de nutrição e as respostas rápidas do chat. */}
       {channel === "automacoes" && <WaAutomationsPanel key={product?.id} product={product} />}
+      {channel === "robo" && isAdminUser() && <SdrRobotPanel key={product?.id} product={product} />}
 
       {channel === "whatsapp" && <>
       {configured && <WaTopStats numInfo={numInfo} stats={statsError ? null : stats} error={statsError} onRetry={() => setStatsAttempt((n) => n + 1)} onResponder={() => {
