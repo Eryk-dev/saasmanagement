@@ -1661,6 +1661,24 @@ do Lever CRM, em `whatsapp/thread-owner.js`.
 - **Ainda não feito:** número por finalidade (vendas, CS, suporte) e registro
   explícito de opt-in. Os dois dependem de decisão sobre os números.
 
+**WhatsApp: player de áudio e transcrição na conversa (23/10/2026).**
+`components/wa-audio.jsx` troca o `<audio controls>` da bolha (Inbox e chat
+do drawer).
+
+- **Player:** play/pausa, barra clicável e velocidade 1× → 1,5× → 2×.
+  - A velocidade vale pra todos os áudios e fica no `localStorage`
+    (`wa-audio-rate`).
+  - Tocar um áudio pausa o anterior.
+- **Transcrição:** `POST /api/whatsapp/messages/:id/transcribe` usa o mesmo
+  `transcribeInbound` do webhook e do robô (OpenRouter, `TRANSCRIBE_MODEL`).
+  - O texto fica em `wa_messages.transcript`; o que já foi transcrito volta
+    sem nova chamada.
+  - Falha vira 422 com o motivo; sem chave, 424.
+  - A bolha mostra o texto quando existe, senão o botão "Transcrever".
+- **Teste:** `routes.whatsapp.test.js`. A prévia da Inbox tem um áudio na
+  conversa da Carla, e `test:review:whatsapp` cobre velocidade, play e
+  transcrição.
+
 **Carteira de CS, acompanhamentos e modelos de integração (20/10/2026).**
 Fase 3 do plano do Lever CRM.
 

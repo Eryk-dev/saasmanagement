@@ -293,6 +293,9 @@ export const api = {
     }
     return res.blob();
   },
+  // Transcreve um áudio da conversa (recebido ou enviado) e grava o texto na
+  // mensagem: { transcript } ("" = sem fala reconhecida).
+  waTranscribe: (msgId) => req("POST", `/api/whatsapp/messages/${encodeURIComponent(msgId)}/transcribe`),
   // Templates APROVADOS na Meta + envio de um deles (o único jeito de reabrir
   // conversa fora da janela de 24h). params = valores das variáveis {{1}}…{{N}}.
   waMetaTemplates: () => req("GET", "/api/whatsapp/templates"),

@@ -476,6 +476,28 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
     return reply.type(mime || msg.media.mime || "application/octet-stream").send(buf);
   });
 
+  // "Transcrever" no player da Inbox: mesmo transcritor do webhook e do robô
+  // (wa-transcribe.js), então áudio já transcrito volta do campo `transcript`
+  // sem custo. Vale pra áudio recebido e pro gravado no cockpit (os dois ficam
+  // em wa_media). Falha vira 422 com o motivo, nunca 5xx (o proxy troca o corpo).
+  app.post("/api/whatsapp/messages/:id/transcribe", async (req, reply) => {
+    const msg = await repo.get("wa_messages", req.params.id);
+    if (!msg) return reply.code(404).send({ error: "mensagem não encontrada" });
+    if (msg.media?.kind !== "audio") return reply.code(400).send({ error: "a mensagem não é um áudio" });
+    if (msg.transcript) return { transcript: msg.transcript };
+    if (!transcriber.configured()) {
+      return reply.code(NOT_CONFIGURED).send({ error: "transcrição não configurada no servidor (OPENROUTER_API_KEY ou OPENAI_API_KEY)" });
+    }
+    const leadId = msg.leadId || (await repo.get("wa_threads", msg.thread).catch(() => null))?.leadId;
+    const lead = leadId ? await repo.get("leads", leadId).catch(() => null) : null;
+    try {
+      const transcript = await transcribeInbound(repo, { wa, transcriber, message: msg, lead, log: req.log, strict: true });
+      return { transcript };
+    } catch (err) {
+      return reply.code(422).send({ error: `não deu pra transcrever: ${String(err.message || err).slice(0, 200)}` });
+    }
+  });
+
   // Encerrar/reabrir a conversa (status do INBOX, separado da etapa do funil).
   // Encerrada sai da lista viva e das contagens; mensagem nova reabre sozinha.
   app.post("/api/whatsapp/threads/:id/close", async (req, reply) => {
