@@ -46,6 +46,19 @@ test("S/A/B somente Leonardo/Jonan/Jonathan; C/D/E e sem nota priorizam Vitor; o
   assert.ok(late.slots.length && late.slots.every((s) => s.at.startsWith("2026-09-22T")));
 });
 
+// Leo, 23/10/2026: Price é call de Leonardo/Jonan/Jonathan, mesmo pra lead C/D/E.
+test("lead de Lever Price nunca vai pro Vitor, qualquer que seja a nota #R-033", async () => {
+  const repo = await world();
+  for (const grade of ["C", "D", "E", null]) {
+    const price = await sdrSlotsForLead(repo, { ...options, grade, lead: { id: "p1", saas: "leverads", sourcePain: "PRICE" } });
+    assert.ok(price.slots.length);
+    assert.equal(price.pool, "upper");
+    assert.ok(price.slots.every((s) => ["leo", "jonan", "jonathan"].includes(s.closer)), `Price nota ${grade} fora do Vitor`);
+    const oem = await sdrSlotsForLead(repo, { ...options, grade, lead: { id: "o1", saas: "leverads", sourcePain: "OEM" } });
+    assert.ok(oem.slots.every((s) => s.closer === "vit"), `OEM nota ${grade} segue no Vitor`);
+  }
+});
+
 test("S/A/B balanceia entre os três; não desce ao Vitor com pool ausente #R-033", async () => {
   const repo = await world();
   await repo.create("leads", { id: "busy", saas: "leverads", stage: "Call", closer: "leo", callAt: "2026-09-22T15:00" });

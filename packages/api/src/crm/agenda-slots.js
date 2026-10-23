@@ -150,6 +150,11 @@ export function sdrCloserPools(users, saas) {
   return { upper, junior, all: [...upper, ...junior] };
 }
 
+// Lead de Lever Price: a dor de origem PRICE (lead.sourcePain, gravada pelo
+// form). É o mesmo critério do modo "price" do leadPainFocus (sdr-flow.js),
+// repetido aqui porque o sdr-flow importa este arquivo.
+export const isPriceLead = (lead) => String(lead?.sourcePain || "").toUpperCase().trim() === "PRICE";
+
 // ── Horários livres de um pool ──────────────────────────────────────────────
 // Varre os próximos `days` DIAS ÚTEIS e devolve, por slot livre, o closer com
 // MENOS calls no dia (balanceamento; empate = ordem estável). Um item por
@@ -251,8 +256,10 @@ export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wal
 
   // SDR: a equipe indicada independe da remuneração. A preferência do Vitor
   // é por DIA, inclusive quando o cliente pede uma semana inteira.
+  // Lead de Lever Price (Leo, 23/10/2026): nunca marca com o Vitor, qualquer
+  // que seja a nota. A call de Price fica com Leonardo/Jonan/Jonathan.
   if (sdr && sid === "leverads") {
-    if (isUpper(grade)) return { slots: compute(pools.upper, limit, days), pool: "upper", grade };
+    if (isUpper(grade) || isPriceLead(lead)) return { slots: compute(pools.upper, limit, days), pool: "upper", grade };
     const junior = compute(pools.junior, 0, days);
     const juniorDays = new Set(junior.map((s) => dayOfSlot(s.at)));
     const upper = compute(pools.upper, 0, days).filter((s) => !juniorDays.has(dayOfSlot(s.at)));
