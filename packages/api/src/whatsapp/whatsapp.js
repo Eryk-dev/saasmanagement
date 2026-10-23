@@ -187,6 +187,14 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     return body;
   }
 
+  // Saúde AGORA na Meta (health_status do número): se o número, a conta (WABA)
+  // e o business podem enviar. É a prova viva que tira um alerta de conta antigo
+  // (wa-health.js reconcileAccountAlert).
+  async function healthStatus(phoneId) {
+    const pid = phoneId || phoneNumberId;
+    return (await get(`${pid}?fields=health_status`)).health_status || {};
+  }
+
   // Números da CONTA (WABA). Só é chamado no diagnóstico abaixo: se o id
   // configurado for o da conta, esta edge devolve os números dela — com o id
   // que deveria estar no WHATSAPP_PHONE_NUMBER_ID.
@@ -437,7 +445,7 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     return null;
   }
 
-  return { configured, sendText, sendTemplate, sendCallPermission, markRead, sendTyping, verifyWebhook, numberInfo, listTemplates, listAllTemplates, deleteTemplate, createTemplate, uploadHeaderHandle, tokenWabaIds, initiateCall, terminateCall, conversationCosts, fetchMedia, uploadMedia, sendMedia };
+  return { configured, sendText, sendTemplate, sendCallPermission, markRead, sendTyping, verifyWebhook, numberInfo, healthStatus, listTemplates, listAllTemplates, deleteTemplate, createTemplate, uploadHeaderHandle, tokenWabaIds, initiateCall, terminateCall, conversationCosts, fetchMedia, uploadMedia, sendMedia };
 }
 
 // Número em dígitos (E.164 sem +) pra enviar e pra casar o recebido com o lead.

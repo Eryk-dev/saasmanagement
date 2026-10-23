@@ -243,3 +243,15 @@ test("pausado editado: unqueue tira da fila quem saiu do público e mantém o qu
   assert.equal((await app.inject({ method: "POST", url: "/api/campaigns/c1/unqueue", payload: { keep: [] } })).statusCode, 409);
   assert.equal((await app.inject({ method: "POST", url: "/api/campaigns/c1/unqueue", payload: {} })).statusCode, 409);
 });
+
+test("alerta de conta antigo, já resolvido na Meta, não pausa o broadcast", async () => {
+  const repo = makeMemRepo();
+  const camp = await seed(repo, [{ id: "a", name: "Ana", phone: "11999990001" }]);
+  await enqueueWaBroadcast(repo, camp, ["a"]);
+  await repo.create("app_config", { id: "wa_health", number: {}, templates: {}, webhook: {}, account: { event: "ACCOUNT_VIOLATION", detail: "USER_INITIATED_CALLS_LOW_PICKUP_RATE", at: "2026-08-12T14:52:35.172Z" } });
+  const wa = { ...fakeWa(), healthStatus: async () => ({ entities: [{ entity_type: "WABA", id: "W1", can_send_message: "AVAILABLE" }] }) };
+  const r = await runWaBroadcastTick(repo, { wa, now: NOW });
+  assert.deepEqual(r.paused, []);
+  assert.equal(r.sent, 1);
+  assert.deepEqual((await repo.get("app_config", "wa_health")).account, {});
+});

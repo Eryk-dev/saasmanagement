@@ -957,6 +957,14 @@ alteração funcional nesta preparação.
     "na fila"). "Salvar alterações" tira da fila quem saiu do público
     (`POST /api/campaigns/:id/unqueue` com `keep`, recusado em envio).
     "Retomar envio (N)" salva, ajusta a fila, enfileira quem entrou e retoma.
+  - Alerta de conta antigo (23/10/2026): o webhook só grava o último evento de
+    conta em `wa_health.account`, e um ACCOUNT_VIOLATION de 12/08, já
+    resolvido na Meta, pausava todo broadcast. Antes de pausar broadcast ou
+    sequência, e ao montar o banner (bootstrap e insights),
+    `reconcileAccountAlert` (`wa-health.js`) consulta o `health_status` dos
+    números dos produtos (no máximo a cada 10 min). Com WABA e business
+    `AVAILABLE`, o alerta sai e vai para `accountCleared`. O aviso mostra
+    "desde DD/MM". Teste: `wa-health-account.test.js`.
   - Apagar: vale para rascunho, enviado, pausado e o antigo. Em envio, o CRUD
     recusa com 409 e a tela pede para pausar antes. O que já saiu não volta; o
     histórico na timeline e no Inbox continua.

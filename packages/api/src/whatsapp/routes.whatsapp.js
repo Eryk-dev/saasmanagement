@@ -3,7 +3,7 @@
 // (ver wa-store.js) — canônico pro inbox e pro chat do drawer.
 import { makeWhatsapp } from "./whatsapp.js";
 import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead, threadId, setLeadWhatsappOptOut, waInsights, waFormEngagement, findLeadByPhone, findThreadByPhone, linkThreadToLead } from "./wa-store.js";
-import { applyHealthEvent, getWaHealth, waHealthSummary, recordWebhookDelivery, resolveWabaId } from "./wa-health.js";
+import { applyHealthEvent, getWaHealth, reconcileAccountAlert, waHealthSummary, recordWebhookDelivery, resolveWabaId } from "./wa-health.js";
 import { runInboundCallFlow, openAlerts, closeThreadAlerts, parsePermissionReply, flagFailedBotSend } from "./wa-call-flow.js";
 import { runWaAutomations } from "./wa-automations.js";
 import { runWaFlows } from "./wa-flows.js";
@@ -398,7 +398,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
     const [threads, messages] = await Promise.all([repo.list("wa_threads"), repo.list("wa_messages")]);
     const [stats, health, form, costs] = await Promise.all([
       waInsights(repo, { days, threads, messages }),
-      getWaHealth(repo),
+      reconcileAccountAlert(repo, wa).catch(() => null),
       waFormEngagement(repo, { days, threads, messages }).catch(() => null),
       wa.configured() ? periodCost(days) : null,
     ]);

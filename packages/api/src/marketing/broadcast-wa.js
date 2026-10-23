@@ -14,7 +14,7 @@
 
 import { logActivity } from "../crm/lead-flow.js";
 import { recordMessage } from "../whatsapp/wa-store.js";
-import { getWaHealth, waHealthSummary } from "../whatsapp/wa-health.js";
+import { reconcileAccountAlert, waHealthSummary } from "../whatsapp/wa-health.js";
 import { digits } from "../whatsapp/whatsapp.js";
 import { broadcastDailyCap } from "../shared/wa-tier.js";
 import { campaignTokens } from "../shared/campaign-tokens.js";
@@ -173,7 +173,8 @@ export async function runWaBroadcastTick(repo, { wa, now = () => new Date(), per
     }
     return report;
   }
-  const health = waHealthSummary(await getWaHealth(repo));
+  // Alerta de conta antigo, já resolvido na Meta, não pausa (reconcileAccountAlert).
+  const health = waHealthSummary(await reconcileAccountAlert(repo, wa, { now }));
   if (health.level === "danger") {
     for (const c of active) { await repo.update("campaigns", c.id, { status: "paused", pauseReason: health.messages[0] || "número sinalizado pela Meta" }); report.paused.push(c.id); }
     return report;

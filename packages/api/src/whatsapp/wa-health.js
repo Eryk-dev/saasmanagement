@@ -11,6 +11,33 @@ export async function getWaHealth(repo) {
   return h || { ...EMPTY };
 }
 
+// ALERTA DE CONTA QUE FICOU PRA TRÁS (23/10/2026): o webhook só grava o último
+// evento de conta, e ele só sai quando chega outro. O ACCOUNT_VIOLATION de
+// 12/08 ficou dois meses no cockpit, já resolvido na Meta, pausando todo
+// broadcast. Com um alerta de conta gravado, pergunta à Meta a saúde atual
+// pelos números dos produtos (no máximo a cada 10 min); se a conta (WABA) e o
+// business estão liberados para enviar, o alerta sai e fica em accountCleared.
+// Número pendente/bloqueado é problema do número, não da conta: não segura.
+let accountCheckedAt = 0;
+export async function reconcileAccountAlert(repo, wa, { now = () => new Date(), ttlMs = 10 * 60_000 } = {}) {
+  const health = await getWaHealth(repo);
+  const acc = health.account || {};
+  if (!acc.event || !wa?.healthStatus) return health;
+  const t = now().getTime();
+  if (t - accountCheckedAt < ttlMs) return health;
+  accountCheckedAt = t;
+  const products = await repo.list("products").catch(() => []);
+  const phoneIds = [...new Set([process.env.WHATSAPP_PHONE_NUMBER_ID, ...products.map((p) => p.waPhoneId)].filter(Boolean).map(String))];
+  const states = [];
+  for (const id of phoneIds) {
+    const hs = await wa.healthStatus(id).catch(() => null);
+    for (const e of hs?.entities || []) if (e.entity_type === "WABA" || e.entity_type === "BUSINESS") states.push(e.can_send_message);
+  }
+  if (!states.length || states.some((s) => s !== "AVAILABLE")) return health;
+  const at = now().toISOString();
+  return repo.update("app_config", "wa_health", { account: {}, accountCleared: { ...acc, clearedAt: at, by: "meta-health" }, updatedAt: at });
+}
+
 // Prova de que a Meta ENTREGA no nosso webhook, e por qual número. Sem isso,
 // "não chegou mensagem" é ambíguo: pode ser webhook não configurado na Meta ou
 // erro nosso. O payload traz value.metadata.phone_number_id — que é o id do
@@ -83,7 +110,8 @@ export function waHealthSummary(h) {
 
   const acc = health.account || {};
   if (acc.event && DANGER_ACCOUNT.test(String(acc.event) + " " + String(acc.detail || ""))) {
-    bump("danger"); messages.push(`Conta (WABA) com problema: ${acc.event}${acc.detail ? ` (${acc.detail})` : ""}. Verifique no Meta Business.`);
+    const since = acc.at ? new Date(acc.at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "America/Sao_Paulo" }) : "";
+    bump("danger"); messages.push(`Conta (WABA) com problema${since ? ` desde ${since}` : ""}: ${acc.event}${acc.detail ? ` (${acc.detail})` : ""}. Verifique no Meta Business.`);
   }
 
   for (const [name, t] of Object.entries(health.templates || {})) {

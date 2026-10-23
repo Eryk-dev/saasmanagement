@@ -9,7 +9,7 @@ import { inScope, ticketScope } from "../auth/support-scope.js";
 import { normalizeBoard } from "../tasks/tasks-core.js";
 import { STATUS_KIND } from "../support/tickets-core.js";
 import { slaState } from "../support/tickets-sla.js";
-import { getWaHealth, waHealthSummary } from "../whatsapp/wa-health.js";
+import { reconcileAccountAlert, waHealthSummary } from "../whatsapp/wa-health.js";
 import { dealCatalogFromPlans, plansOf, slimPlan } from "../billing/plan-catalog.js";
 import { loadFollowupContacts } from "./followup-config.js";
 import { integrationStatus } from "./levercopy.js";
@@ -150,7 +150,7 @@ export function registerBootstrapRoutes(app, repo, { googleClient, mpClient, asa
     // awaits em série no meio do objeto (templates, 3× app_config do Google,
     // saúde do WhatsApp), cada um uma ida ao pooler do Supabase.
     const [proposalTemplates, googleConnected, googleAccount, gmailReady, waHealth, catalogPlans, followupContacts, emailProvider] = await Promise.all([
-      repo.list("proposal_templates"), googleClient.connected(), googleClient.account(), googleClient.gmailReady(), getWaHealth(repo), plansOf(repo),
+      repo.list("proposal_templates"), googleClient.connected(), googleClient.account(), googleClient.gmailReady(), reconcileAccountAlert(repo, whatsappClient).catch(() => null), plansOf(repo),
       loadFollowupContacts(repo), mailerClient ? mailerClient.provider().catch(() => "") : "",
     ]);
     return {

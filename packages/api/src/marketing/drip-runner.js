@@ -11,7 +11,7 @@ import { logActivity } from "../crm/lead-flow.js";
 import { isWonLead, kindOf } from "../crm/stages.js";
 import { leadTokens, interpolate, baseUrl, unsubToken, emailBodyWithUnsub } from "./disparos-util.js";
 import { sendTemplateToLead } from "./broadcast-wa.js";
-import { getWaHealth, waHealthSummary } from "../whatsapp/wa-health.js";
+import { reconcileAccountAlert, waHealthSummary } from "../whatsapp/wa-health.js";
 import { digits } from "../whatsapp/whatsapp.js";
 
 const DAY = 86_400_000;
@@ -131,7 +131,7 @@ export function makeDripRunner({ repo, mailer, whatsapp, log = console } = {}) {
           if (step.template?.name) {
             const wa = waClient();
             if (!wa?.configured?.()) continue; // sem WhatsApp no servidor: tenta no próximo ciclo
-            if (waHealthSummary(await getWaHealth(repo)).level === "danger") continue; // número sinalizado: segura
+            if (waHealthSummary(await reconcileAccountAlert(repo, wa)).level === "danger") continue; // número sinalizado: segura
             try {
               await sendTemplateToLead(repo, wa, {
                 tpl: step.template, lead, product, phoneId: product?.waPhoneId || undefined, author: "sequencia",
