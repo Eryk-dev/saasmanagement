@@ -185,12 +185,11 @@
 .vg-sales > h2 { margin: 0 8px 10px; }
 /* A lista toma o espaço livre do card e NUNCA é quem define a altura dele:
    `flex-basis: 0` tira o conteúdo dela da conta da altura natural, então quem
-   manda na linha do grid é o card da meta ao lado. Sem isso, medir o espaço e
-   mostrar mais vendas esticaria a linha e o buraco branco só mudaria de lado.
-   O `min-height` é o piso de quando não há par pra esticar (coluna única no
-   celular): 8 linhas, o mesmo piso do MIN_VENDAS e o mesmo número que a lista
-   mostrava antes de passar a preencher. */
-.vg-sales-list { flex: 1 1 0; min-height: 400px; overflow: hidden; }
+   manda na linha do grid é o card da meta ao lado. O que não cabe ROLA dentro
+   da lista (Leo, 23/10), com a última linha visível sem cortar e sem a barra
+   de rolagem empurrar o conteúdo. O `min-height` é o piso de quando não há
+   par pra esticar (coluna única no celular): umas 8 linhas. */
+.vg-sales-list { flex: 1 1 0; min-height: 400px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; margin-right: -8px; padding-right: 4px; }
 .vg-sale { width: 100%; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; align-items: center; text-align: left; padding: 9px 10px; border-radius: 999px; transition: background 150ms ease; }
 .vg-sale:hover { background: var(--vg-soft); }
 .vg-sale-amount { font: 700 14px var(--display); white-space: nowrap; letter-spacing: -.02em; }
@@ -310,6 +309,7 @@ body[data-theme="dark"] .overview-screen { --vg-soft: var(--bg-inset); --vg-pill
   .vg-layout.is-sales-open .vg-top { grid-template-columns: minmax(0,1fr); min-height: 0 !important; }
   .vg-sales-table { flex: none; min-height: 0; }
   .vg-sales-rows { flex: none; max-height: min(640px,70vh); }
+  .vg-sales-list { flex: none; max-height: min(640px,70vh); }
 }
 @media (max-width: 650px) {
   .vg-meta-columns { flex-direction: column; }
