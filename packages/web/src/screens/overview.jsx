@@ -861,14 +861,14 @@ function AquisicaoCard({ marketing, biz, classes }) {
 // UPSELL, que é venda desde 09/09 (fatura kind:"upsell" na ficha do cliente,
 // creditada a quem vendeu). Sem o upsell a lista contava metade do que o time
 // fez no mês.
-// Quantas vendas a lista mostra. O card é esticado pela altura do card da meta
-// ao lado (mesma linha do grid), então um número fixo deixava um buraco branco
-// entre a última venda e o "ver todas" — e cresceu de vez com o gráfico de
-// vendas por dia. A lista passa a MEDIR o espaço livre e mostrar o que couber,
-// entre um piso e um teto; sem espaço medido (celular em coluna única, SSR)
-// mostra o teto, que é o comportamento de antes com mais folga.
-const MIN_VENDAS = 8;
-const MAX_VENDAS = 14;
+// Quantas vendas a lista carrega. O card é esticado pela altura do card da
+// meta ao lado (mesma linha do grid) e a lista ROLA dentro dele (Leo, 23/10):
+// antes ela media o espaço livre e cortava no que coubesse, o que deixava a
+// lista curta demais em tela baixa e longa demais em tela alta. Agora o card
+// sempre fica do tamanho da meta e quem quiser ver mais desce a lista; o
+// teto só evita montar centenas de botões, e o "ver todas" segue pra tabela
+// com filtro de período.
+const MAX_VENDAS = 60;
 // Espelho do upsellSoldAt do metrics-core (api) — a mesma ordem de fallback,
 // pra data aqui bater com a do placar.
 const upsellSoldAtOf = (i) => i?.soldAt || i?.paidAt || i?.dueDate || i?.createdAt || "";
@@ -927,42 +927,14 @@ function VendasCard({ leads, invoices, product, customers, onNav, onOpenLead, ex
     if (!montou.current) { montou.current = true; return; }
     (expanded ? recolherRef : verTodasRef).current?.focus();
   }, [expanded]);
-  // Preenche o card: conta quantas linhas inteiras cabem na altura disponível.
-  // A lista é `flex: 1` com overflow escondido, então ela NUNCA é quem define a
-  // altura — medir o espaço e re-renderizar não entra em laço.
-  const listaRef = useRef(null);
-  const [cabem, setCabem] = useState(MAX_VENDAS);
-  useEffect(() => {
-    const el = listaRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const medir = () => {
-      const alt = el.querySelector(".vg-sale")?.getBoundingClientRect().height;
-      if (!alt) return;
-      setCabem(Math.max(MIN_VENDAS, Math.min(MAX_VENDAS, Math.floor(el.clientHeight / alt))));
-    };
-    const ro = new ResizeObserver(medir);
-    ro.observe(el);                                   // o espaço livre mudou
-    // E a própria linha: na 1ª pintura ela vem mais alta (fonte do app ainda
-    // carregando) e, sem observar isso, a conta congelava no número errado.
-    const primeira = el.querySelector(".vg-sale");
-    if (primeira) ro.observe(primeira);
-    // O ResizeObserver só entrega durante a pintura; a fonte e o redimensionar
-    // da janela avisam por fora dela, e são justamente os dois momentos em que
-    // a conta muda. Medir pelos três caminhos é barato e tira a medida da sorte.
-    medir();
-    document.fonts?.ready?.then(medir);
-    window.addEventListener("resize", medir);
-    return () => { ro.disconnect(); window.removeEventListener("resize", medir); };
-  }, [vendas, expanded]);
-  const naTela = vendas.slice(0, cabem);
   if (expanded) {
     return <TodasVendas todas={todas} filtro={filtro} onFiltro={setFiltro} onOpen={abrir} onClose={onToggle} recolherRef={recolherRef} />;
   }
   return (
     <OverviewCard title="Últimas vendas" className="vg-sales">
-      <div className="vg-sales-list" ref={listaRef}>
+      <div className="vg-sales-list">
         {!vendas.length && <div style={{ fontSize: 12.5, color: "var(--fg-4)", padding: "6px 0" }}>Nenhuma venda registrada ainda.</div>}
-        {naTela.map((v, i) => (
+        {vendas.map((v) => (
             <button key={v.id} onClick={() => abrir(v)} className="vg-sale">
               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                 <LeadGrade tier={v.tier} size={20} placeholder />
