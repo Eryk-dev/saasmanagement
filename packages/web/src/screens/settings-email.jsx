@@ -17,8 +17,13 @@ const DOMAIN = {
   not_started: ["warn", "domínio ainda não verificado no Resend"],
   failed: ["neg", "verificação do domínio falhou no Resend"],
   not_found: ["neg", "domínio não cadastrado no Resend"],
+  restricted: ["warn", "chave só de envio: o estado do domínio não aparece aqui"],
   error: ["neg", "não foi possível consultar o Resend"],
 };
+// O que fazer em cada estado do domínio (verificado não precisa de nada).
+const domainHint = (d) => d.status === "restricted" ? "Envie um e-mail de teste para confirmar. Para ver o estado aqui, use uma chave Full access do Resend."
+  : d.status === "error" ? d.error || ""
+  : "Verifique o domínio no painel do Resend (registros DNS) para os e-mails saírem.";
 const PROVIDER = { resend: "enviando pelo Resend", gmail: "enviando pela conta Google (Gmail)", "": "sem envio de e-mail" };
 
 export function EmailIntegrationCard() {
@@ -101,7 +106,7 @@ export function EmailIntegrationCard() {
         </div>
         {dom && <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap", fontSize: 12 }}>
           <span className={`chip ${dom[0]}`} style={{ height: 22 }}>{st.domainStatus.name} · {dom[1]}</span>
-          {st.domainStatus.status !== "verified" && <span className="dim">Verifique o domínio no painel do Resend (registros DNS) para os e-mails saírem.</span>}
+          {st.domainStatus.status !== "verified" && <span className="dim" style={{ overflowWrap: "anywhere" }}>{domainHint(st.domainStatus)}</span>}
         </div>}
         {!admin && <div className="dim" style={{ fontSize: 12, marginTop: 10 }}>Só leitura: configurar o e-mail exige a etiqueta Admin.</div>}
         {admin && <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>

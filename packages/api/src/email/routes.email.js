@@ -17,6 +17,8 @@ export function registerEmailRoutes(app, repo, { mailer, resend, google }) {
       const d = (await resend.domains(cfg.apiKey)).find((x) => x.name === want || want.endsWith(`.${x.name}`));
       return d ? { name: d.name, status: d.status } : { name: want, status: "not_found" };
     } catch (err) {
+      // Chave "Sending access" envia, mas não lê os domínios: o estado fica desconhecido.
+      if (err.code === "restricted_api_key") return { name: domainOf(cfg.fromEmail), status: "restricted" };
       return { name: domainOf(cfg.fromEmail), status: "error", error: String(err.message || err).slice(0, 200) };
     }
   }

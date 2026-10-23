@@ -121,3 +121,22 @@ test("config do e-mail: chave nunca volta, validação, só admin grava, teste p
   assert.equal(r.json().configured, false);
   assert.equal(r.json().active, "");
 });
+
+test("estado do domínio: chave só de envio fica 'restricted'; outro erro mostra o motivo", async (t) => {
+  const repo = makeMemRepo();
+  const fail = (code, message) => ({ send: async () => ({ id: "x" }), domains: async () => { const e = new Error(`Resend: ${message}`); e.status = 401; e.code = code; throw e; } });
+  let resend = fail("restricted_api_key", "This API key is restricted to only send emails");
+  const app = buildApp(repo, { resend: { send: (...a) => resend.send(...a), domains: (...a) => resend.domains(...a) }, google: undefined });
+  t.after(() => app.close());
+  const KEYH = { "x-api-key": "test-key" };
+  let r = await app.inject({ method: "PUT", url: "/api/email/config", headers: KEYH, payload: { apiKey: KEY, fromEmail: "time@leverads.com.br" } });
+  assert.deepEqual(r.json().domainStatus, { name: "leverads.com.br", status: "restricted" });
+  resend = fail("validation_error", "API key is invalid");
+  r = await app.inject({ url: "/api/email/config", headers: KEYH });
+  assert.deepEqual(r.json().domainStatus, { name: "leverads.com.br", status: "error", error: "Resend: API key is invalid" });
+});
+
+test("cliente do Resend: o nome do erro vira err.code", async () => {
+  const f = async () => ({ status: 401, headers: { get: () => null }, text: async () => JSON.stringify({ statusCode: 401, name: "restricted_api_key", message: "This API key is restricted to only send emails" }) });
+  await assert.rejects(makeResend({ fetch: f }).domains(KEY), (e) => e.code === "restricted_api_key" && e.status === 401);
+});

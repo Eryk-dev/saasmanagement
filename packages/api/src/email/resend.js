@@ -24,6 +24,7 @@ export function makeResend({ fetch: f = globalThis.fetch, sleep = (ms) => new Pr
       if (res.status >= 400) {
         const err = new Error(`Resend: ${json.message || json.error || text.slice(0, 200) || res.status}`);
         err.status = res.status;
+        err.code = json.name || ""; // ex.: restricted_api_key (chave "Sending access")
         throw err;
       }
       return json;
