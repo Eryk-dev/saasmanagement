@@ -209,8 +209,8 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 
 ### R-033 · Pool do closer pela nota do lead
 
-- Origem: 2026-08-22, Leo (régua S-E; equipe nominal 20/09)
-- Regra: S/A/B vai pro closer pleno ou sênior; C/D/E e sem nota vão pro júnior; C/D sobe pro pleno quando o dia do júnior lota; S/A/B nunca desce; pool vazio cai pra todos. O closer só recebe oferta dentro do horário de atendimento dele.
+- Origem: 2026-08-22, Leo (régua S-E; equipe nominal 20/09; Price nunca pro Vitor 23/10)
+- Regra: S/A/B vai pro closer pleno ou sênior; C/D/E e sem nota vão pro júnior; C/D sobe pro pleno quando o dia do júnior lota; S/A/B nunca desce; pool vazio cai pra todos. Lead de Lever Price (dor de origem PRICE) nunca vai pro júnior (Vitor), qualquer que seja a nota. O closer só recebe oferta dentro do horário de atendimento dele.
 - Vale em: estados todos; roteiro todos; executada por agenda
 
 ### R-034 · Aceite e preço na mesma mensagem: o horário trava primeiro
