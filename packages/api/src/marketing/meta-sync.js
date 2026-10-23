@@ -27,15 +27,22 @@ export const videoJobs = new Map();
 // campanha quando a linha não tem ad — compat com dados/mocks antigos).
 // Linha idêntica NÃO regrava: cada escrita no repo acorda o SSE de todos os
 // clientes, e o auto-sync roda o dia inteiro — só o que mudou vira evento.
+// Linha que já teve entrega não volta a zero: gasto de um dia não "desgasta".
+// Em 21/10/2026 a Meta devolveu a conta principal com spend e impressões 0
+// (leads presentes) e um sync longo zerou o histórico de 15/09 a 19/10.
+// Devolve false quando a linha gravada foi mantida.
+const delivered = (r) => (Number(r?.spend) || 0) > 0 || (Number(r?.impressions) || 0) > 0;
 async function upsertInsight(repo, row) {
   const id = `ai_${row.saas}_${row.adId || row.campaignId}_${row.date}`;
   const existing = await repo.get("ad_insights", id);
   if (existing) {
+    if (delivered(existing) && !delivered(row)) return false;
     const changed = Object.keys(row).some((k) => JSON.stringify(existing[k]) !== JSON.stringify(row[k]));
-    if (!changed) return existing;
-    return repo.update("ad_insights", id, row);
+    if (changed) await repo.update("ad_insights", id, row);
+    return true;
   }
-  return repo.create("ad_insights", { id, ...row });
+  await repo.create("ad_insights", { id, ...row });
+  return true;
 }
 
 // Sync de UM produto (rota manual e auto-sync do servidor passam por aqui):
@@ -55,16 +62,18 @@ export async function syncProductInsights(repo, meta, product, { since, until })
       && (complete || replacedCampaigns.has(r.campaignId)),
   );
   for (const r of legacy) await repo.remove("ad_insights", r.id);
-  const report = { ok: complete, rows: 0, accounts: {} };
+  const report = { ok: complete, rows: 0, kept: 0, accounts: {} };
   for (const [i, result] of results.entries()) {
     const accountId = accounts[i];
     if (result.status === "rejected") {
       report.accounts[accountId] = { ok: false, error: String(result.reason?.message || result.reason).slice(0, 200) };
       continue;
     }
-    for (const r of result.value) await upsertInsight(repo, { ...r, saas: product.id, accountId });
-    report.accounts[accountId] = { ok: true, rows: result.value.length };
+    let kept = 0;
+    for (const r of result.value) if (!(await upsertInsight(repo, { ...r, saas: product.id, accountId }))) kept++;
+    report.accounts[accountId] = { ok: true, rows: result.value.length, kept };
     report.rows += result.value.length;
+    report.kept += kept;
   }
   if (complete) lastSyncAt.set(product.id, new Date().toISOString());
   else report.error = Object.entries(report.accounts).filter(([, r]) => !r.ok).map(([id, r]) => `${id}: ${r.error}`).join("; ");
@@ -90,6 +99,7 @@ export function startMarketingAutoSync(repo, { meta = defaultMeta, intervalMs = 
         try {
           const result = await syncProductInsights(repo, meta, p, range);
           if (!result.ok) log.warn?.(`Meta auto-sync parcial (${p.id}): ${result.error}`);
+          if (result.kept) log.warn?.(`Meta auto-sync (${p.id}): ${result.kept} linha(s) vieram zeradas e o gasto gravado foi mantido`);
         } catch (err) {
           log.warn?.(`Meta auto-sync falhou (${p.id}): ${String(err.message || err).slice(0, 200)}`);
         }

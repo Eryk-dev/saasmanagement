@@ -8,11 +8,21 @@ import { resolveWabaId, getWaHealth } from "../whatsapp/wa-health.js";
 import { sdrBotConfig } from "./sdr-flow.js";
 import { makeSdrReplay } from "./sdr-replay.js";
 import { NOT_CONFIGURED } from "../platform/http-status.js";
+import { isAdmin } from "../auth/roles.js";
+import { SDR_ADMIN_KEYS, sanitizeSdrAdmin } from "./sdr-admin-config.js";
+import { AI_PROVIDERS } from "./sdr-ai.js";
+import { ruleById } from "./sdr-rules.js";
 
 const GRADES = new Set(["S", "A", "B", "C", "D", "E"]);
 
-export function registerSdrRoutes(app, repo, { whatsapp: wa, anthropic = null } = {}) {
+export function registerSdrRoutes(app, repo, { whatsapp: wa, anthropic = null, sdrAi = null } = {}) {
   const replay = makeSdrReplay({ repo, anthropic, log: app.log });
+  // Aba Robô da Inbox: ver e salvar é de admin (`!authUser` = chave mestre).
+  const denyNonAdmin = (req, reply) => {
+    if (!req.authUser || isAdmin(req.authUser)) return false;
+    reply.code(403).send({ error: "Só admin vê e muda a configuração do robô" });
+    return true;
+  };
 
   // ── Bateria de replay (o portão da Fase 2) ────────────────────────────────
   // POST dispara em background (as chamadas de IA levam minutos); GET lê o
@@ -21,8 +31,19 @@ export function registerSdrRoutes(app, repo, { whatsapp: wa, anthropic = null } 
   // `model` (opcional) roda a MESMA bateria com outro modelo do provedor
   // configurado; `tag` grava num doc próprio (sdr_replay_<tag>) pra comparar
   // rodadas lado a lado sem sobrescrever (17/09).
+  // `provider` (só admin, como o `model`): testa outro provedor antes de trocar.
   app.post("/api/sdr/replay", async (req, reply) => {
+    const provider = String(req.body?.provider || "");
+    if ((provider || req.body?.model) && denyNonAdmin(req, reply)) return;
+    if (provider && !AI_PROVIDERS.includes(provider)) return reply.code(400).send({ error: "provider: use openrouter ou anthropic" });
+    let client = null;
+    if (provider) {
+      const picked = sdrAi?.resolve({ provider });
+      if (!picked || picked.fallback) return reply.code(NOT_CONFIGURED).send({ error: picked?.fallback || "provedor indisponível" });
+      client = picked.client;
+    }
     const r = replay.start({
+      client,
       saas: String(req.body?.saas || "leverads"),
       threads: Math.min(60, Math.max(1, Number(req.body?.threads) || 25)),
       turns: Math.min(5, Math.max(1, Number(req.body?.turns) || 3)),
@@ -47,7 +68,8 @@ export function registerSdrRoutes(app, repo, { whatsapp: wa, anthropic = null } 
   // Auditoria do validador de saída (15/10): violações por regra e por
   // caminho, divergências da sombra e amostras, somadas por dia pelo sdr-brain
   // em app_config sdr_audit_<saas>_<dia>. Últimos N dias.
-  app.get("/api/sdr/audit", async (req) => {
+  app.get("/api/sdr/audit", async (req, reply) => {
+    if (denyNonAdmin(req, reply)) return;
     const saas = String(req.query?.saas || "leverads");
     const days = Math.min(90, Math.max(1, Number(req.query?.days) || 7));
     const cutoff = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
@@ -65,10 +87,13 @@ export function registerSdrRoutes(app, repo, { whatsapp: wa, anthropic = null } 
       samples.push(...(d.samples || []));
     }
     samples.sort((a, b) => String(b.at).localeCompare(String(a.at)));
-    return { saas, days, ...total, byDay: docs.map((d) => ({ day: d.day, decisions: d.decisions || 0, shadowDiff: d.shadowDiff || 0, violations: Object.values(d.byRule || {}).reduce((a, b) => a + b, 0) })), samples: samples.slice(0, 50) };
+    // Título de cada regra citada (a aba Robô mostra "R-012 · título").
+    const ruleTitles = Object.fromEntries([...Object.keys(total.byRule), ...samples.flatMap((x) => x.violations || [])].map((id) => [id, ruleById(id)?.title || ""]));
+    return { saas, days, ...total, ruleTitles, byDay: docs.map((d) => ({ day: d.day, decisions: d.decisions || 0, shadowDiff: d.shadowDiff || 0, violations: Object.values(d.byRule || {}).reduce((a, b) => a + b, 0) })), samples: samples.slice(0, 50) };
   });
 
-  app.get("/api/sdr/ai-usage", async (req) => {
+  app.get("/api/sdr/ai-usage", async (req, reply) => {
+    if (denyNonAdmin(req, reply)) return;
     const saas = String(req.query?.saas || "leverads");
     const days = Math.min(90, Math.max(1, Number(req.query?.days) || 14));
     const cutoff = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
@@ -88,6 +113,55 @@ export function registerSdrRoutes(app, repo, { whatsapp: wa, anthropic = null } 
       total, byModel,
       daily: docs.map((d) => ({ day: d.day, calls: d.calls || 0, in: d.in || 0, out: d.out || 0, cacheRead: d.cacheRead || 0, ms: d.ms || 0, byModel: d.byModel || {} })).sort((a, b) => String(a.day).localeCompare(String(b.day))),
     };
+  });
+
+  // ── Configuração da aba Robô (IA + ajustes avançados) ─────────────────────
+  // `values` = o que vale hoje para cada chave (o salvo ou o padrão de
+  // sdrBotConfig); `effective` = a IA que o robô usa de fato com a escolha.
+  async function configView(product) {
+    const saved = product.sdrBot || {};
+    const cfg = sdrBotConfig({ ...product, sdrBot: { ...saved, enabled: true } });
+    const ai = { provider: String(saved.ai?.provider || ""), model: String(saved.ai?.model || "") };
+    const picked = sdrAi?.resolve(ai) || { provider: anthropic?.provider || "", model: anthropic?.model || "", fallback: "" };
+    return {
+      saas: product.id,
+      enabled: !!saved.enabled,
+      conversation: saved.conversation === true,
+      ai,
+      effective: { provider: picked.provider, model: picked.model, fallback: picked.fallback },
+      default: sdrAi?.defaultInfo() || { provider: anthropic?.provider || "", model: anthropic?.model || "", configured: !!anthropic?.configured?.() },
+      providers: sdrAi?.providers() || { openrouter: false, anthropic: false },
+      values: Object.fromEntries(Object.keys(SDR_ADMIN_KEYS).map((k) => [k, cfg[k]])),
+    };
+  }
+
+  app.get("/api/sdr/config", async (req, reply) => {
+    if (denyNonAdmin(req, reply)) return;
+    const product = await repo.get("products", String(req.query?.saas || ""));
+    if (!product) return reply.code(404).send({ error: "produto não encontrado" });
+    return configView(product);
+  });
+
+  app.patch("/api/sdr/config/:saas", async (req, reply) => {
+    if (denyNonAdmin(req, reply)) return;
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "produto não encontrado" });
+    const { patch, error } = sanitizeSdrAdmin(req.body || {});
+    if (error) return reply.code(400).send({ error });
+    const next = await repo.update("products", product.id, { sdrBot: { ...(product.sdrBot || {}), ...patch } });
+    return configView(next);
+  });
+
+  // Catálogo de modelos do provedor (cache de 1h no sdr-ai.js). Falha do
+  // provedor vira 422 com o motivo, nunca 5xx (o proxy troca o corpo).
+  app.get("/api/sdr/models", async (req, reply) => {
+    if (denyNonAdmin(req, reply)) return;
+    if (!sdrAi) return reply.code(NOT_CONFIGURED).send({ error: "IA não configurada no servidor" });
+    try {
+      return { provider: String(req.query?.provider || ""), models: await sdrAi.listModels(String(req.query?.provider || "")) };
+    } catch (err) {
+      return reply.code(422).send({ error: String(err.message || err).slice(0, 240) });
+    }
   });
 
   // Próximos horários livres pro lead (ou pra uma nota S-E avulsa), já com a

@@ -24,7 +24,7 @@ import { digits } from "../whatsapp/whatsapp.js";
 import { kindOf, firstStage, stageByKind, isWonLead } from "../crm/stages.js";
 import { brtToIso, applyStageMove, onOutboundMessage, autoLeadOwner, logActivity, initialNextActionAt } from "../crm/lead-flow.js";
 import { raiseAlert } from "../whatsapp/wa-call-flow.js";
-import { leadGrade } from "../metrics/metrics-core.js";
+import { gradeRulesOf, leadGrade } from "../metrics/metrics-core.js";
 import { slotLabel, slotLabelFull, wallNow, spreadPair, wholeHourSlots, activeHolds, holdSlots, releaseHolds } from "../crm/agenda-slots.js";
 import { sdrSlotsForLead, sdrAgendaWindow } from "./sdr-agenda.js";
 import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, greetName, SDR_AUTHOR, DEVICE_TIP } from "./sdr-flow.js";
@@ -32,7 +32,7 @@ import { transcriber as defaultTranscriber } from "../whatsapp/transcribe.js";
 import { FORM_MSG_RX, SLOTS_RX, OFFER_CUE_RX, isOfferMsg, ACCEPT_RX, offeredSlotsIn, acceptedSlot, AUTO_REPLY_RX, BARE_HOUR_RX, collapseSameDay, expandSameDay, DEMO_RX, PITCH_RX } from "./sdr-signals.js";
 import { transcribeInbound } from "../whatsapp/wa-transcribe.js";
 import { AFFILIATE_RX, DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, NO_INTEREST_RX, LEAD_MOBILE_RX, DENY_CALL_RX, PERIOD_ASK_RX, PRICE_ASK_RX, WAITING_ROOM_RX, OBJECTION_RX, OEM_NO_RX, bareHour, leadEngaged, lastInboundText, plainReply, requestsCancellation, rescheduleReply, classifyInbound } from "./sdr-intents.js";
-import { stateOf, HUMAN_MUTE_MS, GREETING_GAP_MS, DAILY_CAP, botTalkLast24h, handoffHolds } from "./sdr-state.js";
+import { stateOf, humanMuteHolds, GREETING_GAP_MS, DAILY_CAP, botTalkLast24h, handoffHolds } from "./sdr-state.js";
 import { PRICE_RX, REDIRECT_RX, DRY_REFUSAL_RX, FAKE_OFFER_RX, PROMISE_RX, SCHEDULE_ASK_Q_RX, DEVICE_ASK_RX, stripDuration, stripDeviceAsk, sameSentence, alreadySaid, makeDraft, validateDraft } from "./sdr-guards.js";
 import { reofferText, offerLine, NO_SLOT_TEXT } from "./sdr-offer.js";
 // Compat: quem importava daqui continua funcionando (replay, testes).
@@ -345,7 +345,7 @@ export async function cancelCall(repo, { lead, product, author = SDR_AUTHOR, now
   return repo.update("leads", lead.id, { ...patchExtra, ...moved });
 }
 
-export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = null, cancelCallMeet = null, transcriber = defaultTranscriber, log = console, now = () => new Date(), replyDelayMs = 6000, partDelayMs = 5000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anthropic, autoCallMeet = null, cancelCallMeet = null, transcriber = defaultTranscriber, log = console, now = () => new Date(), replyDelayMs = 6000, partDelayMs = 5000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   // ÁUDIO do lead: 13% das mensagens recebidas (mineração) — sem isso, todo
   // áudio viraria handoff. Transcreve a nota de voz (cache wa_media primeiro,
   // Graph depois) e grava o texto NA mensagem (campo transcript), então a
@@ -594,7 +594,9 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // conversationTest + lead INTERNO (a experiência completa no WhatsApp do
     // time, sem tocar lead de verdade).
     if (!conversationActive(cfg, lead)) return null;
-    if (!anthropic?.configured?.()) return null;
+    // IA escolhida na aba Robô (sdr-ai.js); sem escolha, o cliente padrão.
+    const ai = aiFor(cfg.ai) || anthropic;
+    if (!ai?.configured?.()) return null;
 
     // Elegibilidade — as mesmas cercas da Fase 1 + região do funil. Walk-in
     // (sem lead) pula as cercas: o card nasce limpo logo adiante.
@@ -641,9 +643,10 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     const humanIds = new Set((await repo.list("users")).map((u) => u.id));
     const nowMs = at.getTime();
     const lastHumanOut = [...msgs].reverse().find((m) => m.direction === "out" && humanIds.has(m.author));
-    // Gente falou há pouco: a conversa é dela. Handoff pendente (sem humano
+    // Gente falou há pouco: a conversa é dela (prazo e exceção fora do
+    // expediente na aba Robô, R-080/R-085). Handoff pendente (sem humano
     // depois dele): o robô segue calado esperando gente assumir.
-    if (lastHumanOut && nowMs - Date.parse(lastHumanOut.at || 0) < HUMAN_MUTE_MS) return "human-active";
+    if (humanMuteHolds(cfg, lastHumanOut, nowMs)) return "human-active";
     // JANELA DA CALL (raio-x 30/09): de 30 min antes a 60 min depois do
     // horário marcado o lead está entrando (ou esperando) na sala. Aqui o robô
     // não sobe escada de preço, não estoura teto e não entrega por repetição:
@@ -931,11 +934,11 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     }
     // Prompt v2 exige o contrato v2 (a IA escolhe horários por id).
     const offerContract = cfg.promptVersion === "v2" ? "v2" : cfg.offerContract;
-    const decision = await anthropic.sdrDecide({
+    const decision = await ai.sdrDecide({
       sdrName: firstName((await repo.get("users", lead.owner).catch(() => null))?.name),
       lead: { name: nome, company: lead.company, email: lead.email, niche: lead.niche },
       digest: leadDigest(product, lead),
-      grade: leadGrade(lead) || "",
+      grade: leadGrade(lead, gradeRulesOf(product)) || "",
       stage: lead.stage || firstStage(product),
       callAt: lead.callAt || "",
       nowLabel: nowLabelOf(wnow),

@@ -440,7 +440,15 @@ internos; depois a comparação de modelos com o mesmo conjunto.
    sobrescreve senha já definida) e as etiquetas viram papéis de staff
    (`team`, `admin`, `support`) na identidade. O e-mail de definir/redefinir senha
    (admin na Equipe ou "esqueci minha senha" no login) volta ao cockpit com
-   `#…type=recovery`, tratado no `main.jsx` antes do boot. Na tela Clientes, a
+   `#…type=recovery`, tratado no `main.jsx` antes do boot. Com
+   `VITE_TURNSTILE_SITE_KEY` no build, as três chamadas de senha que o SPA faz
+   ao GoTrue (entrar, "esqueci minha senha" e confirmar a atual em Trocar
+   senha) levam o token do Cloudflare Turnstile (`lib/turnstile.js`,
+   `components/turnstile.jsx`), exigido quando o captcha do LeverId está
+   ligado (`CAPTCHA_ENABLED`); cada token vale uma chamada, e o widget é
+   redesenhado depois de cada uma. O que a API chama no GoTrue (vínculo,
+   e-mail de definir senha, migração da senha) vai com a chave de serviço,
+   que o captcha dispensa. Sem a chave, nenhum script da Cloudflare carrega. Na tela Clientes, a
    badge de LeverId (`components/leverid-badge.jsx`) marca o cliente cuja org já
    tem conta na identidade: `GET /api/customers/leverid?orgs=` (domínio
    `customers/`, `leverid-accounts.js`, cache de 60 s por org) chama a RPC
@@ -919,6 +927,58 @@ alteração funcional nesta preparação.
   em `revenue-grade.test.js`, além da suíte API, smoke web e build.
 - Preview isolado dos badges e ICP: `/?shell=1&review=pipeline&revenueGrades=1#pipeline`
   no Vite preview; inclui S–E, dois legados e um lead sem qualificação.
+- **E-mail e segredos (22/10/2026, `docs/PLANO-DISPAROS.md` fases 0–1):** o mailer mora no
+  domínio `email` e envia pelo Resend quando configurado em Configurações → Integrações (chave
+  na coleção privada `integration_secrets`, nunca devolvida à tela), senão pelo Gmail da conta do
+  sistema. `app_config/google_oauth` não sai mais pelo CRUD com o token nem aceita escrita por ele.
+  Fases 2–4: modelos oficiais da Meta geridos em Disparos → Modelos (`wa-template-manager.jsx`),
+  broadcast de WhatsApp pela API oficial com modelo aprovado e fila no servidor
+  (`marketing/broadcast-wa.js`, `jobOn("waBroadcasts")`), tela de Disparos com abas Broadcasts ·
+  Sequências · Fila do WhatsApp · Modelos, menus em `SelectPopover` (nenhum `<select>` nativo).
+  Fase 5 (23/10/2026): passo de sequência com modelo oficial sai sozinho; webhook do Resend em
+  `/api/webhooks/resend` (devolução → `emailInvalid`, spam → `emailOptOut`); inscrição manual na tela. Na API a coleção segue `campaigns`.
+  Broadcast de e-mail também em fila no servidor (`marketing/broadcast-email.js`, `jobOn("emailBroadcasts")`);
+  um broadcast pode sair pelos dois canais (`channel: "both"`).
+  Falha de entrega e reenvio (23/10/2026):
+  - O aceite da Meta grava `waStatus: "sent"`. A recusa que chega depois pelo
+    webhook (`markBroadcastDeliveryFailed`) vira `waStatus: "failed"`, com o
+    motivo em português (`waFailText`).
+  - `GET /api/campaigns/:id/progress` reconcilia os antigos
+    (`reconcileBroadcastDelivery`) e devolve o mapa por lead em `byLead`, porque
+    `sent` ali é a contagem.
+  - `waReceived` não conta falha, então o lead pode ser reenviado.
+  - O editor grava o público escolhido em `audience` e reabre com ele.
+  - Canal e mensagem travam quando alguém recebeu; o público só trava durante
+    o envio. Broadcast concluído mostra "Reenviar".
+  - Seleção em massa (todos, lista filtrada, caixa do cabeçalho, limpar, só os
+    que falharam), filtro Todos/Selecionados/Não selecionados/Falharam e o
+    mesmo selecionar/limpar no "Inscrever leads".
+  - Pausado é editável: lead na fila não trava a mensagem (a situação mostra
+    "na fila"). "Salvar alterações" tira da fila quem saiu do público
+    (`POST /api/campaigns/:id/unqueue` com `keep`, recusado em envio).
+    "Retomar envio (N)" salva, ajusta a fila, enfileira quem entrou e retoma.
+  - Apagar: vale para rascunho, enviado, pausado e o antigo. Em envio, o CRUD
+    recusa com 409 e a tela pede para pausar antes. O que já saiu não volta; o
+    histórico na timeline e no Inbox continua.
+  - Testes: `broadcast-wa.test.js` e `test:review:disparos`.
+- **Régua configurável (22/10/2026, fase 1 de `docs/PLANO-ICP-CONFIGURAVEL.md`):** a nota
+  e o ICP saem de `leadGradeInfo(lead, rules)`; `gradeRulesOf(product)` lê `product.icp.rules`
+  e, sem ela, usa `defaultRules(saas)` (LeverAds: pedidos × ticket e depois a matriz legada;
+  outros produtos: só a matriz). Quem tem o produto passa a régua (placar, Publicidade,
+  Formulários, agenda do sênior, SDR); a SPA registra a régua dos produtos no `hydrateSeed`
+  (`web/src/lib/grade-rules.js`). `list.filter(isIcpLead)` continua seguro: só objeto é régua.
+  Fase 2 (22/10/2026): API em `crm/routes.icp.js` (ler, prévia, gravar com versão e histórico
+  `icp_versions`) e recálculo da classificação gravada só de quem mudou de nota (`crm/icp.js`).
+  Editar exige a etiqueta admin ou a permissão `icp` marcada na mão (`canEditIcp`); a lista em
+  branco não basta e o CRUD genérico recusa `icp` em `products`.
+  Fase 3 (22/10/2026): a permissão é a etiqueta `icp` ("Editor de ICP" na Equipe), não uma tela;
+  a tela é Configurações → ICP & nota (`screens/settings-icp.jsx`), com prévia obrigatória antes
+  de salvar a régua. Revisão: bloco ICP de `scripts/review/settings.mjs`.
+  Fase 4 (22/10/2026): a régua também define a ação do SDR (nota × intenção) e o corte de MQL
+  (`actions`, `mql`; padrões = os de antes); `GET …/icp/trend` dá a evolução; as métricas expõem
+  `gradeBasis` (de qual método veio cada nota). Fase 5: Elo sem leads no Cockpit; UniqueKids com
+  proposta de régua por pontos no plano, ainda não aplicada (decisão do time).
+  Testes: `icp-rules.test.js`, `icp-edit.test.js`.
 
 - **Card de Minhas atividades (21/09/2026):** segue o desenho “Atalhos.pdf”: atalhos
   em largura inteira, apresentação/respostas lado a lado, histórico e próximo
@@ -1622,6 +1682,62 @@ do Lever CRM, em `whatsapp/thread-owner.js`.
 - **Teste:** `crm-whatsapp-owner.test.js`.
 - **Ainda não feito:** número por finalidade (vendas, CS, suporte) e registro
   explícito de opt-in. Os dois dependem de decisão sobre os números.
+
+**WhatsApp: player de áudio e transcrição na conversa (23/10/2026).**
+`components/wa-audio.jsx` troca o `<audio controls>` da bolha (Inbox e chat
+do drawer).
+
+- **Player:** play/pausa, barra clicável e velocidade 1× → 1,5× → 2×.
+  - A velocidade vale pra todos os áudios e fica no `localStorage`
+    (`wa-audio-rate`).
+  - Tocar um áudio pausa o anterior.
+- **Transcrição:** `POST /api/whatsapp/messages/:id/transcribe` usa o mesmo
+  `transcribeInbound` do webhook e do robô (OpenRouter, `TRANSCRIBE_MODEL`).
+  - O texto fica em `wa_messages.transcript`; o que já foi transcrito volta
+    sem nova chamada.
+  - Falha vira 422 com o motivo; sem chave, 424.
+  - A bolha mostra o texto quando existe, senão o botão "Transcrever".
+- **Teste:** `routes.whatsapp.test.js`. A prévia da Inbox tem um áudio na
+  conversa da Carla, e `test:review:whatsapp` cobre velocidade, play e
+  transcrição.
+
+**Inbox: aba Robô, só admin (23/10/2026).** `components/sdr-robot.jsx`. A aba
+Automações continua com o card "SDR automático" (ligar o robô e as frentes
+dele); a aba Robô cuida do resto.
+
+- **Acesso:** a aba só aparece com a etiqueta `admin`.
+  - A API recusa quem não é admin em `/api/sdr/config`, `/api/sdr/models`,
+    `/api/sdr/ai-usage`, `/api/sdr/audit` e no replay com `provider` ou
+    `model`.
+  - O CRUD de produto barra quem não é admin de mudar as chaves de admin do
+    `sdrBot` (`sdr/sdr-admin-config.js`); o card da aba Automações segue
+    salvando.
+- **IA do robô:** `sdrBot.ai = { provider, model }`, com provedor `openrouter`,
+  `anthropic` ou vazio (o padrão do servidor, `AI_MODEL`).
+  - `sdr/sdr-ai.js` resolve o cliente; só a conversa do robô e a bateria de
+    replay trocam de IA.
+  - Provedor sem chave no servidor (`OPENROUTER_API_KEY` ou
+    `ANTHROPIC_API_KEY`) cai no padrão, com aviso na aba.
+  - O catálogo vem do provedor, com cache de 1h. Do OpenRouter, entram só
+    modelos com saída estruturada, com preço.
+  - "Testar na bateria de replay" roda a escolha (tag `robo`) e a tabela
+    compara as rodadas.
+- **Ajustes avançados:** as chaves que só mudavam por PATCH (rajada, idade do
+  lead, escada, resgate do backlog, versões de prompt, contrato e validador),
+  com os padrões de `sdrBotConfig`.
+- **Pausa de humano ativo (R-080/R-085):** `humanMuteHours` (padrão 4h).
+  - Com `humanMuteOffHours`, fora de `humanMuteHourStart`–`humanMuteHourEnd`
+    (seg a sex; padrão o expediente do `waCallFlow`; fim de semana sempre
+    fora), a fala recente do time não cala o robô.
+  - O handoff continua calando.
+  - A régua mora em `humanMuteHolds` (`sdr-state.js`), usada pelo cérebro e
+    pelo estado.
+- **Uso e auditoria:** respostas, tokens, cache, tempo médio e custo estimado
+  pelo preço do OpenRouter (sem desconto de cache), por modelo; violações por
+  regra, com o título do rulebook.
+- **Teste:** `sdr-robo-config.test.js`, `sdr-state.test.js` e
+  `sdr-brain.test.js` (`#R-080`, `#R-085`). Na prévia, `&inbox` mostra a aba
+  e `&naoadmin` a esconde; `test:review:whatsapp` cobre os dois.
 
 **Carteira de CS, acompanhamentos e modelos de integração (20/10/2026).**
 Fase 3 do plano do Lever CRM.

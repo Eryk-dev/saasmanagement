@@ -21,10 +21,11 @@ import { useIsMobile } from "../lib/responsive.js";
 import { clientSummary, ClientSummaryCard, AttributionCard } from "../components/lead-blocks.jsx";
 import { LeadGrade, LeadSection, LeadPhoneCopy } from "../components/lead-card.jsx";
 import { SelectPopover } from "../components/select-popover.jsx";
-import { currentUser, usersByRole } from "../lib/users.js";
+import { currentUser, isAdminUser, usersByRole } from "../lib/users.js";
 import { scriptChecklist } from "../lib/scripts.js";
 import { moveGate, MoveLeadModal, applyGatedMove, moveErrorText } from "../components/stage-move.jsx";
 import { WaAutomationsPanel } from "../components/wa-automations.jsx";
+import { SdrRobotPanel } from "../components/sdr-robot.jsx";
 
 // Inbox de WhatsApp: um WhatsApp Web dentro do cockpit. Lista de conversas à
 // esquerda (não-lidas primeiro na cara, ordenadas por recência) + conversa
@@ -497,6 +498,8 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
         <div className="inbox-channels">
           <div role="group" aria-label="Canal do Inbox">{[
             ["whatsapp", "WhatsApp"], ["instagram", "Instagram"], ["facebook", "Messenger"], ["automacoes", "Automações"],
+            // Robô: IA, ajustes avançados e uso do robô SDR. Só admin (a API recusa os outros).
+            ...(isAdminUser() ? [["robo", "Robô"]] : []),
           ].map(([id, name]) => <button key={id} aria-pressed={channel === id} onClick={() => setChannel(id)}>{name}</button>)}</div>
         </div>
       </header>
@@ -506,6 +509,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
       {/* Central de automações do WhatsApp: regras reativas, templates da
           Meta, fluxos de nutrição e as respostas rápidas do chat. */}
       {channel === "automacoes" && <WaAutomationsPanel key={product?.id} product={product} />}
+      {channel === "robo" && isAdminUser() && <SdrRobotPanel key={product?.id} product={product} />}
 
       {channel === "whatsapp" && <>
       {configured && <WaTopStats numInfo={numInfo} stats={statsError ? null : stats} error={statsError} onRetry={() => setStatsAttempt((n) => n + 1)} onResponder={() => {
@@ -1194,104 +1198,5 @@ function BotStopButton({ leadId }) {
 }
 const flowChip = { display: "inline-flex", alignItems: "center", gap: 4, height: 24, padding: "0 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, flexShrink: 0 };
 
-// Criar template aprovado da Meta a partir do cockpit. A Meta revisa (nasce
-// PENDING) e, aprovado, entra no composer sozinho. Dois presets prontos da
-// LeverAds: no-show da call e reengajamento ("ainda tem interesse?"). {{1}} =
-// nome do lead (o composer preenche na hora de enviar). Copy sem travessão,
-// no tom da Manuela, igual aos templates que já existem (retomada_diag etc.).
-const TEMPLATE_PRESETS = [
-  {
-    key: "no_show",
-    button: "No show da call",
-    name: "call_no_show",
-    category: "UTILITY",
-    body: "Oi {{1}}, é a Manuela da LeverAds. Passei na nossa call no horário e não te encontrei, acontece! Quer que eu remarque? Me diz um horário que fica bom que eu já reservo.",
-    example: "João",
-  },
-  {
-    key: "interesse",
-    button: "Ainda tem interesse?",
-    name: "segue_interesse",
-    category: "MARKETING",
-    body: "Oi {{1}}, é a Manuela da LeverAds. Passando pra saber se você ainda tem interesse em escalar sua operação nos marketplaces com a gente. Se fizer sentido, me responde por aqui que eu te mostro como funciona, sem compromisso.",
-    example: "João",
-  },
-];
-
-export function WaTemplateCreator({ onClose }) {
-  const [form, setForm] = React.useState({ name: "", category: "UTILITY", language: "pt_BR", body: "", example: "" });
-  const [busy, setBusy] = React.useState(false);
-  const [msg, setMsg] = React.useState(null); // { ok, text }
-  const set = (p) => setForm((f) => ({ ...f, ...p }));
-  const preset = (p) => { setForm({ name: p.name, category: p.category, language: "pt_BR", body: p.body, example: p.example }); setMsg(null); };
-  const nVars = (form.body.match(/\{\{\s*\d+\s*\}\}/g) || []).length;
-
-  async function submit() {
-    setBusy(true); setMsg(null);
-    try {
-      const r = await api.waCreateTemplate({
-        name: form.name, category: form.category, language: form.language,
-        body: form.body, example: nVars > 0 ? [form.example] : [],
-      });
-      setMsg({ ok: true, text: `enviado pra Meta como "${r.status || "PENDING"}". Aprovado (minutos a horas), ele aparece no composer sozinho.` });
-    } catch (e) { setMsg({ ok: false, text: e?.message || "não deu pra criar o template" }); }
-    setBusy(false);
-  }
-
-  const lab = { display: "block", fontSize: 11.5, fontWeight: 600, color: "var(--fg-3)", marginBottom: 4 };
-  const inp = { width: "100%", height: 36, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, boxSizing: "border-box" };
-  return (
-    <Modal onClose={onClose} label="criar template" largura={560} padding={16} painelStyle={{ padding: 22 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4 }}>
-          <div style={{ fontSize: 15.5, fontWeight: 800, flex: 1 }}>Criar template do WhatsApp</div>
-          <button onClick={onClose} style={{ ...pill, height: 26, padding: "0 9px" }}>✕</button>
-        </div>
-        <div className="dim" style={{ fontSize: 12, marginBottom: 14 }}>
-          template aprovado reabre conversa fora das 24h. A Meta revisa antes de liberar; use <b>{"{{1}}"}</b> pro nome do lead.
-        </div>
-
-        <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-          <span className="mono dim" style={{ fontSize: 10.5, alignSelf: "center" }}>PRESETS:</span>
-          {TEMPLATE_PRESETS.map((p) => (
-            <button key={p.key} onClick={() => preset(p)} style={{ ...pill, height: 26 }}>{p.button}</button>
-          ))}
-        </div>
-
-        <div style={{ display: "grid", gap: 12 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 130px 100px", gap: 10 }}>
-            <label><span style={lab}>Nome (a-z, _)</span>
-              <input value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="call_no_show" className="mono" style={inp} />
-            </label>
-            <label><span style={lab}>Categoria</span>
-              <select value={form.category} onChange={(e) => set({ category: e.target.value })} style={inp}>
-                <option value="UTILITY">Utilidade</option>
-                <option value="MARKETING">Marketing</option>
-              </select>
-            </label>
-            <label><span style={lab}>Idioma</span>
-              <input value={form.language} onChange={(e) => set({ language: e.target.value })} className="mono" style={inp} />
-            </label>
-          </div>
-          <label><span style={lab}>Corpo da mensagem</span>
-            <textarea value={form.body} onChange={(e) => set({ body: e.target.value })} rows={5} placeholder="Oi {{1}}, é a Manuela da LeverAds…"
-              style={{ ...inp, height: "auto", padding: "9px 10px", resize: "vertical", lineHeight: 1.45 }} />
-          </label>
-          {nVars > 0 && (
-            <label><span style={lab}>Exemplo pra {"{{1}}"} (a Meta exige)</span>
-              <input value={form.example} onChange={(e) => set({ example: e.target.value })} placeholder="João" style={inp} />
-            </label>
-          )}
-        </div>
-
-        {msg && <div className="mono" style={{ fontSize: 12, marginTop: 12, color: msg.ok ? "var(--pos)" : "var(--neg)" }}>{msg.text}</div>}
-
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
-          <button onClick={onClose} style={pill}>fechar</button>
-          <button onClick={submit} disabled={busy || !form.name.trim() || !form.body.trim() || (nVars > 0 && !form.example.trim())}
-            style={{ ...pill, background: "var(--btn-bg)", color: "var(--btn-fg)", border: "none", opacity: busy || !form.name.trim() || !form.body.trim() ? 0.55 : 1 }}>
-            {busy ? "enviando…" : "Enviar pra aprovação"}
-          </button>
-        </div>
-    </Modal>
-  );
-}
+// O criador de modelo oficial da Meta mudou para components/wa-template-manager.jsx
+// (Disparos → Modelos e Inbox → Automações).

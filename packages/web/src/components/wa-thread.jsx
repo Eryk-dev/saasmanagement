@@ -2,6 +2,7 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { useEsc } from "../atoms.jsx";
 import { Popover } from "./popover.jsx";
+import { WaAudioPlayer, WaAudioTranscript } from "./wa-audio.jsx";
 
 // Peças de conversa de WhatsApp reusadas pelo inbox (tela) e pelo chat do drawer:
 // WaBubbles (histórico) + WaComposer (texto livre) + WaTemplateComposer (fora da
@@ -78,9 +79,17 @@ function MediaBubble({ msg, out }) {
   return (
     <div ref={boxRef} style={{ minWidth: kind === "audio" ? 210 : 120 }}>
       {err ? (
-        <span className="mono dim" style={{ fontSize: 11 }}>{label} · {err}</span>
+        <>
+          <span className="mono dim" style={{ fontSize: 11 }}>{label} · {err}</span>
+          {kind === "audio" && msg.transcript && <WaAudioTranscript msg={msg} />}
+        </>
       ) : kind === "audio" ? (
-        url ? <audio controls src={url} style={{ width: 230, height: 34 }} /> : <span className="mono dim" style={{ fontSize: 11 }}>{load ? "carregando áudio…" : label}</span>
+        url ? (
+          <>
+            <WaAudioPlayer src={url} />
+            <WaAudioTranscript msg={msg} />
+          </>
+        ) : <span className="mono dim" style={{ fontSize: 11 }}>{load ? "carregando áudio…" : label}</span>
       ) : kind === "image" ? (
         url ? <img src={url} alt="imagem" style={{ maxWidth: 240, maxHeight: 240, borderRadius: 8, display: "block" }} /> : <span className="mono dim" style={{ fontSize: 11 }}>{load ? "carregando…" : label}</span>
       ) : kind === "video" ? (

@@ -728,3 +728,52 @@ test("webhook POST: cartão de contato vira texto com nome e telefone; tipo desc
   assert.equal(un.raw.order.catalog_id, "c1");
   await app.close();
 });
+
+test("POST /messages/:id/transcribe: transcreve o áudio do cache, grava na mensagem e não paga duas vezes", async () => {
+  const repo = makeMemRepo();
+  const seen = [];
+  const transcriber = { configured: () => true, async transcribe(buf, opts) { seen.push({ size: buf.length, ...opts }); return "pode ser amanhã às 10h"; } };
+  const app = Fastify();
+  registerWhatsappRoutes(app, repo, { whatsapp: fakeWa(), transcriber });
+  await app.ready();
+  await repo.create("leads", { id: "L1", name: "Ana", company: "Loja da Ana" });
+  await repo.create("wa_messages", { id: "wamid.A1", thread: "5541988887777", leadId: "L1", direction: "in", text: "🎤 áudio", media: { kind: "audio", id: "M1", mime: "audio/ogg" } });
+  await repo.create("wa_media", { id: "wamid.A1", mime: "audio/ogg", size: 2048, data: Buffer.alloc(2048).toString("base64") });
+  await repo.create("wa_messages", { id: "wamid.T1", thread: "5541988887777", direction: "in", text: "oi" });
+
+  const r = await app.inject({ method: "POST", url: "/api/whatsapp/messages/wamid.A1/transcribe" });
+  assert.equal(r.statusCode, 200);
+  assert.equal(r.json().transcript, "pode ser amanhã às 10h");
+  assert.equal((await repo.get("wa_messages", "wamid.A1")).transcript, "pode ser amanhã às 10h");
+  assert.equal(seen[0].size, 2048);
+  assert.match(seen[0].prompt, /Ana, Loja da Ana/);
+  // Segunda vez vem do campo gravado, sem chamar o modelo.
+  await app.inject({ method: "POST", url: "/api/whatsapp/messages/wamid.A1/transcribe" });
+  assert.equal(seen.length, 1);
+
+  assert.equal((await app.inject({ method: "POST", url: "/api/whatsapp/messages/wamid.T1/transcribe" })).statusCode, 400);
+  assert.equal((await app.inject({ method: "POST", url: "/api/whatsapp/messages/nada/transcribe" })).statusCode, 404);
+  await app.close();
+});
+
+test("POST /messages/:id/transcribe: sem chave → 424; falha do modelo → 422 com o motivo", async () => {
+  const repo = makeMemRepo();
+  await repo.create("wa_messages", { id: "wamid.A2", thread: "5541988887777", direction: "in", media: { kind: "audio", id: "M2", mime: "audio/ogg" } });
+  await repo.create("wa_media", { id: "wamid.A2", mime: "audio/ogg", size: 2048, data: Buffer.alloc(2048).toString("base64") });
+
+  const off = Fastify();
+  registerWhatsappRoutes(off, repo, { whatsapp: fakeWa(), transcriber: { configured: () => false } });
+  await off.ready();
+  assert.equal((await off.inject({ method: "POST", url: "/api/whatsapp/messages/wamid.A2/transcribe" })).statusCode, 424);
+  await off.close();
+
+  const app = Fastify();
+  const transcriber = { configured: () => true, async transcribe() { throw new Error("transcrição falhou (400): formato inválido"); } };
+  registerWhatsappRoutes(app, repo, { whatsapp: fakeWa(), transcriber });
+  await app.ready();
+  const r = await app.inject({ method: "POST", url: "/api/whatsapp/messages/wamid.A2/transcribe" });
+  assert.equal(r.statusCode, 422);
+  assert.match(r.json().error, /formato inválido/);
+  assert.equal((await repo.get("wa_messages", "wamid.A2")).transcript, undefined);
+  await app.close();
+});

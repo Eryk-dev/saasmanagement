@@ -48,6 +48,8 @@ export const COLLECTIONS = {
   sessions: [],
   user_assets: [], // foto de perfil (base64, 1 por usuário, servida em /public/users/:id)
   ad_insights: [],
+  icp_versions: [],
+  integration_secrets: [], // credenciais de integração (chave do Resend…): coleção privada, só as rotas dedicadas leem // histórico da régua de nota/ICP por produto (crm/icp.js); escrita só pela rota dedicada
   expenses: [],
   payables: [],
   payroll_profiles: [],    // ficha de FOLHA por pessoa (id = uid): regime, fixo da pessoa, VR, VT, acordos recorrentes (comp/payroll.js)

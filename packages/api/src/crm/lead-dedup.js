@@ -1,4 +1,4 @@
-import { revenueClassificationPatch } from "./classificacao.js";
+import { classificationPatch } from "./classificacao.js";
 // Evita CADASTRO DUPLICADO de lead. A mesma pessoa re-submete o form (ou volta
 // por outro anúncio, ou o espelho do SaaS externo dispara 2×) e nasceria um card
 // novo em vez de cair no que já existe — hoje só o Shopify dedup (por orderId).
@@ -46,7 +46,7 @@ const REFRESH = new Set(["utm", "fbc", "fbp", "sourceUrl", "source", "formVarian
 const isEmpty = (v) => v == null || v === "" || (Array.isArray(v) && v.length === 0);
 const onlyDigits = (s) => /^\d+$/.test(String(s || "").replace(/\s/g, ""));
 
-export function dedupMergePatch(existing, incoming) {
+export function dedupMergePatch(existing, incoming, rules) {
   const patch = {};
   for (const [k, v] of Object.entries(incoming || {})) {
     if (PROTECTED.has(k) || isEmpty(v)) continue;
@@ -56,6 +56,6 @@ export function dedupMergePatch(existing, incoming) {
   // Nome de verdade troca vazio ou "só o número" (o que o webhook do WhatsApp
   // gravou antes de a pessoa preencher o form).
   if (incoming?.name && !onlyDigits(incoming.name) && (isEmpty(existing?.name) || onlyDigits(existing.name))) patch.name = incoming.name;
-  if (["orders", "ticket", "trigger", "tried", "formProduct"].some((k) => k in patch)) Object.assign(patch, revenueClassificationPatch({ ...existing, ...patch }));
+  if (["orders", "ticket", "trigger", "tried", "formProduct"].some((k) => k in patch)) Object.assign(patch, classificationPatch({ ...existing, ...patch }, rules));
   return patch;
 }

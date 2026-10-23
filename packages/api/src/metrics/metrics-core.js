@@ -1,4 +1,4 @@
-import { leadGradeInfo, LEGACY_ACCOUNTS, LEGACY_LISTINGS, LEGACY_VOLUME } from "../shared/lead-grade.js";
+import { defaultRules, gradeBasis, gradeRulesOf, icpGradesOf, isIcpGrade, leadGradeInfo, LEGACY_ACCOUNTS, LEGACY_LISTINGS, LEGACY_VOLUME } from "../shared/lead-grade.js";
 // Régua ÚNICA das métricas do cockpit. Antes deste módulo cada endpoint
 // reimplementava as próprias contas e elas divergiam em 4 eixos:
 //
@@ -747,12 +747,19 @@ export function contactAttribution({ leads, actsOf, waMessages, saas, inWin, hum
   return { leadIds: new Set(first.keys()), firstAt, byAuthor, authorOf, automationReached: autoReached.size };
 }
 
-// Nota e ICP: receita estimada quando há pedidos + ticket; matriz preservada no legado.
-export function leadGrade(l) { return leadGradeInfo(l).grade; }
+// Nota e ICP pela régua do produto (gradeRulesOf(product)); sem `rules`, a
+// régua padrão do produto do lead — a de antes da régua configurável.
+// Só objeto é régua: `list.filter(isIcpLead)` passa o índice como 2º argumento.
+const rulesFor = (l, rules) => (rules && typeof rules === "object" ? rules : defaultRules(l?.saas));
+export function leadGrade(l, rules) { return leadGradeInfo(l, rulesFor(l, rules)).grade; }
 export const GRADE_BANDS = { accounts: LEGACY_ACCOUNTS, listings: LEGACY_LISTINGS, volume: LEGACY_VOLUME };
 export const gradeBandKnown = (field, value) => !!GRADE_BANDS[field] && Object.hasOwn(GRADE_BANDS[field], value);
-export const ICP_GRADES = new Set(["S", "A", "B"]);
-export const isIcpLead = (l) => ICP_GRADES.has(leadGrade(l) || "");
+export const ICP_GRADES = icpGradesOf(null); // padrão S/A/B; a régua do produto pode trocar
+export const isIcpLead = (l, rules) => {
+  const r = rulesFor(l, rules);
+  return isIcpGrade(leadGrade(l, r), r);
+};
+export { gradeBasis, gradeRulesOf };
 
 // ── Social selling ───────────────────────────────────────────────────────────
 // Lead que nasceu do social selling da SDR (decisão do Leo, 10/09): a origem

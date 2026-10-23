@@ -1,4 +1,5 @@
 import { leadGradeInfo } from "../../../api/src/shared/lead-grade.js";
+import { gradeRulesFor } from "./grade-rules.js";
 // Shared chrome button style — lifted out of portfolio.jsx so every screen can
 // import it without depending on a screen module. Identical to the original.
 
@@ -30,11 +31,12 @@ export const GRADE_STYLE = {
 export { LEGACY_GRID as GRADE_GRID } from "../../../api/src/shared/lead-grade.js";
 export const GRADE_ACCOUNTS = ["1", "2", "3-5", "6-10", "10+"];
 export const GRADE_LISTINGS = ["≤100", "100-500", "500-2k", "2-10k", "10k+"];
+// Nota pela régua do produto do lead (grade-rules.js); o rótulo diz o método.
 export function leadTier(l) {
-  const info = leadGradeInfo(l);
+  const info = leadGradeInfo(l, gradeRulesFor(l?.saas));
   if (!info.grade) return { key: "sem", grade: null, label: "sem qualificação", tone: "var(--line-strong)", ink: "var(--fg-3)", badgeFg: "#fff" };
   const style = GRADE_STYLE[info.grade];
-  return { ...style, ...info, label: `${style.label} · ${info.legacy ? "Legado (contas × anúncios)" : info.revenue != null ? "pedidos × ticket médio" : "contas × anúncios"}` };
+  return { ...style, ...info, label: `${style.label} · ${info.methodLabel || (info.legacy ? "Legado" : "régua do produto")}` };
 }
 
 // Lead score helpers — score é numérico 0–100; cor e rótulo vêm por banda.

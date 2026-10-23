@@ -66,6 +66,31 @@ test("sync: grava ad_insights e re-sync não duplica (upsert por saas+campanha+d
   await app.close();
 });
 
+test("sync: resposta zerada da Meta não apaga o gasto já gravado (21/10/2026)", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", metaAdAccount: "act_123", funnel: [] });
+  const row = (spend, impressions) => ({ campaign_id: "c1", campaign_name: "P", ad_id: "a1", ad_name: "[A] 1", date_start: "2026-09-15", spend, impressions, actions: [{ action_type: "lead", value: "4" }] });
+  let data = [row("177.9", "4619")];
+  const app = Fastify();
+  registerRoutes(app, repo, { meta: makeMeta({ fetch: async () => ({ status: 200, text: async () => JSON.stringify({ data }) }), accessToken: "t" }) });
+  const sync = async () => (await app.inject({ method: "POST", url: "/api/marketing/sync", payload: { since: "2026-09-15", until: "2026-09-15" } })).json();
+
+  await sync();
+  data = [row("0", "0")];
+  const r = await sync();
+  assert.equal(r.report.leverads.kept, 1);
+  assert.equal(r.report.leverads.accounts.act_123.kept, 1);
+  const [saved] = await repo.list("ad_insights");
+  assert.equal(saved.spend, 177.9);
+  assert.equal(saved.impressions, 4619);
+
+  // Revisão legítima (valor maior) continua gravando.
+  data = [row("178.2", "4630")];
+  assert.equal((await sync()).report.leverads.kept, 0);
+  assert.equal((await repo.list("ad_insights"))[0].spend, 178.2);
+  await app.close();
+});
+
 test("métricas: CPL real, custo por estágio do funil e campanhas", async () => {
   const repo = makeMemRepo();
   await repo.create("products", {

@@ -153,6 +153,7 @@ const ROUTE_SCREENS = [
   // Visão geral — só a LEITURA agregada; conversas/envio seguem só do inbox.
   // Precede /api/whatsapp (primeiro match vence).
   ["/api/whatsapp/insights", ["whatsapp", "overview"]],
+  ["/api/whatsapp/templates", ["whatsapp", "disparos"]], // modelos da Meta: Inbox e a gestão em Disparos → Modelos
   ["/api/whatsapp", ["whatsapp"]],       // inbox de conversas (threads/messages/send/read); webhook /api/webhooks/whatsapp fica aberto
   // Bloqueios de agenda: a tela Agenda gerencia; quem marca call (pipeline/Meu dia)
   // precisa LER pra grade de horários respeitar os bloqueios.
@@ -169,6 +170,7 @@ const ROUTE_SCREENS = [
   ["/api/integration-forms", ["intform"]],
   ["/api/integration_forms", ["intform"]],
   ["/api/integrations", ["integrations"]], // análise de integração (CS/onboarding)
+  ["/api/email/", ["settings"]], // Configurações → Integrações → E-mail (gravar exige etiqueta admin na rota)
 
   ["/api/metas", ["metas"]],             // metas de desempenho por vaga/pessoa
   ["/api/flashcards", ["training"]],     // treinamentos (flashcards)
@@ -265,6 +267,20 @@ const ADMIN_WRITE_PREFIXES = ["/api/auth/users"];
 // tela (ex.: /api/expenses/summary pra Visão geral) segue valendo pela outra.
 export const ADMIN_ONLY_SCREENS = new Set(["expenses"]);
 
+// Régua de nota/ICP (docs/PLANO-ICP-CONFIGURAVEL.md): ela decide métrica,
+// agenda do sênior e cadência ao mesmo tempo, então editar NÃO vem de graça
+// com a lista em branco ("vê tudo") nem com a tela Ajustes — só a etiqueta
+// admin ou a etiqueta "Editor de ICP" (`icp`) dada em Ajustes → Equipe. É
+// etiqueta, não tela: marcar uma tela numa lista vazia restringiria a pessoa
+// a ela. Ler segue aberto (toda tela precisa da régua). O histórico
+// (`icp_versions`) é coleção privada: só a rota dedicada escreve.
+export const ICP_EDIT_PATH = /^\/api\/products\/[^/]+\/icp(\/|$)/;
+export function canEditIcp(user) {
+  if (!user) return true; // key mestre
+  const roles = user.roles || [];
+  return roles.includes("admin") || roles.includes("icp");
+}
+
 // Hook Fastify (registrar DEPOIS do makeAuthHook, que popula req.authUser).
 export function makeScreenGuardHook() {
   return async (req, reply) => {
@@ -277,6 +293,9 @@ export function makeScreenGuardHook() {
       if (!admin && !(req.method === "GET" && granted)) {
         return reply.code(403).send({ error: "Sem acesso a esta área" });
       }
+    }
+    if (req.method !== "GET" && ICP_EDIT_PATH.test(path)) {
+      return canEditIcp(user) ? undefined : reply.code(403).send({ error: "Editar o ICP exige a etiqueta Editor de ICP (Ajustes → Equipe)" });
     }
     if (req.method !== "GET" && ADMIN_WRITE_PREFIXES.some((p) => path.startsWith(p)) && !(user.roles || []).includes("admin")) {
       return reply.code(403).send({ error: "Só quem tem a etiqueta admin gerencia a equipe" });

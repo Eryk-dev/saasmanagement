@@ -6,15 +6,18 @@ import { registerSdrRoutes } from "./routes.sdr.js";
 import { makeSdrBrain, startSdrBrainSweep } from "./sdr-brain.js";
 import { startSdrFlow } from "./sdr-flow.js";
 import { startSdrHandoffReminder } from "./sdr-handoff-reminder.js";
+import { makeSdrAi } from "./sdr-ai.js";
 
 export function register(app, repo, ctx) {
   // O cérebro nasce depois do cliente de WhatsApp (domínio whatsapp) e usa o
   // Meet do domínio google pra marcar e cancelar a call.
-  ctx.sdrBrain = ctx.opts.sdrBrain || makeSdrBrain({ repo, whatsapp: ctx.whatsapp, anthropic: ctx.anthropic, autoCallMeet: ctx.autoCallMeet, cancelCallMeet: ctx.cancelCallMeet, log: app.log });
+  // IA do robô: provedor/modelo escolhidos na aba Robô, sobre o cliente padrão.
+  const sdrAi = ctx.opts.sdrAi || makeSdrAi({ base: ctx.anthropic });
+  ctx.sdrBrain = ctx.opts.sdrBrain || makeSdrBrain({ repo, whatsapp: ctx.whatsapp, anthropic: ctx.anthropic, aiFor: (choice) => sdrAi.resolve(choice).client, autoCallMeet: ctx.autoCallMeet, cancelCallMeet: ctx.cancelCallMeet, log: app.log });
   // SDR automatizado: horários livres no servidor + templates + status +
   // bateria de replay (o motor determinístico é o poller startSdrFlow, com o
   // MESMO client).
-  registerSdrRoutes(app, repo, { whatsapp: ctx.whatsapp, anthropic: ctx.anthropic });
+  registerSdrRoutes(app, repo, { whatsapp: ctx.whatsapp, anthropic: ctx.anthropic, sdrAi });
 }
 
 export function start(repo, { clients, log, jobOn }) {

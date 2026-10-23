@@ -16,7 +16,7 @@
 // GET lê o estado — o resultado fica em app_config "sdr_replay" (ou
 // "sdr_replay_<tag>"), com progresso parcial gravado a cada conversa.
 import { kindOf, firstStage } from "../crm/stages.js";
-import { leadGrade } from "../metrics/metrics-core.js";
+import { gradeRulesOf, leadGrade } from "../metrics/metrics-core.js";
 import { slotLabel, wallNow, spreadPair, wholeHourSlots } from "../crm/agenda-slots.js";
 import { sdrSlotsForLead } from "./sdr-agenda.js";
 import { leadDigest, leadPainFocus, SDR_AUTHOR } from "./sdr-flow.js";
@@ -92,8 +92,10 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
       .slice(0, maxThreads);
   }
 
-  async function run({ saas = "leverads", threads: maxThreads = 25, turns: turnsPerThread = 3, model = "", tag = "", contract = "", threadIds = [], promptVersion = "" } = {}) {
-    const ai = model && typeof anthropic?.clone === "function" ? anthropic.clone({ model }) : anthropic;
+  // `client`: outro provedor (aba Robô testa o modelo escolhido antes de trocar).
+  async function run({ saas = "leverads", threads: maxThreads = 25, turns: turnsPerThread = 3, model = "", tag = "", contract = "", threadIds = [], promptVersion = "", client = null } = {}) {
+    const baseAi = client || anthropic;
+    const ai = model && typeof baseAi?.clone === "function" ? baseAi.clone({ model }) : baseAi;
     const docId = docIdOf(tag);
     // Contrato efetivo: prompt v2 implica o contrato v2 (métricas e amostras).
     const effContract = contract || (promptVersion === "v2" ? "v2" : "");
@@ -164,7 +166,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
             sdrName: "Manuela",
             lead: { name: lead.name, company: lead.company, email: lead.email, niche: lead.niche },
             digest: leadDigest(product, lead),
-            grade: leadGrade(lead) || "",
+            grade: leadGrade(lead, gradeRulesOf(product)) || "",
             stage: lead.stage || firstStage(product),
             callAt: "", // replay: avalia a condução até a call, sem a call futura real
             nowLabel,
@@ -242,7 +244,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
   // Dispara em background (single-flight). Devolve {started} ou {busy}.
   function start(opts = {}) {
     if (running) return { started: false, busy: true };
-    if (!anthropic?.configured?.()) return { started: false, error: "IA não configurada no servidor" };
+    if (!(opts.client || anthropic)?.configured?.()) return { started: false, error: "IA não configurada no servidor" };
     running = true;
     run(opts)
       .catch(async (err) => {

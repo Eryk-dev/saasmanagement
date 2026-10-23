@@ -293,12 +293,18 @@ export const api = {
     }
     return res.blob();
   },
+  // Transcreve um áudio da conversa (recebido ou enviado) e grava o texto na
+  // mensagem: { transcript } ("" = sem fala reconhecida).
+  waTranscribe: (msgId) => req("POST", `/api/whatsapp/messages/${encodeURIComponent(msgId)}/transcribe`),
   // Templates APROVADOS na Meta + envio de um deles (o único jeito de reabrir
   // conversa fora da janela de 24h). params = valores das variáveis {{1}}…{{N}}.
   waMetaTemplates: () => req("GET", "/api/whatsapp/templates"),
   // Cria/submete um template pra aprovação da Meta (nasce PENDING; aprovado,
   // entra no composer sozinho). { name, category, language, body, example[] }.
   waCreateTemplate: (payload) => req("POST", "/api/whatsapp/templates", payload),
+  // Gestão: todos os modelos (qualquer status) e apagar pelo nome.
+  waTemplatesAll: () => req("GET", "/api/whatsapp/templates/all"),
+  waDeleteTemplate: (name) => req("DELETE", `/api/whatsapp/templates/${encodeURIComponent(name)}`),
   waThreadSendTemplate: (id, { name, language, params, headerMediaId }) => req("POST", `/api/whatsapp/threads/${id}/send-template`, { name, language, params, headerMediaId }),
   // Foto PADRÃO do template (header de imagem): o composer preenche sozinho e
   // o servidor sobe ela a cada envio. Sem foto salva devolve null (não é erro).
@@ -477,6 +483,13 @@ export const api = {
   campaignAiCopy: (body) => req("POST", "/api/campaigns/ai-copy", body),
   // Envio nativo de e-mail em massa pela conta Google conectada.
   campaignSendEmail: (id, leadIds) => req("POST", `/api/campaigns/${encodeURIComponent(id)}/send-email`, { leadIds }),
+  // Broadcast de WhatsApp pela API oficial: enfileira (o servidor envia em lotes), pausa/retoma e progresso.
+  campaignSendWhatsapp: (id, leadIds) => req("POST", `/api/campaigns/${encodeURIComponent(id)}/send-whatsapp`, { leadIds }),
+  campaignPause: (id) => req("POST", `/api/campaigns/${encodeURIComponent(id)}/pause`, {}),
+  campaignResume: (id) => req("POST", `/api/campaigns/${encodeURIComponent(id)}/resume`, {}),
+  // Broadcast pausado editado: tira da fila quem saiu do público (`keep` = quem fica).
+  campaignUnqueue: (id, keep) => req("POST", `/api/campaigns/${encodeURIComponent(id)}/unqueue`, { keep }),
+  campaignProgress: (id) => req("GET", `/api/campaigns/${encodeURIComponent(id)}/progress`),
   // Métricas de conversão no funil por campanha do produto.
   campaignMetrics: (saas) => req("GET", `/api/campaigns/metrics/${encodeURIComponent(saas)}`),
   // Sequências (drip): CRUD via api.list/create/update("sequences"/"drip_templates").
@@ -489,7 +502,15 @@ export const api = {
   sdrStatus: (saas) => req("GET", `/api/sdr/status?saas=${encodeURIComponent(saas)}`),
   sdrTemplateSetup: () => req("POST", "/api/whatsapp/templates/sdr-setup", {}),
   sdrReplayStart: (saas, opts = {}) => req("POST", "/api/sdr/replay", { saas, ...opts }),
-  sdrReplayStatus: () => req("GET", "/api/sdr/replay"),
+  sdrReplayStatus: (tag = "") => req("GET", `/api/sdr/replay${tag ? `?tag=${encodeURIComponent(tag)}` : ""}`),
+  sdrReplayRuns: () => req("GET", "/api/sdr/replay/runs"),
+  // Aba Robô da Inbox (só admin): IA do robô, ajustes avançados, catálogo de
+  // modelos do provedor, uso da IA e auditoria das regras.
+  sdrConfig: (saas) => req("GET", `/api/sdr/config?saas=${encodeURIComponent(saas)}`),
+  sdrConfigSave: (saas, patch) => req("PATCH", `/api/sdr/config/${encodeURIComponent(saas)}`, patch),
+  sdrModels: (provider) => req("GET", `/api/sdr/models?provider=${encodeURIComponent(provider)}`),
+  sdrAiUsage: (saas, days = 14) => req("GET", `/api/sdr/ai-usage?saas=${encodeURIComponent(saas)}&days=${days}`),
+  sdrAudit: (saas, days = 7) => req("GET", `/api/sdr/audit?saas=${encodeURIComponent(saas)}&days=${days}`),
   freeSlots: (saas, { lead, grade, days, limit } = {}) => {
     const q = new URLSearchParams({ saas });
     if (lead) q.set("lead", lead);
@@ -603,6 +624,18 @@ export const api = {
   // Ajustes (fase 3): grava o funil migrando estágios renomeados (lead/deal.stage
   // não têm FK — o servidor reaponta os cards junto).
   saveFunnel: (productId, funnel, renames) => req("PUT", `/api/products/${productId}/funnel`, { funnel, renames }),
+  // Régua de nota/ICP do produto (Ajustes → ICP): ler é aberto; prever e
+  // gravar exigem a etiqueta admin ou Editor de ICP.
+  icp: (productId) => req("GET", `/api/products/${encodeURIComponent(productId)}/icp`),
+  icpVersions: (productId) => req("GET", `/api/products/${encodeURIComponent(productId)}/icp/versions`),
+  // E-mail (Configurações → Integrações): a chave nunca volta (só last4).
+  emailConfig: () => req("GET", "/api/email/config"),
+  saveEmailConfig: (body) => req("PUT", "/api/email/config", body),
+  removeEmailConfig: () => req("DELETE", "/api/email/config"),
+  testEmail: (to) => req("POST", "/api/email/test", { to }),
+  icpTrend: (productId) => req("GET", `/api/products/${encodeURIComponent(productId)}/icp/trend`),
+  icpPreview: (productId, rules) => req("POST", `/api/products/${encodeURIComponent(productId)}/icp/preview`, { rules }),
+  saveIcp: (productId, body) => req("PUT", `/api/products/${encodeURIComponent(productId)}/icp`, body),
   // Billing (fase 5).
   changeSubscription: (id, body) => req("POST", `/api/subscriptions/${id}/change`, body),
   // Baixa manual COM PROVA: { at, method, note, amount? } (12/10/2026).

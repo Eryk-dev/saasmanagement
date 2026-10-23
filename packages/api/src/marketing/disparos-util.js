@@ -2,6 +2,7 @@
 // tokens por lead, token de descadastro e base pública do link. Ficam aqui pra o
 // motor de sequências (drip-runner) e as rotas usarem a MESMA regra do e-mail.
 import { createHash } from "node:crypto";
+import { campaignTokens, interpolate } from "../shared/campaign-tokens.js";
 
 // Token de descadastro: leadId + assinatura curta (não adivinhável, sem guardar
 // nada). Salt = a chave mestra (ou um default em dev).
@@ -18,21 +19,10 @@ export function baseUrl(req) {
   return `${/^(localhost|127\.)/.test(String(host)) ? "http" : "https"}://${host}`;
 }
 
-// Tokens do lead pra interpolar a mensagem ({{nome}} etc.). Espelho enxuto do
-// scriptTokens do SPA — só os campos que o compositor oferece.
-export function leadTokens(lead) {
-  return {
-    nome: String(lead?.name || "").trim().split(/\s+/)[0] || "",
-    empresa: lead?.company || "",
-    nicho: lead?.niche || "",
-    contas: lead?.accounts || "",
-    anuncios: lead?.listings || "",
-  };
-}
-
-// Troca {{token}} pelos dados do lead; token desconhecido fica visível (pra o
-// operador notar o erro de digitação no preview).
-export const interpolate = (text, toks) => String(text || "").replace(/\{\{(\w+)\}\}/g, (_, k) => (toks && toks[k] != null ? toks[k] : `{{${k}}}`));
+// Tokens do lead pra interpolar a mensagem ({{nome}} etc.): a mesma regra da
+// prévia da tela (shared/campaign-tokens.js), com os rótulos das respostas.
+export const leadTokens = (lead, product) => campaignTokens(lead, product);
+export { interpolate };
 
 // Corpo do e-mail com o rodapé de descadastro anexado. Sem travessão: o rodapé
 // vai em TODO e-mail que sai daqui, então ele segue a mesma regra de copy do

@@ -1,4 +1,5 @@
 import React from "react";
+import { gradeBasisText } from "../lib/grade-rules.js";
 import "./desempenho.css";
 import { Segmented } from "../components/viz.jsx";
 import { EmptyState, Avatar, SecondaryButton, toast } from "../atoms.jsx";
@@ -354,7 +355,7 @@ function DesempenhoWorkspace({product,onOpenLead}) {
                 { label: "Ritmo · 7d", title: "toques por dia nos últimos 7 dias corridos (mesma régua do funil: toque na timeline pelo autor)", right: false },
                 { label: "No-show", title: "calls dos leads dela que não aconteceram (call vencida sem virar nada, furo marcado ou IA frio)" },
                 { label: "Agendadas", title: "calls dos leads dela pela data da call" },
-                { label: "Com ICP", title: "das agendadas, as com nota S/A/B (a faixa que vai pro closer sênior)" },
+                { label: "Com ICP", title: "das agendadas, as com nota de ICP da régua do produto (a faixa que vai pro closer sênior) · passe o mouse no número pra ver de onde veio a nota" },
                 { label: "Contatos", title: "leads cujo 1º contato humano na janela foi dela" },
                 { label: "Sem resposta", title: "dos contatados por ela, os sem mensagem recebida no WhatsApp depois do 1º contato" },
                 { label: "Social", title: "registrado por ela no Meu dia (+1 social selling)" },
@@ -367,7 +368,7 @@ function DesempenhoWorkspace({product,onOpenLead}) {
                   <td><Ritmo serie={extra?.ritmo?.[r.user]} dias={extra?.ritmoDays} /></td>
                   <Num v={r.noShow} tone="neg" />
                   <Num v={r.callsBooked} />
-                  <Num v={r.callsBookedIcp} />
+                  <Num v={r.callsBookedIcp} title={gradeBasisText(r.icpBasis, "calls agendadas") || undefined} />
                   <Num v={r.contacted} />
                   <Num v={r.noReply} tone="neg" />
                   {counter(r.user, "socialSelling")}

@@ -12,7 +12,7 @@ import { pickForm, seedFrom, readAbCookie, abCookieHeader, FORM_AB_FLAG } from "
 import { classificar } from "../crm/classificacao.js";
 import { attributionPain, normalizeMetaSource, referrerSource, sanitizeUtm } from "../marketing/attribution.js";
 import { isWonLead, kindOf } from "../crm/stages.js";
-import { callOutcome, callWitness, dayKey, FORWARD_KINDS, leadGrade } from "../metrics/metrics-core.js";
+import { callOutcome, callWitness, dayKey, FORWARD_KINDS, gradeBasis, gradeRulesOf, leadGrade } from "../metrics/metrics-core.js";
 import { formPageHtml, EMBED_JS } from "./form-page.js";
 import { dispatchProposal } from "../proposals/dispatch.js";
 import { CREATE_DEFAULTS } from "../crm/create-defaults.js";
@@ -27,10 +27,10 @@ import { UPSTREAM_FAILED, NOT_CONFIGURED } from "../platform/http-status.js";
 
 // Snapshot da classificação pro payload do lead. Devolve null (e não um objeto
 // vazio) quando o formulário não permite classificar, pro spread sumir.
-function classificacaoDoLead(form, answers) {
+function classificacaoDoLead(form, answers, rules) {
   try {
     const asked = (form?.questions || []).map((q) => q.key);
-    const clf = classificar(answers, { asked });
+    const clf = classificar(answers, { asked, rules });
     if (!clf.porte) return null; // sem porte não há classificação — não inventa
     return { classificacao: clf };
   } catch {
@@ -198,7 +198,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
       //
       // Só entra quando dá pra classificar (porte resolvido). Formulário sem as
       // perguntas de porte não ganha campo nenhum, em vez de ganhar um vazio.
-      ...(classificacaoDoLead(form, contact) || {}),
+      ...(classificacaoDoLead(form, contact, gradeRulesOf(product || { id: form.saas })) || {}),
       createdAt: new Date().toISOString(), // métricas de marketing filtram por período
     };
     // Evita CADASTRO DUPLICADO: mesma pessoa (telefone/e-mail) já no produto →
@@ -210,7 +210,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
       const dup = internal ? null : await findDuplicateLead(repo, { saas: form.saas, phone: contact.phone, email: contact.email });
       if (dup) {
         resubmit = true;
-        const patch = dedupMergePatch(dup, leadPayload);
+        const patch = dedupMergePatch(dup, leadPayload, gradeRulesOf(product || { id: form.saas }));
         lead = Object.keys(patch).length ? await repo.update("leads", dup.id, patch) : dup;
       } else {
         lead = await repo.create("leads", leadPayload);
@@ -458,7 +458,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
       // leadGrade) + fechamento: quantos ganharam e a receita (amount) deles —
       // a headline campeã é a que traz cliente grande e contrato, não clique.
       const grades = { S: 0, A: 0, B: 0, C: 0, D: 0, E: 0 };
-      for (const l of vLeads) { const g = leadGrade(l); if (g) grades[g] += 1; }
+      for (const l of vLeads) { const g = leadGrade(l, gradeRulesOf(product)); if (g) grades[g] += 1; }
       // Call agendada: callAt marcado (agenda do pipeline) ou lead num estágio
       // de kind "call" — mesmo critério do drip-runner pra "marcou call". Mede
       // o meio do funil comercial: headline que gera CONVERSA, não só envio.
@@ -471,6 +471,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
         sessions: new Set(events.filter(mine).map((e) => e.session)).size,
         views: vu("view"), starts: vu("start"), submits: vu("submit"),
         leads: vSubs.length, calls, won: wonLeads.length, grades, revenue,
+        gradeBasis: gradeBasis(vLeads, gradeRulesOf(product)), // de qual método da régua veio cada nota
         firstAt: times[0] || null, lastAt: times[times.length - 1] || null,
       };
     });

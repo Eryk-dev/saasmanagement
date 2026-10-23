@@ -14,12 +14,13 @@
 
 import { brtToIso } from "../crm/lead-flow.js";
 import { isOfferMsg, DEMO_RX, PITCH_RX } from "./sdr-signals.js";
-import { leadPainFocus, SDR_AUTHOR } from "./sdr-flow.js";
+import { leadPainFocus, SDR_AUTHOR, sdrBotConfig } from "./sdr-flow.js";
+import { isBusinessHours } from "../platform/business-hours.js";
 import { leadEngaged, lastInboundText, bareHour, PRICE_ASK_RX } from "./sdr-intents.js";
 
 const HOUR = 3_600_000;
 const MIN = 60_000;
-export const HUMAN_MUTE_MS = 4 * HOUR;   // gente falou há pouco: a conversa é dela
+export const HUMAN_MUTE_MS = 4 * HOUR;   // padrão da pausa de humano ativo (sdrBot.humanMuteHours)
 export const GREETING_GAP_MS = 6 * HOUR; // conversa parada há menos disso = SEM saudação nova (Leo, 22/08)
 export const DAILY_CAP = 15;             // mensagens do robô por conversa por dia
 export const CALL_WINDOW_BEFORE_MS = 30 * MIN;
@@ -41,6 +42,17 @@ export function handoffHolds({ log = {}, lastHumanOut = null, inCallWindow = fal
   if (!handoffMs) return false;
   if (lastHumanOut && Date.parse(lastHumanOut.at || 0) > handoffMs) return false;
   return !(log.handoffKind === "teto" && inCallWindow);
+}
+
+// Pausa de humano ativo (R-080): fala humana há menos de humanMuteHours cala
+// o robô. Com humanMuteOffHours, fora do horário configurado (fim de semana
+// sempre fora) ela não vale e o robô responde (R-085). `cfg` = sdrBotConfig.
+export function humanMuteHolds(cfg, lastHumanOut, nowMs) {
+  if (!lastHumanOut) return false;
+  const muteMs = (Number(cfg?.humanMuteHours) > 0 ? Number(cfg.humanMuteHours) : 4) * HOUR;
+  if (nowMs - Date.parse(lastHumanOut.at || 0) >= muteMs) return false;
+  if (cfg?.humanMuteOffHours && !isBusinessHours({ waCallFlow: { hourStart: cfg.humanMuteHourStart, hourEnd: cfg.humanMuteHourEnd } }, new Date(nowMs))) return false;
+  return true;
 }
 
 // Mensagens que valem pra agenda: depois de um cancelamento, as datas e ofertas
@@ -65,8 +77,8 @@ export function stateOf({ lead = {}, msgs = [], now = new Date(), product = null
   const awaitingReschedule = !!(reschedule && reschedule.status !== "offered");
   const agendaMessages = agendaMessagesOf(msgs, reschedule);
   const lastHumanOut = [...msgs].reverse().find((m) => m.direction === "out" && humanIds.has(m.author));
-  const lastHumanMs = lastHumanOut ? Date.parse(lastHumanOut.at || 0) : 0;
-  const humanActive = !!lastHumanOut && nowMs - lastHumanMs < HUMAN_MUTE_MS;
+  const muteCfg = sdrBotConfig({ ...(product || {}), sdrBot: { ...(product?.sdrBot || {}), enabled: true } });
+  const humanActive = humanMuteHolds(muteCfg, lastHumanOut, nowMs);
   const handoffPending = handoffHolds({ log, lastHumanOut, inCallWindow });
   const botToday = botTalkLast24h(msgs, nowMs);
   const prevMsg = msgs.length >= 2 ? msgs[msgs.length - 2] : null;

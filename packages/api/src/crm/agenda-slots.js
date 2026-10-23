@@ -25,7 +25,8 @@
 // primeiro na mistura). S/A/B nunca desce. Pool vazio cai pra todos os
 // closers — agendamento nunca trava.
 import { kindOf } from "./stages.js";
-import { leadGrade, ICP_GRADES } from "../metrics/metrics-core.js";
+import { gradeRulesOf, leadGrade, ICP_GRADES } from "../metrics/metrics-core.js";
+import { isIcpGrade } from "../shared/lead-grade.js";
 import { sanitizeWorkHours, offWorkHours } from "../shared/work-hours.js";
 
 const BRT_MS = 3 * 3_600_000;
@@ -125,7 +126,7 @@ function busyOf(userId, { leads, blocks, consultations, productById, excludeLead
 
 // ── Pools de closer por nível ───────────────────────────────────────────────
 const levelOf = (u) => { const n = Math.floor(Number(u?.compLevel)); return n >= 1 && n <= 3 ? n : 1; };
-export const UPPER_GRADES = ICP_GRADES; // "B+" da régua do Leo (S/A/B) — régua única no metrics-core
+export const UPPER_GRADES = ICP_GRADES; // padrão S/A/B; a agenda usa as notas de ICP da régua do produto
 
 export function closerPools(users, saas) {
   const closers = (users || []).filter((u) =>
@@ -231,7 +232,9 @@ export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wal
   ]);
   const productById = new Map(products.map((p) => [p.id, p]));
   const pools = sdr && sid === "leverads" ? sdrCloserPools(users, sid) : closerPools(users, sid);
-  const grade = gradeIn || leadGrade(lead || {}) || null;
+  const gradeRules = gradeRulesOf(productById.get(sid) || { id: sid });
+  const grade = gradeIn || leadGrade(lead || {}, gradeRules) || null;
+  const isUpper = (g) => !!g && isIcpGrade(g, gradeRules); // ICP da régua do produto vai pro sênior
 
   const ctx = { leads, blocks, consultations, productById, excludeLeadId: lead?.id || "", users };
   const busyFns = new Map();
@@ -256,7 +259,7 @@ export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wal
   // Lead de Lever Price (Leo, 23/10/2026): nunca marca com o Vitor, qualquer
   // que seja a nota. A call de Price fica com Leonardo/Jonan/Jonathan.
   if (sdr && sid === "leverads") {
-    if ((grade && UPPER_GRADES.has(grade)) || isPriceLead(lead)) return { slots: compute(pools.upper, limit, days), pool: "upper", grade };
+    if (isUpper(grade) || isPriceLead(lead)) return { slots: compute(pools.upper, limit, days), pool: "upper", grade };
     const junior = compute(pools.junior, 0, days);
     const juniorDays = new Set(junior.map((s) => dayOfSlot(s.at)));
     const upper = compute(pools.upper, 0, days).filter((s) => !juniorDays.has(dayOfSlot(s.at)));
@@ -268,7 +271,7 @@ export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wal
   const resolve = (janela) => {
   // S/A/B: pleno/sênior, nunca desce pro júnior. Sem ninguém no pool de cima,
   // cai pra todos (agendamento nunca trava por cadastro incompleto de nível).
-  if (grade && UPPER_GRADES.has(grade)) {
+  if (isUpper(grade)) {
     const pool = pools.upper.length ? pools.upper : pools.all;
     return { slots: compute(pool, limit, janela), pool: pools.upper.length ? "upper" : "all", grade };
   }

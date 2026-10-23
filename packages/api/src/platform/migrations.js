@@ -1,5 +1,5 @@
-import { revenueClassificationPatch } from "../crm/classificacao.js";
-import { revenueGrade, REVENUE_GRADE_VERSION, REVENUE_ICP } from "../shared/lead-grade.js";
+import { recalcClassifications } from "../crm/icp.js";
+import { REVENUE_GRADE_VERSION, REVENUE_ICP } from "../shared/lead-grade.js";
 // Migrações idempotentes de boot — rodam uma vez por inicialização, depois de
 // initDb()/ensureBootstrapAdmin(). Cada uma DEVE ser segura pra rodar repetidas
 // vezes (todo deploy reinicia o container) e nunca deve corromper dados que já
@@ -2219,13 +2219,12 @@ export async function ensurePanelCases(repo) {
 
 // Reclassifica apenas quem informou pedidos e ticket; legado fica intocado.
 // Carimbo por lead permite retomar após falha e incluir registros ainda não migrados.
+// Classificação gravada no lead × régua vigente de cada produto: refaz a nota
+// de quem ficou defasado (régua nova, lead antigo). Idempotente — só grava
+// quem mudou de nota (crm/icp.js).
 export async function ensureRevenueClassification(repo) {
   let changed = 0;
-  for (const lead of await repo.listWhere("leads", { saas: "leverads" })) {
-    if (!revenueGrade(lead) || lead.classificacao?.version === REVENUE_GRADE_VERSION) continue;
-    await repo.update("leads", lead.id, revenueClassificationPatch(lead));
-    changed++;
-  }
+  for (const product of await repo.list("products")) changed += await recalcClassifications(repo, product);
   const product = await repo.get("products", "leverads");
   if (product && product.icp?.classificationVersion !== REVENUE_GRADE_VERSION) {
     await repo.update("products", product.id, { icp: { ...product.icp, ...REVENUE_ICP } });

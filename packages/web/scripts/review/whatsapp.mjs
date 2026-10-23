@@ -35,10 +35,28 @@ try{
  const stats=await open(1440,'&failOnce=waInsights');await stats.getByText('Indicadores indisponíveis',{exact:true}).waitFor();await stats.getByRole('button',{name:'Atualizar indicadores'}).click();await stats.getByRole('button',{name:'Responder agora →',exact:true}).waitFor();await stats.close();
  const history=await open(1440);await history.locator('.inbox-compose textarea').fill('Já enviada');await history.evaluate(()=>window.__failInboxRead=true);await history.locator('.inbox-send').click();await history.locator('.inbox-chat-history').getByRole('alert').waitFor();await history.waitForFunction(()=>document.querySelector('.inbox-compose textarea')?.value==='');assert.equal(await history.evaluate(()=>window.__inboxSent.length),1);await history.evaluate(()=>window.__failInboxRead=false);await history.locator('.inbox-chat-history').getByRole('button',{name:'Tentar novamente'}).click();await history.locator('.inbox-bubble').filter({hasText:'Já enviada'}).waitFor();await history.close();
  const slow=await open(1440,'&holdSend');await slow.locator('.inbox-compose textarea').fill('Envio lento');await slow.locator('.inbox-send').click();assert.equal(await slow.locator('.inbox-send').isDisabled(),true);await slow.evaluate(()=>window.__releaseInboxSend());await slow.locator('.inbox-bubble').filter({hasText:'Envio lento'}).waitFor();assert.equal(await slow.evaluate(()=>window.__inboxSent.length),1);await slow.close();
+ const audio=await open(1440);await audio.locator('.inbox-conversation').filter({hasText:'Carla Nunes'}).click();
+ const voice=audio.locator('.inbox-bubble').filter({has:audio.locator('audio')});await voice.waitFor();
+ const speed=voice.getByRole('button',{name:/^velocidade/});assert.equal(await speed.textContent(),'1×');
+ await speed.click();assert.equal(await speed.textContent(),'1,5×');assert.equal(await voice.locator('audio').evaluate(a=>a.playbackRate),1.5);
+ await speed.click();assert.equal(await speed.textContent(),'2×');
+ await voice.getByRole('button',{name:'tocar áudio'}).click();await voice.getByRole('button',{name:'pausar áudio'}).waitFor();assert.equal(await voice.locator('audio').evaluate(a=>a.playbackRate),2);
+ await voice.getByRole('button',{name:'pausar áudio'}).click();
+ await voice.getByRole('button',{name:'Transcrever',exact:true}).click();await voice.getByText(/estou dirigindo/).waitFor();await h.capture(audio,'audio');await audio.close();
+ const robo=await open(1440);await robo.getByRole('button',{name:'Robô',exact:true}).click();await robo.getByText('IA do robô',{exact:true}).waitFor();
+ await robo.getByText('openai/gpt-5.6-luna',{exact:true}).first().waitFor();await robo.getByText('Respostas da IA',{exact:true}).waitFor();await robo.getByText(/Nunca fala preço/).waitFor();
+ await robo.getByRole('button',{name:'Claude (Anthropic)',exact:true}).click();await robo.getByText(/ANTHROPIC_API_KEY não está no servidor/).waitFor();
+ await robo.getByRole('button',{name:'OpenRouter',exact:true}).click();await robo.getByRole('button',{name:/padrão do provedor/}).click();await robo.getByRole('option',{name:/Gemini 2\.5 Flash/}).click();
+ await robo.getByRole('button',{name:'Salvar IA',exact:true}).click();await robo.getByText(/Vale a partir da próxima mensagem/).waitFor();await robo.getByText('google/gemini-2.5-flash',{exact:true}).first().waitFor();
+ await robo.getByRole('switch',{name:/Ignorar a pausa fora do horário comercial/}).click();await robo.getByText('Horário comercial, seg a sex, das',{exact:true}).waitFor();
+ await robo.getByRole('button',{name:'Salvar ajustes',exact:true}).click();await robo.getByText('Ajustes salvos.',{exact:true}).waitFor();
+ await h.capture(robo,'robo');await robo.close();
+ const roboMobile=await open(390);await roboMobile.getByRole('button',{name:'Robô',exact:true}).click();await roboMobile.getByText('IA do robô',{exact:true}).waitFor();await h.capture(roboMobile,'robo-390');assert.ok(await roboMobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await roboMobile.close();
+ const naoAdmin=await open(1440,'&naoadmin');await naoAdmin.getByRole('button',{name:'Automações',exact:true}).waitFor();assert.equal(await naoAdmin.getByRole('button',{name:'Robô',exact:true}).count(),0);await naoAdmin.close();
  for(const [width,q]of [[390,''],[1024,''],[1440,'&theme=dark'],[1440,'&empty']]){
   const page=await open(width,q);await h.capture(page,`state-${width}-${q||'default'}`);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
   if(width===390){assert.equal(await page.locator('.inbox-chat').count(),0);await page.locator('.inbox-conversation').first().click();await page.locator('.inbox-compose textarea').waitFor();await h.capture(page,'mobile-chat');await page.getByRole('button',{name:'Voltar pra lista de conversas'}).click();await page.locator('.inbox-list').waitFor();}
   await page.close();
  }
- assert.deepEqual(h.errors,[]);console.log('Inbox: navegação, filtros, envio mock, falha/retry, janela fechada, encerramento, canais, mobile e tema escuro OK.');
+ assert.deepEqual(h.errors,[]);console.log('Inbox: navegação, filtros, envio mock, áudio (velocidade e transcrição), aba Robô (só admin), falha/retry, janela fechada, encerramento, canais, mobile e tema escuro OK.');
 }finally{await h.close();}

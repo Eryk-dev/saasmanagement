@@ -1,9 +1,8 @@
 // Domínio Google: conta conectada, Meet e agenda. Publica no ctx os clientes que
-// os outros domínios usam (google, googleUser, meets) e o mailer, que envia pela
-// conta Google.
+// os outros domínios usam (google, googleUser, meets). O mailer mora no domínio
+// email (Resend, com o Gmail desta conta como reserva).
 
 import { registerGoogleRoutes } from "./routes.google.js";
-import { makeMailer } from "../integrations/mailer.js";
 import { startBookingSync } from "./booking-sync.js";
 
 export function register(app, repo, ctx) {
@@ -16,8 +15,6 @@ export function register(app, repo, ctx) {
     autoIntegrationMeet: g.autoIntegrationMeet, cancelIntegrationMeet: g.cancelIntegrationMeet,
     autoCallMeet: g.autoCallMeet, moveCallMeet: g.moveCallMeet, cancelCallMeet: g.cancelCallMeet,
   });
-  // Mailer (e-mail dos disparos/sequências): hoje envia pela conta Google conectada.
-  ctx.mailer = opts.mailer || makeMailer({ google: ctx.google });
 }
 
 export function start(repo, { clients, log, stops }) {

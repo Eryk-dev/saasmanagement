@@ -4,19 +4,26 @@
 // abria alerta pra gente ouvir (11 alertas em 2 semanas, raio-x 30/09), e só
 // o cérebro transcrevia. O texto fica gravado na mensagem (wa_messages.
 // transcript), então a segunda chamada é grátis; em voo, a segunda espera a
-// primeira (sem transcrever duas vezes).
+// primeira (sem transcrever duas vezes). O botão "Transcrever" da Inbox chama
+// com `strict` pra mostrar o motivo da falha; os automáticos seguem com "".
 const inflight = new Map();
 
-export async function transcribeInbound(repo, { wa, transcriber, message, lead = null, log = console } = {}) {
+export async function transcribeInbound(repo, { wa, transcriber, message, lead = null, log = console, strict = false } = {}) {
   const m = message;
   if (!m?.id) return "";
   if (m.transcript) return m.transcript;
   if (m.media?.kind !== "audio" || !transcriber?.configured?.()) return "";
-  if (inflight.has(m.id)) return inflight.get(m.id);
-  const job = (async () => {
+  if (!inflight.has(m.id)) inflight.set(m.id, runJob(repo, { wa, transcriber, m, lead, log }));
+  const { text, error } = await inflight.get(m.id);
+  if (strict && error) throw error;
+  return text;
+}
+
+function runJob(repo, { wa, transcriber, m, lead, log }) {
+  return (async () => {
     try {
       const fresh = await repo.get("wa_messages", m.id).catch(() => null);
-      if (fresh?.transcript) return fresh.transcript;
+      if (fresh?.transcript) return { text: fresh.transcript };
       let buf = null, mime = m.media.mime || "audio/ogg";
       const cached = await repo.get("wa_media", m.id).catch(() => null);
       if (cached?.data) { buf = Buffer.from(cached.data, "base64"); mime = cached.mime || mime; }
@@ -27,20 +34,18 @@ export async function transcribeInbound(repo, { wa, transcriber, message, lead =
           catch { /* cache é bônus */ }
         }
       }
-      if (!buf || buf.length < 1024 || buf.length > 25 * 1024 * 1024) return "";
+      if (!buf || buf.length < 1024 || buf.length > 25 * 1024 * 1024) return { text: "" };
       const text = await transcriber.transcribe(buf, {
         filename: `wa-${m.id}.ogg`, mime,
         prompt: ["LeverAds", lead?.name, lead?.company].filter(Boolean).join(", "),
       });
       if (text) await repo.update("wa_messages", m.id, { transcript: text }).catch(() => {});
-      return text || "";
+      return { text: text || "" };
     } catch (err) {
       log.warn?.({ msg: m.id, err: err.message }, "transcrição do áudio falhou");
-      return "";
+      return { text: "", error: err };
     } finally {
       inflight.delete(m.id);
     }
   })();
-  inflight.set(m.id, job);
-  return job;
 }

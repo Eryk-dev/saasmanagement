@@ -1,4 +1,5 @@
 import React from "react";
+import { gradeBasisText } from "../lib/grade-rules.js";
 import "./marketing.css";
 import "./forms.css";
 import { api } from "../lib/api.js";
@@ -304,7 +305,7 @@ function FormsScreen({ saasId }) {
                                         <span className="tnum" style={{ textAlign: "right" }}>{window.fmt.int(v.views)}</span>
                                         <AbNum count={v.starts} sub={`${pct(v.starts, v.views)} das visitas`} />
                                         <AbNum count={vLeads} sub={`${pct(v.submits, v.views)} das visitas`} />
-                                        <span style={{ justifySelf: "end" }}><AbcCell abc={gr} abcCost={null} money={window.fmt.moneyFull} /></span>
+                                        <span style={{ justifySelf: "end" }} title={gradeBasisText(v.gradeBasis) || undefined}><AbcCell abc={gr} abcCost={null} money={window.fmt.moneyFull} /></span>
                                         <AbNum count={v.calls || 0} sub={`${pct(v.calls || 0, vLeads || 0)} dos leads`} />
                                         <AbNum count={v.won || 0} sub={`${pct(v.won || 0, vLeads || 0)} dos leads`} ink="var(--pos)" />
                                         <span className="tnum" style={{ textAlign: "right", fontWeight: 600, color: v.revenue ? "var(--fg-1)" : "var(--fg-4)" }}>{v.revenue ? window.fmt.moneyFull(v.revenue) : "—"}</span>

@@ -51,7 +51,7 @@ test("mark: valida entrada e existência (400/404)", async () => {
   assert.equal((await app.inject({ method: "POST", url: "/api/campaigns/cmp1/mark", payload: { leadId: "l404", channel: "whatsapp" } })).statusCode, 404);
 });
 
-test("send-email: 503 sem Gmail; com mailer envia, pula opt-out/sem-email, loga e marca", async () => {
+test("send-email: 424 sem provedor; enfileira só quem pode receber e o ciclo do servidor envia, loga e marca", async () => {
   // Gate: mailer não pronto → 503.
   const notReady = await buildApp({ mailer: { ready: async () => false, send: async () => {} } });
   assert.equal((await notReady.app.inject({ method: "POST", url: "/api/campaigns/cmp1/send-email", payload: { leadIds: ["l1"] } })).statusCode, 424);
@@ -63,9 +63,13 @@ test("send-email: 503 sem Gmail; com mailer envia, pula opt-out/sem-email, loga 
   const res = await app.inject({ method: "POST", url: "/api/campaigns/cmp1/send-email", payload: { leadIds: ["l1", "l2", "l3"] } });
   assert.equal(res.statusCode, 200);
   const body = res.json();
-  assert.equal(body.ok, 1, "só l1 tem e-mail e não optou fora");
-  assert.equal(body.results.find((r) => r.leadId === "l2").reason, "sem e-mail");
-  assert.equal(body.results.find((r) => r.leadId === "l3").reason, "descadastrado");
+  assert.equal(body.queued, 1, "só l1 tem e-mail e não optou fora");
+  assert.equal(body.skipped.find((r) => r.leadId === "l2").reason, "sem e-mail");
+  assert.equal(body.skipped.find((r) => r.leadId === "l3").reason, "descadastrado");
+  assert.equal(outbox.length, 0, "a requisição só enfileira");
+  const { runEmailBroadcastTick } = await import("../src/marketing/broadcast-email.js");
+  const tick = await runEmailBroadcastTick(repo, { mailer });
+  assert.equal(tick.sent, 1);
 
   assert.equal(outbox.length, 1);
   assert.equal(outbox[0].to, "joao@x.com");
@@ -76,6 +80,7 @@ test("send-email: 503 sem Gmail; com mailer envia, pula opt-out/sem-email, loga 
 
   const camp = await repo.get("campaigns", "cmp1");
   assert.ok(camp.sent.l1.email, "carimbou o e-mail no progresso");
+  assert.equal(camp.status, "done", "fila vazia fecha o broadcast");
   const emailActs = (await repo.list("activities")).filter((a) => a.type === "email");
   assert.equal(emailActs.length, 1);
   assert.equal(emailActs[0].meta.campaign, "cmp1");

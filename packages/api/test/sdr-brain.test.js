@@ -1825,3 +1825,39 @@ test("sombra do validador: nenhuma das cenas acima divergiu entre sdr-guards e a
   assert.deepEqual(shadowStats.shadowDiff, []);
 });
 
+
+test("IA escolhida na aba Robô: o cérebro decide com o cliente de sdrBot.ai, não com o padrão", async () => {
+  const repo = await world({ sdrBot: { ai: { provider: "anthropic", model: "claude-a" } }, messages: [{ direction: "in", text: "como funciona?", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes();
+  const escolhida = [];
+  const chosen = { configured: () => true, sdrDecide: async (ctx) => { escolhida.push(ctx); return { acao: "silencio", mensagem: "", horario: "", email: "", motivoHumano: "" }; } };
+  const seen = [];
+  const brain = makeSdrBrain({
+    repo, whatsapp: fakes.wa, anthropic: fakes.anthropic, aiFor: (choice) => { seen.push(choice); return chosen; },
+    autoCallMeet: fakes.autoCallMeet, cancelCallMeet: fakes.cancelCallMeet, log: { warn: () => {} }, now: () => NOW, replyDelayMs: 0, sleep: async () => {},
+  });
+  await brain.handleInbound(INBOUND);
+  assert.deepEqual(seen[0], { provider: "anthropic", model: "claude-a" });
+  assert.equal(escolhida.length, 1);
+  assert.equal(fakes.calls.length, 0);
+});
+
+test("fora do horário do robô, com a opção ligada, a fala recente do time não cala a IA #R-085", async () => {
+  // Quarta 19h BRT; o Leonardo (humano) falou às 18h40.
+  const late = new Date("2026-08-19T22:00:00Z");
+  const sdrBot = { humanMuteOffHours: true, humanMuteHourStart: 8, humanMuteHourEnd: 18 };
+  const msgs = [
+    { direction: "out", author: "leonardo", text: "já te respondo", at: ISO("2026-08-19T21:40:00Z") },
+    { direction: "in", text: "como funciona?", at: ISO("2026-08-19T21:59:00Z") },
+  ];
+  const brainAt = (repo, fakes) => makeSdrBrain({
+    repo, whatsapp: fakes.wa, anthropic: fakes.anthropic, autoCallMeet: fakes.autoCallMeet, cancelCallMeet: fakes.cancelCallMeet,
+    log: { warn: () => {} }, now: () => late, replyDelayMs: 0, sleep: async () => {},
+  });
+  const ligado = makeFakes();
+  await brainAt(await world({ sdrBot, messages: msgs }), ligado).handleInbound(INBOUND);
+  assert.equal(ligado.calls.length, 1);
+  const desligado = makeFakes();
+  assert.equal(await brainAt(await world({ messages: msgs }), desligado).handleInbound(INBOUND), "human-active");
+  assert.equal(desligado.calls.length, 0);
+});

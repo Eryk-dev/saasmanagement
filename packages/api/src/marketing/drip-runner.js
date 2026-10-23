@@ -10,6 +10,9 @@
 import { logActivity } from "../crm/lead-flow.js";
 import { isWonLead, kindOf } from "../crm/stages.js";
 import { leadTokens, interpolate, baseUrl, unsubToken, emailBodyWithUnsub } from "./disparos-util.js";
+import { sendTemplateToLead } from "./broadcast-wa.js";
+import { getWaHealth, waHealthSummary } from "../whatsapp/wa-health.js";
+import { digits } from "../whatsapp/whatsapp.js";
 
 const DAY = 86_400_000;
 
@@ -57,7 +60,10 @@ export async function advanceEnrollment(repo, seq, en, now = Date.now()) {
   return repo.update("sequence_enrollments", en.id, patch);
 }
 
-export function makeDripRunner({ repo, mailer, log = console } = {}) {
+// `whatsapp`: cliente (ou função que o devolve — o domínio whatsapp registra
+// depois do marketing). Só é usado no passo de WhatsApp com modelo oficial.
+export function makeDripRunner({ repo, mailer, whatsapp, log = console } = {}) {
+  const waClient = () => (typeof whatsapp === "function" ? whatsapp() : whatsapp);
   async function tick() {
     const now = Date.now();
     const nowIso = new Date(now).toISOString();
@@ -113,11 +119,29 @@ export function makeDripRunner({ repo, mailer, log = console } = {}) {
         const step = (seq.steps || [])[en.stepIndex];
         if (!step) { await repo.update("sequence_enrollments", en.id, { status: "done", lastAt: nowIso }); done++; continue; }
 
-        // WhatsApp é assistido: para no passo e espera o operador (fila da tela).
-        // Número inválido (não entregou antes) ou descadastrado do WhatsApp = pula
-        // o passo (avança), não põe na fila pra o operador perder tempo.
+        // WhatsApp: número inválido (não entregou antes) ou descadastrado = pula
+        // o passo (avança). Com MODELO OFICIAL o passo sai sozinho pela API
+        // (fora da janela de 24h só modelo aprovado entra); texto livre para
+        // na Fila do WhatsApp e espera o time mandar.
         if (step.channel === "whatsapp") {
-          if (lead.whatsappInvalid || lead.whatsappOptOut) {
+          if (lead.whatsappInvalid || lead.whatsappOptOut || (step.template?.name && !digits(lead.phone || ""))) {
+            await advanceEnrollment(repo, seq, en, now);
+            continue;
+          }
+          if (step.template?.name) {
+            const wa = waClient();
+            if (!wa?.configured?.()) continue; // sem WhatsApp no servidor: tenta no próximo ciclo
+            if (waHealthSummary(await getWaHealth(repo)).level === "danger") continue; // número sinalizado: segura
+            try {
+              await sendTemplateToLead(repo, wa, {
+                tpl: step.template, lead, product, phoneId: product?.waPhoneId || undefined, author: "sequencia",
+                activity: { text: `sequência: ${seq.name || ""}`, meta: { sequence: seq.id, step: en.stepIndex } }, now: new Date(now),
+              });
+              sent++;
+            } catch (err) {
+              if (!err.skip) throw err; // falha da Meta: re-tenta no próximo ciclo
+              log.warn?.({ seq: seq.id, lead: lead.id }, "passo de WhatsApp pulado: variável sem valor para o lead");
+            }
             await advanceEnrollment(repo, seq, en, now);
             continue;
           }
@@ -128,9 +152,9 @@ export function makeDripRunner({ repo, mailer, log = console } = {}) {
 
         // E-mail: envia pela conta Google. Sem e-mail / descadastrado = pula o
         // passo (avança). Sem Gmail pronto = NÃO avança (re-tenta no próximo ciclo).
-        if (lead.email && !lead.emailOptOut) {
+        if (lead.email && !lead.emailOptOut && !lead.emailInvalid) {
           if (!mailer || !(await mailer.ready())) continue;
-          const toks = leadTokens(lead);
+          const toks = leadTokens(lead, product);
           const unsubUrl = `${baseUrl()}/u/${unsubToken(lead.id)}`;
           await mailer.send({
             to: lead.email,
@@ -159,8 +183,8 @@ export function makeDripRunner({ repo, mailer, log = console } = {}) {
 
 // Poller de produção: a cada 5 min, single-flight, mesmo padrão do
 // startCallSummaries. Silencioso quando não há sequência ativa.
-export function startDripSequences(repo, { mailer, intervalMs = 300_000, log = console } = {}) {
-  const worker = makeDripRunner({ repo, mailer, log });
+export function startDripSequences(repo, { mailer, whatsapp, intervalMs = 300_000, log = console } = {}) {
+  const worker = makeDripRunner({ repo, mailer, whatsapp, log });
   let running = false;
   const run = async () => {
     if (running) return;

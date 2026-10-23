@@ -17,6 +17,8 @@ import { ScriptPanel } from "./today.jsx";
 import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { NAV } from "../chrome.jsx";
 import { FilterTab, PageHead } from "../components/viz.jsx";
+import { IcpSettings } from "./settings-icp.jsx";
+import { EmailIntegrationCard } from "./settings-email.jsx";
 // SaaS Settings (fase 3) — funil, campos custom, pesos da saúde e Aha EDITÁVEIS
 // por SaaS (gravam no produto). Equipe (roles sdr/closer/integrator) é global.
 
@@ -56,6 +58,7 @@ function SettingsWorkspace() {
     ["followup",    "Follow-up"],
     ["team",        "Equipe"],
     ["fields",      "Campos"],
+    ["icp",         "ICP & nota"],
     ["integrations","Integrações"],
   ];
 
@@ -100,8 +103,8 @@ function SettingsWorkspace() {
       <PageHead title="Configurações" sub={`funil, campos e integrações · ${s?.name}`}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button disabled={pending>0 || saveState==="busy"} onClick={() => {setRevision(n=>n+1);setSaveState("idle");}} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-1)", borderRadius: 999, background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>descartar</button>
-          <button onClick={saveAll} disabled={pending>0 || saveState === "busy" || tab === "team"} style={{ height: 32, padding: "0 15px", borderRadius: 999, fontSize: 12.5, fontWeight: 600, transition: "background .15s ease", ...saveLook }}>
-            {pending>0 || saveState === "busy" ? "salvando…" : saveState === "done" ? "salvo ✓" : saveState === "error" ? "erro ao salvar" : tab === "team" ? "equipe salva ao editar" : "salvar alterações"}
+          <button onClick={saveAll} disabled={pending>0 || saveState === "busy" || tab === "team" || tab === "icp"} style={{ height: 32, padding: "0 15px", borderRadius: 999, fontSize: 12.5, fontWeight: 600, transition: "background .15s ease", ...saveLook }}>
+            {pending>0 || saveState === "busy" ? "salvando…" : saveState === "done" ? "salvo ✓" : saveState === "error" ? "erro ao salvar" : tab === "team" ? "equipe salva ao editar" : tab === "icp" ? "ICP salva na própria seção" : "salvar alterações"}
           </button>
         </div>
       </PageHead>
@@ -132,6 +135,7 @@ function SettingsWorkspace() {
           {tab === "followup"     && <FollowupSettings />}
           {tab === "team"         && <TeamSettings />}
           {tab === "fields"       && <FieldsSettings key={s.id} s={s} />}
+          {tab === "icp"          && <IcpSettings key={s.id} s={s} Header={SettingHeader} />}
           {tab === "integrations" && <IntegrationsSettings key={s.id} s={s} />}
         </fieldset>
       </div>
@@ -540,6 +544,7 @@ const ROLE_OPTS = [
   ["social", "Mídia social", "cuida das redes sociais e do conteúdo"],
   ["admin", "Admin", "dono da operação: não é vaga do funil e não é cobrado no treinamento"],
   ["support", "Suporte", "atendente de tickets: os produtos que atende ficam em Suporte → Configurações de SLA"],
+  ["icp", "Editor de ICP", "altera a régua de nota e o ICP do produto (Configurações → ICP & nota); muda métricas, agenda do sênior e cadência"],
 ];
 
 // Senha inicial do usuário novo: 10 caracteres com letra maiúscula, minúscula,
@@ -1270,12 +1275,11 @@ function IntegrationsSettings({ s }) {
   const copyText = (text, msg) => { try { navigator.clipboard.writeText(text); setGwMsg(msg); } catch { window.prompt("URL do webhook:", text); } };
 
   const items = [
-    { k: "E-mail", desc: "envio de proposta + notificações (Resend/SMTP)", on: false, off: "em breve" },
     { k: "Webhook", desc: "POST em eventos: lead novo, proposta vista/aceita", on: false, off: "em breve" },
   ];
   return (
     <div>
-      <SettingHeader title="Integrações" sub="tokens vivem no env do servidor · a conta de anúncio da Meta é por SaaS (abaixo)" />
+      <SettingHeader title="Integrações" sub="tokens vivem no env do servidor, exceto a chave do e-mail (Resend), guardada só no servidor · a conta de anúncio da Meta é por SaaS (abaixo)" />
 
       {/* Mercado Pago: financeiro (espelho de pagamentos + cobranças + assinaturas) */}
       <div style={{ padding: "14px 16px", border: mpOn ? "1px solid var(--line-1)" : "1px dashed var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", marginBottom: 10 }}>
@@ -1417,7 +1421,7 @@ function IntegrationsSettings({ s }) {
           <div>
             <div style={{ fontSize: 13, fontWeight: 500, color: "var(--warn)" }}>conta do sistema desconectada</div>
             <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>
-              é ela que manda o e-mail dos disparos e organiza as consultas da UniqueKids
+              é ela que organiza as consultas da UniqueKids e manda o e-mail quando o Resend não está configurado
             </div>
           </div>
           <button onClick={connectGoogle} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}>
@@ -1425,6 +1429,8 @@ function IntegrationsSettings({ s }) {
           </button>
         </div>
       )}
+
+      <EmailIntegrationCard />
 
       <MyGoogleCalendarCard />
 

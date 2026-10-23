@@ -196,7 +196,7 @@
  .inbox-client {height:auto;max-height:650px;}
  .inbox-screen button,.inbox-screen input,.inbox-screen select {min-height:44px;}
  .inbox-number {gap:14px;}
- .inbox-channels > div {max-width:100%;}
+ .inbox-channels > div {max-width:100%;flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none;}
  .inbox-channels > div > button {padding:0 10px!important;}
  .inbox-chat-head {padding:12px;gap:8px;}
 }

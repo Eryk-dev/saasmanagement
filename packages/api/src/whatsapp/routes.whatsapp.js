@@ -10,6 +10,7 @@ import { runWaFlows } from "./wa-flows.js";
 import { handleSdrInbound } from "../sdr/sdr-flow.js";
 import { transcriber as defaultTranscriber } from "./transcribe.js";
 import { transcribeInbound } from "./wa-transcribe.js";
+import { markBroadcastDeliveryFailed } from "../marketing/broadcast-wa.js";
 import { formatSummaryText } from "../calls/call-summaries.js";
 import { logActivity, onOutboundMessage } from "../crm/lead-flow.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "../platform/http-status.js";
@@ -247,6 +248,9 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
               // Envio do ROBÔ recusado pela Meta → alerta quente (senão o
               // sdrLog diz "tocado" e o lead morre no silêncio).
               if (st.status === "failed") await flagFailedBotSend(repo, st.id).catch(() => {});
+              // Mensagem de broadcast recusada na entrega: o lead vira falha no
+              // broadcast (pode ser reenviado) em vez de "já recebeu".
+              if (st.status === "failed") await markBroadcastDeliveryFailed(repo, st.id).catch(() => {});
             }
           } else if (field === "calls" || v.calls) {
             // Ligação pelo cockpit (Calling API). Lições das chamadas REAIS de
@@ -476,6 +480,28 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
     return reply.type(mime || msg.media.mime || "application/octet-stream").send(buf);
   });
 
+  // "Transcrever" no player da Inbox: mesmo transcritor do webhook e do robô
+  // (wa-transcribe.js), então áudio já transcrito volta do campo `transcript`
+  // sem custo. Vale pra áudio recebido e pro gravado no cockpit (os dois ficam
+  // em wa_media). Falha vira 422 com o motivo, nunca 5xx (o proxy troca o corpo).
+  app.post("/api/whatsapp/messages/:id/transcribe", async (req, reply) => {
+    const msg = await repo.get("wa_messages", req.params.id);
+    if (!msg) return reply.code(404).send({ error: "mensagem não encontrada" });
+    if (msg.media?.kind !== "audio") return reply.code(400).send({ error: "a mensagem não é um áudio" });
+    if (msg.transcript) return { transcript: msg.transcript };
+    if (!transcriber.configured()) {
+      return reply.code(NOT_CONFIGURED).send({ error: "transcrição não configurada no servidor (OPENROUTER_API_KEY ou OPENAI_API_KEY)" });
+    }
+    const leadId = msg.leadId || (await repo.get("wa_threads", msg.thread).catch(() => null))?.leadId;
+    const lead = leadId ? await repo.get("leads", leadId).catch(() => null) : null;
+    try {
+      const transcript = await transcribeInbound(repo, { wa, transcriber, message: msg, lead, log: req.log, strict: true });
+      return { transcript };
+    } catch (err) {
+      return reply.code(422).send({ error: `não deu pra transcrever: ${String(err.message || err).slice(0, 200)}` });
+    }
+  });
+
   // Encerrar/reabrir a conversa (status do INBOX, separado da etapa do funil).
   // Encerrada sai da lista viva e das contagens; mensagem nova reabre sozinha.
   app.post("/api/whatsapp/threads/:id/close", async (req, reply) => {
@@ -577,6 +603,36 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
     }
   });
 
+  // Gestão (Disparos → Modelos): TODOS os modelos da conta, com status,
+  // motivo de rejeição e qualidade. Sem cache — quem abre a gestão quer o agora.
+  app.get("/api/whatsapp/templates/all", async (req, reply) => {
+    if (!wa.configured()) return reply.code(NOT_CONFIGURED).send({ error: "WhatsApp não configurado no servidor" });
+    try {
+      const wabaId = await resolveWabaId(repo, wa);
+      if (!wabaId) return reply.code(404).send({ error: "não achei o id da conta do WhatsApp (WABA) — mande uma mensagem pro número ou defina WHATSAPP_WABA_ID" });
+      return { templates: await wa.listAllTemplates(wabaId) };
+    } catch (err) {
+      return reply.code(UPSTREAM_FAILED).send({ error: String(err.message || err).slice(0, 300) });
+    }
+  });
+
+  // Apaga um modelo da conta (todas as línguas daquele nome). A Meta não deixa
+  // reusar o nome por 30 dias.
+  app.delete("/api/whatsapp/templates/:name", async (req, reply) => {
+    if (!wa.configured()) return reply.code(NOT_CONFIGURED).send({ error: "WhatsApp não configurado no servidor" });
+    const name = String(req.params.name || "").trim();
+    if (!/^[a-z0-9_]{1,512}$/.test(name)) return reply.code(400).send({ error: "nome de modelo inválido" });
+    try {
+      const wabaId = await resolveWabaId(repo, wa);
+      if (!wabaId) return reply.code(404).send({ error: "não achei o id da conta do WhatsApp (WABA)" });
+      const r = await wa.deleteTemplate(wabaId, name);
+      tplCache = { at: 0, wabaId: "", items: null };
+      return { ok: true, ...r };
+    } catch (err) {
+      return reply.code(UPSTREAM_FAILED).send({ error: String(err.message || err).slice(0, 300) });
+    }
+  });
+
   // Cria um template e SUBMETE pra aprovação da Meta. Nasce PENDING; a Meta
   // revisa (minutos a horas) e, aprovado, entra no composer sozinho. Nome só
   // com [a-z0-9_] (regra da Meta); UTILITY (relação/transação) x MARKETING
@@ -590,16 +646,29 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
       ? String(req.body.category).toUpperCase() : "UTILITY";
     const language = String(req.body?.language || "pt_BR").trim() || "pt_BR";
     const example = Array.isArray(req.body?.example) ? req.body.example.map((x) => String(x ?? "")) : [];
+    const headerText = String(req.body?.headerText || "").trim();
+    const footer = String(req.body?.footer || "").trim();
+    const buttons = Array.isArray(req.body?.buttons) ? req.body.buttons.filter((b) => b && String(b.text || "").trim()) : [];
     if (!name) return reply.code(400).send({ error: "dá um nome pro template (ex.: call_no_show)" });
     if (!body) return reply.code(400).send({ error: "escreve o corpo da mensagem" });
-    const nVars = (body.match(/\{\{\s*\d+\s*\}\}/g) || []).length;
-    if (nVars > 0 && example.filter((x) => x.trim()).length < nVars) {
-      return reply.code(400).send({ error: `dá um exemplo pra cada variável ({{1}}…): a Meta reprova template sem exemplo` });
+    if (body.length > 1024) return reply.code(400).send({ error: "o corpo passa de 1.024 caracteres (limite da Meta)" });
+    if (headerText.length > 60 || /\{\{/.test(headerText)) return reply.code(400).send({ error: "o cabeçalho de texto tem até 60 caracteres e sem variável" });
+    if (footer.length > 60 || /\{\{/.test(footer)) return reply.code(400).send({ error: "o rodapé tem até 60 caracteres e sem variável" });
+    if (buttons.length > 3) return reply.code(400).send({ error: "no máximo 3 botões" });
+    for (const b of buttons) {
+      if (String(b.text).trim().length > 25) return reply.code(400).send({ error: `o botão "${String(b.text).trim()}" passa de 25 caracteres` });
+      if (String(b.type).toUpperCase() === "URL" && !/^https:\/\/\S+$/.test(String(b.url || "").trim())) return reply.code(400).send({ error: `o botão "${String(b.text).trim()}" precisa de um link https` });
+    }
+    // Variáveis numeradas: a Meta pede um exemplo por número ({{1}}…{{N}}), não por ocorrência.
+    const nums = (body.match(/\{\{\s*(\d+)\s*\}\}/g) || []).map((s) => Number(s.replace(/\D/g, "")));
+    const nVars = nums.length ? Math.max(...nums) : 0;
+    if (nVars > 0 && Array.from({ length: nVars }, (_, i) => String(example[i] || "").trim()).some((x) => !x)) {
+      return reply.code(400).send({ error: `dá um exemplo pra cada variável ({{1}}…{{${nVars}}}): a Meta reprova template sem exemplo` });
     }
     try {
       const wabaId = await resolveWabaId(repo, wa);
       if (!wabaId) return reply.code(404).send({ error: "não achei o id da conta do WhatsApp (WABA) — mande uma mensagem pro número ou defina WHATSAPP_WABA_ID" });
-      const r = await wa.createTemplate(wabaId, { name, category, language, body, example });
+      const r = await wa.createTemplate(wabaId, { name, category, language, body, example, headerText, footer, buttons });
       tplCache = { at: 0, wabaId: "", items: null }; // fura o cache (aparece quando aprovar)
       return { ok: true, ...r };
     } catch (err) {

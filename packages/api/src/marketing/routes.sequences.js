@@ -13,8 +13,8 @@ import { makeDripRunner, advanceEnrollment } from "./drip-runner.js";
 const DAY = 86_400_000;
 const ATTR_WINDOW = 30 * DAY;
 
-export function registerSequenceRoutes(app, repo, { mailer } = {}) {
-  const runner = makeDripRunner({ repo, mailer, log: app.log || console });
+export function registerSequenceRoutes(app, repo, { mailer, whatsapp } = {}) {
+  const runner = makeDripRunner({ repo, mailer, whatsapp, log: app.log || console });
 
   // Roda um ciclo do motor sob demanda (o poller roda sozinho a cada 5 min).
   app.post("/api/sequences/run", async () => await runner.tick());

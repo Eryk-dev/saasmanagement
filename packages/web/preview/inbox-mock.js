@@ -2,13 +2,38 @@
 const ago = (hours) => new Date(Date.now() - hours * 3600000).toISOString();
 const messages = new Map();
 let rows = [];
+// Aba Robô (só admin): configuração da IA e ajustes avançados do robô SDR.
+let robo = {
+  saas: "leverads", enabled: true, conversation: true,
+  ai: { provider: "", model: "" },
+  effective: { provider: "openrouter", model: "openai/gpt-5.6-luna", fallback: "" },
+  default: { provider: "openrouter", model: "openai/gpt-5.6-luna", configured: true },
+  providers: { openrouter: true, anthropic: false },
+  values: { humanMuteHours: 4, humanMuteOffHours: false, humanMuteHourStart: 8, humanMuteHourEnd: 18, debounceSec: 20, freshHours: 24, ladderColdDays: 5, ladderWarmDays: [3, 8, 13], ladderDropHours: 48, ladderDrop: true, ladderPerDay: 60, ladderCooldownDays: 3, backlogRescue: false, backlogRescuePerBatch: 100, backlogRescueMaxFailPct: 15, backlogRescueMinSample: 20, promptVersion: "v1", offerContract: "v1", guardsMode: "audit" },
+};
 const templates = [
   { name: "retomar_conversa", language: "pt_BR", status: "APPROVED", params: 1, body: "Oi {{1}}, podemos retomar nossa conversa?" },
   { name: "confirmar_call", language: "pt_BR", status: "APPROVED", params: 1, body: "Oi {{1}}, está tudo certo para nossa call?" },
 ];
 
+// WAV mudo de `secs` segundos (8kHz, 8 bits) pro player da prévia tocar.
+function silentWav(secs) {
+  const n = 8000 * secs, buf = new ArrayBuffer(44 + n), v = new DataView(buf);
+  const str = (o, t) => [...t].forEach((c, k) => v.setUint8(o + k, c.charCodeAt(0)));
+  str(0, "RIFF"); v.setUint32(4, 36 + n, true); str(8, "WAVEfmt "); v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 8000, true);
+  v.setUint16(32, 1, true); v.setUint16(34, 8, true); str(36, "data"); v.setUint32(40, n, true);
+  new Uint8Array(buf, 44).fill(128);
+  return new Blob([buf], { type: "audio/wav" });
+}
+
 export function setupInboxPreview(seed, params) {
   seed.CONFIG.whatsapp = { configured: true, health: { level: "ok", messages: [] } };
+  // &naoadmin: sem a etiqueta admin a aba Robô some.
+  if (params.has("naoadmin")) {
+    seed.ME = { ...seed.ME, roles: ["sdr"] };
+    seed.USERS = (seed.USERS || []).map((u) => (u.id === seed.ME.id ? { ...u, roles: ["sdr"] } : u));
+  }
   seed.SAAS[0].waPhoneId = "preview-number";
   const people = [
     ["l5", "Carla Nunes", "Casa Bela Utilidades", 3, "in"],
@@ -27,6 +52,8 @@ export function setupInboxPreview(seed, params) {
       { id: `${id}-2`, direction: "out", author: author || "leo", text: "Claro! Hoje vocês sobem os anúncios manualmente em cada conta?", at: ago(hours + 0.4), status: "read" },
       { id: `${id}-3`, direction, author: direction === "out" ? author : "", text: direction === "in" ? "Sim, são três contas. Podemos conversar amanhã?" : "Qual o melhor horário para conversarmos?", at: ago(hours), status: direction === "out" ? "delivered" : "received" },
     ];
+    // Nota de voz na primeira conversa: player, velocidade e "Transcrever".
+    if (i === 0) msgs.splice(1, 0, { id: `${id}-audio`, direction: "in", text: "🎤 áudio", media: { kind: "audio", id: "preview-audio", mime: "audio/wav" }, at: ago(hours + 0.6) });
     messages.set(id, msgs);
     return { id, phone: id, name, company, leadId, saas: "leverads", waPhoneId: "preview-number", stage: lead?.stage, status, unread: direction === "in" ? 2 : 0, hasIn: true, lastAt: ago(hours), lastDir: direction, lastText: msgs.at(-1).text, lastOutAuthor: author || "leo", sdrHandoffAt: i === 2 ? ago(0.2) : null };
   });
@@ -91,7 +118,31 @@ export const inboxMock = {
     const waiting = open.filter((t) => t.lastDir === "in");
     return { days: 7, awaiting: waiting.length, oldestWaitHours: waiting.length ? Math.max(...waiting.map((t) => (Date.now() - new Date(t.lastAt)) / 3600000)) : null, medianReplyMinutes: 18, openWindow: open.filter((t) => (messages.get(t.id) || []).some((m) => m.direction === "in" && Date.now() - new Date(m.at) < 86400000)).length, activeThreads: open.length, unread: open.reduce((sum, t) => sum + t.unread, 0), inbound: 98, outbound: 214, withoutLead: open.filter((t) => !t.leadId).length, costs: { cost: 41.8 } };
   },
+  waMedia: () => silentWav(4),
+  waTranscribe: () => ({ transcript: "Oi, tudo bem? Mandei o áudio porque estou dirigindo. Amanhã depois das 10h fica bom pra mim." }),
   waMetaTemplates: () => ({ templates, unsupported: 0 }),
+  sdrConfig: () => robo,
+  sdrConfigSave: (saas, patch) => {
+    const values = { ...robo.values, ...Object.fromEntries(Object.entries(patch).filter(([k]) => k !== "ai")) };
+    const ai = patch.ai || robo.ai;
+    robo = { ...robo, values, ai, effective: ai.provider ? { provider: ai.provider, model: ai.model || (ai.provider === "anthropic" ? "claude-opus-4-8" : "openai/gpt-5.6-luna"), fallback: "" } : { provider: "openrouter", model: "openai/gpt-5.6-luna", fallback: "" } };
+    return robo;
+  },
+  sdrModels: (provider) => ({ provider, models: provider === "anthropic"
+    ? [{ id: "claude-opus-5-5", name: "Claude Opus 5.5" }, { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5" }, { id: "claude-haiku-5-5", name: "Claude Haiku 5.5" }]
+    : [
+      { id: "anthropic/claude-sonnet-5-5", name: "Anthropic: Claude Sonnet 5.5", priceIn: 2, priceOut: 10 },
+      { id: "google/gemini-2.5-flash", name: "Google: Gemini 2.5 Flash", priceIn: 0.3, priceOut: 2.5 },
+      { id: "openai/gpt-5.6-luna", name: "OpenAI: GPT-5.6 Luna", priceIn: 1.25, priceOut: 10 },
+    ] }),
+  sdrAiUsage: (saas, days) => ({ saas, days, model: "openai/gpt-5.6-luna", provider: "openrouter",
+    total: { calls: 412, in: 6_480_000, out: 98_000, cacheRead: 4_900_000, cacheWrite: 0, ms: 2_350_000 },
+    byModel: { "openai/gpt-5.6-luna": { calls: 388, in: 6_100_000, out: 91_000, cacheRead: 4_700_000, ms: 2_200_000 }, "anthropic/claude-sonnet-5-5": { calls: 24, in: 380_000, out: 7_000, cacheRead: 200_000, ms: 150_000 } },
+    daily: Array.from({ length: days }, (_, i) => ({ day: `2026-10-${String(i + 1).padStart(2, "0")}`, calls: 20 + ((i * 7) % 15) })) }),
+  sdrAudit: () => ({ decisions: 412, shadowDiff: 9, shadowSame: 403, byRule: { "R-031": 6, "R-012": 3 }, ruleTitles: { "R-031": "Nunca fala preço", "R-012": "No máximo duas perguntas por mensagem" } }),
+  sdrReplayStatus: () => ({ id: "sdr_replay_robo", status: "idle" }),
+  sdrReplayRuns: () => ({ runs: [{ id: "sdr_replay", model: "openai/gpt-5.6-luna", status: "done", startedAt: ago(30), report: { threads: 25, wouldBookThreads: 9, actions: { humano: 4 }, priceGuardHits: 1, errors: 0 } }] }),
+  sdrReplayStart: () => ({ ok: true, started: true }),
   waLinkThread: (id, leadId) => { rows = rows.map((t) => t.id === id ? { ...t, leadId } : t); return { ok: true }; },
   sequenceMetrics: () => ({ sequences: [] }),
   socialDms: () => ({ threads: [], errors: { setup: "Este canal não está conectado. Conecte a conta em Configurações → Integrações." } }),

@@ -6,7 +6,9 @@ import { rollupProduct, rollupProducts } from "./portfolio.js";
 import { brtToday, createTask, deleteTask, patchTask, sanitizeBoardPatch } from "../tasks/tasks-core.js";
 import { applyTemplateCatalogEdit, catalogConfigSaas, isPlanV2, newPlanDoc, nextPlan, planReferences, plansOf, syncPlanCatalogProjection, templateCatalogChange } from "../billing/plan-catalog.js";
 import { FOLLOWUP_CONTACTS_KEY, followupDayOf } from "../shared/followup-contacts.js";
-import { canScreen } from "../auth/screens.js";
+import { canEditIcp, canScreen } from "../auth/screens.js";
+import { isAdmin } from "../auth/roles.js";
+import { sdrAdminKeysChanged } from "../sdr/sdr-admin-config.js";
 import { randomUUID } from "node:crypto";
 import { formKind } from "../forms/integration-form.js";
 import { newManual, sameFamily } from "../calls/deliverables.js";
@@ -14,7 +16,8 @@ import { firstStage, isNoShowStage, kindOf, stageByKind } from "./stages.js";
 import { applyStageMove, appointmentAhead, appointmentAt, autoLeadOwner, brtToIso, initialNextActionAt, logActivity, onActivityCreated } from "./lead-flow.js";
 import { logReferralCollected, referralPatch } from "../customers/referrals.js";
 import { dedupMergePatch, findDuplicateLead } from "./lead-dedup.js";
-import { revenueClassificationPatch } from "./classificacao.js";
+import { classificationPatch } from "./classificacao.js";
+import { gradeRulesOf } from "../shared/lead-grade.js";
 import { CREATE_DEFAULTS } from "./create-defaults.js";
 import { closedInstallments, closedSubscriptionSpec, initSubscription, syncCustomerArr } from "../billing/billing.js";
 import { dispatchProposal } from "../proposals/dispatch.js";
@@ -61,7 +64,7 @@ function canonWhen(body) {
 // de estados (slug travado, lint, agenda) vive em routes.blog.js.
 // task_events/notifications: atividade e caixa de entrada das tarefas — lidas
 // só pelas rotas dedicadas (routes.tasks.js), nunca pelo CRUD genérico.
-const PRIVATE = new Set(["users", "product_updates", "product_update_assets", "sessions", "user_assets", "activity_assets", "task_assets", "followup_assets", "task_events", "notifications", "wa_threads", "wa_messages", "wa_media", "wa_template_media", "blog_posts",
+const PRIVATE = new Set(["users", "icp_versions", "integration_secrets", "product_updates", "product_update_assets", "sessions", "user_assets", "activity_assets", "task_assets", "followup_assets", "task_events", "notifications", "wa_threads", "wa_messages", "wa_media", "wa_template_media", "blog_posts",
   // comp_months tem R$ por pessoa: só pelas rotas /api/comp/, que exigem
   // etiqueta admin (ADMIN_PREFIXES), nunca pelo CRUD genérico.
   "comp_months",
@@ -84,6 +87,20 @@ const isAdminSession = (u) => !u || (u.roles || []).includes("admin");
 
 // Collections external SaaS are allowed to write to via REST/MCP.
 const WRITABLE = new Set(COLLECTION_NAMES.filter((c) => !PRIVATE.has(c)));
+
+// app_config que guarda CREDENCIAL (docs/PLANO-DISPAROS.md, fase 0): o CRUD
+// genérico é aberto a qualquer sessão, então ele lê esses documentos SEM o
+// segredo e não escreve neles — quem grava é a rota/fluxo dono (OAuth do
+// Google). Antes, qualquer login lia o refresh token do Google em texto aberto.
+const SECRET_CONFIG = { google_oauth: ["refreshToken", "accessToken", "token"] };
+export const redactConfig = (doc) => {
+  const fields = SECRET_CONFIG[doc?.id];
+  if (!fields) return doc;
+  const out = { ...doc };
+  for (const k of fields) delete out[k];
+  return out;
+};
+const secretConfigWrite = (collection, id) => collection === "app_config" && Object.hasOwn(SECRET_CONFIG, String(id || ""));
 
 const isTruthyFlag = (v) => v === "1" || v === "true";
 
@@ -181,6 +198,15 @@ async function syncLeadQuestions(repo, form) {
   }
 }
 
+
+// IA e ajustes avançados do robô SDR (aba Robô da Inbox) são de admin. O
+// `!user` é a chave mestre, como em canEditIcp.
+function sdrAdminBlocked(user, prevSdrBot, nextSdrBot) {
+  if (!user || isAdmin(user)) return "";
+  const changed = sdrAdminKeysChanged(prevSdrBot || {}, nextSdrBot || {});
+  return changed.length ? `Só admin muda a IA e os ajustes avançados do robô (${changed.join(", ")})` : "";
+}
+
 export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaCapiClient, briefer, autoCallMeet, autoIntegrationMeet, cancelIntegrationMeet, googleClient, mpClient } = {}) {
   // ── Generic CRUD over every collection ───────────────────────────────────
   app.get("/api/:collection", async (req, reply) => {
@@ -207,6 +233,7 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
     const f = listFilter(collection, req.query);
     if (f) items = items.filter(f);
     if (collection === "products") items = rollupProducts(items, await repo.list("customers"));
+    if (collection === "app_config") items = items.map(redactConfig);
     return items;
   });
 
@@ -215,6 +242,7 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
     if (!isExposed(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
     const item = await repo.get(collection, id);
     if (!item) return reply.code(404).send({ error: "Not found" });
+    if (collection === "app_config") return redactConfig(item);
     return collection === "products" ? rollupProduct(item, await repo.list("customers")) : item;
   });
 
@@ -222,6 +250,15 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
     const { collection } = req.params;
     if (!WRITABLE.has(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
     if (!req.body || typeof req.body !== "object") return reply.code(400).send({ error: "JSON body required" });
+    if (secretConfigWrite(collection, req.body.id)) return reply.code(403).send({ error: "Esta configuração guarda credencial e só muda pela integração dela" });
+    // A régua de nota/ICP só muda pela rota dela (versão, histórico, recálculo).
+    if (collection === "products" && "icp" in req.body && !canEditIcp(req.authUser)) {
+      return reply.code(403).send({ error: "Editar o ICP exige a etiqueta Editor de ICP (Ajustes → Equipe)" });
+    }
+    if (collection === "products" && req.body.sdrBot) {
+      const blocked = sdrAdminBlocked(req.authUser, {}, req.body.sdrBot);
+      if (blocked) return reply.code(403).send({ error: blocked });
+    }
     // Lead: tags normalizadas e tipo de negócio conhecido (lead-tags.js).
     if (collection === "leads") req.body = { ...req.body, ...leadTagPatch(req.body) };
     // TAREFAS: composição, regras de coluna, seguidores, eventos e notificações
@@ -354,7 +391,7 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
     if (collection === "leads" && !req.body.internal) {
       const dup = await findDuplicateLead(repo, { saas: req.body.saas, phone: req.body.phone, email: req.body.email });
       if (dup) {
-        const patch = dedupMergePatch(dup, refInfo ? { ...req.body, ...refInfo.patch } : req.body);
+        const patch = dedupMergePatch(dup, refInfo ? { ...req.body, ...refInfo.patch } : req.body, gradeRulesOf((await repo.get("products", dup.saas || req.body.saas)) || { id: dup.saas || req.body.saas }));
         const merged = Object.keys(patch).length ? await repo.update("leads", dup.id, patch) : dup;
         // Indicação que ENTROU na mescla (lead sem vínculo antes) vira evento
         // datado: é o que a auditoria da comissão lê.
@@ -376,7 +413,10 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
         return reply.code(200).send({ ...merged, _dedup: true });
       }
     }
-    if (collection === "leads") Object.assign(stamp, revenueClassificationPatch({ ...req.body, ...stamp }));
+    if (collection === "leads") {
+      const saas = req.body.saas;
+      Object.assign(stamp, classificationPatch({ ...req.body, ...stamp }, gradeRulesOf((saas && await repo.get("products", saas)) || { id: saas })));
+    }
     let created = await repo.create(collection, { ...(CREATE_DEFAULTS[collection] || {}), ...req.body, ...stamp });
     // Toque registrado → denormalizações do lead (últ. contato, tentativas) +
     // re-agendamento do próximo passo. Best-effort: nunca quebra o POST.
@@ -448,6 +488,15 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
     const { collection, id } = req.params;
     if (!WRITABLE.has(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
     if (!req.body || typeof req.body !== "object") return reply.code(400).send({ error: "JSON body required" });
+    if (secretConfigWrite(collection, req.params.id)) return reply.code(403).send({ error: "Esta configuração guarda credencial e só muda pela integração dela" });
+    // A régua de nota/ICP só muda pela rota dela (versão, histórico, recálculo).
+    if (collection === "products" && "icp" in req.body && !canEditIcp(req.authUser)) {
+      return reply.code(403).send({ error: "Editar o ICP exige a etiqueta Editor de ICP (Ajustes → Equipe)" });
+    }
+    if (collection === "products" && "sdrBot" in req.body) {
+      const blocked = sdrAdminBlocked(req.authUser, (await repo.get("products", id))?.sdrBot, req.body.sdrBot);
+      if (blocked) return reply.code(403).send({ error: blocked });
+    }
     if (collection === "leads") canonWhen(req.body);
     // Horário de integração novo: confere de novo no cockpit e na agenda do
     // Google de quem integra (o cliente pode ter marcado pelo link no meio).
@@ -632,7 +681,10 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
     }
     if (collection === "leads" && ["orders", "ticket", "accounts", "listings", "volume", "trigger", "tried", "triedOther", "formProduct", "saas"].some((k) => k in patch)) {
       const current = await repo.get(collection, id);
-      if (current) patch = { ...patch, ...revenueClassificationPatch({ ...current, ...patch }) };
+      if (current) {
+        const saas = patch.saas ?? current.saas;
+        patch = { ...patch, ...classificationPatch({ ...current, ...patch }, gradeRulesOf((saas && await repo.get("products", saas)) || { id: saas })) };
+      }
     }
     const updated = await repo.update(collection, id, patch);
     if (!updated) return reply.code(404).send({ error: "Not found" });
@@ -858,6 +910,7 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
   app.delete("/api/:collection/:id", async (req, reply) => {
     const { collection, id } = req.params;
     if (!WRITABLE.has(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
+    if (secretConfigWrite(collection, id)) return reply.code(403).send({ error: "Esta configuração guarda credencial e só muda pela integração dela" });
     // TAREFA apagada leva junto subtarefas, atividade, notificações, anexos
     // órfãos e some dos bloqueios das outras (tasks-core.js).
     if (collection === "tasks") {
@@ -867,6 +920,11 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
     }
     if (collection === "app_config" && catalogConfigSaas(id) !== null && !isAdminSession(req.authUser)) {
       return reply.code(403).send({ error: "Configuração do catálogo de planos exige etiqueta admin" });
+    }
+    // BROADCAST em envio não se apaga: o runner (broadcast-wa/-email) está
+    // mandando a fila dele. Pausa primeiro; enviado, pausado ou rascunho pode.
+    if (collection === "campaigns" && (await repo.get("campaigns", id))?.status === "sending") {
+      return reply.code(409).send({ error: "o broadcast está enviando: pause o envio antes de apagar" });
     }
     // PLANO do catálogo em uso não se apaga: arquiva (status), senão assinatura,
     // cliente e negócio fechado ficam apontando pro vazio.

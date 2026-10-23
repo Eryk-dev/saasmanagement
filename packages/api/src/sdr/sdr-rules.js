@@ -296,8 +296,9 @@ export const RULES = [
   // ── Handoff e silêncio ───────────────────────────────────────────────────
   R({ id: "R-080", cat: "handoff", title: "Handoff cala o robô até gente falar",
     origin: { date: "2026-08-22", by: "Leo", ref: "#736; aviso ao closer #1113 (30/09)" },
-    statement: "Depois do handoff o robô fica em silêncio até um humano escrever na conversa, e humano ativo nas últimas 4h também cala. O motivo fica carimbado (handoffKind/handoffWhy) e o closer recebe aviso 30 minutos depois, repetido a cada 2h em expediente, dizendo se o lead ficou sem resposta.",
-    states: ["handoff"], layers: ["state", "flow", "alerta"] }),
+    statement: "Depois do handoff o robô fica em silêncio até um humano escrever na conversa, e humano ativo nas últimas 4h também cala (o prazo muda na aba Robô da Inbox, sdrBot.humanMuteHours). O motivo fica carimbado (handoffKind/handoffWhy) e o closer recebe aviso 30 minutos depois, repetido a cada 2h em expediente, dizendo se o lead ficou sem resposta.",
+    states: ["handoff"], layers: ["state", "flow", "alerta"],
+    except: [{ rule: "R-085", scope: "com a opção ligada, fora do horário comercial do robô a fala humana recente não cala; o handoff pendente continua calando" }] }),
   R({ id: "R-081", cat: "handoff", title: "Quando chamar gente",
     origin: { date: "2026-08-22", by: "Leo", ref: "SDR_DECIDE_SYSTEM, bloco QUANDO CHAMAR GENTE" },
     statement: "Pergunta técnica que exige verificação real com insistência; lead irritado, desconfiado ou pedindo pra parar; pedido explícito de humano ou de ligação (sem prometer ligação); pergunta direta se é robô; áudio sem transcrição. A transição é curta (\"vou pedir pra alguém do time falar contigo por aqui\"), sem valor e sem promessa.",
@@ -317,6 +318,10 @@ export const RULES = [
     statement: "Mensagem que encerra sem pedir resposta (\"ok\", \"valeu\", reação) fica sem resposta; o \"ok\" depois do compromisso do roteiro também. Reação e saudação solta não abrem alerta nem janela de 24h.",
     prompt: "Mensagem que encerra sem pedir resposta (\"ok\", \"obrigado\", figurinha) sem nada pendente: acao silencio. Lead que adiou (\"te retorno amanhã\", \"vejo com meu sócio\"): \"Combinado\" + você chama na hora que ele disse, e pare (oferecer=false).",
     layers: ["prompt", "intent", "flow"] }),
+  R({ id: "R-085", cat: "handoff", title: "Fora do expediente a pausa de humano ativo pode ser ignorada",
+    origin: { date: "2026-10-23", by: "time comercial", ref: "aba Robô da Inbox (sdrBot.humanMuteOffHours)" },
+    statement: "Com a opção ligada na aba Robô, fora do horário comercial do robô (seg a sex, das humanMuteHourStart às humanMuteHourEnd; padrão o expediente do fluxo de ligação; fim de semana sempre fora) a fala recente de alguém do time não cala o robô e ele responde dentro do prazo da pausa. Handoff pendente continua calando (R-080). Nasce desligada.",
+    layers: ["state"] }),
 
   // ── Quando o robô fala ───────────────────────────────────────────────────
   R({ id: "R-090", cat: "ritmo", title: "Quem o robô atende",

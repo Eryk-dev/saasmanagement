@@ -10,13 +10,14 @@ import { registerFunnelRoutes } from "./routes.funnel.js";
 import { registerViewRoutes } from "./routes.views.js";
 import { registerMeetingRoutes } from "./routes.meetings.js";
 import { startMeetingsSweep } from "./meetings.js";
+import { registerIcpRoutes } from "./routes.icp.js";
 import { startCadencia } from "./cadencia-runner.js";
 
 export function register(app, repo, ctx) {
   // Follow-up em 4 contatos: mensagens e prazos globais (Configurações).
   registerFollowupConfigRoutes(app, repo);
   // Carga inicial do SPA (SEED), portfólio e leaderboard.
-  registerBootstrapRoutes(app, repo, { googleClient: ctx.google, mpClient: ctx.mp, asaasClient: ctx.asaas, appmaxClient: ctx.appmax, metaClient: ctx.meta, anthropicClient: ctx.anthropic, discordClient: ctx.discord, whatsappClient: ctx.whatsapp });
+  registerBootstrapRoutes(app, repo, { googleClient: ctx.google, mpClient: ctx.mp, asaasClient: ctx.asaas, appmaxClient: ctx.appmax, metaClient: ctx.meta, anthropicClient: ctx.anthropic, discordClient: ctx.discord, whatsappClient: ctx.whatsapp, mailerClient: ctx.mailer });
   // Foto anexada a um toque da timeline.
   registerActivityAssetRoutes(app, repo);
   // Views salvas por usuário (filtros com nome), antes do CRUD genérico.
@@ -31,6 +32,8 @@ export function register(app, repo, ctx) {
   });
   // Funil do produto com migração dos cards renomeados.
   registerFunnelRoutes(app, repo);
+  // Régua de nota/ICP do produto: prévia, gravação versionada e histórico.
+  registerIcpRoutes(app, repo);
 }
 
 export function start(repo, { log, jobOn }) {

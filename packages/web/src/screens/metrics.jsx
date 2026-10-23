@@ -1,4 +1,5 @@
 import React from "react";
+import { gradeBasisText } from "../lib/grade-rules.js";
 import { createPortal } from "react-dom";
 import { Popover } from "../components/popover.jsx";
 import { Switch } from "../components/form-controls.jsx";
@@ -587,7 +588,7 @@ function MetricsScreen() {
           <PainTable pains={(data && !data.error ? data.pains : []) || []} money={money} />
         </Card>
 
-        <CompactAdsCard key={`manager-${product.id}`} onRetry={() => load()} saas={product.id} objects={compactObjects} metrics={metricMaps} money={money} busyIds={busyIds}
+        <CompactAdsCard key={`manager-${product.id}`} onRetry={() => load()} saas={product.id} objects={compactObjects} metrics={metricMaps} gradeBasis={t?.gradeBasis} money={money} busyIds={busyIds}
           onToggle={objects && !objects.error ? toggleObject : null}
           onBudget={objects && !objects.error ? commitBudget : null} error={objects?.error} />
       </div>
@@ -672,7 +673,7 @@ function Toggle({ on, label, busy, disabled = false, onChange }) {
   return <span className="ads-toggle" aria-busy={busy || undefined}><Switch checked={on} onChange={onChange} disabled={busy || disabled} label={`${busy ? "enviando pra Meta" : on ? "pausar" : "ativar"} ${label}`}/></span>;
 }
 
-function CompactAdsCard({ saas, objects, metrics, money, busyIds, onToggle, onBudget, error, onRetry }) {
+function CompactAdsCard({ saas, objects, metrics, gradeBasis, money, busyIds, onToggle, onBudget, error, onRetry }) {
   const [level, setLevel] = useState("campaigns");
   const [creativeAd, setCreativeAd] = useState(null); // anúncio com o criativo aberto no modal
   // Seleção estilo Gerenciador: checkbox nas linhas — campanhas marcadas
@@ -994,7 +995,7 @@ function CompactAdsCard({ saas, objects, metrics, money, busyIds, onToggle, onBu
                 <span key={c.key}
                   role={sortable ? "button" : undefined} tabIndex={sortable ? 0 : undefined} onKeyDown={sortable ? e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();toggleSort(c.key);}} : undefined}
                   draggable={!fixed}
-                  title={fixed ? c.hint : [c.hint, "clique pra ordenar · arraste pra reordenar"].filter(Boolean).join(" · ")}
+                  title={fixed ? c.hint : [c.hint, c.key === "abc" ? gradeBasisText(gradeBasis, "leads da janela") : "", "clique pra ordenar · arraste pra reordenar"].filter(Boolean).join(" · ")}
                   onMouseDown={fixed ? undefined : (e) => e.stopPropagation()}
                   onClick={sortable ? () => toggleSort(c.key) : undefined}
                   onDragStart={fixed ? undefined : (e) => { e.dataTransfer.effectAllowed = "move"; setDragCol(c.key); }}

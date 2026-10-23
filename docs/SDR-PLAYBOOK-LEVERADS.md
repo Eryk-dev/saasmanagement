@@ -3,7 +3,7 @@
 GERADO de `packages/api/src/sdr/sdr-rules.js` (`node src/sdr/sdr-rules.js --write`). Não edite à mão: o
 teste `sdr-rulebook.test.js` recusa o arquivo quando ele difere do registro.
 
-72 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
+73 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
 origem (data, quem pediu, PR ou print), o enunciado, os estados da conversa e o roteiro em que vale, a camada
 que a executa e as exceções. Toda regra ativa tem pelo menos um teste ou cena com a tag `#R-nnn`.
 
@@ -313,8 +313,9 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-080 · Handoff cala o robô até gente falar
 
 - Origem: 2026-08-22, Leo (#736; aviso ao closer #1113 (30/09))
-- Regra: Depois do handoff o robô fica em silêncio até um humano escrever na conversa, e humano ativo nas últimas 4h também cala. O motivo fica carimbado (handoffKind/handoffWhy) e o closer recebe aviso 30 minutos depois, repetido a cada 2h em expediente, dizendo se o lead ficou sem resposta.
+- Regra: Depois do handoff o robô fica em silêncio até um humano escrever na conversa, e humano ativo nas últimas 4h também cala (o prazo muda na aba Robô da Inbox, sdrBot.humanMuteHours). O motivo fica carimbado (handoffKind/handoffWhy) e o closer recebe aviso 30 minutos depois, repetido a cada 2h em expediente, dizendo se o lead ficou sem resposta.
 - Vale em: estados handoff; roteiro todos; executada por state, flow, alerta
+- Exceção: R-085 · com a opção ligada, fora do horário comercial do robô a fala humana recente não cala; o handoff pendente continua calando
 
 ### R-081 · Quando chamar gente
 
@@ -339,6 +340,12 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 - Origem: 2026-08-22, Leo (#736; "ok" pós-compromisso 05/10; reações 01/10)
 - Regra: Mensagem que encerra sem pedir resposta ("ok", "valeu", reação) fica sem resposta; o "ok" depois do compromisso do roteiro também. Reação e saudação solta não abrem alerta nem janela de 24h.
 - Vale em: estados todos; roteiro todos; executada por prompt, intent, flow
+
+### R-085 · Fora do expediente a pausa de humano ativo pode ser ignorada
+
+- Origem: 2026-10-23, time comercial (aba Robô da Inbox (sdrBot.humanMuteOffHours))
+- Regra: Com a opção ligada na aba Robô, fora do horário comercial do robô (seg a sex, das humanMuteHourStart às humanMuteHourEnd; padrão o expediente do fluxo de ligação; fim de semana sempre fora) a fala recente de alguém do time não cala o robô e ele responde dentro do prazo da pausa. Handoff pendente continua calando (R-080). Nasce desligada.
+- Vale em: estados todos; roteiro todos; executada por state
 
 ## Quando o robô fala
 

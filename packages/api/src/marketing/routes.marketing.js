@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { meta as defaultMeta, onMetaThrottle } from "./meta.js";
 import { stagePassCounts } from "../metrics/funnel-metrics.js";
 import { kindOf } from "../crm/stages.js";
-import { isRealLead, isSaleLead, winsIn, customerStartMap, leadOrigin, LEAD_ORIGINS, callOutcome, upsellSalesIn, upsellContractedOf, leadGrade } from "../metrics/metrics-core.js";
+import { isRealLead, isSaleLead, winsIn, customerStartMap, leadOrigin, LEAD_ORIGINS, callOutcome, upsellSalesIn, upsellContractedOf, leadGrade, gradeBasis, gradeRulesOf } from "../metrics/metrics-core.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "../platform/http-status.js";
 import { painCode } from "./attribution.js";
 import { placementFromHint } from "./meta.js";
@@ -115,9 +115,9 @@ function parseBudget(raw) {
 }
 
 const GRADES = ["S", "A", "B", "C", "D", "E"];
-const gradeCounts = (leads) => {
+const gradeCounts = (leads, rules) => {
   const abc = { S: 0, A: 0, B: 0, C: 0, D: 0, E: 0 };
-  for (const l of leads) { const g = leadGrade(l); if (g) abc[g] += 1; }
+  for (const l of leads) { const g = leadGrade(l, rules); if (g) abc[g] += 1; }
   return abc;
 };
 // Custo por cliente de cada grade: investimento do grupo ÷ leads daquela grade.
@@ -153,6 +153,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       try {
         report[p.id] = await syncProductInsights(repo, meta, p, { since, until });
         if (!report[p.id].ok) req.log.warn({ saas: p.id, err: report[p.id].error }, "Meta: sync parcial");
+        if (report[p.id].kept) req.log.warn({ saas: p.id, kept: report[p.id].kept }, "Meta: linhas zeradas ignoradas");
       } catch (err) {
         req.log.warn({ saas: p.id, err: err.message }, "Meta: sync falhou");
         report[p.id] = { ok: false, error: String(err.message || err).slice(0, 200) };
@@ -564,6 +565,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "Not found" });
     const { since, until } = rangeFromQuery(req.query || {});
+    const gradeRules = gradeRulesOf(product);
 
     // Ordena por data: a resolução de nome (campanha/conjunto) é last-write-wins
     // no loop abaixo, e o sync só rescreve o nome nas linhas da janela — a linha
@@ -732,8 +734,8 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       // quanto custou CADA um por grade — responde "essa dor/anúncio traz
       // cliente grande ou só lead C barato?". wonAbc = a grade só dos GANHOS
       // (qual perfil de cliente essa origem de fato fecha).
-      const abc = gradeCounts(matched);
-      const wonAbc = gradeCounts(wonLeads);
+      const abc = gradeCounts(matched, gradeRules);
+      const wonAbc = gradeCounts(wonLeads, gradeRules);
       // Calls agendadas: lead atribuído que marcou call (callAt), está no
       // estágio de kind call ou passou por ele (histórico — cobre lead antigo
       // sem callAt). Responde "essa dor/anúncio traz lead que senta na call?".
@@ -841,6 +843,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         foraDoPerfil,   // envios que saíram do funil de venda (ainda não vendem)
         formViews: formSessions("view"),   // visitas no form no período
         formStarts: formSessions("start"), // clicaram em começar
+        gradeBasis: gradeBasis(leads, gradeRules), // de qual método da régua veio a nota dos leads da janela
         cpl: per(leads.length),          // custo por lead REAL (criados no Cockpit)
         cplMeta: per(metaLeads),         // custo por lead reportado pela Meta
         won: wonAll.length + upsells.length,
