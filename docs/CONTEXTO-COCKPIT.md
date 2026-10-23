@@ -939,6 +939,21 @@ alteração funcional nesta preparação.
   `/api/webhooks/resend` (devolução → `emailInvalid`, spam → `emailOptOut`); inscrição manual na tela. Na API a coleção segue `campaigns`.
   Broadcast de e-mail também em fila no servidor (`marketing/broadcast-email.js`, `jobOn("emailBroadcasts")`);
   um broadcast pode sair pelos dois canais (`channel: "both"`).
+  Falha de entrega e reenvio (23/10/2026):
+  - O aceite da Meta grava `waStatus: "sent"`. A recusa que chega depois pelo
+    webhook (`markBroadcastDeliveryFailed`) vira `waStatus: "failed"`, com o
+    motivo em português (`waFailText`).
+  - `GET /api/campaigns/:id/progress` reconcilia os antigos
+    (`reconcileBroadcastDelivery`) e devolve o mapa por lead em `byLead`, porque
+    `sent` ali é a contagem.
+  - `waReceived` não conta falha, então o lead pode ser reenviado.
+  - O editor grava o público escolhido em `audience` e reabre com ele.
+  - Canal e mensagem travam quando alguém recebeu; o público só trava durante
+    o envio. Broadcast concluído mostra "Reenviar".
+  - Seleção em massa (todos, lista filtrada, caixa do cabeçalho, limpar, só os
+    que falharam), filtro Todos/Selecionados/Não selecionados/Falharam e o
+    mesmo selecionar/limpar no "Inscrever leads".
+  - Testes: `broadcast-wa.test.js` e `test:review:disparos`.
 - **Régua configurável (22/10/2026, fase 1 de `docs/PLANO-ICP-CONFIGURAVEL.md`):** a nota
   e o ICP saem de `leadGradeInfo(lead, rules)`; `gradeRulesOf(product)` lê `product.icp.rules`
   e, sem ela, usa `defaultRules(saas)` (LeverAds: pedidos × ticket e depois a matriz legada;

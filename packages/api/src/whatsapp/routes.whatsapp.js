@@ -10,6 +10,7 @@ import { runWaFlows } from "./wa-flows.js";
 import { handleSdrInbound } from "../sdr/sdr-flow.js";
 import { transcriber as defaultTranscriber } from "./transcribe.js";
 import { transcribeInbound } from "./wa-transcribe.js";
+import { markBroadcastDeliveryFailed } from "../marketing/broadcast-wa.js";
 import { formatSummaryText } from "../calls/call-summaries.js";
 import { logActivity, onOutboundMessage } from "../crm/lead-flow.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "../platform/http-status.js";
@@ -247,6 +248,9 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
               // Envio do ROBÔ recusado pela Meta → alerta quente (senão o
               // sdrLog diz "tocado" e o lead morre no silêncio).
               if (st.status === "failed") await flagFailedBotSend(repo, st.id).catch(() => {});
+              // Mensagem de broadcast recusada na entrega: o lead vira falha no
+              // broadcast (pode ser reenviado) em vez de "já recebeu".
+              if (st.status === "failed") await markBroadcastDeliveryFailed(repo, st.id).catch(() => {});
             }
           } else if (field === "calls" || v.calls) {
             // Ligação pelo cockpit (Calling API). Lições das chamadas REAIS de

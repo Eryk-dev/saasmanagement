@@ -66,6 +66,50 @@ export async function sendTemplateToLead(repo, wa, { tpl, lead, product, phoneId
   return { messageId, text };
 }
 
+// O lead já recebeu (ou está na fila) neste broadcast? Falha, inclusive a de
+// ENTREGA que o webhook avisa depois do aceite da Meta, não conta: o lead pode
+// ser reenviado. `whatsapp` sem waStatus é o envio assistido antigo.
+export const waReceived = (st) => ["queued", "sent", "delivered", "read"].includes(st?.waStatus) || (!!st?.whatsapp && !st?.waStatus);
+
+// Motivo legível das falhas mais comuns da Meta (o título dela vem em inglês).
+const WA_FAIL_PT = {
+  131049: "a Meta segurou a entrega para preservar o engajamento (limite de marketing por pessoa)",
+  131050: "o lead parou de receber mensagens de marketing",
+  130472: "número em experimento da Meta, sem entrega de marketing",
+  131026: "o número não recebe mensagem (sem WhatsApp ou versão antiga)",
+};
+export const waFailText = (code, title = "") => WA_FAIL_PT[Number(code)] || String(title || "falha na entrega").slice(0, 200);
+
+// Entrega recusada DEPOIS do aceite (status "failed" no webhook): a entrada do
+// lead no broadcast vira falha, com o motivo. Sem isso o broadcast seguia
+// dizendo "já recebeu", travava o editor e o lead nunca podia ser reenviado.
+function failedPatch(entry, msg) {
+  return { ...entry, waStatus: "failed", waError: waFailText(msg.errorCode, msg.error), failedAt: new Date().toISOString() };
+}
+
+export async function markBroadcastDeliveryFailed(repo, messageId) {
+  const msg = messageId ? await repo.get("wa_messages", messageId).catch(() => null) : null;
+  if (!msg || msg.author !== BROADCAST_AUTHOR || !msg.leadId) return null;
+  const camps = await repo.listWhere("campaigns", msg.saas ? { saas: msg.saas } : {});
+  const camp = camps.find((c) => c.sent?.[msg.leadId]?.waMessageId === messageId);
+  if (!camp || camp.sent[msg.leadId].waStatus === "failed") return null;
+  return repo.update("campaigns", camp.id, { sent: { ...camp.sent, [msg.leadId]: failedPatch(camp.sent[msg.leadId], msg) } });
+}
+
+// Mesma correção para o que já passou: quem consta como "sent" mas a mensagem
+// falhou na entrega (broadcasts de antes do webhook acima). Chamado no progresso.
+export async function reconcileBroadcastDelivery(repo, campaign) {
+  const pending = Object.entries(campaign?.sent || {}).filter(([, s]) => s?.waStatus === "sent" && s.waMessageId);
+  if (!pending.length) return campaign;
+  const sent = { ...campaign.sent };
+  let changed = false;
+  for (const [leadId, s] of pending) {
+    const msg = await repo.get("wa_messages", s.waMessageId).catch(() => null);
+    if (msg?.status === "failed") { sent[leadId] = failedPatch(s, msg); changed = true; }
+  }
+  return changed ? repo.update("campaigns", campaign.id, { sent }) : campaign;
+}
+
 // Por que este lead não entra no broadcast de WhatsApp ("" = entra).
 export function waSkipReason(lead, campaign, product) {
   if (!lead) return "lead não encontrado";
@@ -74,7 +118,7 @@ export function waSkipReason(lead, campaign, product) {
   if (lead.whatsappOptOut) return "pediu para não receber";
   if (lead.whatsappInvalid) return "número sem WhatsApp";
   const st = campaign.sent?.[lead.id];
-  if (st?.whatsapp || ["queued", "sent", "delivered", "read"].includes(st?.waStatus)) return "já recebeu";
+  if (waReceived(st)) return "já recebeu";
   const params = templateParams(campaign.wa?.template, lead, product);
   if (params.some((p) => !p)) return "variável sem valor para este lead";
   return "";

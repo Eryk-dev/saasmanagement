@@ -131,7 +131,7 @@ function BroadcastsTab({ product, leads, stageOptions, defaultStages, onOpenLead
     .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
   const counts = (c) => {
     const vals = Object.values(c.sent || {});
-    const sent = vals.filter((s) => s?.whatsapp || s?.email).length;
+    const sent = vals.filter((s) => (s?.whatsapp && s?.waStatus !== "failed") || s?.email).length;
     return { sent, queued: vals.filter((s) => s?.waStatus === "queued").length, failed: vals.filter((s) => s?.waStatus === "failed").length };
   };
   return <div className="marketing-body disparos-tab" style={{ flex: 1, overflow: "auto" }}>
@@ -173,6 +173,11 @@ function BroadcastsTab({ product, leads, stageOptions, defaultStages, onOpenLead
   </div>;
 }
 
+// Já recebeu (ou está na fila) pelo WhatsApp neste broadcast? Falha, inclusive
+// a de entrega avisada depois pela Meta, não conta: pode reenviar. Espelho de
+// waReceived (broadcast-wa.js); `whatsapp` sem waStatus é o envio assistido antigo.
+const waGot = (st) => ["queued", "sent", "delivered", "read"].includes(st?.waStatus) || (!!st?.whatsapp && !st?.waStatus);
+
 // Por que o lead não recebe por este canal ("" = recebe). Espelho do servidor (broadcast-wa.js / send-email).
 function skipReason(lead, camp, channel, tplParams) {
   const st = camp.sent?.[lead.id];
@@ -180,7 +185,7 @@ function skipReason(lead, camp, channel, tplParams) {
     if (!waLink(lead.phone)) return "sem telefone";
     if (lead.whatsappOptOut) return "pediu para não receber";
     if (lead.whatsappInvalid) return "número sem WhatsApp";
-    if (st?.whatsapp || ["queued", "sent", "delivered", "read"].includes(st?.waStatus)) return "já recebeu";
+    if (waGot(st)) return "já recebeu";
     if (tplParams && tplParams(lead).some((p) => !p)) return "variável sem valor";
     return "";
   }
@@ -248,8 +253,13 @@ function BroadcastEditor({ initial, product, leads, stageOptions, defaultStages,
     createdAt: initial.createdAt || "", createdBy: initial.createdBy || me,
   }));
   const [stagesSel, setStagesSel] = useS(() => new Set(initial.stages?.length ? initial.stages : defaultStages));
-  const [selected, setSelected] = useS(() => new Set());
+  // Público escolhido: gravado no broadcast (`audience`); nos antigos, quem
+  // consta no envio. Reabrir mostra esse público, não a etapa inteira.
+  const pinned = useM(() => new Set(initial.audience?.length ? initial.audience : Object.keys(initial.sent || {})), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [selected, setSelected] = useS(() => (pinned.size ? new Set(pinned)
+    : new Set(leads.filter((l) => (initial.stages?.length ? initial.stages : defaultStages).includes(l.stage)).map((l) => l.id))));
   const [search, setSearch] = useS("");
+  const [view, setView] = useS("all"); // all | selected | unselected | failed
   const [busy, setBusy] = useS("");
   const [note, setNote] = useS(null);
   const [progress, setProgress] = useS(null);
@@ -266,7 +276,11 @@ function BroadcastEditor({ initial, product, leads, stageOptions, defaultStages,
     if (set.has(k)) { if (set.size === 1) return c; set.delete(k); } else set.add(k);
     return { ...c, channel: set.size === 2 ? "both" : [...set][0] };
   });
-  const locked = legacy || camp.status !== "draft" || Object.values(camp.sent || {}).some((s) => s?.whatsapp || s?.email || s?.waStatus);
+  // Canal e mensagem travam quando alguém recebeu (ou está na fila); o público
+  // só trava durante o envio. Broadcast que falhou inteiro volta a ser editável,
+  // e quem falhou pode ser reenviado.
+  const locked = legacy || camp.status === "sending" || Object.values(camp.sent || {}).some((s) => waGot(s) || s?.email);
+  const audienceLocked = legacy || camp.status === "sending";
   const pid = product.id;
 
   // Modelos: oficiais aprovados (WhatsApp) e livres de e-mail.
@@ -277,13 +291,26 @@ function BroadcastEditor({ initial, product, leads, stageOptions, defaultStages,
   const numInfo = useSwr(waOn && hasWa ? `wa/number/${pid}` : null, () => api.waNumber(pid), { ttl: 10 * 60_000 }).data ?? null;
   const waStats = useSwr(waOn && hasWa ? "wa/insights" : null, () => api.waInsights(), { ttl: 60_000 }).data ?? null;
 
-  // Público: etapas → leads; trocar as etapas seleciona todo mundo do novo recorte.
+  // Público: etapas → leads (mais quem já estava no broadcast, mesmo que tenha
+  // mudado de etapa). Trocar as etapas seleciona todo mundo do novo recorte;
+  // lead novo chegando na lista não mexe na seleção feita à mão.
   const stagesKey = [...stagesSel].sort().join("|");
-  const recipients = useM(() => leads.filter((l) => stagesSel.has(l.stage)), [leads, stagesKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  useE(() => { setSelected(new Set(recipients.map((l) => l.id))); }, [stagesKey, recipients.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const recipients = useM(() => leads.filter((l) => stagesSel.has(l.stage) || pinned.has(l.id)), [leads, stagesKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const prevStages = useR(stagesKey);
+  useE(() => {
+    if (prevStages.current === stagesKey) return;
+    prevStages.current = stagesKey;
+    setSelected(new Set(leads.filter((l) => stagesSel.has(l.stage)).map((l) => l.id)));
+  }, [stagesKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const failedOf = (l) => camp.sent?.[l.id]?.waStatus === "failed" || camp.sent?.[l.id]?.emailStatus === "failed";
+  const failedCount = recipients.filter(failedOf).length;
   const q = search.trim().toLowerCase();
-  const visible = q ? recipients.filter((l) => `${l.name || ""} ${l.company || ""}`.toLowerCase().includes(q)) : recipients;
+  const visible = recipients.filter((l) => (!q || `${l.name || ""} ${l.company || ""}`.toLowerCase().includes(q))
+    && (view === "all" || (view === "selected" ? selected.has(l.id) : view === "unselected" ? !selected.has(l.id) : failedOf(l))));
   const chosen = recipients.filter((l) => selected.has(l.id));
+  const allVisibleOn = visible.length > 0 && visible.every((l) => selected.has(l.id));
+  const someVisibleOn = visible.some((l) => selected.has(l.id));
+  const toggleVisible = () => setSelected((s) => { const n = new Set(s); for (const l of visible) { if (allVisibleOn) n.delete(l.id); else n.add(l.id); } return n; });
   const tpl = camp.wa.template;
   const tplParams = hasWa && tpl ? (lead) => paramsFor(tpl, lead, product) : null;
   // Por canal: quem recebe e por que fica fora. Com os dois canais, o lead
@@ -302,6 +329,8 @@ function BroadcastEditor({ initial, product, leads, stageOptions, defaultStages,
       return ["out", `${w} · ${e}`];
     }
     const r = hasWa ? w : e;
+    const fail = camp.sent?.[l.id]?.waStatus === "failed" ? camp.sent[l.id].waError || "falha na entrega" : "";
+    if (fail && !r) return ["fail", `falhou: ${fail} · ${selected.has(l.id) ? "vai reenviar" : "marque para reenviar"}`];
     return r ? ["out", r] : ["", "recebe"];
   };
   const skipped = chosen.length - eligible.length;
@@ -328,14 +357,14 @@ function BroadcastEditor({ initial, product, leads, stageOptions, defaultStages,
   useE(() => {
     if (!camp.id || !["sending", "paused", "done"].includes(camp.status)) return undefined;
     let alive = true;
-    const poll = async () => { try { const p = await api.campaignProgress(camp.id); if (alive) { setProgress(p); if (p.status !== camp.status) setCamp((c) => ({ ...c, status: p.status, pauseReason: p.pauseReason || "" })); } } catch { /* mantém o último */ } };
+    const poll = async () => { try { const p = await api.campaignProgress(camp.id); if (alive) { setProgress(p); setCamp((c) => ({ ...c, ...(p.byLead ? { sent: p.byLead } : {}), ...(p.status !== c.status ? { status: p.status, pauseReason: p.pauseReason || "" } : {}) })); } } catch { /* mantém o último */ } };
     poll();
     const id = camp.status === "sending" ? setInterval(poll, 5000) : null;
     return () => { alive = false; if (id) clearInterval(id); };
   }, [camp.id, camp.status]);
 
   const payload = () => ({
-    name: camp.name.trim() || "Broadcast sem nome", saas: pid, channel: ch, status: camp.status || "draft", stages: [...stagesSel],
+    name: camp.name.trim() || "Broadcast sem nome", saas: pid, channel: ch, status: camp.status || "draft", stages: [...stagesSel], audience: [...selected],
     channels: { email: hasEmail, whatsapp: hasWa },
     email: camp.email, wa: { ...(camp.wa.text ? { text: camp.wa.text } : {}), template: hasWa ? camp.wa.template : null },
     createdAt: camp.createdAt || new Date().toISOString(), createdBy: camp.createdBy || me,
@@ -431,28 +460,38 @@ function BroadcastEditor({ initial, product, leads, stageOptions, defaultStages,
       <section className="marketing-card" style={{ padding: 16 }}>
         {step(2, "Público", `${chosen.length} selecionado${chosen.length === 1 ? "" : "s"} · ${ch === "both" ? `${eligibleWa.length} por WhatsApp, ${eligibleEmail.length} por e-mail` : `${eligible.length} podem receber por ${CH_LABEL[ch] || "este canal"}`}`)}
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-          {stageOptions.map((s) => { const on = stagesSel.has(s); return <button key={s} type="button" aria-pressed={on} disabled={locked} onClick={() => toggleStage(s)} className={`chip ${on ? "accent" : ""}`} style={{ height: 28, cursor: "pointer" }}>{s} · {leads.filter((l) => l.stage === s).length}</button>; })}
+          {stageOptions.map((s) => { const on = stagesSel.has(s); return <button key={s} type="button" aria-pressed={on} disabled={audienceLocked} onClick={() => toggleStage(s)} className={`chip ${on ? "accent" : ""}`} style={{ height: 28, cursor: "pointer" }}>{s} · {leads.filter((l) => l.stage === s).length}</button>; })}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
           <input aria-label="Buscar lead" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="buscar por nome ou empresa" style={{ flex: "1 1 220px" }} />
-          <button type="button" disabled={locked} onClick={() => setSelected(new Set(recipients.map((l) => l.id)))} className="mono dim" style={{ fontSize: 11.5 }}>selecionar todos</button>
-          <button type="button" disabled={locked} onClick={() => setSelected(new Set())} className="mono dim" style={{ fontSize: 11.5 }}>limpar</button>
+          <SecondaryButton size="sm" disabled={audienceLocked || !visible.length || allVisibleOn} onClick={toggleVisible}>
+            {q || view !== "all" ? `Selecionar os ${visible.length} da lista` : `Selecionar todos (${recipients.length})`}
+          </SecondaryButton>
+          <SecondaryButton size="sm" disabled={audienceLocked || !selected.size} onClick={() => setSelected(new Set())}>Limpar seleção</SecondaryButton>
+          {failedCount > 0 && <SecondaryButton size="sm" disabled={audienceLocked} onClick={() => { setSelected(new Set(recipients.filter(failedOf).map((l) => l.id))); setView("failed"); }}>Só os que falharam ({failedCount})</SecondaryButton>}
+        </div>
+        <div role="group" aria-label="Mostrar na lista" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+          {[["all", "Todos", recipients.length], ["selected", "Selecionados", chosen.length], ["unselected", "Não selecionados", recipients.length - chosen.length], ...(failedCount ? [["failed", "Falharam", failedCount]] : [])].map(([k, label, n]) => (
+            <button key={k} type="button" aria-pressed={view === k} onClick={() => setView(k)} className={`chip ${view === k ? "accent" : ""}`} style={{ height: 26, cursor: "pointer" }}>{label} · {n}</button>
+          ))}
         </div>
         <div className="tbl-x" style={{ maxHeight: 360, overflow: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
-          <thead><tr>{["", "Lead", "Empresa", "Etapa", "Na etapa", "Situação"].map((h, i) => <th key={i} className="kicker" style={{ padding: "6px 8px", textAlign: "left", position: "sticky", top: 0, background: "var(--bg-1)" }}>{h}</th>)}</tr></thead>
+          <thead><tr>{["", "Lead", "Empresa", "Etapa", "Na etapa", "Situação"].map((h, i) => <th key={i} className="kicker" style={{ padding: "6px 8px", textAlign: "left", position: "sticky", top: 0, background: "var(--bg-1)" }}>
+            {i === 0 ? <HeaderCheck checked={allVisibleOn} mixed={someVisibleOn && !allVisibleOn} disabled={audienceLocked || !visible.length} onChange={toggleVisible} label={allVisibleOn ? "Desmarcar os leads da lista" : "Marcar os leads da lista"} /> : h}
+          </th>)}</tr></thead>
           <tbody>{visible.map((l) => {
             const [out, text] = situation(l);
             return <tr key={l.id}>
-              <td style={{ padding: "5px 8px", borderTop: "1px solid var(--line-1)" }}><input type="checkbox" aria-label={`Incluir ${l.name || l.id}`} disabled={locked} checked={selected.has(l.id)} onChange={() => setSelected((s) => { const n = new Set(s); n.has(l.id) ? n.delete(l.id) : n.add(l.id); return n; })} /></td>
+              <td style={{ padding: "5px 8px", borderTop: "1px solid var(--line-1)" }}><input type="checkbox" aria-label={`Incluir ${l.name || l.id}`} disabled={audienceLocked} checked={selected.has(l.id)} onChange={() => setSelected((s) => { const n = new Set(s); n.has(l.id) ? n.delete(l.id) : n.add(l.id); return n; })} /></td>
               <td style={{ padding: "5px 8px", borderTop: "1px solid var(--line-1)" }}><button type="button" onClick={() => onOpenLead?.(l)} style={{ fontWeight: 600, textAlign: "left" }}>{l.name || "sem nome"}</button></td>
               <td style={{ padding: "5px 8px", borderTop: "1px solid var(--line-1)" }}>{l.company || "—"}</td>
               <td style={{ padding: "5px 8px", borderTop: "1px solid var(--line-1)" }}>{l.stage}</td>
               <td style={{ padding: "5px 8px", borderTop: "1px solid var(--line-1)" }}>{daysSince(l.stageSince || l.updatedAt || l.createdAt)}</td>
-              <td style={{ padding: "5px 8px", borderTop: "1px solid var(--line-1)", color: out ? "var(--fg-3)" : "var(--pos)" }}>{text}</td>
+              <td style={{ padding: "5px 8px", borderTop: "1px solid var(--line-1)", color: out === "fail" ? "var(--neg)" : out ? "var(--fg-3)" : "var(--pos)" }}>{text}</td>
             </tr>;
           })}</tbody>
         </table></div>
-        {!visible.length && <div className="dim" style={{ fontSize: 12.5, padding: 8 }}>Nenhum lead nas etapas escolhidas.</div>}
+        {!visible.length && <div className="dim" style={{ fontSize: 12.5, padding: 8 }}>{recipients.length ? "Nenhum lead com esse filtro." : "Nenhum lead nas etapas escolhidas."}</div>}
       </section>
 
       <section className="marketing-card" style={{ padding: 16 }}>
@@ -501,7 +540,7 @@ function BroadcastEditor({ initial, product, leads, stageOptions, defaultStages,
         </div>}
         {camp.pauseReason && <div role="alert" style={{ fontSize: 12.5, color: "var(--neg)", marginBottom: 10 }}>Pausado: {camp.pauseReason}</div>}
         <div className="marketing-toolbar" style={{ gap: 8, flexWrap: "wrap" }}>
-          {!legacy && camp.status === "draft" && <PrimaryButton disabled={!eligible.length || !messageReady || !!busy || !channelsOn} onClick={send}>{busy === "send" ? "enviando…" : sendLabel}</PrimaryButton>}
+          {!legacy && (camp.status === "draft" || camp.status === "done") && <PrimaryButton disabled={!eligible.length || !messageReady || !!busy || !channelsOn} onClick={send}>{busy === "send" ? "enviando…" : camp.status === "done" ? sendLabel.replace(/^Enviar/, "Reenviar") : sendLabel}</PrimaryButton>}
           {["sending", "paused"].includes(camp.status) && <PrimaryButton onClick={pauseResume} disabled={!!busy}>{camp.status === "sending" ? "Pausar envio" : "Retomar envio"}</PrimaryButton>}
           {!legacy && camp.status === "draft" && <SecondaryButton onClick={save} disabled={!!busy}>{busy === "save" ? "salvando…" : "Salvar rascunho"}</SecondaryButton>}
         </div>
@@ -513,6 +552,13 @@ function BroadcastEditor({ initial, product, leads, stageOptions, defaultStages,
       </section>
     </fieldset>
   </div>;
+}
+// Caixa do cabeçalho da tabela: marca/desmarca os leads da lista (com o traço
+// quando só parte deles está marcada).
+function HeaderCheck({ checked, mixed, disabled, onChange, label }) {
+  const ref = useR(null);
+  useE(() => { if (ref.current) ref.current.indeterminate = !!mixed; }, [mixed]);
+  return <input ref={ref} type="checkbox" aria-label={label} checked={checked} disabled={disabled} onChange={onChange} />;
 }
 const Kpi = ({ label, value, sub }) => <div style={{ background: "var(--bg-inset)", borderRadius: 16, padding: "10px 14px" }}>
   <div style={{ fontSize: 12, color: "var(--fg-3)" }}>{label}</div><div className="tnum" style={{ fontSize: 22, fontWeight: 700 }}>{value}</div>{sub && <div className="dim" style={{ fontSize: 11.5 }}>{sub}</div>}</div>;
@@ -540,6 +586,11 @@ function EnrollModal({ seq, leads, onClose }) {
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
       <input aria-label="Buscar lead para inscrever" value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar por nome ou empresa" className="inp" style={{ flex: "1 1 220px" }} />
       <div style={{ width: 200 }}><SelectPopover label="Etapa" value={stage} onChange={setStage} options={[{ value: "", label: "todas as etapas" }, ...stages.map((s) => ({ value: s, label: s }))]} /></div>
+    </div>
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+      <SecondaryButton size="sm" disabled={!list.length || list.every((l) => sel.has(l.id))} onClick={() => setSel((s) => new Set([...s, ...list.map((l) => l.id)]))}>{k || stage ? `Selecionar os ${list.length} da lista` : `Selecionar todos (${list.length})`}</SecondaryButton>
+      <SecondaryButton size="sm" disabled={!sel.size} onClick={() => setSel(new Set())}>Limpar seleção</SecondaryButton>
+      <span className="dim" style={{ fontSize: 12 }}>{sel.size} selecionado{sel.size === 1 ? "" : "s"}</span>
     </div>
     <div style={{ maxHeight: 340, overflow: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
       {list.map((l) => <label key={l.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 8px", borderRadius: 12, fontSize: 13, cursor: "pointer", background: sel.has(l.id) ? "var(--accent-soft)" : "transparent" }}>

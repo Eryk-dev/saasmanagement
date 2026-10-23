@@ -164,3 +164,43 @@ test("broadcast nos dois canais: cada canal na sua fila; só conclui quando as d
   assert.equal(c1.status, "done");
   assert.ok(c1.sent.a.email && c1.sent.a.whatsapp, "Ana recebeu pelos dois");
 });
+
+test("entrega recusada depois do aceite: o webhook marca a falha no broadcast e o lead pode ser reenviado", async (t) => {
+  const repo = makeMemRepo();
+  const leads = [{ id: "a", name: "Ana", phone: "11999990001" }, { id: "b", name: "Bia", phone: "11999990002" }];
+  const camp = await seed(repo, leads);
+  await enqueueWaBroadcast(repo, camp, ["a", "b"]);
+  const wa = fakeWa();
+  await runWaBroadcastTick(repo, { wa, now: NOW });
+  assert.equal((await repo.get("campaigns", "c1")).sent.a.waStatus, "sent");
+  const app = Fastify();
+  registerRoutes(app, repo, { whatsapp: wa });
+  t.after(() => app.close());
+  // A Meta avisa: a mensagem da Ana (wamid.B1) não foi entregue (131049).
+  const hook = { entry: [{ changes: [{ field: "messages", value: { statuses: [{ id: "wamid.B1", status: "failed", errors: [{ code: 131049, title: "This message was not delivered to maintain healthy ecosystem engagement." }] }] } }] }] };
+  assert.equal((await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: hook })).statusCode, 200);
+  const c = await repo.get("campaigns", "c1");
+  assert.equal(c.sent.a.waStatus, "failed");
+  assert.match(c.sent.a.waError, /preservar o engajamento/);
+  assert.equal(c.sent.b.waStatus, "sent");
+  // Reenviar: a Ana volta pra fila; a Bia, que recebeu, fica de fora.
+  const again = await enqueueWaBroadcast(repo, c, ["a", "b"]);
+  assert.equal(again.queued, 1);
+  assert.deepEqual(again.skipped, [{ leadId: "b", reason: "já recebeu" }]);
+});
+
+test("progresso reconcilia broadcast antigo: quem consta como enviado mas falhou na entrega vira falha em byLead", async (t) => {
+  const repo = makeMemRepo();
+  await seed(repo, [{ id: "a", name: "Ana", phone: "11999990001" }]);
+  await repo.update("campaigns", "c1", { status: "done", sent: { a: { whatsapp: "2026-10-22T12:00:00Z", waStatus: "sent", waMessageId: "wamid.OLD" } } });
+  await repo.create("wa_messages", { id: "wamid.OLD", thread: "5511999990001", leadId: "a", saas: "leverads", author: "disparo", direction: "out", status: "failed", error: "Message undeliverable", errorCode: 131026 });
+  const app = Fastify();
+  registerRoutes(app, repo, { whatsapp: fakeWa() });
+  t.after(() => app.close());
+  const p = (await app.inject({ method: "GET", url: "/api/campaigns/c1/progress" })).json();
+  assert.equal(p.byLead.a.waStatus, "failed");
+  assert.match(p.byLead.a.waError, /não recebe mensagem/);
+  assert.equal(p.failed, 1);
+  assert.equal(typeof p.sent, "number");
+  assert.equal((await repo.get("campaigns", "c1")).sent.a.waStatus, "failed");
+});

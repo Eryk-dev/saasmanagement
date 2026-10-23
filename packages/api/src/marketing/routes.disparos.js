@@ -10,7 +10,7 @@
 //   POST /api/campaigns/ai-copy         — sugere a copy do disparo por IA.
 //   GET  /u/:token                      — descadastro público (opt-out de e-mail).
 // As rotas /api/campaigns/* entram no ROUTE_SCREENS (screens.js) sob "disparos".
-import { enqueueWaBroadcast, hasWhatsappChannel, waBroadcastProgress } from "./broadcast-wa.js";
+import { enqueueWaBroadcast, hasWhatsappChannel, reconcileBroadcastDelivery, waBroadcastProgress } from "./broadcast-wa.js";
 import { enqueueEmailBroadcast } from "./broadcast-email.js";
 import { resolveWabaId } from "../whatsapp/wa-health.js";
 import { logActivity } from "../crm/lead-flow.js";
@@ -74,9 +74,13 @@ export function registerCampaignRoutes(app, repo, { anthropic, mailer, whatsapp 
   });
 
   app.get("/api/campaigns/:id/progress", async (req, reply) => {
-    const camp = await repo.get("campaigns", req.params.id);
-    if (!camp) return reply.code(404).send({ error: "broadcast não encontrado" });
-    return { id: camp.id, status: camp.status || "draft", pauseReason: camp.pauseReason || "", ...(await waBroadcastProgress(repo, camp)) };
+    const found = await repo.get("campaigns", req.params.id);
+    if (!found) return reply.code(404).send({ error: "broadcast não encontrado" });
+    // Falha de entrega avisada depois do aceite entra no broadcast. O mapa por
+    // lead volta em `byLead` (o `sent` da resposta é a contagem), para o editor
+    // mostrar quem falhou e deixar reenviar.
+    const camp = await reconcileBroadcastDelivery(repo, found);
+    return { id: camp.id, status: camp.status || "draft", pauseReason: camp.pauseReason || "", ...(await waBroadcastProgress(repo, camp)), byLead: camp.sent || {} };
   });
 
   // Marca um envio ASSISTIDO feito (o operador clicou pra abrir o Whats/Gmail).

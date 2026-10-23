@@ -16,6 +16,12 @@ export function setupDisparosReview(seed){
  marketingCollections.sequences=[{id:'seq-preview',saas:'leverads',name:'Retomada por etapas',status:'draft',trigger:{stages:['Qualificação'],reasons:['sem_resposta']},exitOn:{won:true,booked:true,optOut:true,stageLeft:false},steps:[{channel:'whatsapp',delayDays:0,text:'Olá {{nome}}!'}]}];
  marketingCollections.sequence_enrollments=[{id:'en-preview',saas:'leverads',sequence:'seq-preview',lead:'l5',stepIndex:0,status:'waiting'}];
  marketingCollections.drip_templates=[{id:'tpl-preview',saas:'leverads',name:'Primeiro contato',channel:'email',subject:'Olá {{nome}}',body:'Vamos conversar sobre {{empresa}}?'}];
+ // Broadcast que a Meta aceitou e depois recusou na entrega: só a Carla (l5)
+ // foi escolhida; os outros da etapa ficam de fora. O progresso reconcilia.
+ const stage=seed.LEADS.find(l=>l.id==='l5')?.stage||'Qualificação';
+ marketingCollections.campaigns=[...marketingCollections.campaigns,{id:'camp-falhou',saas:'leverads',name:'Follow-up com falha',channel:'whatsapp',status:'done',stages:[stage],channels:{whatsapp:true,email:false},
+  wa:{template:{...APPROVED[0],vars:[{source:'token',value:'nome'},{source:'text',value:'LeverAds'}]}},email:{subject:'',body:''},
+  sent:{l5:{whatsapp:new Date().toISOString(),waStatus:'sent',waMessageId:'wamid.FALHOU'}},createdAt:new Date().toISOString(),createdBy:'leo'}];
  window.__disparosWrites=[];window.__opened=[];window.open=(url)=>{window.__opened.push(url);return null;};
 }
 const failures={};
@@ -31,7 +37,7 @@ const methods={
  campaignAiCopy:async()=>{await gate('campaignAiCopy',true);return marketingMock.campaignAiCopy();},
  campaignSendEmail:async(id,ids)=>{await gate('campaignSendEmail',true);const c=camp(id);c.sent=c.sent||{};for(const lead of ids)c.sent[lead]={...c.sent[lead],emailStatus:'queued'};c.status='sending';return {ok:true,queued:ids.length,skipped:[],total:ids.length,status:'sending',sent:clone(c.sent)};},
  campaignSendWhatsapp:async(id,ids)=>{await gate('campaignSendWhatsapp',true);const c=camp(id);c.sent=c.sent||{};for(const lead of ids)c.sent[lead]={waStatus:'queued'};c.status='sending';return {ok:true,queued:ids.length,skipped:[],status:'sending'};},
- campaignProgress:async(id)=>{const c=camp(id);const out={queued:0,sent:0,delivered:0,read:0,failed:0,skipped:0,email:{queued:0,sent:0,failed:0,skipped:0}};for(const s of Object.values(c?.sent||{})){if(s?.waStatus)out[s.waStatus]=(out[s.waStatus]||0)+1;if(s?.emailStatus)out.email[s.emailStatus]=(out.email[s.emailStatus]||0)+1;}return {id,status:c?.status||'draft',pauseReason:c?.pauseReason||'',...out};},
+ campaignProgress:async(id)=>{const c=camp(id);if(c?.sent?.l5?.waMessageId==='wamid.FALHOU'&&c.sent.l5.waStatus==='sent')c.sent.l5={...c.sent.l5,waStatus:'failed',waError:'a Meta segurou a entrega para preservar o engajamento (limite de marketing por pessoa)'};const out={queued:0,sent:0,delivered:0,read:0,failed:0,skipped:0,email:{queued:0,sent:0,failed:0,skipped:0}};for(const s of Object.values(c?.sent||{})){if(s?.waStatus)out[s.waStatus]=(out[s.waStatus]||0)+1;if(s?.emailStatus)out.email[s.emailStatus]=(out.email[s.emailStatus]||0)+1;}return {id,status:c?.status||'draft',pauseReason:c?.pauseReason||'',...out,byLead:clone(c?.sent||{})};},
  campaignPause:async(id)=>{await gate('campaignPause',true);const c=camp(id);c.status='paused';c.pauseReason='pausado pelo time';return clone(c);},
  campaignResume:async(id)=>{await gate('campaignResume',true);const c=camp(id);c.status='sending';c.pauseReason='';return clone(c);},
  sequenceEnroll:async(id,ids)=>{await gate('sequenceEnroll',true);return {enrolled:ids.length};},

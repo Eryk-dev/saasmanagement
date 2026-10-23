@@ -34,6 +34,24 @@ try{
  await h.capture(p,'broadcast-whatsapp-pausado');
  await p.getByRole('button',{name:'← Broadcasts',exact:true}).click();await p.getByText('Retomada outubro',{exact:true}).waitFor();await p.getByText('pausado',{exact:true}).waitFor();
 
+ // Broadcast que falhou na entrega: reabre só com o público escolhido, mostra a
+ // falha com o motivo e deixa reenviar; seleção em massa (todos, limpar, lista
+ // filtrada, caixa do cabeçalho e "só os que falharam").
+ await p.getByText('Follow-up com falha',{exact:true}).click();
+ await p.getByText(/falhou: a Meta segurou a entrega/).waitFor();
+ await p.getByRole('button',{name:'Selecionados · 1',exact:true}).waitFor();
+ const total=Number((await p.getByRole('button',{name:/^Todos · \d+$/}).innerText()).replace(/\D/g,''));assert.ok(total>1,'a etapa tem mais leads que o escolhido');
+ await p.getByRole('button',{name:/^Reenviar 1 mensagem$/}).waitFor();
+ await p.getByRole('button',{name:`Selecionar todos (${total})`,exact:true}).click();await p.getByRole('button',{name:`Selecionados · ${total}`,exact:true}).waitFor();
+ await p.getByRole('button',{name:'Limpar seleção',exact:true}).click();await p.getByRole('button',{name:'Selecionados · 0',exact:true}).waitFor();
+ await p.getByLabel('Marcar os leads da lista',{exact:true}).check();await p.getByRole('button',{name:`Selecionados · ${total}`,exact:true}).waitFor();
+ await p.getByRole('button',{name:'Limpar seleção',exact:true}).click();
+ await p.getByRole('button',{name:'Só os que falharam (1)',exact:true}).click();await p.getByRole('button',{name:'Selecionados · 1',exact:true}).waitFor();
+ await h.capture(p,'broadcast-falhou');
+ p.once('dialog',d=>d.accept());await p.getByRole('button',{name:/^Reenviar 1 mensagem$/}).click();await p.getByText(/mensagem\(ns\) de WhatsApp na fila/).waitFor();
+ assert.ok((await writes(p)).includes('campaignSendWhatsapp'));
+ await p.getByRole('button',{name:'← Broadcasts',exact:true}).click();await p.getByText('Follow-up com falha',{exact:true}).waitFor();
+
  // Broadcast de e-mail com modelo livre.
  await p.getByRole('button',{name:'+ Novo broadcast',exact:true}).first().click();await p.getByRole('checkbox',{name:/^E-mail/}).click();await p.getByRole('checkbox',{name:/^WhatsApp/}).click();assert.equal(await p.getByRole('checkbox',{name:/^WhatsApp/}).getAttribute('aria-checked'),'false');
  await pick(p,'Usar modelo livre','Primeiro contato');assert.equal(await p.getByLabel('Assunto do e-mail',{exact:true}).inputValue(),'Olá {{nome}}');
@@ -50,7 +68,7 @@ try{
  await p.getByText('WhatsApp e e-mail',{exact:true}).first().waitFor();await p.getByText('por WhatsApp',{exact:true}).waitFor();await p.getByText('por e-mail',{exact:true}).waitFor();
  await h.capture(p,'broadcast-dois-canais');
  const both=p.getByRole('button',{name:/^Enviar \d+ WhatsApp e \d+ e-mails?$/});p.once('dialog',d=>d.accept());await both.click();await p.getByText(/e-mail\(s\) na fila, saem pelo Resend · \d+ mensagem\(ns\) de WhatsApp na fila/).waitFor();await p.getByLabel('Progresso do envio').getByText('E-mail',{exact:true}).waitFor();await h.capture(p,'broadcast-dois-canais-enviado');
- const bw=await writes(p);assert.equal(bw.filter(w=>w==='campaignSendEmail').length,2);assert.equal(bw.filter(w=>w==='campaignSendWhatsapp').length,2);
+ const bw=await writes(p);assert.equal(bw.filter(w=>w==='campaignSendEmail').length,2);assert.equal(bw.filter(w=>w==='campaignSendWhatsapp').length,3); // novo, reenvio da falha e dois canais
  await p.getByRole('button',{name:'← Broadcasts',exact:true}).click();await p.getByText('WhatsApp + E-mail',{exact:true}).waitFor();await p.close();
 
  // Sequência: o gatilho guarda os motivos de perda ao salvar (bug 3); menus nativos.
@@ -65,7 +83,10 @@ try{
  const sw2=(await writes(seq)).filter(w=>w.col==='sequences').at(-1).data;assert.equal(sw2.steps[0].template.name,'retomada_diag');assert.deepEqual(sw2.steps[0].template.vars[1],{source:'text',value:'LeverAds'});assert.deepEqual(sw2.trigger.reasons,['sem_resposta']);
  await h.capture(seq,'sequencia-modelo-oficial');
  // Inscrever leads à mão.
- await seq.getByRole('button',{name:'inscrever leads…',exact:true}).click();const en=seq.getByRole('dialog');await en.getByRole('checkbox').first().check();await en.getByRole('button',{name:'Inscrever 1',exact:true}).click();await seq.getByText(/^1 lead inscrito/).waitFor();assert.ok((await writes(seq)).includes('sequenceEnroll'));
+ await seq.getByRole('button',{name:'inscrever leads…',exact:true}).click();const en=seq.getByRole('dialog');
+ await en.getByRole('button',{name:/^Selecionar todos \(\d+\)$/}).click();await en.getByRole('button',{name:/^Inscrever \d{2,}$/}).waitFor();
+ await en.getByRole('button',{name:'Limpar seleção',exact:true}).click();await en.getByText('0 selecionados',{exact:true}).waitFor();
+ await en.getByRole('checkbox').first().check();await en.getByRole('button',{name:'Inscrever 1',exact:true}).click();await seq.getByText(/^1 lead inscrito/).waitFor();assert.ok((await writes(seq)).includes('sequenceEnroll'));
  await seq.close();
 
  // Fila do WhatsApp: passo de sequência mandado à mão.
@@ -91,5 +112,5 @@ try{
 
  // Celular, tablet, escuro e vazio: sem rolagem lateral em nenhuma aba.
  for(const[width,q]of [[390,''],[1024,''],[1440,'&theme=dark'],[1440,'&empty']]){const page=await h.open(width,q);for(const name of ['Broadcasts','Sequências','Fila do WhatsApp','Modelos']){await tab(page,name).click();await page.waitForTimeout(150);assert.ok(await noOverflow(page),`${name} ${width}${q}`);await h.capture(page,`state-${name}-${width}-${q||'base'}`);}await page.close();}
- assert.deepEqual(h.errors,[]);console.log('Disparos: broadcasts por canal e nos dois canais (WhatsApp oficial e e-mail), sequência com gatilho preservado, fila, modelos oficiais e livres, menus no seletor do Cockpit, falha/retry, celular, escuro e vazio OK.');
+ assert.deepEqual(h.errors,[]);console.log('Disparos: broadcast com falha de entrega reaberto e reenviado, seleção em massa, broadcasts por canal e nos dois canais (WhatsApp oficial e e-mail), sequência com gatilho preservado, fila, modelos oficiais e livres, menus no seletor do Cockpit, falha/retry, celular, escuro e vazio OK.');
 }finally{await h.close();}
