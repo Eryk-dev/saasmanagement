@@ -422,7 +422,17 @@ ${ev.description || ""}`)) continue;
     const other = (await repo.listWhere("leads", { integrationBookedEventId: ev.id })).find((l) => l.id !== lead.id);
     if (other) return { code: 409, error: `essa marcação já está ligada ao card de ${other.name || "outro cliente"}` };
     const ahead = lead.integrationMeetEventId && lead.integrationMeetEventId !== ev.id && Date.parse(lead.integrationScheduledAt || "") > now.getTime();
-    if (ahead) return { code: 409, error: "esse card já tem outra integração marcada: desmarque antes de ligar esta" };
+    if (ahead) {
+      // Ligar à mão é decisão de quem integra: o cliente escolheu este horário, então
+      // ele substitui o que o operador tinha marcado. A sala antiga sai da agenda.
+      const oldUser = lead.integrationMeetOrganizer || lead.integrator || user.id;
+      try { await gu.deleteEvent(oldUser, lead.integrationMeetEventId); } catch { /* best-effort */ }
+      await logActivity(repo, {
+        saas: lead.saas || "", lead: lead.id, type: "system", author: "cockpit",
+        text: `Integração de ${whenLabel(lead.integrationAt)} substituída pela marcação do cliente`,
+        meta: { event: "integration_replaced", eventId: lead.integrationMeetEventId, by },
+      });
+    }
     await applyBooking(user, lead, ev, by ? `manual:${by}` : "manual", now);
     for (const n of await repo.listWhere("notifications", { key: `booking-orphan:${ev.id}` }).catch(() => [])) {
       if (!n.read) await repo.update("notifications", n.id, { read: true, readAt: now.toISOString() }).catch(() => {});

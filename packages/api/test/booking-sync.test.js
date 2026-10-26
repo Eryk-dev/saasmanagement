@@ -234,14 +234,18 @@ test("marcação sem card: o aviso leva o evento e ligar à mão usa a sala da m
   assert.equal((await sync.linkEvent({ userId: "eryk", eventId: "orf", leadId: "nao-existe", now: NOW })).code, 404);
 });
 
-test("ligar à mão não pisa em card que já tem outra integração por vir", async () => {
+test("ligar à mão substitui a integração por vir do card (o cliente escolheu outro horário)", async () => {
   const { repo, cal, eryk } = await setup();
   await repo.update("leads", "bia", { integrationMeetEventId: "ck9", integrationScheduledAt: "2026-10-20T13:00:00.000Z", integrationAt: "2026-10-20T10:00" });
-  const guLive = { ...gu, getEvent: async () => booking({ id: "orf2" }) };
+  const deleted = [];
+  const guLive = { ...gu, getEvent: async () => booking({ id: "orf2" }), deleteEvent: async (u, id) => { deleted.push([u, id]); } };
   const sync = makeBookingSync({ repo, googleUser: guLive, google, fetch: cal.fetch, log: { warn() {} } });
   const r = await sync.linkEvent({ userId: "eryk", eventId: "orf2", leadId: "bia", now: NOW });
-  assert.equal(r.code, 409);
-  assert.equal((await repo.get("leads", "bia")).integrationAt, "2026-10-20T10:00");
+  assert.equal(r.code, undefined);
+  assert.equal(r.lead.integrationBookedEventId, "orf2");
+  assert.equal(r.lead.integrationMeetEventId, "orf2");
+  assert.equal(r.lead.integrationAt, "2026-10-09T10:00");
+  assert.deepEqual(deleted.map((d) => d[1]), ["ck9"], "a sala antiga sai da agenda");
 });
 
 test("e-mail do Gmail: ponto e +tag não contam", () => {
