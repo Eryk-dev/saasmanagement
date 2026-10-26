@@ -1369,7 +1369,9 @@ de preview não conta). Ligado: `integrationAt`, integrador e a sala da marcaç�
 pessoa, então o `autoIntegrationMeet` não cria outra e o espelho pessoal não
 duplica), `integrationBookedVia: "link"` + `integrationBookedEventId`, atividade e
 aviso no sino. Remarcar/cancelar na página do Google acompanham; card com outra
-integração por vir não é sobrescrito; marcação sem card avisa quem integra (só
+integração por vir não é sobrescrito pela ligação automática (só avisa); ligar à
+mão pelo sino (`linkEvent`) substitui essa integração e apaga a sala antiga
+(24/10/2026); marcação sem card avisa quem integra (só
 com clique recente ou texto de agendamento no evento).
 
 **Conflito operador × cliente no horário da integração (07/10/2026).** A grade
