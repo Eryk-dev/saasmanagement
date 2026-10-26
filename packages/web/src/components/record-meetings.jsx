@@ -11,8 +11,11 @@ import { summaryReason } from "./customer-meeting.jsx";
 
 const when = (iso) => new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
-export function RecordMeetings({ host, record, onChanged }) {
+// `collapsed`: o cliente já tem uma reunião marcada em outro lugar (a integração
+// do negócio). Marcar outra fica atrás de um botão, em vez de abrir o campo.
+export function RecordMeetings({ host, record, onChanged, collapsed = false }) {
   const [at, setAt] = useState("");
+  const [opened, setOpened] = useState(false);
   const [busy, setBusy] = useState(false);
   const meetings = (record.meetings || []).filter((m) => m.status === "scheduled").sort((a, b) => String(b.at).localeCompare(String(a.at)));
 
@@ -50,13 +53,14 @@ export function RecordMeetings({ host, record, onChanged }) {
         </strong>
       </div>;
     })}
-    {!meetings.length && <p className="customer-peek-note">Nenhuma reunião marcada.</p>}
-    <div style={{ display: "flex", gap: 6, marginTop: 10, alignItems: "center" }}>
+    {!meetings.length && !collapsed && <p className="customer-peek-note">Nenhuma reunião marcada.</p>}
+    {collapsed && !opened && <button type="button" className="customer-peek-link" style={{ marginTop: 6 }} onClick={() => setOpened(true)}>marcar outra reunião</button>}
+    {(!collapsed || opened) && <div style={{ display: "flex", gap: 6, marginTop: 10, alignItems: "center" }}>
       <div style={{ flex: 1, minWidth: 0 }}><DateTimeField value={at} onChange={setAt} placeholder="marcar reunião em…" /></div>
       <button type="button" className="customer-peek-link" disabled={busy || !at}
         onClick={() => run(async () => { const r = await api.scheduleRecordMeeting(host, record.id, { at }); setAt(""); return r; }, "Reunião marcada. Convite enviado.")}>
         {busy ? "marcando…" : "marcar"}
       </button>
-    </div>
+    </div>}
   </section>;
 }

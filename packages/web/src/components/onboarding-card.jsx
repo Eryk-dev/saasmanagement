@@ -17,7 +17,10 @@ import { BookingLinkActions } from "./booking-link.jsx";
 import { SignupInviteLink } from "./leverads-accounts.jsx";
 import { CustomerLeverIdBadge } from "./leverid-badge.jsx";
 import { customerOrgId } from "../lib/leverid.js";
-import { allUsers } from "../lib/users.js";
+import { allUsers, displayName } from "../lib/users.js";
+import { brtMs } from "../lib/format.js";
+import { meetingInviteText } from "../lib/wa-copy.js";
+import { waLink } from "../lib/ui.js";
 import { openCustomer, openLeadById } from "../lib/open-record.js";
 import { toast } from "../atoms.jsx";
 // O desenho de gaveta do card do cliente: estes blocos também abrem fora da
@@ -53,6 +56,37 @@ const isoToLocal = (iso) => {
 };
 const progressOf = (items) => (items.length ? Math.round((items.filter((i) => i.doneAt).length / items.length) * 100) : 0);
 
+const whenBrt = (ms) => new Date(ms).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+// Detalhes da integração que está no card do negócio: quando, quem integra,
+// sala, como foi marcada e se o cliente confirmou.
+function LeadIntegration({ info: { lead, at, upcoming }, onOpenLead }) {
+  const via = lead.integrationBookedVia === "link" ? "marcada pelo cliente no link de convite" : "marcada pela equipe";
+  // A mesma mensagem do card do negócio (dia, hora de Brasília e link da sala).
+  const invite = upcoming ? meetingInviteText(lead, "integracao") : "";
+  const wa = waLink(lead.phone);
+  return <section>
+    <div className="customer-peek-kicker">
+      <span>{upcoming ? "integração marcada" : "integração realizada"}</span>
+      <span className="customer-peek-state" data-tone={upcoming ? (lead.integrationConfirmed ? "pos" : "mut") : "mut"}>
+        {upcoming ? (lead.integrationConfirmed ? "confirmada" : "aguardando confirmação") : "já aconteceu"}
+      </span>
+    </div>
+    <div className="customer-peek-fact"><span>Quando</span><strong>{whenBrt(at)}</strong></div>
+    <div className="customer-peek-fact"><span>Integrador</span><strong>{lead.integrator ? displayName(lead.integrator) : "sem integrador"}</strong></div>
+    <div className="customer-peek-fact"><span>Sala</span><strong>
+      {lead.integrationCallUrl ? <a className="customer-peek-link" href={lead.integrationCallUrl} target="_blank" rel="noopener noreferrer">Meet ↗</a> : <span style={{ color: "var(--warn)" }}>sem sala</span>}
+    </strong></div>
+    <div className="customer-peek-fact"><span>Origem</span><strong>{via}</strong></div>
+    {invite && <div className="customer-peek-fact"><span>Convite</span><strong style={{ display: "flex", gap: 12, justifyContent: "flex-end", flexWrap: "wrap" }}>
+      <button type="button" className="customer-peek-link" title="Copiar a mensagem (dia, hora e link da sala)"
+        onClick={async () => { try { await navigator.clipboard.writeText(invite); toast("Convite copiado", "pos"); } catch { window.prompt("Convite da integração:", invite); } }}>copiar convite</button>
+      {wa && <a className="customer-peek-link" href={`${wa}?text=${encodeURIComponent(invite)}`} target="_blank" rel="noopener noreferrer" title="Enviar o convite pro cliente no WhatsApp">mandar no Whats ↗</a>}
+    </strong></div>}
+    {upcoming && <div className="customer-peek-fact"><span>Remarcar</span><strong><button type="button" className="customer-peek-link" onClick={onOpenLead}>no negócio →</button></strong></div>}
+  </section>;
+}
+
 export function OnboardingDrawer({ id, onClose }) {
   const [o, setO] = useState(null);
   const [customer, setCustomer] = useState(null);
@@ -61,6 +95,7 @@ export function OnboardingDrawer({ id, onClose }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [newItem, setNewItem] = useState({ title: "", side: "lever" });
+  const [showInvite, setShowInvite] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -121,6 +156,11 @@ export function OnboardingDrawer({ id, onClose }) {
   };
   const stage = ONBOARDING_STAGES.find((s) => s.value === draft?.stage);
   const users = allUsers().map((u) => ({ value: u.id, label: u.name || u.id }));
+  // A integração da implantação inicial nasce no card do negócio (integrationAt,
+  // sala, quem marcou) e não entra em `meetings`. Com ela marcada, o card mostra
+  // os detalhes e deixa marcar outra / mandar o link de convite atrás de botões.
+  const leadAtMs = draft?.kind === "implantacao" && lead?.integrationAt ? brtMs(lead.integrationAt) : NaN;
+  const leadInteg = Number.isFinite(leadAtMs) ? { lead, at: leadAtMs, upcoming: leadAtMs > Date.now() } : null;
 
   return createPortal(
     <Drawer onClose={close} fechavel={!busy} label="Integração" largura={460} style={{ background: "transparent", padding: 0 }}
@@ -145,21 +185,26 @@ export function OnboardingDrawer({ id, onClose }) {
             {draft.stage === "concluida" && pending > 0 && <p className="customer-peek-note" role="alert" style={{ color: "var(--neg)" }}>Faltam {pending} {pending === 1 ? "item" : "itens"} do checklist: a integração só conclui com tudo feito.</p>}
             <div className="customer-peek-bar"><i style={{ width: `${progressOf(items)}%`, background: "var(--accent)" }} /></div>
           </section>
+          {leadInteg && <LeadIntegration info={leadInteg} onOpenLead={() => { onClose(); openLeadById(draft.lead); }} />}
           <section>
             <div className="customer-peek-kicker"><span>quando e quem</span></div>
             <div className="customer-peek-fact"><span>Tipo</span><strong><SelectPopover size="sm" value={draft.kind} options={ONBOARDING_KINDS} onChange={(v) => set({ kind: v })} label="Tipo de integração" /></strong></div>
             <div className="customer-peek-fact"><span>Integrador</span><strong><SelectPopover size="sm" value={draft.integrator || ""} options={[{ value: "", label: "sem integrador" }, ...users]} onChange={(v) => set({ integrator: v })} label="Integrador" /></strong></div>
             {/* Link da agenda do integrador para o cliente marcar sozinho (o mesmo
                 do gate de Integração). Com negócio de origem, a marcação cai nele. */}
-            {draft.integrator && !CLOSED_STAGES.has(draft.stage) && (lead || customer) && <div style={{ padding: "6px 0" }}>
-              <BookingLinkActions lead={lead || { saas: customer.saas, name: customer.contact || customer.name, phone: customer.phone || "" }} userId={draft.integrator} />
-            </div>}
+            {draft.integrator && !CLOSED_STAGES.has(draft.stage) && (lead || customer) && (
+              leadInteg?.upcoming && !showInvite
+                ? <div style={{ padding: "6px 0" }}><button type="button" className="customer-peek-link" onClick={() => setShowInvite(true)}>copiar link de convite da agenda</button></div>
+                : <div style={{ padding: "6px 0" }}>
+                  <BookingLinkActions lead={lead || { saas: customer.saas, name: customer.contact || customer.name, phone: customer.phone || "" }} userId={draft.integrator} />
+                </div>
+            )}
             <div className="customer-peek-fact"><span>Kickoff</span><strong><DateTimeField value={isoToLocal(draft.kickoffAt)} onChange={(v) => set({ kickoffAt: v ? new Date(v).toISOString() : "" })} /></strong></div>
             <div className="customer-peek-fact"><span>Go-live previsto</span><strong><DateTimeField withTime={false} value={draft.plannedGoLiveAt ? isoToLocal(draft.plannedGoLiveAt).slice(0, 10) : ""} onChange={(v) => set({ plannedGoLiveAt: v ? new Date(`${v}T12:00`).toISOString() : "" })} /></strong></div>
             {draft.goLiveAt && <div className="customer-peek-fact"><span>Go-live real</span><strong>{new Date(draft.goLiveAt).toLocaleDateString("pt-BR")}</strong></div>}
             {draft.lead && <div className="customer-peek-fact"><span>Negócio de origem</span><strong><button type="button" className="customer-peek-link" onClick={() => { onClose(); openLeadById(draft.lead); }}>abrir negócio →</button></strong></div>}
           </section>
-          <RecordMeetings host="onboardings" record={draft} onChanged={reloadMeetings} />
+          <RecordMeetings host="onboardings" record={draft} onChanged={reloadMeetings} collapsed={!!leadInteg?.upcoming} />
           <section>
             <div className="customer-peek-kicker"><span>checklist</span><b>{items.length - pending} de {items.length}</b></div>
             {/* Sem a classe customer-peek-checks: ela é da régua de marcos e estica os spans do Checkbox. */}

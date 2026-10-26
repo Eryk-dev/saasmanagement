@@ -24,6 +24,7 @@ import { displayName } from "../lib/users.js";
 
 import { paymentLabel, paymentUpfront, paymentRecurring, paymentCustom, PAY_STATUS, consultPackageLabel, consultPackageOf, mpMethodLabel, accruedAmountOf, CYCLE_LABEL, closedPlanFromLabel, anyGatewayOn, defaultGateway, gatewayLabel } from "../lib/payments.js";
 import { CustomerPlanPanel, CustomerContractForm, CustomerProducts } from "../components/customer-plan.jsx";
+import { CustomerActiveProducts } from "../components/customer-active-products.jsx";
 
 import { UpsellPanel } from "../components/UpsellPanel.jsx";
 import { CustomerMeetingForm } from "../components/customer-meeting.jsx";
@@ -862,6 +863,7 @@ function CustomersScreen({ initialTab }) {
           product={product}
           subs={subsOf(selected)}
           invoices={invoices.filter((i) => i.customer === selected.id)}
+          plans={plans}
           planLabel={planLabel}
           lastContact={lastContact}
           leverOrg={leverOrgOf(selected)}
@@ -1088,6 +1090,7 @@ function CustomerPeek(props) {
               {label:'Registrar indicação',onClick:()=>props.onNewReferral(customer)},
             ]}/></div>
           </section>
+          {!kids&&<CustomerActiveProducts boxed={false} customer={customer} subs={subs} invoices={invoices} plans={props.plans||[]}/>}
           {/* O que está aberto agora (integração, acompanhamento, reunião) e o
               "+ novo" de tudo que se abre a partir do cliente. */}
           {!kids&&<CustomerNow customer={customer} lead={lead} onLeave={onClose} onScheduleMeeting={()=>setOperation('meeting')}/>}

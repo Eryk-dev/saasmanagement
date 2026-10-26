@@ -128,6 +128,7 @@ function listFilter(collection, q) {
 
   if (collection === "customers") {
     return (c) => {
+      if (q.lead) return c.leadId === q.lead; // card do lead → o cliente dele (produtos ativos)
       if (q.band === "red") return c.health < 50;
       if (q.band === "yellow") return c.health >= 50 && c.health < 70;
       if (q.band === "green") return c.health >= 70;

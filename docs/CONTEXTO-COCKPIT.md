@@ -1238,6 +1238,27 @@ do contratado. Na ficha, tudo fica em Gerenciar cobranças: "Produtos
 contratados" (Mudar plano, Adicionar produto) e "Contrato" (status do
 pagamento, valor anual, cliente desde, churn). Teste: `multi-product.test.js`.
 
+**Produtos ativos e vigência no card do cliente (26/10/2026).** O card (peek) da
+tela Clientes lista as assinaturas vivas (`active`/`past_due`) com plano, "em
+dia"/"em atraso" e vigência (`components/customer-active-products.jsx`). Não
+existe campo de vigência gravado: `shared/contract-terms.js` a deriva (início =
+`startedAt`/criação da assinatura, a principal considera `customer.startedAt`;
+duração = contrato vendido no `planSnapshot`/`planCycle`; fim = `periodEnd`
+quando o ciclo de cobrança cobre o contrato, senão início + N× o contrato). Plano
+anual cobrado por boleto/PIX parcelado tem ciclo `monthly` só para cobrar, então
+`periodEnd` sozinho mostraria o fim do mês. O mesmo bloco aparece no card do lead
+em Integração (`LeadActiveProducts` em `deal.jsx`), que acha o cliente por
+`GET /api/customers?lead=<id>` e some se o lead ainda não virou cliente. Teste:
+`contract-terms.test.js`.
+
+**Card da Integração com a implantação já marcada (26/10/2026).** A integração da
+implantação inicial vive no lead (`integrationAt`, `integrationCallUrl`), não em
+`onboarding.meetings`. O `OnboardingDrawer` (`onboarding-card.jsx`) agora lê o
+lead de origem: com integração marcada mostra o bloco "integração marcada"
+(quando, integrador, sala, origem link/equipe, confirmação) e, se ela ainda está
+no futuro, deixa "marcar outra reunião" (`RecordMeetings collapsed`) e "copiar
+link de convite da agenda" atrás de botões em vez de abertos.
+
 **Acesso e limites.** `entitlements.js` calcula, por cliente × produto, o acesso
 (status da assinatura) e os limites (do `planSnapshot`, não do plano vivo). O
 adaptador do LeverAds (`leverads-access.js`) **só libera** por padrão (decisão de

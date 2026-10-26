@@ -27,6 +27,7 @@ import { useData } from "../data.jsx";
 import { DayPicker } from "../components/followup-contact.jsx";
 import { followupBadge, followupNextContact, followupDayOf } from "../lib/followup.js";
 import { CustomerCard } from "./tickets/customer-card.jsx";
+import { LeadActiveProducts } from "../components/customer-active-products.jsx";
 import { LeadCrmStrip, LeadLeverIdBadge, ProposalVersionsLine } from "../components/deal-meta.jsx";
 // Lead detail drawer — slides over the pipeline when a card is opened.
 // (Funil unificado: o card do pipeline é um lead, então o detalhe é do lead.)
@@ -808,6 +809,8 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
                   {integBusyMsg || "aparece na Agenda"}
                 </span>
               </div>
+              {/* O que o cliente tem contratado e até quando (some se o lead ainda não virou cliente). */}
+              <LeadActiveProducts lead={lead} />
               {/* Entrega: briefing pro integrador + vídeo/resumo da integração,
                   recolhidos — a DATA fica em cima, sempre visível. */}
               <button onClick={() => setShowEntrega((v) => !v)}
