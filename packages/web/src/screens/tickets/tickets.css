@@ -341,3 +341,13 @@ body[data-theme="dark"] .hermes-section, body[data-theme="dark"] .hermes-card {
 }
 /* Resumo do card no diálogo de aprovar: o que está sendo aprovado, lido agora. */
 .hermes-approve-summary { background: var(--bg-inset); border-radius: var(--r-3); padding: 10px 12px; font-size: 12.5px; }
+
+/* Aba Clientes (customers-view.jsx): cabeçalho do histórico de suporte da
+   empresa, na régua das operações da ficha do cliente. */
+.tickets-customer-head { display:flex; align-items:center; gap:12px; padding:18px 24px 14px; border-bottom:1px solid var(--line-faint); flex-shrink:0; }
+.tickets-customer-head h2 { flex:1; min-width:0; font:600 18px var(--display); margin:0; }
+.tickets-customer-head button { height:30px; width:30px; flex-shrink:0; border-radius:999px; background:var(--bg-2); }
+@media(max-width:700px) {
+  .tickets-customer-head button { min-height:44px; min-width:44px; }
+  [role=dialog]:has(.tickets-customer-head) :is(input,select,button) { min-height:44px!important; }
+}

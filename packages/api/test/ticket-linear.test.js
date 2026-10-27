@@ -12,12 +12,12 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 import { makeFakeLinear as makeFakeLinearBase } from "./helpers/fake-linear.js";
 import { makeAuthHook, hashPassword } from "../src/auth/auth.js";
 import { makeScreenGuardHook } from "../src/auth/screens.js";
-import { normalizeSettings } from "../src/support/tickets-core.js";
+import { normalizeSettings, saveSettings } from "../src/support/tickets-core.js";
 import {
   planTicketSync, normalizeLinearSettings, issueKeyFromInput, clearStateCache, clearPeopleCache,
   linearIdForUser, userIdForLinear, issueAssignee,
   applyLinearIssue, applyLinearComment, LINEAR_PRIORITY, issueDescriptionFor, isCockpitIssue,
-  categoryFromLabels, issueLabelNames,
+  categoryFromLabels, issueLabelNames, ticketFromIssue, orgDaDescricao, clienteDaDescricao,
 } from "../src/support/ticket-linear.js";
 import { startLinearSync } from "../src/support/ticket-linear-runner.js";
 import { publicTicket } from "../src/support/support-page.js";
@@ -603,6 +603,93 @@ test("reconciliação traz o card que o webhook não entregou, sem anunciar o hi
   const de_novo = await sync.reconcile();
   assert.equal(de_novo.imported, 0);
   assert.equal((await repo.list("tickets")).length, 1);
+});
+
+// Card do Hermes: o cliente vem da org vinculada ao grupo (descrição), o canal e
+// o produto vêm das etiquetas, e o título é só o resumo.
+const HERMES_DESC = (org = "", grupo = "Safehouse <> LeverAds") =>
+  `**Cliente:** ${grupo}\n${org ? `**Org leverads:** \`${org}\`\n` : ""}\n**Problema:** relatório não abre\n\n## Resumo do caso\nx`;
+const HERMES_CLIENTES = [
+  { id: "c_safe", saas: "leverads", name: "Safehouse Distribuidora", leveradsOrgId: "org-safe" },
+  { id: "c_safe2", saas: "leverads", name: "Safehouse" },
+  { id: "c_lp", saas: "leverprice", name: "Safehouse", leverpriceOrgId: "lp-safe" },
+];
+
+test("card do Hermes: cliente pela org da descrição, canal e produto pelas etiquetas", () => {
+  assert.equal(orgDaDescricao(HERMES_DESC("org-safe"), "leverads"), "org-safe");
+  assert.equal(orgDaDescricao(HERMES_DESC("org-safe"), "leverprice"), "", "a org é por produto");
+  assert.equal(clienteDaDescricao(HERMES_DESC()), "Safehouse <> LeverAds");
+
+  const issue = {
+    id: "iss_h1", identifier: "LEV-73806", title: "Relatório de vendas não abre", description: HERMES_DESC("org-safe"),
+    labels: { nodes: [{ name: "Bug" }, { name: "Hermes" }, { name: "WhatsApp" }, { name: "LeverAds" }] },
+  };
+  const plan = ticketFromIssue(issue, { saas: "leverads", customers: HERMES_CLIENTES });
+  assert.equal(plan.customer?.id, "c_safe", "a org casa mesmo com o nome do cadastro diferente do grupo");
+  assert.equal(plan.input.customerId, "c_safe");
+  assert.equal(plan.input.subject, "Relatório de vendas não abre");
+  assert.equal(plan.input.channel, "whatsapp");
+  assert.equal(plan.input.category, "Código · Bug");
+  assert.deepEqual(plan.input.tags, ["linear", "Hermes", "WhatsApp", "LeverAds"]);
+
+  // Grupo sem empresa vinculada: cai no nome do grupo sem o produto, com par único.
+  const semOrg = ticketFromIssue({ ...issue, description: HERMES_DESC() }, { saas: "leverads", customers: HERMES_CLIENTES });
+  assert.equal(semOrg.customer?.id, "c_safe2");
+
+  // Org sem cliente no cadastro e nome sem par: não chuta, o grupo vai no solicitante.
+  const nada = ticketFromIssue({ ...issue, description: HERMES_DESC("org-outra", "Loja Nova <> LeverAds") }, { saas: "leverads", customers: HERMES_CLIENTES });
+  assert.equal(nada.input.customerId, "");
+  assert.deepEqual(nada.input.requester, { name: "Loja Nova <> LeverAds" });
+
+  // Mesma org em dois clientes do produto: ambíguo, não escolhe.
+  const dup = [...HERMES_CLIENTES, { id: "c_dup", saas: "leverads", name: "Outra", leveradsOrgId: "org-safe" }];
+  const amb = ticketFromIssue({ ...issue, description: HERMES_DESC("org-safe", "Grupo X") }, { saas: "leverads", customers: dup });
+  assert.equal(amb.input.customerId, "");
+  assert.equal(amb.ambiguo, true);
+});
+
+test("card antigo do Hermes ([WhatsApp][leverads] no título) não vira cliente \"WhatsApp\"", () => {
+  const plan = ticketFromIssue({
+    id: "iss_h0", title: "[WhatsApp][leverads] Safehouse <> LeverAds · relatório não abre", description: HERMES_DESC(),
+    labels: { nodes: [{ name: "Hermes" }] },
+  }, { saas: "leverads", customers: HERMES_CLIENTES });
+  assert.equal(plan.customer?.id, "c_safe2", "o nome vem da linha Cliente da descrição");
+  assert.equal(plan.input.channel, "whatsapp", "o [WhatsApp] do título antigo marca o canal");
+  assert.notEqual(plan.input.requester?.name, "WhatsApp");
+});
+
+test("projeto dividido entre produtos: a etiqueta do produto decide onde o card do Hermes entra", async (t) => {
+  const { app, repo, linear, sync } = await buildApp();
+  t.after(() => { sync.stop(); return app.close(); });
+  await repo.create("products", { id: "leverads", name: "LeverAds" });
+  await repo.create("products", { id: "leverprice", name: "LeverPrice" });
+  for (const c of HERMES_CLIENTES) await repo.create("customers", c);
+  for (const saas of ["leverads", "leverprice"]) {
+    await saveSettings(repo, saas, { linear: { enabled: true, teamId: "team_1", projectId: "proj_cs" } }, { by: "lia" });
+  }
+  const card = (id, produto, desc) => ({
+    id, identifier: id.toUpperCase(), title: "Preço não atualiza", description: desc, priority: 3,
+    labels: [{ id: "lh", name: "Hermes" }, { id: "lw", name: "WhatsApp" }, { id: `lp_${produto}`, name: produto }],
+    projectId: "proj_cs", project: { id: "proj_cs" }, state: { id: "st_backlog", name: "Backlog", type: "backlog" },
+    updatedAt: new Date().toISOString(),
+  });
+
+  const lp = card("iss_lp", "LeverPrice", "**Cliente:** Safehouse <> LeverPrice\n**Org leverprice:** `lp-safe`");
+  const r = await postWebhook(app, { type: "Issue", action: "create", webhookTimestamp: Date.now(), data: lp });
+  assert.equal(r.json().imported, true);
+  const t1 = await repo.get("tickets", r.json().ticket);
+  assert.equal(t1.saas, "leverprice");
+  assert.equal(t1.customerId, "c_lp");
+  assert.equal(t1.channel, "whatsapp");
+
+  // Pela reconciliação, cada produto olha o mesmo projeto, mas só o da etiqueta importa.
+  const la = card("iss_la", "LeverAds", HERMES_DESC("org-safe"));
+  linear.issuesUpdatedSince = async () => [la];
+  const rec = await sync.reconcile();
+  assert.equal(rec.imported, 1);
+  const t2 = (await repo.list("tickets")).find((x) => x.linearIssueId === "iss_la");
+  assert.equal(t2.saas, "leverads");
+  assert.equal(t2.customerId, "c_safe");
 });
 
 test("aplicar direto (sem HTTP): issue de ticket inexistente é ignorada com segurança", async () => {

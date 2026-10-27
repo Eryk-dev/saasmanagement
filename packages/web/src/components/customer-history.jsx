@@ -9,6 +9,7 @@ import { displayName } from "../lib/users.js";
 import { waLink } from "../lib/ui.js";
 import { ACTIVITY_TYPES, activityText } from "./timeline.jsx";
 import { summaryReason } from "./customer-meeting.jsx";
+import "./customer-history.css";
 
 const TZ = "America/Sao_Paulo";
 function momentOf(raw) {

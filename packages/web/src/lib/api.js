@@ -757,6 +757,9 @@ export const api = {
   ticketMessage: (id, body) => req("POST", `/api/tickets/${encodeURIComponent(id)}/messages`, body),
   ticketActivity: (id) => req("GET", `/api/tickets/${encodeURIComponent(id)}/activity`),
   ticketsBulk: (ids, action, value) => req("POST", "/api/tickets/bulk", { ids, action, value }),
+  // Histórico de suporte da EMPRESA (cadastros da mesma org nos produtos que a
+  // pessoa atende) com o resumo calculado no servidor; 404 fora do escopo.
+  ticketsByCustomer: (id) => req("GET", `/api/tickets/by-customer/${encodeURIComponent(id)}`),
   ticketAttachment: (id, file, { isPublic = false } = {}, onProgress) => {
     const fd = new FormData();
     fd.append("file", file, file.name || "anexo");

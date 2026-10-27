@@ -679,15 +679,21 @@ export const clienteDoTitulo = (title) => (String(title || "").match(/^\s*\[([^\
 export const isCockpitIssue = (issue) => /^\*\*Ticket [^\n]*\*\* · suporte /.test(String(issue?.description || ""));
 
 // Produto cujo espelho está ligado NESTE projeto. Sem projeto configurado não
-// importa nada: o time inteiro do Linear não é fila de suporte.
+// importa nada: o time inteiro do Linear não é fila de suporte. Quando dois
+// produtos usam o mesmo projeto (o Hermes abre LeverAds e LeverPrice no
+// "CS - Suporte"), a etiqueta com o id ou o nome do produto desempata; sem
+// ela, fica o primeiro, como antes.
 export async function productForIssue(repo, issue) {
   const projectId = str(issue?.project?.id || issue?.projectId, 120);
   if (!projectId) return "";
+  const hits = [];
   for (const p of await repo.list("products").catch(() => [])) {
     const cfg = (await loadSettings(repo, p.id).catch(() => null))?.linear;
-    if (cfg?.enabled && cfg.teamId && cfg.projectId === projectId) return p.id;
+    if (cfg?.enabled && cfg.teamId && cfg.projectId === projectId) hits.push(p);
   }
-  return "";
+  if (hits.length < 2) return hits[0]?.id || "";
+  const labels = issueLabelNames(issue).map(nomeChave);
+  return (hits.find((p) => labels.includes(nomeChave(p.id)) || labels.includes(nomeChave(p.name))) || hits[0]).id;
 }
 
 // Etiquetas da issue: a GraphQL devolve `labels.nodes`, o webhook um array.
@@ -723,27 +729,61 @@ export async function ensureCategory(repo, saas, category, { now = nowIso() } = 
   await saveSettings(repo, saas, { categories: [...categories, category] }, { by: ACTOR_LINEAR, now });
 }
 
-// Ticket que a issue geraria. Cliente: o "[Cliente]" do título casado com o
-// cadastro do produto por nome normalizado idêntico e ÚNICO — sem casamento
-// não chuta, o nome vai no solicitante. Responsável: o da issue, pelo mesmo
-// de-para de pessoas do espelho (userIdForLinear).
+// Card do Hermes (bot do WhatsApp). A descrição traz o nome do grupo em
+// "**Cliente:** Safehouse <> LeverAds" e, quando o grupo tem empresa vinculada,
+// "**Org leverads:** `<id>`": o mesmo id de `customer.leveradsOrgId` /
+// `customer.leverpriceOrgId` (padrão `<produto>OrgId`). O canal e o produto
+// vêm em etiquetas ("WhatsApp", "LeverAds"); cards antigos traziam tudo no
+// título ("[WhatsApp][leverads] Grupo · resumo").
+export const CHANNEL_LABELS = { whatsapp: "whatsapp" };
+const linhaDaDescricao = (description, rotulo) =>
+  (String(description || "").match(new RegExp(`^\\*\\*${rotulo}:\\*\\*[ \\t]*(.+)$`, "im")) || [])[1]?.trim() || "";
+export const orgDaDescricao = (description, saas) =>
+  (linhaDaDescricao(description, `Org ${saas}`).match(/^`?([A-Za-z0-9_.:-]{1,80})`?/) || [])[1] || "";
+export const clienteDaDescricao = (description) => linhaDaDescricao(description, "Cliente").slice(0, 200);
+// O nome do grupo carrega o produto e enfeites ("Safehouse <> LeverAds",
+// "Suporte Safehouse | LeverPrice"); só o resto identifica a empresa.
+const chaveDoGrupo = (s) => nomeChave(s).replace(/\b(lever ?ads|lever ?price|lever|suporte|grupo|x)\b/g, " ").replace(/\s+/g, " ").trim();
+const canalDaIssue = (issue, labels) => {
+  const k = labels.map(nomeChave).find((n) => CHANNEL_LABELS[n]);
+  if (k) return CHANNEL_LABELS[k];
+  return /^\s*\[whatsapp\]/i.test(String(issue?.title || "")) ? "whatsapp" : "internal";
+};
+
+// Ticket que a issue geraria. Cliente, nesta ordem, sempre com par ÚNICO no
+// cadastro do produto (sem casamento não chuta; o nome vai no solicitante):
+//   1. a org vinculada que o Hermes escreveu na descrição;
+//   2. o "[Cliente]" do título (padrão do CS), ignorando "[WhatsApp]";
+//   3. o nome do grupo na linha "**Cliente:**" da descrição, sem o produto.
+// Responsável: o da issue, pelo mesmo de-para de pessoas do espelho
+// (userIdForLinear).
 export function ticketFromIssue(issue, { saas, customers = [], users = [], people = [], overrides = {} } = {}) {
-  const nome = clienteDoTitulo(issue.title);
-  const k = nomeChave(nome);
-  const casados = k ? customers.filter((c) => (c.saas || "") === saas && nomeChave(c.name) === k) : [];
-  const customer = casados.length === 1 ? casados[0] : null;
+  const doProduto = customers.filter((c) => (c.saas || "") === saas);
+  const unico = (lista) => (lista.length === 1 ? lista[0] : null);
+  const org = orgDaDescricao(issue.description, saas);
+  const porOrg = org ? doProduto.filter((c) => String(c[`${saas}OrgId`] || "") === org || String(c.orgId || "") === org) : [];
+  const doTitulo = clienteDoTitulo(issue.title);
+  const tituloValido = doTitulo && !CHANNEL_LABELS[nomeChave(doTitulo)] ? doTitulo : "";
+  const porTitulo = tituloValido ? doProduto.filter((c) => nomeChave(c.name) === nomeChave(tituloValido)) : [];
+  const doGrupo = clienteDaDescricao(issue.description);
+  const kGrupo = chaveDoGrupo(doGrupo);
+  const porGrupo = kGrupo ? doProduto.filter((c) => nomeChave(c.name) === kGrupo) : [];
+  const customer = unico(porOrg) || unico(porTitulo) || unico(porGrupo);
+  const nome = tituloValido || doGrupo;
+  const ambiguo = !customer && [porOrg, porTitulo, porGrupo].some((l) => l.length > 1);
   const uid = userIdForLinear(issueAssignee(issue), { users, people, overrides });
   const assignee = uid ? users.find((u) => u.id === uid) || null : null;
-  const { category, tags } = categoryFromLabels(issueLabelNames(issue));
+  const labels = issueLabelNames(issue);
+  const { category, tags } = categoryFromLabels(labels);
   // Sem descrição: a do ticket aparece na Conversa como "pedido" do cliente, e
   // a Conversa é só o atendimento. O relato da issue mora na aba Linear, lido
   // de lá (e o vínculo adotado nunca sobe descrição, então nada se perde).
   return {
-    nome, customer, ambiguo: casados.length > 1, assignee,
+    nome, customer, ambiguo, assignee,
     input: {
       saas, subject: str(issue.title, 250) || String(issue.identifier || "Issue do Linear"), description: "",
       priority: PRIORITY_FROM_LINEAR[Number(issue.priority)] || "normal",
-      channel: "internal", tags: ["linear", ...tags], category,
+      channel: canalDaIssue(issue, labels), tags: ["linear", ...tags], category,
       customerId: customer?.id || "",
       requester: customer ? {} : { name: nome },
       assignee: assignee?.id || "",

@@ -1231,6 +1231,56 @@ try {
     failed++;
   }
 
+  // ── Tickets › Clientes: histórico de suporte da empresa (27/10/2026) ─────
+  // A aba lista os clientes do produto com ticket vinculado e abre o histórico
+  // da empresa. O fetch (GET /api/tickets/by-customer/:id) não roda no SSR:
+  // o modal monta com `initial`.
+  try {
+    const S = await server.ssrLoadModule("/src/components/customer-tickets.jsx");
+    const V = await server.ssrLoadModule("/src/screens/tickets/customers-view.jsx");
+    const has = (name, html, must) => { if (!html.includes(must)) throw new Error(`${name} não contém "${must}"`); };
+    const R = (el) => renderToString(wrap(el));
+    const cliente = window.SEED.CUSTOMERS[0];
+    const h = (n) => new Date(Date.now() - n * 3_600_000).toISOString();
+    const tk = (id, number, extra) => ({ id, number, saas: "leverads", subject: `Pedido ${number}`, status: "resolved", priority: "normal", category: "Dúvida", channel: "whatsapp", customerId: cliente.id, createdAt: h(number), updatedAt: h(number), sla: {}, linear: null, hermes: null, messageCount: 0, ...extra });
+    const data = {
+      customer: { id: cliente.id, name: cliente.name, saas: "leverads" },
+      companies: [{ id: cliente.id, name: cliente.name, saas: "leverads" }, { id: "c1-price", name: cliente.name, saas: "leverprice" }],
+      summary: { total: 6, open: 2, resolved: 4, avgResolutionHours: 30.5, lastAt: h(1), byProduct: { leverads: 5, leverprice: 1 }, byChannel: { whatsapp: 4, portal: 2 },
+        byCategory: [{ category: "Código · Bug", count: 3 }, { category: "Dúvida", count: 3 }], hermes: 1, breached: 1 },
+      tickets: [
+        tk("s1", 1, { subject: "Cópia parou no meio", status: "open", category: "Código · Bug", linear: { identifier: "LEV-1012", url: "https://linear.app/x/issue/LEV-1012" }, hermes: { labeled: true, active: true, holding: true, needsHuman: true, phase: "validar", version: 1 } }),
+        tk("s2", 2, { saas: "leverprice", subject: "Margem mínima", status: "pending_customer", channel: "portal" }),
+        tk("s3", 3, { category: "Código · Bug", sla: { breached: { resolution: true } } }),
+        tk("s4", 4), tk("s5", 5, { channel: "portal" }), tk("s6", 6),
+      ],
+    };
+    const saasAntes = window.SEED.SAAS;
+    window.SEED.SAAS = [...saasAntes, { id: "leverprice", name: "Lever Price", funnel: [], leadQuestions: [] }];
+    try {
+      // Aba Clientes: uma linha por cliente com ticket vinculado; os sem vínculo viram aviso.
+      const fila = [...data.tickets.filter((t) => t.saas === "leverads"), tk("s9", 9, { customerId: "" })];
+      const { rows, unlinked } = V.customerRows(fila, window.SEED.CUSTOMERS);
+      if (rows.length !== 1 || rows[0].open !== 1 || rows[0].total !== 5 || rows[0].breached !== 1 || rows[0].hermes !== 1 || unlinked !== 1) throw new Error(`customerRows fora: ${JSON.stringify({ n: rows.length, ...rows[0], tickets: undefined, customer: undefined, unlinked })}`);
+      const aba = R(React.createElement(V.TicketsCustomers, { tickets: fila, now: Date.now(), openCustomer: "", onOpenCustomer() {}, onCloseCustomer() {} }));
+      for (const t of ["Cliente", "Em aberto", "SLA estourado", "Último pedido", "Do que mais pedem", cliente.name, "Cópia parou no meio", "1 com o Hermes", "1 ticket ainda não tem cliente vinculado"]) has("aba clientes", aba, t);
+      has("aba clientes vazia", R(React.createElement(V.TicketsCustomers, { tickets: [tk("x", 1, { customerId: "" })], now: Date.now(), onOpenCustomer() {}, onCloseCustomer() {} })), "Nenhum ticket vinculado a cliente ainda.");
+      const aberta = R(React.createElement(V.TicketsCustomers, { tickets: fila, now: Date.now(), openCustomer: cliente.id, onOpenCustomer() {}, onCloseCustomer() {}, initialHistory: { data } }));
+      has("aba clientes com histórico", aberta, `Histórico de suporte · ${cliente.name}`);
+
+      const hist = R(React.createElement(S.CustomerSupportHistory, { customer: cliente, initial: { data } }));
+      for (const t of ["Resumo", "pedidos", "em aberto", "resolução", "média, em horas corridas", "30,5 h", "Perfil dos pedidos", "SLA estourado", "do que pedem", "Código · Bug", "por onde chegam", "WhatsApp", "portal do cliente", "por produto", "Empresa em 2 produtos",
+        "1 pedido passou pelo Hermes", "Todos · 6", "Em aberto · 2", "Produto", "Canal", "https://linear.app/x/issue/LEV-1012", "target=\"_blank\"", "Aguardando cliente"]) has("histórico de suporte", hist, t);
+      has("histórico vazio", R(React.createElement(S.CustomerSupportHistory, { customer: cliente, initial: { data: { ...data, tickets: [], summary: { total: 0 } } } })), "Nenhum pedido de suporte desta empresa");
+      has("histórico com erro", R(React.createElement(S.CustomerSupportHistory, { customer: cliente, initial: { error: "falhou" } })), "Tentar novamente");
+      if (S.fmtResolution(0.5) !== "30 min" || S.fmtResolution(72) !== "3 dias" || S.fmtResolution(null) !== "—") throw new Error("fmtResolution fora da régua (min · h · dias)");
+    } finally { window.SEED.SAAS = saasAntes; }
+    console.log("✓ tickets-clientes");
+  } catch (err) {
+    console.error(`✗ tickets-clientes: ${err.message}`);
+    failed++;
+  }
+
   // Clientes: cinco colunas com pisos explícitos; rolagem interna no mobile
   // é conferida junto dos estados/ações em scripts/review/customers.mjs.
   try {

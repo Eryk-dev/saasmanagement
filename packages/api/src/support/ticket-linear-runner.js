@@ -13,7 +13,7 @@
 // cadastrado). Sem LINEAR_API_KEY, tudo isto fica dormente.
 
 import { ACTOR_LINEAR, loadSettings, setTicketSink } from "./tickets-core.js";
-import { OUTBOX, syncTicketToLinear, applyLinearIssue, applyLinearComment, importLinearIssue } from "./ticket-linear.js";
+import { OUTBOX, syncTicketToLinear, applyLinearIssue, applyLinearComment, importLinearIssue, productForIssue } from "./ticket-linear.js";
 import { defaultLinear } from "./linear.js";
 
 const MAX_ATTEMPTS = 10;
@@ -115,9 +115,10 @@ export function startLinearSync(repo, {
           const applied = await applyLinearIssue(repo, issue, { log, linear });
           if (!applied) {
             // Card aberto direto no projeto do suporte: vira ticket aqui (se o
-            // webhook já não tiver criado).
+            // webhook já não tiver criado). Projeto dividido entre produtos: só
+            // o produto que a etiqueta aponta importa (mesma regra do webhook).
             const projectId = issue.project?.id || "";
-            if (cfg.projectId && projectId === cfg.projectId) {
+            if (cfg.projectId && projectId === cfg.projectId && await productForIssue(repo, issue) === p.id) {
               const r = await importLinearIssue(repo, issue, { saas: p.id, log, linear });
               if (r?.created) out.imported++;
             }

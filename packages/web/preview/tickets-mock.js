@@ -147,9 +147,36 @@ const resumo = (t) => { const { messages = [], ...rest } = t; const last = messa
 const achar = (id) => tickets.find((t) => t.id === id);
 const trocar = (id, patch) => { tickets = tickets.map((t) => (t.id === id ? { ...t, ...patch, updatedAt: new Date().toISOString() } : t)); return achar(id); };
 
+// Histórico de suporte da empresa (GET /api/tickets/by-customer/:id): o
+// mesmo formato da API, com o resumo calculado aqui sobre a lista dada.
+export function supportHistoryOf(customer, list, companies = [customer]) {
+  const done = (t) => t.status === "resolved" || t.status === "closed";
+  const ordered = [...list].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  const resolved = ordered.filter((t) => done(t) && t.sla?.resolvedAt);
+  const count = (key) => ordered.reduce((acc, t) => { const k = t[key] || ""; if (k) acc[k] = (acc[k] || 0) + 1; return acc; }, {});
+  const byCategory = Object.entries(count("category")).sort((a, b) => b[1] - a[1]).map(([category, n]) => ({ category, count: n }));
+  return {
+    customer: { id: customer.id, name: customer.name, saas: customer.saas },
+    companies: companies.map((c) => ({ id: c.id, name: c.name, saas: c.saas })),
+    summary: {
+      total: ordered.length, open: ordered.filter((t) => !done(t)).length, resolved: ordered.filter(done).length,
+      avgResolutionHours: resolved.length ? resolved.reduce((s, t) => s + (Date.parse(t.sla.resolvedAt) - Date.parse(t.createdAt)) / H, 0) / resolved.length : null,
+      lastAt: ordered[0]?.createdAt || "", byProduct: count("saas"), byChannel: count("channel"), byCategory,
+      hermes: ordered.filter((t) => t.hermes).length,
+      breached: ordered.filter((t) => t.sla?.breached?.resolution || t.sla?.breached?.firstResponse).length,
+    },
+    tickets: ordered.map(resumo),
+  };
+}
+
 export const ticketsMock = {
   tickets: (q = {}) => new URLSearchParams(location.search).has("empty") ? [] : tickets.filter((t) => (!q.saas || t.saas === q.saas) && (!q.customerId || t.customerId === q.customerId)).map(resumo),
   ticket: (id) => achar(id),
+  ticketsByCustomer: (id) => {
+    const customer = (window.SEED?.CUSTOMERS || []).find((c) => c.id === id);
+    if (!customer) throw Object.assign(new Error("cliente não encontrado"), { status: 404 });
+    return supportHistoryOf(customer, new URLSearchParams(location.search).has("empty") ? [] : tickets.filter((t) => t.customerId === id));
+  },
   ticketDelete: (id) => { tickets = tickets.filter(t => t.id !== id); return {ok:true}; },
   ticketCreate: (body) => {
     const t = { id: `tk${Date.now()}`, number: 1044 + tickets.length, status: body.assignee ? "open" : "new", channel: "internal", followers: [], messages: [], attachments: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), sla: sla(0, 8, 48), portalToken: "demo", requester: { name: "", email: "", phone: "" }, ...body };

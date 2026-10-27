@@ -39,6 +39,10 @@ const SUPPORT_PATHS = {
     ], responses: { 200: { description: "OK" } } },
     post: { tags: ["Suporte"], summary: "Abre um ticket (numera, calcula SLA, avisa atendentes se não houver responsável)", security: SEC, requestBody: json(TicketInput), responses: { 201: { description: "Ticket" }, 400: { description: "Produto/assunto/cliente/responsável inválido" }, 403: { description: "Produto fora do escopo da sessão" } } },
   },
+  "/api/tickets/by-customer/{customerId}": {
+    parameters: [{ name: "customerId", in: "path", required: true, schema: { type: "string" } }],
+    get: { tags: ["Suporte"], summary: "Histórico de suporte da empresa do cliente: tickets de todos os cadastros da mesma org (orgId/leveradsOrgId/leverpriceOrgId) nos produtos do escopo, com resumo (abertos, tempo médio de resolução, categorias, canais, Hermes, SLA estourado)", responses: { 200: { description: "{ customer, companies[], summary, tickets[] }" }, 404: { description: "cliente inexistente ou fora do escopo" } } },
+  },
   "/api/tickets/meta": { get: { tags: ["Suporte"], summary: "Status (com kind open/waiting/done), prioridades e canais", responses: { 200: { description: "OK" } } } },
   "/api/tickets/bulk": { post: { tags: ["Suporte"], summary: "Ação em massa (assign | status | priority) em até 200 tickets; fora do escopo conta como missing", security: SEC, requestBody: json({ type: "object", required: ["ids", "action"], properties: { ids: { type: "array", items: { type: "string" } }, action: { type: "string", enum: ["assign", "status", "priority"] }, value: { type: "string" } } }), responses: { 200: { description: "{ ok[], missing[], failed[] }" } } } },
   "/api/tickets/{id}": {

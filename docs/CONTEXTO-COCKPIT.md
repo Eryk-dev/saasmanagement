@@ -219,7 +219,7 @@ Os caminhos abaixo são relativos a `packages/`.
 | Agenda, Google e consultas | `api/src/google/routes.google.js`, `calls/routes.consultations.js`; telas `agenda.jsx`, `agenda-grid.jsx`, `consultas.jsx`. |
 | Treinamentos | `api/src/training/` (`routes.flashcards.js`, `fsrs.js`); telas `training.jsx`, `training.css`, `training-focus.jsx`; testes `api/test/routes.flashcards.test.js`. |
 | Tarefas | `api/src/tasks/routes.tasks.js`; `web/src/screens/tasks/` (quadro, lista, calendário, drawer, filtros e estado). |
-| Suporte (tickets) | `api/src/support/` (`tickets-core.js`, `tickets-sla.js`, `routes.tickets.js`, `quick-replies.js`, `ticket-sla-runner.js`, `routes.support-portal.js`, `support-page.js`) e `auth/support-scope.js`; espelho com o Linear em `support/linear.js`, `ticket-linear.js`, `ticket-linear-runner.js` e a rota `/api/webhooks/linear` (`marketing/routes.webhooks.js`); Hermes (agente de correção no Linear) em `support/ticket-hermes.js`, `hermes-actions.js`, `routes.hermes.js` e `shared/hermes-phase.js`; `web/src/screens/tickets/`, `support-settings.jsx`, `quick-replies.jsx`, `lib/tickets.js`, `components/customer-tickets.jsx`; testes `routes.tickets`, `routes.quick-replies`, `tickets-sla`, `ticket-sla-runner`, `routes.support-portal`, `ticket-linear`, `ticket-hermes`. |
+| Suporte (tickets) | `api/src/support/` (`tickets-core.js`, `tickets-sla.js`, `routes.tickets.js`, `quick-replies.js`, `ticket-sla-runner.js`, `routes.support-portal.js`, `support-page.js`, `customer-history.js`) e `auth/support-scope.js`; histórico de suporte por empresa em `GET /api/tickets/by-customer/:customerId` (tickets de todos os cadastros da mesma org — `orgId`, `leveradsOrgId` ou `leverpriceOrgId` — nos produtos do escopo do atendente, com resumo; 404 fora do escopo), que a aba **Clientes** da tela Tickets (`screens/tickets/customers-view.jsx`, ao lado de Kanban e Lista) abre por cliente: a aba agrupa os tickets do produto ativo vinculados a cliente e o modal `CustomerSupportHistory` (`components/customer-tickets.jsx`, estilos em `components/customer-history.css`) mostra a empresa inteira; espelho com o Linear em `support/linear.js`, `ticket-linear.js`, `ticket-linear-runner.js` e a rota `/api/webhooks/linear` (`marketing/routes.webhooks.js`); Hermes (agente de correção no Linear) em `support/ticket-hermes.js`, `hermes-actions.js`, `routes.hermes.js` e `shared/hermes-phase.js`; `web/src/screens/tickets/`, `support-settings.jsx`, `quick-replies.jsx`, `lib/tickets.js`, `components/customer-tickets.jsx`; testes `routes.tickets`, `routes.quick-replies`, `tickets-sla`, `ticket-sla-runner`, `routes.support-portal`, `ticket-linear`, `ticket-hermes`, `customer-support-history`. |
 | Conteúdo e redes sociais | `api/src/blog/` (`routes.blog.js`, `routes.blog-public.js`) e `marketing/routes.social.js`; telas `blog.jsx` e `social.jsx`. |
 | Componentes e visual | `web/src/tokens.css`, `atoms.jsx`, `components/viz.jsx`, `components/lead-blocks.jsx`, `lib/ui.js`. |
 | Kanban compartilhado | `web/src/components/kanban/` (`KanbanBoard`/`KanbanColumn` + `useBoardDnd`): quadro, coluna, soltar, placeholder, corte "+N" e coluna recolhida. Tarefas, Tickets e Pipeline montam só o card e o que é do domínio em cima dela; layout `scroll` (colunas fixas que rolam sozinhas) ou `fill` (grid de colunas iguais, Pipeline). |
@@ -782,8 +782,18 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   (7) **card aberto direto no Linear vira ticket (22/09/2026):** issue sem
   ticket no projeto configurado de um produto com o espelho ligado entra pelo
   webhook e pela reconciliação (`importLinearIssue`): ticket já vinculado e
-  `adopted`, ator `linear`, cliente pelo `[Cliente]` do título (nome único) e
-  comentários existentes em `seenComments`. A issue que o próprio espelho criou
+  `adopted`, ator `linear` e comentários existentes em `seenComments`. Cliente
+  (`ticketFromIssue`, sempre com par único no produto, sem chute): a linha
+  `**Org <saas>:** \`<id>\`` que o Hermes escreve na descrição, casada com
+  `customer.<saas>OrgId` (ou `orgId`); senão o `[Cliente]` do título do CS
+  (ignorando `[WhatsApp]`); senão a linha `**Cliente:**` da descrição sem o
+  produto ("Safehouse <> LeverAds" → "Safehouse"). Etiqueta `WhatsApp` (ou o
+  título antigo `[WhatsApp]…`) faz o canal `whatsapp`. Projeto dividido entre
+  produtos (o Hermes abre LeverAds e LeverPrice no mesmo "CS - Suporte"): a
+  etiqueta com o id ou o nome do produto decide (`productForIssue`, também na
+  reconciliação); sem ela, o primeiro produto. Desde 27/10/2026 o Hermes
+  (repo `yudi-leverads/Hermes-VPS`) abre o card com o título só com o resumo e
+  as etiquetas `WhatsApp` e `LeverAds`/`LeverPrice`. A issue que o próprio espelho criou
   é reconhecida pelo cabeçalho da descrição (`isCockpitIssue`) e nunca vira
   segundo ticket. O que é anterior ao cursor da reconciliação entra pelo script
   `packages/api/scripts/2026-09-21-importar-cs-suporte-linear.mjs` (dry-run

@@ -25,6 +25,7 @@ import { issueKeyFromInput, linkTicketToIssue, unlinkTicket, syncTicketToLinear,
 import { hermesView } from "./ticket-hermes.js";
 import { enqueueTicketSync } from "./ticket-linear-runner.js";
 import { readTicketUpload, sendTicketAsset } from "./ticket-assets.js";
+import { customerSupportHistory } from "./customer-history.js";
 
 const guarded = (fn) => async (req, reply) => {
   try {
@@ -93,6 +94,11 @@ export function registerTicketRoutes(app, repo, { mailer = null, linear = defaul
   }));
 
   app.get("/api/tickets", guarded(async (req) => listTickets(repo, scopeOf(req), req.query)));
+
+  // Histórico de suporte da empresa do cliente (todos os cadastros da mesma
+  // org nos produtos que o atendente atende), com resumo. customer-history.js.
+  app.get("/api/tickets/by-customer/:customerId", guarded(async (req, reply) =>
+    (await customerSupportHistory(repo, req.params.customerId, scopeOf(req))) || notFound(reply)));
 
   app.post("/api/tickets", guarded(async (req, reply) => {
     const body = req.body && typeof req.body === "object" ? req.body : {};

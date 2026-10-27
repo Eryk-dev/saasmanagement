@@ -20,6 +20,7 @@ import { AgentKpis } from "./agent-kpis.jsx";
 import { Menu } from "../../components/menu.jsx";
 import { ticketMenuItems } from "./context-menu.jsx";
 import { CustomerCard } from "./customer-card.jsx";
+import { TicketsCustomers } from "./customers-view.jsx";
 
 // Suporte · fila de tickets do produto ativo. Mesmo desenho das Tarefas: a
 // tela busca a própria lista (fora do SEED), escuta o cockpit-change, muda com
@@ -90,7 +91,7 @@ export function TicketsScreen() {
   const handles = scope === null || scope.includes(saasId);
   const { state, dispatch, mutate, inflight } = useTicketsStore(saasId);
 
-  const [view, setViewState] = useState(() => readLs(VIEW_KEY, "kanban", ["kanban", "list"]));
+  const [view, setViewState] = useState(() => readLs(VIEW_KEY, "kanban", ["kanban", "list", "customers"]));
   const setView = (v) => { setViewState(v); writeLs(VIEW_KEY, v); };
   const [filter, setFilterState] = useState(() => readLs(FILTER_KEY, "open", FILTERS));
   const setFilter = (v) => { setFilterState(v); writeLs(FILTER_KEY, v); };
@@ -103,6 +104,7 @@ export function TicketsScreen() {
   const [creating, setCreating] = useState(false);
   const [menu, setMenu] = useState(null); // { id, at: { x, y } }
   const [customerCard, setCustomerCard] = useState(null); // { ticketId, customer, via, anchor }
+  const [historyOf, setHistoryOf] = useState(""); // aba Clientes: cliente com o histórico aberto
   const [now, setNow] = useState(() => Date.now());
   const boardRef = useRef(null);
   const dndRef = useRef(null);
@@ -260,8 +262,8 @@ export function TicketsScreen() {
   return (
     <div className="support-page tickets-page">
       <header className="tickets-head"><h1>Tickets</h1><div className="tickets-head-actions">
-        {handles && <SearchInput value={q} onChange={setQ} placeholder="Buscar nº, assunto, cliente" label="Buscar tickets" width={230} />}
-        {handles && <Segmented value={view} onChange={setView} options={[{ value: "kanban", label: "Kanban" }, { value: "list", label: "Lista" }]} />}
+        {handles && <SearchInput value={q} onChange={setQ} placeholder={view === "customers" ? "Buscar cliente" : "Buscar nº, assunto, cliente"} label={view === "customers" ? "Buscar clientes" : "Buscar tickets"} width={230} />}
+        {handles && <Segmented value={view} onChange={setView} options={[{ value: "kanban", label: "Kanban" }, { value: "list", label: "Lista" }, { value: "customers", label: "Clientes" }]} />}
         {handles && <PrimaryButton onClick={() => setCreating(true)}>Abrir ticket</PrimaryButton>}
       </div></header>
 
@@ -275,9 +277,9 @@ export function TicketsScreen() {
               <AgentKpis stats={myStats} user={currentUser()} productName={product?.name || ""} onQueue={() => setFilter("mine")} onRisk={() => { setFilter("mine"); setView("list"); }} />
             </div>
           )}
-          <div className="support-bar">
+          {view !== "customers" && <div className="support-bar">
             {[...filtros, ...escondidos].map((f,i) => <React.Fragment key={f.id}>{i === filtros.length && <span className="tickets-filter-divider" />}<button className="tickets-filter" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)} title={f.title}>{f.label} <span>{f.n}</span></button></React.Fragment>)}
-          </div>
+          </div>}
           <div className="support-body">
             <div className="support-main">
               {!state.loaded && !state.error && <div className="mono dim" style={{ fontSize: 12, padding: "24px var(--pad-x)" }}>carregando…</div>}
@@ -290,12 +292,10 @@ export function TicketsScreen() {
                 <EmptyState title="Nenhum ticket ainda" hint="Abra o primeiro ticket pela equipe ou ligue o portal do cliente em Configurações de SLA. O prazo começa a contar na abertura."
                   action={<PrimaryButton onClick={() => setCreating(true)}>+ Abrir ticket</PrimaryButton>} />
               )}
-              {state.loaded && mine.length > 0 && visible.length === 0 && (
-                <div className="mono dim" style={{ fontSize: 12, padding: "14px var(--pad-x) 0" }}>
-                  Nenhum ticket {q.trim() ? `com "${q.trim()}"` : "neste filtro"} · <button type="button" onClick={() => { setQ(""); setFilter("open"); }} style={{ color: "var(--accent)", fontWeight: 600 }}>ver os abertos</button>
-                </div>
+              {state.loaded && mine.length > 0 && view === "customers" && (
+                <TicketsCustomers tickets={mine} q={q} now={now} openCustomer={historyOf} onOpenCustomer={setHistoryOf} onCloseCustomer={() => setHistoryOf("")} />
               )}
-              {state.loaded && mine.length > 0 && (view === "list"
+              {state.loaded && mine.length > 0 && view !== "customers" && (view === "list"
                 ? <TicketsList tickets={visible} agentName={agentName} selectedId={panelId} onOpen={openPanel} onMenu={openMenu} now={now} />
                 : <TicketsBoard boardRef={boardRef} columns={columns} dnd={dnd} agentName={agentName} selectedId={panelId} onOpen={openPanel} onMenu={openMenu} onCustomer={openCustomer} onComplete={complete} now={now} />)}
             </div>
