@@ -31,9 +31,9 @@ import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, greetName,
 import { transcriber as defaultTranscriber } from "../whatsapp/transcribe.js";
 import { FORM_MSG_RX, SLOTS_RX, OFFER_CUE_RX, isOfferMsg, ACCEPT_RX, offeredSlotsIn, liveOfferedSlots, acceptedSlot, AUTO_REPLY_RX, BARE_HOUR_RX, collapseSameDay, expandSameDay, DEMO_RX, PITCH_RX } from "./sdr-signals.js";
 import { transcribeInbound } from "../whatsapp/wa-transcribe.js";
-import { AFFILIATE_RX, DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, NO_INTEREST_RX, LEAD_MOBILE_RX, DENY_CALL_RX, PERIOD_ASK_RX, PRICE_ASK_RX, WAITING_ROOM_RX, OBJECTION_RX, OEM_NO_RX, bareHour, leadEngaged, lastInboundText, plainReply, requestsCancellation, rescheduleReply, classifyInbound, asksReschedule, burstInboundText, callbackDay } from "./sdr-intents.js";
+import { AFFILIATE_RX, DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, NO_INTEREST_RX, LEAD_MOBILE_RX, DENY_CALL_RX, PERIOD_ASK_RX, PRICE_ASK_RX, WAITING_ROOM_RX, OBJECTION_RX, OEM_NO_RX, bareHour, leadEngaged, lastInboundText, plainReply, requestsCancellation, rescheduleReply, classifyInbound, asksReschedule, burstInboundText, callbackDay, statedPainOf, isNonAnswer, CONFUSED_RX, CLOSING_RX, POSTPONE_RX } from "./sdr-intents.js";
 import { stateOf, humanMuteHolds, GREETING_GAP_MS, DAILY_CAP, botTalkLast24h, handoffHolds } from "./sdr-state.js";
-import { PRICE_RX, REDIRECT_RX, DRY_REFUSAL_RX, FAKE_OFFER_RX, PROMISE_RX, SCHEDULE_ASK_Q_RX, DEVICE_ASK_RX, stripDuration, stripDeviceAsk, sameSentence, alreadySaid, isFreshOffer, realOfferOf, makeDraft, validateDraft } from "./sdr-guards.js";
+import { PRICE_RX, REDIRECT_RX, DRY_REFUSAL_RX, FAKE_OFFER_RX, PROMISE_RX, SCHEDULE_ASK_Q_RX, DEVICE_ASK_RX, stripDuration, stripDeviceAsk, sameSentence, alreadySaid, isFreshOffer, realOfferOf, discoveryQuestionFor, GREETING_Q_RX, isRealQuestion, nextQuestionFor, DAY_PROPOSAL_RX, makeDraft, validateDraft } from "./sdr-guards.js";
 import { reofferText, offerLine, NO_SLOT_TEXT } from "./sdr-offer.js";
 // Compat: quem importava daqui continua funcionando (replay, testes).
 export { bareHour, DEMO_RX, PITCH_RX, PRICE_RX, stripDuration, stripDeviceAsk, sameSentence };
@@ -760,7 +760,22 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     const burstText = burstInboundText(msgs) || lastInText;
     const burstPlain = plainReply(burstText);
     // Número solto depois de uma oferta nossa ("11") também é engajamento.
-    const engaged = leadEngaged(msgs) || (slotsOffered && bareHour(lastInText) != null);
+    // Desinteresse na rajada atual desliga o engajamento desta resposta
+    // (R-083/R-031, 28/10: "não quero começar" recebia oferta de horário).
+    const noInterestNow = NO_INTEREST_RX.test(burstPlain) && !FORM_MSG_RX.test(burstText);
+    const engaged = (leadEngaged(msgs) || (slotsOffered && bareHour(lastInText) != null)) && !noInterestNow;
+    // Dor que o lead descreveu com as próprias palavras (produto + trecho):
+    // engaja, não se pergunta de novo e, se for do outro produto, pivota (R-045).
+    const painMsg = [...msgs].reverse().find((m) => m.direction === "in" && statedPainOf(m.transcript || m.text));
+    const statedPain = painMsg ? { product: statedPainOf(painMsg.transcript || painMsg.text), quote: String(painMsg.transcript || painMsg.text || "").slice(0, 160) } : null;
+    // PERGUNTA PENDENTE (R-047): a última pergunta nossa (sem ser saudação nem
+    // oferta) que o lead respondeu só com saudação/ack/"e você?".
+    const lastBotQ = [...msgs].reverse().find((m) => m.direction === "out" && m.author === SDR_AUTHOR && /\?\s*$/.test(m.text || "") && !GREETING_Q_RX.test(m.text || "") && !isOfferMsg(m.text || ""));
+    const afterQ = lastBotQ ? msgs.slice(msgs.indexOf(lastBotQ) + 1).filter((m) => m.direction === "in") : [];
+    const pendingQuestion = lastBotQ && afterQ.length && afterQ.every((m) => isNonAnswer(m.transcript || m.text)) && lead.sdrLog?.reaskedFor !== lastBotQ.id ? lastBotQ.text : "";
+    const confused = CONFUSED_RX.test(burstPlain);
+    const closing = CLOSING_RX.test(burstPlain) && !burstText.includes("?");
+    const postponed = POSTPONE_RX.test(burstPlain) && !burstText.includes("?");
     // O que a agenda tinha na hora da decisão vai pro carimbo da thread
     // (thread.brain): sem isso, "por que ofereceu amanhã?" não tem resposta.
     Object.assign(meta, { slots: slotList.slice(0, 3).map((s) => s.label), pair: suggestedPair.map((s) => s.label) });
@@ -840,9 +855,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     // Tudo que sai passa pelo "mesmo dia, dia uma vez" (Leo, 08/10): "amanhã
     // às 9h ou amanhã às 11h" vira "amanhã às 9h ou às 11h", venha da IA, do
     // roteiro ou das travas.
-    const discoveryQuestion = msgs.some((m) => m.direction === "out" && /ajudaria/i.test(m.text || ""))
-      ? "Qual a maior dificuldade da sua operação hoje: gerenciar as contas, criar anúncio, estoque ou atendimento?"
-      : "Isso ajudaria na sua operação hoje?";
+    const discoveryQuestion = discoveryQuestionFor(st.script, msgs);
     let hourReply = false;
     // Horário NOSSO que o lead escolheu e caiu no meio do caminho (R-028: só
     // aí cabe a desculpa "outro cliente pegou"); e a hora que ele citou, pra
@@ -860,6 +873,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       inboundText: String(message?.text || ""), priceDeferral: priceDeferral(nome, { script: st.scripted ? st.script : "" }),
       excludeSlots, refusedDays, takenSlot, leadHour: leadHour != null && leadHour >= 0 && leadHour <= 23 ? leadHour : null,
       callLabel: lead.callAt ? slotLabelFull(lead.callAt, wnow) : "", rescheduling: !!awaitingReschedule || reschedule?.status === "offered",
+      statedPain, pendingQuestion, pendingQuestionId: pendingQuestion ? lastBotQ.id : "", confused, closing, postponed, noInterest: noInterestNow,
     });
     // SOMBRA DO VALIDADOR (15/10): o texto cru da IA passa pelo validador em
     // enforce e o resultado é comparado com o que a cadeia legada produziu;
@@ -989,7 +1003,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       promptVersion: cfg.promptVersion,
       state: st.state,
       script: st.script,
-      facts: { demoOffered, slotsOffered, engaged, firstReply, askingNow: PRICE_ASK_RX.test(burstText) },
+      facts: { demoOffered, slotsOffered, engaged, firstReply, askingNow: PRICE_ASK_RX.test(burstText), statedPain, pendingQuestion, confused, noInterest: noInterestNow },
     });
     // Quem respondeu e quanto custou: vai pro carimbo da thread e pro uso do dia.
     Object.assign(meta, { model: decision.model || "", usage: decision.usage || null, ms: decision.ms || 0, saas: product.id, promptVersion: decision.promptVersion || cfg.promptVersion, contract: offerContract });
@@ -1411,7 +1425,11 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       const kept = parts.filter((t) => !SLOTS_RX.test(t));
       parts.length = 0;
       parts.push(...kept);
-      if (!parts.some((t) => t.includes("?"))) parts.push(discoveryQuestion);
+      if (!parts.some((t) => isRealQuestion(t))) {
+        const nq = nextQuestionFor(guardCtx());
+        parts.push(nq.text);
+        if (nq.reask) await stamp(lead, { reaskedFor: guardCtx().pendingQuestionId });
+      }
       log.info?.({ lead: lead.id }, "sdr-brain: trava de qualificação tirou a oferta de horário");
     }
     // TRAVA DO MAIS CEDO PRIMEIRO (Leo, 17/09): a agenda tinha "hoje às 14h"
@@ -1432,17 +1450,24 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     // ofereceu antes = repescagem curta). Determinístico, como a trava de preço.
     // Sem pergunta OU propondo dia sem hora nenhuma: nos dois casos o lead fica
     // sem o que responder, então o motor emenda a oferta concreta.
-    const semSaida = !parts.some((t) => t.includes("?"));
-    const diaSemHora = DAY_WORD_RX.test(parts.join(" ")) && !HAS_HOUR_RX.test(parts.join(" "));
-    if ((semSaida || diaSemHora) && !lead.callAt && engaged && INTEREST_RX.test(lastInText) && !FORM_MSG_RX.test(lastInText)) {
-      // Já ofereceu antes: repesca com os horários ESCRITOS ("algum dos
-      // horários que te passei" é a frase proibida do raio-x, item 4 do Leo).
-      const push = slotsOffered && suggestedPair.length >= 2 ? offerLine(suggestedPair, { style: "fica-melhor", wnow })
-        : suggestedPair.length >= 2 ? offerLine(suggestedPair, { wnow })
-          : offerPool.length ? offerLine(offerPool.slice(0, 1), { wnow }) : NO_SLOT_TEXT["periodo-costuma"];
-      if (parts.length >= 3) parts[2] = `${parts[2]} ${push}`;
-      else parts.push(push);
-      log.info?.({ lead: lead.id }, "sdr-brain: trava de beco emendou a oferta");
+    // TODA RESPOSTA AVANÇA (28/10): mesma semântica do guard nextStep (R-031).
+    const semSaida = !parts.some((t) => isRealQuestion(t) || isOfferMsg(t));
+    const diaSemHora = DAY_PROPOSAL_RX.test(parts.join(" ")) && !HAS_HOUR_RX.test(parts.join(" "));
+    if ((semSaida || diaSemHora) && !lead.callAt && !inCallWindow && !FORM_MSG_RX.test(lastInText) && !closing && !postponed && !noInterestNow) {
+      if (!engaged) {
+        const nq = nextQuestionFor(guardCtx());
+        parts.push(nq.text);
+        if (nq.reask) await stamp(lead, { reaskedFor: guardCtx().pendingQuestionId });
+      } else {
+        // Já ofereceu antes: repesca com os horários ESCRITOS ("algum dos
+        // horários que te passei" é a frase proibida do raio-x, item 4 do Leo).
+        const push = slotsOffered && suggestedPair.length >= 2 ? offerLine(suggestedPair, { style: "fica-melhor", wnow })
+          : suggestedPair.length >= 2 ? offerLine(suggestedPair, { wnow })
+            : offerPool.length ? offerLine(offerPool.slice(0, 1), { wnow }) : NO_SLOT_TEXT["periodo-costuma"];
+        if (parts.length >= 3) parts[2] = `${parts[2]} ${push}`;
+        else parts.push(push);
+      }
+      log.info?.({ lead: lead.id }, "sdr-brain: trava de beco emendou o próximo passo");
     }
     // UMA OFERTA POR RESPOSTA (Leo, 08/10): dois balões com pares diferentes
     // saíram no mesmo minuto ("13h ou 15h" e logo "9h ou 11h"). Fica a ÚLTIMA
