@@ -13,7 +13,7 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { buildPeople, roleLabel, scaledGoal } from "../components/team-cards.jsx";
 import { usePeriod, businessDaysBetween, periodWindow, PeriodPicker } from "../components/period-picker.jsx";
 import { isChurned } from "../lib/churn.js";
-import { dealProductLabel, closedPlanLabel } from "../lib/payments.js";
+import { dealProductLabel, closedPlanLabel, isTrialDeal } from "../lib/payments.js";
 import { leadTier } from "../lib/ui.js";
 import { LeadGrade } from "../components/lead-card.jsx";
 // CRM final: meta/funil e vendas na primeira linha; equipe/atenção e
@@ -895,6 +895,9 @@ function VendasCard({ leads, invoices, product, customers, onNav, onOpenLead, ex
   const todas = useMemo(() => {
     const doLead = (leads || []).filter((l) => isWonLead(product, l)).map((l) => ({
       id: `l_${l.id}`, lead: l, tier: leadTier(l), at: wonAtOf(l), amount: l.amount, who: l.closer || l.owner || "",
+      // Teste grátis (Leo, 28/10): é venda, mas sem valor — a coluna diz
+      // "Teste grátis" no lugar do R$ 0.
+      trial: isTrialDeal(l),
       cliente: nomeDoCadastro(l.customerId) || String(l.company || l.name || "").trim() || "cliente sem nome",
       // O produto do fechamento (dealItems/dealProduct, o que o gate de Ganho
       // grava); sem ele, a oferta que estava na mesa. Ler só a proposta
@@ -954,7 +957,7 @@ function VendasCard({ leads, invoices, product, customers, onNav, onOpenLead, ex
                 </div>
               </div>
               <div style={{ textAlign: "right" }}>
-                <div className="vg-sale-amount">{moneyFull(v.amount)}</div>
+                <div className={"vg-sale-amount" + (v.trial ? " is-trial" : "")}>{v.trial ? "Teste grátis" : moneyFull(v.amount)}</div>
                 <div className="tnum" style={{ fontSize: 10, color: "var(--fg-4)", marginTop: 1 }}>{dia(v.at)}</div>
               </div>
             </button>
@@ -977,6 +980,8 @@ function TodasVendas({ todas, filtro, onFiltro, onOpen, onClose, recolherRef }) 
   const win = useMemo(() => periodWindow(filtro.period, filtro.custom), [filtro.period, filtro.custom?.since, filtro.custom?.until]); // eslint-disable-line react-hooks/exhaustive-deps
   const lista = useMemo(() => todas.filter((v) => { const d = bizDay(v.at); return d && d >= win.since && d <= win.until; }), [todas, win.since, win.until]);
   const total = lista.reduce((a, v) => a + (Number(v.amount) || 0), 0);
+  // Ticket médio só do que tem valor: o teste grátis (R$ 0) derrubaria a média.
+  const pagas = lista.filter((v) => !v.trial).length;
   const upsells = lista.filter((v) => v.upsell).length;
   const anoAtual = bizDay(new Date()).slice(0, 4);
   const data = (at) => {
@@ -996,7 +1001,7 @@ function TodasVendas({ todas, filtro, onFiltro, onOpen, onClose, recolherRef }) 
       <dl className="vg-sales-summary">
         <div><dt>Vendas</dt><dd>{int(lista.length)}</dd></div>
         <div><dt>Valor somado</dt><dd>{moneyFull(total)}</dd></div>
-        <div><dt>Ticket médio</dt><dd>{lista.length ? moneyFull(total / lista.length) : "—"}</dd></div>
+        <div><dt>Ticket médio</dt><dd>{pagas ? moneyFull(total / pagas) : "—"}</dd></div>
         <div><dt>Upsells</dt><dd>{int(upsells)}</dd></div>
       </dl>
       {!lista.length
@@ -1019,7 +1024,7 @@ function TodasVendas({ todas, filtro, onFiltro, onOpen, onClose, recolherRef }) 
                   {v.who && <Avatar id={v.who} name={displayName(v.who)} size={22} />}
                   <span>{v.who ? displayName(v.who) : "sem responsável"}</span>
                 </span>
-                <span className="vg-sale-amount vg-sales-value">{moneyFull(v.amount)}</span>
+                <span className={"vg-sale-amount vg-sales-value" + (v.trial ? " is-trial" : "")}>{v.trial ? "Teste grátis" : moneyFull(v.amount)}</span>
               </button>
             ))}
           </div>

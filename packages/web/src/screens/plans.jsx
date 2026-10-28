@@ -23,7 +23,7 @@ import { PLAN_LIMITS, PLAN_FEATURES, PLAN_PRODUCTS, planProductOf, limitsSummary
 const { useState, useEffect, useCallback, useMemo } = React;
 
 const KIND_LABEL = { subscription: "Assinatura", one_off: "Compra única", legacy: "Catálogo anterior" };
-const CLOSED_LABEL = { anual: "Anual", semestral: "Semestral", mensal: "Mensal", unico: "Serviço único" };
+const CLOSED_LABEL = { anual: "Anual", semestral: "Semestral", mensal: "Mensal", unico: "Serviço único", teste: "Teste grátis" };
 const SLICE_COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--info)", "var(--warn)", "var(--pos)", "var(--accent)"];
 export const PLANS_GRID = "minmax(190px,1.5fr) minmax(130px,1fr) minmax(170px,1.3fr) minmax(90px,.7fr) minmax(100px,.8fr) minmax(100px,.8fr) 92px";
 
@@ -40,6 +40,7 @@ function priceText(plan) {
     if (opts.length) return { main: `a partir de ${money(Math.min(...opts.map((o) => Number(o.price) || 0)))}`, sub: plural(opts.length, "opção", "opções") };
     return { main: money(plan.prices?.once?.total), sub: "pagamento único" };
   }
+  if (Number(plan.trial?.days) > 0) return { main: "grátis", sub: `${plan.trial.days} dias de teste · sem cobrança` };
   const a = plan.prices?.annual, s = plan.prices?.semiannual;
   if (!a && !s) return { main: "sem preço", sub: "" };
   return {

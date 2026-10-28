@@ -32,7 +32,26 @@ export const CLOSED_PLANS = [
   // no ARR/MRR; o dinheiro vira fatura avulsa (ensureOneOffInvoice) e conta
   // na meta do mês em que fechou, como sempre.
   { id: "unico", label: "Serviço único", title: "Serviço único", annualFactor: 0 },
+  // Teste grátis (Leo, 28/10/2026): o cliente usa a plataforma por `days`
+  // dias sem pagar e decide depois. É uma venda (entra no Ganho e nas
+  // últimas vendas), mas vale R$ 0: fator 0, sem ciclo nem meses — não nasce
+  // assinatura nem fatura, e o pagamento fica "Não pago" até ele converter.
+  // Sem `title`: não existe link de pagamento de teste grátis.
+  { id: "teste", label: "15 dias", selectLabel: "Teste grátis (15 dias)", days: 15, annualFactor: 0, trial: true },
 ];
+
+// Plano de fechamento que é TESTE GRÁTIS (sem cobrança) e os dias dele.
+export const TRIAL_PLAN = "teste";
+export const CLOSED_PLAN_DAYS = Object.fromEntries(CLOSED_PLANS.filter((p) => p.days).map((p) => [p.id, p.days]));
+export const isTrialPlan = (planClosed) => !!CLOSED_PLANS.find((p) => p.id === planClosed)?.trial;
+// Fim do teste: a partir do dia da venda (wonAt). "" quando não é teste ou
+// a data é inválida.
+export function trialEndsAt(wonAt, planClosed) {
+  const days = CLOSED_PLAN_DAYS[planClosed];
+  const t = new Date(wonAt || 0).getTime();
+  if (!days || !Number.isFinite(t) || t <= 0) return "";
+  return new Date(t + days * 86_400_000).toISOString();
+}
 
 const mapOf = (field) => Object.fromEntries(CLOSED_PLANS.filter((p) => p[field] !== undefined).map((p) => [p.id, p[field]]));
 
@@ -52,5 +71,6 @@ export function closedPlanFromLabel(text) {
   if (t.includes("semestral")) return "semestral";
   if (t.includes("anual")) return "anual";
   if (t.includes("mensal")) return "mensal";
+  if (t.includes("teste grátis") || t.includes("teste gratis")) return "teste";
   return "";
 }

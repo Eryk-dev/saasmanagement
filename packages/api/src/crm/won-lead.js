@@ -1,6 +1,6 @@
 import { customerPlanState, planFieldsFromDeal, recordPlanChange, stampSubscriptionPlan, syncCustomerPlanFromSub } from "../billing/plan-history.js";
 import { closedInstallments, closedSubscriptionSpec, createClosedSubscription, createInstallmentSchedule, syncClosedInstallments, syncCustomerArr, ensureOneOffInvoice } from "../billing/billing.js";
-import { CLOSED_PLAN_ANNUAL_FACTOR, CLOSED_PLAN_LABEL } from "../shared/plan-cycles.js";
+import { CLOSED_PLAN_ANNUAL_FACTOR, CLOSED_PLAN_LABEL, isTrialPlan, trialEndsAt } from "../shared/plan-cycles.js";
 import { DEAL_PRODUCT_LABEL } from "../proposals/proposal-catalog.js";
 import { MENTORIA_LABEL } from "../customers/mentoria.js";
 import { metaCapi as defaultMetaCapi } from "../marketing/meta-capi.js";
@@ -52,6 +52,12 @@ const planLabelOf = (lead) => dealItemsOf(lead).map(itemLabelOf).filter(Boolean)
 // plano segue anualizando ×1, como sempre)
 const closedArrOf = (lead) => Math.round(dealItemsOf(lead).reduce((sum, it) => sum + it.amount * (CLOSED_PLAN_ANNUAL_FACTOR[it.planClosed] ?? 1), 0));
 const oneOffAmountOf = (lead) => Math.round(dealItemsOf(lead).reduce((sum, it) => sum + (it.planClosed === "unico" ? it.amount : 0), 0) * 100) / 100;
+// Teste grátis (28/10/2026): venda sem cobrança — o cliente usa por N dias e
+// decide. É teste quando TODOS os itens são teste (um pago no meio é venda).
+// `trialEndsAt` fica no cliente pra o CS saber até quando ele pode decidir;
+// vazio quando não é teste (também limpa um teste que virou venda).
+export const isTrialDeal = (lead) => { const items = dealItemsOf(lead); return items.length > 0 && items.every((it) => isTrialPlan(it.planClosed)); };
+const trialFieldsOf = (lead, startAt) => ({ trialEndsAt: isTrialDeal(lead) ? trialEndsAt(lead.wonAt || startAt, dealItemsOf(lead)[0].planClosed) : "" });
 
 export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } = {}) {
   if (!lead || !lead.saas) return null;
@@ -110,6 +116,9 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
     ...(planFields?.customer || {}),
     startedAt: new Date().toISOString(),
   });
+  // Teste grátis: nada a receber ainda — o status de pagamento já nasce
+  // "Não pago" na mão, pra ninguém ler R$ 0 como quitado.
+  if (isTrialDeal(lead)) await repo.update("customers", customer.id, { paymentStatus: "unpaid", ...trialFieldsOf(lead, customer.startedAt) });
   let wonSubId = "";
   // `customerId` marca QUE vendeu, `wonAt` marca QUANDO. Os dois precisam ser
   // do lead e não do card: `stageSince` é recarimbado a cada movimento, então
@@ -272,6 +281,7 @@ export async function syncWonLeadDeal(repo, lead) {
     ...(lead.dealProduct ? { dealProduct: lead.dealProduct } : {}),
     ...(lead.paymentMethod ? { paymentMethod: lead.paymentMethod } : {}),
     ...(planFields?.customer || {}),
+    ...trialFieldsOf(lead, customer.startedAt),
   };
   const manualArr = () => closedArrOf(lead);
   // Fechamento com mais de um produto: as assinaturas de cada um são gestão
@@ -293,17 +303,29 @@ export async function syncWonLeadDeal(repo, lead) {
         await repo.update("subscriptions", subs[0].id, { price: spec.price, cycle: spec.cycle, pendingChange: null });
         await syncCustomerArr(repo, customer.id);
       }
-    } else if (lead.planClosed === "unico") {
+    } else if (lead.planClosed === "unico" || isTrialPlan(lead.planClosed)) {
       // Virou serviço único DE PROPÓSITO: encerra a recorrência nascida do
       // fechamento; o valor NÃO vira ARR (fator 0) — vira a fatura avulsa.
       // Lead SEM planClosed (fechamento legado, pré-gate de plano) cai fora
       // deste ramo: cancelar a assinatura de um cliente real por falta de
       // campo seria chute — não se mexe.
+      // Teste grátis: mesma coisa, sem fatura. A venda que tinha sido lançada
+      // paga vira teste: a assinatura sai, e as faturas dela que não são
+      // dinheiro real (abertas, pró-rata, a inicial presumida do fechamento)
+      // saem junto — senão o Financeiro seguiria cobrando/contando um valor
+      // que nunca foi combinado. Fatura com pagamento do MP ou baixa manual é
+      // fato e fica.
       await repo.update("subscriptions", subs[0].id, { status: "canceled", canceledAt: new Date().toISOString() });
+      if (isTrialPlan(lead.planClosed)) {
+        for (const inv of (await repo.list("invoices")).filter((i) => i.subscription === subs[0].id)) {
+          if (!inv.mpPaymentId && (inv.status !== "paid" || inv.paidProof?.kind === "closing")) await repo.remove("invoices", inv.id);
+        }
+        patch.paymentStatus = "unpaid";
+      }
       await syncCustomerArr(repo, customer.id);
       patch.arr = manualArr();
       patch.oneOffAmount = oneOffAmountOf(lead);
-      if (!closedInstallments(lead) && Number(lead.amount) > 0) {
+      if (!closedInstallments(lead) && Number(lead.amount) > 0 && lead.planClosed === "unico") {
         await ensureOneOffInvoice(repo, { customerId: customer.id, saas: lead.saas, amount: Number(lead.amount), paymentMethod: lead.paymentMethod, startAt: lead.wonAt || customer.startedAt, title: planLabelOf(lead) || "Serviço único" });
       }
     }
@@ -315,6 +337,9 @@ export async function syncWonLeadDeal(repo, lead) {
         paymentInstallments: lead.paymentInstallments, planFields: planFields?.subscription,
         startAt: lead.wonAt || customer.startedAt,
       });
+    } else if (isTrialPlan(lead.planClosed)) {
+      patch.arr = 0;
+      patch.paymentStatus = "unpaid";
     } else if (Number(lead.amount) > 0) {
       patch.arr = manualArr();
       if (lead.planClosed === "unico") {

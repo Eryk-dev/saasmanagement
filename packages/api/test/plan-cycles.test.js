@@ -20,14 +20,17 @@ test("ciclos da assinatura: meses e rótulos de sempre", () => {
 });
 
 test("planos de fechamento: os mapas derivados batem com os que existiam espalhados", () => {
-  assert.deepEqual(CLOSED_PLAN_LABEL, { anual: "Anual", semestral: "Semestral", mensal: "Mensal", unico: "Serviço único" });
+  assert.deepEqual(CLOSED_PLAN_LABEL, { anual: "Anual", semestral: "Semestral", mensal: "Mensal", unico: "Serviço único", teste: "15 dias" });
   // Título do link de pagamento: mensal ficou de fora de propósito (não se vende
   // mais), e é esse mapa que valida o plano aceito em POST /api/leads/:id/mp/link.
   assert.deepEqual(CLOSED_PLAN_TITLE, { anual: "Plano Anual", semestral: "Plano Semestral", unico: "Serviço único" });
   // Serviço único não é recorrência: sem ciclo nem meses.
   assert.deepEqual(CLOSED_PLAN_CYCLE, { anual: "annual", semestral: "semiannual", mensal: "monthly" });
   assert.deepEqual(CLOSED_PLAN_MONTHS, { anual: 12, semestral: 6, mensal: 1 });
-  assert.deepEqual(CLOSED_PLAN_ANNUAL_FACTOR, { anual: 1, semestral: 2, mensal: 12, unico: 0 }, "serviço único não anualiza (12/10/2026)");
+  assert.deepEqual(CLOSED_PLAN_ANNUAL_FACTOR, { anual: 1, semestral: 2, mensal: 12, unico: 0, teste: 0 }, "serviço único e teste grátis não anualizam");
+  // Teste grátis (28/10/2026): sem título (não tem link de pagamento), sem
+  // ciclo nem meses (não nasce assinatura), 15 dias.
+  assert.deepEqual(CLOSED_PLANS.filter((p) => p.trial).map((p) => [p.id, p.days, p.selectLabel]), [["teste", 15, "Teste grátis (15 dias)"]]);
   assert.deepEqual(CLOSED_PLANS.filter((p) => p.catalogKey).map((p) => [p.catalogKey, p.id, p.label]),
     [["anu", "anual", "Anual"], ["sem", "semestral", "Semestral"]]);
   assert.deepEqual(CLOSED_PLANS.filter((p) => p.legacy).map((p) => p.id), ["mensal"]);
@@ -45,6 +48,7 @@ test("closedPlanFromLabel lê o ciclo do rótulo do cliente", () => {
   assert.equal(closedPlanFromLabel("Ads Essencial + OEM · Semestral"), "semestral");
   assert.equal(closedPlanFromLabel("Assinatura mensal"), "mensal");
   assert.equal(closedPlanFromLabel("Mentoria · 4 consultas"), "");
+  assert.equal(closedPlanFromLabel("Lever Price · Teste grátis · 15 dias"), "teste");
   assert.equal(closedPlanFromLabel(undefined), "");
 });
 
