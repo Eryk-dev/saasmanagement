@@ -475,13 +475,22 @@ function rescue2Text({ nome, slots = [], now }) {
 // Cobrança da oferta sem resposta, na manhã seguinte (Leo, 30/09). Com os
 // horários de ontem ainda livres, cobra por eles com o rótulo recalculado
 // ("amanhã" virou "hoje"); se outro lead pegou, diz isso e oferece o par novo.
-export function offerNudgeText({ nome, pair = [], kept = false, now }) {
+// 28/10: "Ficou X ou Y pra nossa conversa?" soava como combinado que não
+// existiu (Janaina, luiz, Elson) e "já não estão mais livres" saía às 9h07
+// sobre as 10h de HOJE, só porque a folga de 2h da oferta nova as escondia
+// (Henrique, Ton, Eduardo, Sabrina: 4 de 5 sumiram). Agora: `kept` =
+// "Ainda consigo…"; `reason: "past"` (a oferta já passou) = par novo sem
+// desculpa; `reason: "busy"` (ocupado de verdade) = diz e oferece outro.
+export function offerNudgeText({ nome, pair = [], kept = false, reason = "", now }) {
   const oi = `${now.getUTCHours() < 12 ? "Bom dia" : "Boa tarde"}${nome ? ` ${nome}` : ""}!`;
   const l = pair.map((s) => slotLabel(s.at, now));
   const dupla = l.length >= 2 ? collapseSameDay(`${l[0]} ou ${l[1]}`) : ""; // "hoje às 14h ou às 16h"
   if (kept) return l.length >= 2
-    ? `${oi} Ficou ${dupla} pra nossa conversa com o especialista?`
-    : `${oi} Ficou ${l[0]} pra nossa conversa com o especialista?`;
+    ? `${oi} Ainda consigo ${dupla}, qual fica melhor pra você?`
+    : `${oi} Ainda consigo ${l[0]}, fica bom pra você?`;
+  if (reason === "past") return l.length >= 2
+    ? `${oi} Consigo ${dupla}, qual fica melhor pra você?`
+    : `${oi} Consigo ${l[0]}, fica bom pra você?`;
   return l.length >= 2
     ? `${oi} Os horários de ontem já não estão mais livres, mas consigo ${dupla}, qual fica melhor pra você?`
     : `${oi} O horário de ontem já não está mais livre, mas consigo ${l[0]}, fica bom pra você?`;
@@ -988,13 +997,18 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
               // Os horários de ontem ainda estão livres? Agenda REAL de agora,
               // sem o que outro lead está decidindo (reservas).
               const holds = await activeHolds(repo, product.id, { now: at }).catch(() => []);
-              const { slots } = await sdrSlotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 0, messages: msgs, holds });
+              // Folga de 30 min (não as 2h da oferta nova): às 9h07 as 10h de
+              // hoje ainda estão livres pra quem já as recebeu ontem.
+              const { slots } = await sdrSlotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 0, messages: msgs, holds, minNoticeMin: 30 });
               const free = new Set(slots.map((s) => s.at));
-              const kept = offeredSlotsIn(msgs).filter((s) => free.has(s.at));
+              const offered = offeredSlotsIn(msgs);
+              const kept = offered.filter((s) => free.has(s.at));
+              const nowNaive = wnow.toISOString().slice(0, 16);
+              const reason = kept.length ? "kept" : offered.every((s) => s.at <= nowNaive) ? "past" : "busy";
               const rest = spreadPair(wholeHourSlots(slots.filter((s) => !kept.some((k) => k.at === s.at))));
               const pair = (kept.length >= 2 ? kept.slice(0, 2) : kept.length === 1 ? [kept[0], ...rest.slice(0, 1)] : rest).sort((a, b) => a.at.localeCompare(b.at));
               if (!pair.length) { await stampLog(lead, { offerNudgeFor: t.lastAt, offerNudgeVia: "skip:sem-agenda" }); continue; }
-              await sendText({ phone: to, text: offerNudgeText({ nome, pair, kept: kept.length > 0, now: wnow }), phoneId, saas: product.id, leadId: lead.id });
+              await sendText({ phone: to, text: offerNudgeText({ nome, pair, kept: kept.length > 0, reason, now: wnow }), phoneId, saas: product.id, leadId: lead.id });
               await holdSlots(repo, { saas: product.id, leadId: lead.id, slots: pair, now: at }).catch(() => {});
             } else {
               // Janela fechada (a última fala dele foi antes da oferta, há mais de

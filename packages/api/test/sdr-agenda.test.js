@@ -264,3 +264,55 @@ test("saudação 'boa tarde/boa noite' não é pedido de período; período pedi
   assert.equal(sexta.startDate, "2026-09-25");
   assert.equal(sexta.days, 1);
 });
+
+// Raio-x 28/10/2026: frases reais dos prints do Leo que o parser deixava
+// passar, cada uma com o que ela tem que virar. NOW é segunda 21/09 08:00.
+test("frases reais de 28/10: recusa do par, dia recusado, 'estarei livre', 'outra semana', '1800', rajada inteira #R-032 #R-040", async () => {
+  const offerAt = "2026-09-21T10:30:00Z";
+  const offer = (text) => ({ direction: "out", author: "sdr-bot", text, at: offerAt });
+  const at = (text, t) => ({ direction: "in", text, at: t });
+  // Wilian: "nesse horário não consigo" sem dia novo = os dois horários saem (exclude), janela igual.
+  const wilian = sdrAgendaWindow([offer("Consigo hoje às 16h ou às 18h, qual fica melhor pra você?"), inbound("Nesse horario não consigo")], NOW);
+  assert.equal(wilian.requested, false);
+  assert.deepEqual(wilian.exclude, ["2026-09-21T16:00", "2026-09-21T18:00"]);
+  // Alberto: rajada de 5 balões = hoje recusado ("hj não consigo", "agenda hj tá cheia") e pedido de semana que vem.
+  const alberto = sdrAgendaWindow([
+    offer("Consigo hoje às 14h, fica bom pra você?"),
+    at("Não consigo", "2026-09-21T11:00:00Z"), at("Estou fazendo serviço que precisa meu tempo", "2026-09-21T11:00:10Z"),
+    at("Hj não consigo", "2026-09-21T11:00:20Z"), at("Esse horário só semana que vem", "2026-09-21T11:00:30Z"), at("Minha agenda hj tá cheia 🙈", "2026-09-21T11:00:40Z"),
+  ], NOW);
+  assert.equal(alberto.requested, true);
+  assert.equal(alberto.startDate, "2026-09-28");
+  assert.equal(alberto.days, 5);
+  assert.deepEqual(alberto.refused, ["2026-09-21"]);
+  // "Minha agenda hj tá cheia" sozinha: hoje recusado, janela anda pra amanhã (antes virava PEDIDO de hoje).
+  const cheia = sdrAgendaWindow([inbound("Minha agenda hj tá cheia")], NOW);
+  assert.equal(cheia.requested, false);
+  assert.equal(cheia.startDate, "2026-09-22");
+  assert.deepEqual(cheia.refused, ["2026-09-21"]);
+  // "Hj só consigo depois das 1800": hoje, a partir das 18h.
+  const tarde = sdrAgendaWindow([inbound("Hj só consigo depois das 1800")], NOW);
+  assert.deepEqual([tarde.requested, tarde.startDate, tarde.fromHour], [true, "2026-09-21", 18]);
+  assert.equal(sdrAgendaWindow([inbound("só depois das 18:00")], NOW).fromHour, 18);
+  // Claudenilson: "Hoje não conseguirei!" + "Na sexta feira estarei livre" (dois balões) = sexta.
+  const claud = sdrAgendaWindow([offer("Consigo hoje às 14h ou às 16h, qual fica melhor pra você?"), at("Hoje não conseguirei!", "2026-09-21T11:00:00Z"), at("Na sexta feira estarei livre", "2026-09-21T11:00:30Z")], NOW);
+  assert.deepEqual([claud.requested, claud.startDate, claud.days, claud.refused], [true, "2026-09-25", 1, ["2026-09-21"]]);
+  assert.equal(sdrAgendaWindow([inbound("Na sexta feira estarei livre")], NOW).startDate, "2026-09-25");
+  // Roberto: "Podemos deixar pra outra semana?" = semana que vem inteira.
+  const roberto = sdrAgendaWindow([inbound("Podemos deixar pra outra semana?")], NOW);
+  assert.deepEqual([roberto.requested, roberto.startDate, roberto.days], [true, "2026-09-28", 5]);
+  assert.equal(sdrAgendaWindow([inbound("Eu estou em viagem. Por isso pedi pra deixar pra outra semana")], NOW).startDate, "2026-09-28");
+  // Everton/VitorMatheus: fora do horário comercial = a partir das 18h.
+  assert.equal(sdrAgendaWindow([inbound("Em horário comercial eu não consigo, ainda sou CLT")], NOW).fromHour, 18);
+  assert.equal(sdrAgendaWindow([inbound("só depois do expediente")], NOW).fromHour, 18);
+  // Mensagem nossa entre dois balões fecha a rajada; balões com mais de 10 min também.
+  const separados = sdrAgendaWindow([at("Hoje não conseguirei!", "2026-09-21T11:00:00Z"), at("Na sexta feira estarei livre", "2026-09-21T11:30:00Z")], NOW);
+  assert.equal(separados.startDate, "2026-09-25", "o segundo balão sozinho ainda pede sexta");
+  // A lista honra tudo isso: horários recusados e dia recusado não voltam, e a janela espontânea anda.
+  const repo = await world();
+  const w = await sdrSlotsForLead(repo, { ...options, grade: "C", messages: [offer("Consigo hoje às 10h ou às 14h, qual fica melhor pra você?"), inbound("Nesse horario não consigo")] });
+  assert.ok(w.slots.length);
+  assert.ok(w.slots.every((s) => s.at !== "2026-09-21T10:00" && s.at !== "2026-09-21T14:00"), "os dois recusados saem");
+  const hoje = await sdrSlotsForLead(repo, { ...options, grade: "C", messages: [offer("Consigo hoje às 10h, fica bom pra você?"), inbound("Hj não consigo")] });
+  assert.ok(hoje.slots.length && hoje.slots.every((s) => !s.at.startsWith("2026-09-21T")), "hoje recusado: só amanhã em diante");
+});

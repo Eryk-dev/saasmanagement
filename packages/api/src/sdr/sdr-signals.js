@@ -68,11 +68,18 @@ const BRT_MS = 3 * 3_600_000;
 export function offeredSlotsIn(msgs = [], botAuthor = "sdr-bot") {
   const last = [...msgs].reverse().find((m) => m.direction === "out" && m.author === botAuthor && isOfferMsg(m.text || ""));
   if (!last) return [];
-  const sentAt = Date.parse(last.at || "");
+  return slotsInText(last.text, last.at);
+}
+// Os horários escritos num texto ("hoje às 14h", "amanhã às 9h ou às 11h"),
+// relativos ao instante `atIso` em que o texto saiu. É o núcleo de
+// offeredSlotsIn, sem exigir que o texto seja uma oferta (a trava R-040 lê
+// qualquer parte com horário, inclusive "Fica melhor amanhã às 9h ou às 11h?").
+export function slotsInText(text, atIso) {
+  const sentAt = Date.parse(atIso || "");
   if (!Number.isFinite(sentAt)) return [];
   const base = new Date(sentAt - BRT_MS); // relógio de parede BRT na hora da oferta (campos UTC)
   const out = [];
-  for (const m of expandSameDay(last.text).matchAll(OFFER_LABEL_RX)) {
+  for (const m of expandSameDay(String(text || "")).matchAll(OFFER_LABEL_RX)) {
     const word = m[1].normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
     let d = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate()));
     if (m[2]) d = new Date(Date.UTC(base.getUTCFullYear(), Number(m[3]) - 1, Number(m[2])));
@@ -86,6 +93,19 @@ export function offeredSlotsIn(msgs = [], botAuthor = "sdr-bot") {
   }
   return out;
 }
+
+// OFERTA VIVA (R-029, 28/10): só conta como "já ofereci" a oferta cujos
+// horários ainda estão no futuro. "Qual dos horários que te passei?" em cima
+// de uma oferta de 4 a 11 dias atrás (Diego, Alexandre, Alberto, Eduardo,
+// Ronaldo) era oferta fantasma com cara de memória. `wnow` é o relógio de
+// parede BRT (campos UTC = hora local), como em todo o motor.
+export function liveOfferedSlots(msgs = [], botAuthor = "sdr-bot", wnow = null) {
+  const offered = offeredSlotsIn(msgs, botAuthor);
+  if (!wnow || !Number.isFinite(wnow.getTime?.())) return offered;
+  const nowNaive = wnow.toISOString().slice(0, 16);
+  return offered.filter((s) => s.at > nowNaive);
+}
+export const hasLiveOffer = (msgs = [], botAuthor = "sdr-bot", wnow = null) => liveOfferedSlots(msgs, botAuthor, wnow).length > 0;
 
 // Qual dos horários ofertados o lead ACEITOU: hora citada ("14h", "as 9", ou o
 // NÚMERO SOLTO "18" em resposta à oferta, Leo 08/10) casa com um deles; sem

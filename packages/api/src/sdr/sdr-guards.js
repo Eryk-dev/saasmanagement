@@ -22,7 +22,7 @@
 // (ex.: a M3 do roteiro OEM/Price diz "30/40 minutos" por decisão do Leo).
 
 import { sdrAgendaWindow } from "./sdr-agenda.js";
-import { SLOTS_RX, OFFER_CUE_RX, FORM_MSG_RX, isOfferMsg, expandSameDay } from "./sdr-signals.js";
+import { SLOTS_RX, OFFER_CUE_RX, FORM_MSG_RX, isOfferMsg, expandSameDay, slotsInText } from "./sdr-signals.js";
 import { DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, LEAD_MOBILE_RX, PERIOD_ASK_RX } from "./sdr-intents.js";
 import { offerLine, NO_SLOT_TEXT } from "./sdr-offer.js";
 import { DEVICE_TIP } from "./sdr-flow.js";
@@ -48,7 +48,14 @@ export const REDIRECT_RX = /wa\.me\/|api\.whatsapp\.com|whatsapp\.com\/send|\b\d
 // Recusa SECA de horário (R-028). Sem \b no fim (o \b do JS é ASCII).
 export const DRY_REFUSAL_RX = /n[ãa]o (consigo|tenho|d[áa]|vai dar)\s*(esse|nesse|este|neste|nesse dia)?\s*hor[áa]ri|esse hor[áa]rio n[ãa]o (consigo|tenho|est[áa]|d[áa]|vai)|hor[áa]rio (j[áa] )?(n[ãa]o est[áa]|ficou) (dispon[íi]vel|livre)/i;
 // Oferta FANTASMA (R-029): "os horários que te passei" sem ter passado.
-export const FAKE_OFFER_RX = /(hor[áa]rios?|op[çc][õo]es)\s+que\s+(eu\s+)?(te\s+)?(passei|mandei|enviei)|algum\s+d(os|aqueles)\s+hor[áa]rios|aqueles\s+hor[áa]rios/i;
+export const FAKE_OFFER_RX = /(hor[áa]rios?|op[çc][õo]es)\s+que\s+(eu\s+)?(te\s+)?(passei|mandei|enviei)|algum\s+d(os|aqueles)\s+hor[áa]rios|aqueles\s+hor[áa]rios|qual\s+d(?:os|as)\s+(?:dois|duas|2)?\s*(?:hor[áa]rios|op[çc][õo]es)/i;
+// LOTOU SEM PROVA (R-041, 28/10): "na sexta já lotou", "depois das 18h já
+// lotou", "não tenho vaga", "acabou de ser preenchido" ditos pela IA quando
+// o motor NÃO disse que o pedido lotou (Claudenilson: a sexta tinha 9h-17h
+// livres; Alberto: o humano encaixou 18h cinco minutos depois). Só o motor
+// pode afirmar lotação (requestedEmpty, hora pedida fora da lista, horário
+// escolhido que foi tomado).
+export const LOTOU_CLAIM_RX = /\blot(?:ou|ad[ao]s?|aram)\b|n[ãa]o (?:tenho|temos|tem|t[áa]|est[áa]) (?:mais )?(?:nenhuma? )?(?:vaga|hor[áa]rio|janela|agenda|disponibilidade)|n[ãa]o est[áa] mais (?:livre|dispon)|n[ãa]o est[ãa]o mais (?:livres|dispon)|(?:foi|foram|acabou de ser|acabaram de ser|j[áa] foi|j[áa] foram) preenchid|(?:j[áa] )?(?:est[áa]|ficou|ficaram|est[ãa]o) (?:todo |toda |todos |todas )?(?:ocupad|tomad|cheia|cheio)/i;
 // PROMESSA DE VOLTAR DEPOIS (R-030): ninguém volta.
 export const PROMISE_RX = /\bte (?:confirmo|retorno|aviso|respondo)\b|\bj[áa] te (?:falo|aviso|confirmo|retorno|respondo)\b|\b(?:vou|deixa eu|vamos|consigo) (?:ver|verificar|checar|confirmar|consultar|olhar|dar uma olhada)\b[^.?!]*\b(?:agenda|hor[áa]rio|especialista|time|aqui|vaga|disponibilidade)|\bem (?:alguns |poucos |uns )?(?:minutos|instantes|minutinhos)\b/i;
 // Pergunta solta de dia ao lado de uma oferta concreta (R-026).
@@ -91,6 +98,19 @@ export function sameSentence(a, b) {
 // fala. A trava é pra frase de conteúdo.
 export const alreadySaid = (text, msgs) => bag(text).size >= 4 && msgs.some((m) =>
   m.direction === "out" && m.author === SDR_AUTHOR && sameSentence(text, m.text));
+// Oferta com horário NOVO é informação nova, mesmo que o esqueleto da frase
+// seja o mesmo ("Consigo hoje às 13h ou às 15h" depois de "Consigo hoje às
+// 14h ou às 16h" compartilha 7 de 9 palavras). R-009 compara texto; aqui a
+// comparação é por slot (28/10: a trava comia o par novo depois da recusa e o
+// lead ficava sem oferta nenhuma).
+export function isFreshOffer(text, msgs = [], nowIso = "") {
+  if (!isOfferMsg(text)) return false;
+  const slots = slotsInText(text, nowIso || new Date().toISOString()).map((s) => s.at);
+  if (!slots.length) return false;
+  const before = new Set();
+  for (const m of msgs) if (m.direction === "out" && m.author === SDR_AUTHOR && isOfferMsg(m.text || "")) for (const s of slotsInText(m.text, m.at)) before.add(s.at);
+  return slots.some((at) => !before.has(at));
+}
 
 // ── Draft ───────────────────────────────────────────────────────────────────
 // { parts: [{ text, kind }], stop?: { result, effects } }
@@ -130,9 +150,9 @@ export const GUARDS = [
       ] }) },
   { id: "noRepeat", rule: "R-009", enforce: true,
     applies: () => true,
-    check: (d, ctx) => d.parts.filter((p) => alreadySaid(p.text, ctx.msgs || []) && !((ctx.requestedDate || ctx.hourReply) && isOfferMsg(p.text))).map((p) => ({ why: "frase já dita", part: p.text.slice(0, 80) })),
+    check: (d, ctx) => d.parts.filter((p) => alreadySaid(p.text, ctx.msgs || []) && !((ctx.requestedDate || ctx.hourReply) && isOfferMsg(p.text)) && !isFreshOffer(p.text, ctx.msgs || [], ctx.nowIso)).map((p) => ({ why: "frase já dita", part: p.text.slice(0, 80) })),
     fix: (d, ctx) => {
-      const fresh = d.parts.filter((p) => !alreadySaid(p.text, ctx.msgs || []) || ((ctx.requestedDate || ctx.hourReply) && isOfferMsg(p.text)));
+      const fresh = d.parts.filter((p) => !alreadySaid(p.text, ctx.msgs || []) || ((ctx.requestedDate || ctx.hourReply) && isOfferMsg(p.text)) || isFreshOffer(p.text, ctx.msgs || [], ctx.nowIso));
       if (fresh.length) return { draft: withParts(d, fresh), effects: [] };
       if (ctx.inCallWindow) return { draft: { ...d, parts: [], stop: { result: "silencio" } }, effects: [] };
       return { draft: { ...d, parts: [], stop: { result: "repeticao-humano" } }, effects: [
@@ -148,6 +168,21 @@ export const GUARDS = [
       if (!bad.size) return { draft: d, effects: [] };
       return { draft: withParts(d, [...d.parts.filter((_, i) => !bad.has(i)), part(realOfferOf(ctx))]), effects: [] };
     } },
+  { id: "noSameOfferAfterRefusal", rule: "R-040", enforce: true,
+    // Compara HORÁRIOS, não texto: "Fica melhor hoje às 16h ou às 18h?" com
+    // outra moldura ainda é o par que o lead acabou de recusar (28/10,
+    // Wilian, Alberto, Everton 3x, Alexsandro).
+    applies: (ctx) => (ctx.excludeSlots || []).length > 0 || (ctx.refusedDays || []).length > 0,
+    check: (d, ctx) => d.parts.filter((p) => SLOTS_RX.test(p.text) && refusedOffer(p.text, ctx)).map((p) => ({ why: "re-oferece o que o lead recusou", part: p.text.slice(0, 80) })),
+    fix: (d, ctx) => {
+      const kept = d.parts.filter((p) => !(SLOTS_RX.test(p.text) && refusedOffer(p.text, ctx)));
+      const pair = ctx.suggestedPair || [];
+      const real = pair.length && !refusedOffer(offerLine(pair, { wnow: ctx.wnow }), ctx) ? realOfferOf(ctx) : NO_SLOT_TEXT.periodo;
+      return { draft: withParts(d, [...kept, part(real)]), effects: [
+        { type: "stamp", patch: { refusedOfferGuardAt: ctx.nowIso } },
+        { type: "log", level: "info", msg: "sdr-brain: trava da recusa trocou o par repetido pela agenda real" },
+      ] };
+    } },
   { id: "noPromise", rule: "R-030", enforce: true,
     applies: (ctx, d) => !ctx.callAt && !d.parts.some((p) => isOfferMsg(p.text)),
     check: (d) => d.parts.filter((p) => PROMISE_RX.test(p.text) && !HAS_HOUR_RX.test(p.text)).map((p) => ({ why: "promessa de ver depois", part: p.text.slice(0, 80) })),
@@ -162,12 +197,34 @@ export const GUARDS = [
   { id: "apologyOnTakenSlot", rule: "R-028", enforce: true,
     applies: () => true,
     check: (d) => d.parts.filter((p) => DRY_REFUSAL_RX.test(p.text)).map((p) => ({ why: "recusa seca de horário", part: p.text.slice(0, 80) })),
+    // A desculpa "outro cliente pegou" só vale quando o lead escolheu um
+    // horário que a GENTE ofereceu e ele caiu (ctx.takenSlot). Hora que ele
+    // pediu e nunca existiu na lista ("pode ser às 12hs?", "oito da noite")
+    // recebe a verdade: "às 12h não tenho vaga" + o par real (28/10, Everton,
+    // Sérgio, VitorMatheus: a desculpa saía sobre horário que ninguém ofereceu).
     fix: (d, ctx) => {
       const kept = d.parts.filter((p) => !DRY_REFUSAL_RX.test(p.text));
       const slots = (ctx.suggestedPair || []).length ? ctx.suggestedPair : (ctx.offerPool || []).slice(0, 1);
-      return { draft: withParts(d, [...kept, part(offerLine(slots, { style: "desculpa", nome: ctx.nome, wnow: ctx.wnow }))]), effects: [
+      const honest = !ctx.takenSlot;
+      const line = honest
+        ? (ctx.leadHour != null ? offerLine(slots, { style: "sem-vaga-hora", hour: ctx.leadHour, wnow: ctx.wnow }) : realOfferOf(ctx))
+        : offerLine(slots, { style: "desculpa", nome: ctx.nome, wnow: ctx.wnow });
+      return { draft: withParts(d, [...kept, part(line)]), effects: [
         { type: "stamp", patch: { slotTakenGuardAt: ctx.nowIso } },
-        { type: "log", level: "info", msg: "sdr-brain: recusa seca virou desculpa + re-oferta" },
+        { type: "log", level: "info", msg: honest ? "sdr-brain: recusa seca virou 'não tenho vaga nessa hora' + oferta real" : "sdr-brain: recusa seca virou desculpa + re-oferta" },
+      ] };
+    } },
+  { id: "lotouWithProof", rule: "R-041", enforce: true,
+    // Prova do motor: pedido sem vaga (requestedEmpty), hora pedida fora da
+    // lista (hourReply) ou horário escolhido que foi tomado (takenSlot).
+    applies: (ctx) => !ctx.requestedEmpty && !ctx.hourReply && !ctx.takenSlot,
+    check: (d) => d.parts.filter((p) => p.kind === "ia" && !isOfferMsg(p.text) && LOTOU_CLAIM_RX.test(p.text)).map((p) => ({ why: "diz que lotou sem o motor ter dito", part: p.text.slice(0, 80) })),
+    fix: (d, ctx) => {
+      const kept = d.parts.filter((p) => !(p.kind === "ia" && !isOfferMsg(p.text) && LOTOU_CLAIM_RX.test(p.text)));
+      if (!kept.some((p) => isOfferMsg(p.text)) && !ctx.callAt) kept.push(part((ctx.suggestedPair || []).length ? realOfferOf(ctx) : NO_SLOT_TEXT.periodo));
+      return { draft: withParts(d, kept), effects: [
+        { type: "stamp", patch: { lotouGuardAt: ctx.nowIso } },
+        { type: "log", level: "info", msg: "sdr-brain: trava do 'lotou' sem prova trocou a frase pela oferta real" },
       ] };
     } },
   { id: "noPhantomOffer", rule: "R-029", enforce: true,
@@ -278,6 +335,17 @@ export const GUARDS = [
 ];
 export const guardById = (id) => GUARDS.find((g) => g.id === id) || null;
 
+// A oferta no texto só tem horários que o lead recusou (R-040)? Lê os slots
+// de volta do texto com a mesma régua da cobrança (offeredSlotsIn), relativo
+// a agora.
+function refusedOffer(text, ctx) {
+  const slots = slotsInText(text, ctx.nowIso || new Date().toISOString());
+  if (!slots.length) return false;
+  const exclude = new Set(ctx.excludeSlots || []);
+  const refusedDays = new Set(ctx.refusedDays || []);
+  return slots.every((s) => exclude.has(s.at) || refusedDays.has(s.at.slice(0, 10)));
+}
+
 // Lead disse que vai pelo celular, ninguém recomendou o computador ainda e a
 // resposta não fala em computador: falta a dica (R-061).
 function needsDeviceTip(d, ctx) {
@@ -297,7 +365,9 @@ function offendingOffers(d, ctx) {
   d.parts.forEach((p, i) => {
     const mentions = [...expandSameDay(p.text).matchAll(OFFER_MENTIONS_RX)];
     const offeredWindow = ctx.wnow ? sdrAgendaWindow([{ direction: "in", text: p.text }], ctx.wnow) : { requested: false };
-    const wrongDay = offeredWindow.requested && !allowedDays.has(offeredWindow.startDate);
+    // Só DIA citado fora da lista é oferta errada; a pergunta de período
+    // ("manhã ou tarde?") não cita dia nenhum (28/10: ela caía aqui).
+    const wrongDay = offeredWindow.requested && !offeredWindow.periodOnly && !allowedDays.has(offeredWindow.startDate);
     if ((!ctx.callAt || OFFER_CUE_RX.test(p.text)) && (mentions.some((m) => !allowedLabels.has(m[0].toLowerCase())) || wrongDay)) out.push(i);
   });
   return out;

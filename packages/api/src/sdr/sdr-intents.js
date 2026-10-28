@@ -34,7 +34,7 @@ export const lastInboundText = (msgs) => {
 export const AFFILIATE_RX = /\b(sou|somos|trabalho como|atuo como)\s+(um[ao]?\s+)?afil[ih]ad|afil[ih]ad[ao]s?\s+(d[ao]|na|no)\s+(shopee|mercado\s*livre|ml\b)|programa de afiliad|link de afiliad|divulgo produtos? (de|d[ao]s)/i;
 // Dia SOLTO ("retomar amanhã", "que tal na terça?"). Sem \b no fim de
 // propósito: "amanhã," não fecha fronteira ASCII.
-export const DAY_WORD_RX = /\b(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|essa semana|semana que vem)/i;
+export const DAY_WORD_RX = /\b(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|essa semana|semana que vem|pr[óo]xima semana|outra semana|semana seguinte)/i;
 export const HAS_HOUR_RX = /\b\d{1,2}\s?h(\d{2})?\b|\b\d{1,2}:\d{2}\b/;
 // Lead sinalizou INTERESSE ("sim", "ajudaria", "quero"...).
 export const INTEREST_RX = /\b(sim|ajudaria|com certeza|claro|tenho interesse|quero|pode ser|bora|show|top|gostei|perfeito)\b/i;
@@ -56,7 +56,7 @@ export const leadEngaged = (msgs) => msgs.some((m) => {
 // "boa tarde"/"bom dia"/"boa noite" é saudação, não período (R-032, caso Daniel
 // 15/10), e "amanhã" é dia, não "manhã": lookbehinds iguais aos do parser da
 // agenda (sdr-agenda.js). Sem isso a saudação desligava "mais cedo primeiro".
-export const PERIOD_ASK_RX = /(?<![\p{L}])(?<!\bbo[am]\s)(?:manh[ãa]|tarde|noite)|depois d[ao]s|antes d[ao]s|a partir d[ao]s|depois d[eo]ss|antes d[eo]ss|mais cedo|semana que vem|outro dia|s[óo] (?:na |no )?(?:segunda|ter[çc]a|quarta|quinta|sexta)/iu;
+export const PERIOD_ASK_RX = /(?<![\p{L}])(?<!\bbo[am]\s)(?:manh[ãa]|tarde|noite)|depois d[ao]s|antes d[ao]s|a partir d[ao]s|depois d[eo]ss|antes d[eo]ss|mais cedo|semana que vem|pr[óo]xima semana|outra semana|semana seguinte|outro dia|s[óo] (?:na |no )?(?:segunda|ter[çc]a|quarta|quinta|sexta)/iu;
 // O LEAD pedindo preço (≠ PRICE_RX do cérebro, que pega VALOR dito por nós).
 export const PRICE_ASK_RX = /pre[çc]o|\bvalor(es)?\b|quanto (custa|fica|sai|é|e)\b|mensalidade|qual o (investimento|custo)|tabela de pre[çc]/i;
 // NÚMERO SOLTO depois da oferta é HORA (Leo, 08/10): "18" a "terça às 17h ou

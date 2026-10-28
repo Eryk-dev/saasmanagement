@@ -3,7 +3,7 @@
 GERADO de `packages/api/src/sdr/sdr-rules.js` (`node src/sdr/sdr-rules.js --write`). Não edite à mão: o
 teste `sdr-rulebook.test.js` recusa o arquivo quando ele difere do registro.
 
-73 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
+75 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
 origem (data, quem pediu, PR ou print), o enunciado, os estados da conversa e o roteiro em que vale, a camada
 que a executa e as exceções. Toda regra ativa tem pelo menos um teste ou cena com a tag `#R-nnn`.
 
@@ -162,7 +162,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-025 · Horário já oferecido não se re-lista; silêncio é cobrado no dia útil seguinte
 
 - Origem: 2026-08-23, Leo (#755; cobrança da oferta #1113 (30/09))
-- Regra: Com horários já oferecidos e sem escolha, a resposta trata o que o lead trouxe e pede a escolha curta, sem re-listar e sem a frase "algum dos horários que te passei encaixa?". Oferta de ontem sem resposta é cobrada uma vez, de manhã (9h às 12h do dia útil seguinte), com os mesmos horários se ainda estiverem livres, senão com par novo.
+- Regra: Com horários já oferecidos e sem escolha, a resposta trata o que o lead trouxe e pede a escolha curta, sem re-listar e sem a frase "algum dos horários que te passei encaixa?". Oferta de ontem sem resposta é cobrada uma vez, de manhã (9h às 12h do dia útil seguinte), com os mesmos horários se ainda estiverem livres ("ainda consigo…"), senão com par novo (R-041 diz como).
 - Vale em: estados oferta_feita; roteiro todos; executada por prompt, flow
 
 ### R-026 · Uma oferta por resposta
@@ -179,15 +179,15 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 
 ### R-028 · Horário tomado é desculpa, nunca recusa seca
 
-- Origem: 2026-08-25, Leo (caso Gabriel; "não tenho vaga" com agenda aberta é a pior contradição (#1150, 15/10))
-- Regra: Horário que o lead escolheu e caiu no meio do caminho: pede desculpa, diz que outro cliente pegou e re-oferece. "Não tenho horário" só sai quando a lista está realmente vazia.
+- Origem: 2026-08-25, Leo (caso Gabriel; "não tenho vaga" com agenda aberta é a pior contradição (#1150, 15/10); desculpa só sobre horário NOSSO (raio-x 28/10))
+- Regra: Horário que o lead escolheu entre os que a gente OFERECEU e caiu no meio do caminho: pede desculpa, diz que outro cliente pegou e re-oferece. Hora que ele pediu e nunca esteve na lista ("pode ser às 12hs?", "oito da noite") recebe a verdade: "às 12h não tenho vaga" + o par real, sem culpar outro cliente. "Não tenho horário" só sai quando a lista está realmente vazia.
 - Vale em: estados todos; roteiro todos; executada por guard, offer (validador apologyOnTakenSlot)
 
-### R-029 · Sem oferta anterior, nunca "os horários que te passei"
+### R-029 · Sem oferta VIVA, nunca "os horários que te passei"
 
-- Origem: 2026-08-25, Leo (trava de oferta fantasma)
-- Regra: Se nenhum horário foi oferecido nesta conversa, a resposta não faz referência a uma oferta que não existe: escreve os horários por extenso usando o par sugerido. Referência a horário já oferecido de verdade passa.
-- Vale em: estados todos; roteiro todos; executada por guard, prompt (validador noPhantomOffer)
+- Origem: 2026-08-25, Leo (trava de oferta fantasma; oferta vencida não é oferta (raio-x 28/10: Diego, Alexandre, Alberto, Eduardo, Ronaldo))
+- Regra: Só conta como oferta feita a oferta cujos horários ainda estão no futuro. Sem oferta viva nesta conversa, a resposta não faz referência a uma oferta que não existe ("qual dos horários que te passei", "qual dos dois horários"): escreve os horários por extenso usando o par sugerido. Referência a horário oferecido e ainda válido passa.
+- Vale em: estados todos; roteiro todos; executada por guard, state, prompt (validador noPhantomOffer)
 
 ### R-030 · Promessa de ver depois vira a agenda real
 
@@ -204,8 +204,20 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-032 · O pedido do lead filtra a lista; pedido lotado diz que lotou
 
 - Origem: 2026-09-30, Leo (#1113; "terça ou quarta" (#1140); "depois desse horário" (#1147, 13/10); "boa tarde" não é período (#1150, 15/10))
-- Regra: Dia, período, hora, faixa ("depois das 15h"), relativo ao par oferecido ("mais tarde", "antes desse") e "terça ou quarta" viram janela e a lista chega filtrada. Negação com alternativa depois é pedido; cláusula de motivo ("porque minha operação é de manhã") não é; saudação ("boa tarde") não é período; pedido que ficou no passado é esquecido; período pedido ontem anda pra hoje. Pedido sem vaga: diz em uma frase que lotou e oferece o par das alternativas; só vira humano se o lead recusar as alternativas e insistir. Hora que cabe hoje e amanhã: pergunta "hoje ou amanhã?" em vez de marcar no palpite.
+- Regra: Dia, período, hora, faixa ("depois das 15h", "depois das 1800", "fora do horário comercial" = a partir das 18h), relativo ao par oferecido ("mais tarde", "antes desse"), "terça ou quarta", "outra semana" e "na sexta estarei livre" viram janela e a lista chega filtrada. Negação com alternativa depois é pedido; cláusula de motivo ("porque minha operação é de manhã") não é; saudação ("boa tarde") não é período; pedido que ficou no passado é esquecido; período pedido ontem anda pra hoje. Pedido sem vaga: diz em uma frase que lotou e oferece o par das alternativas; só vira humano se o lead recusar as alternativas e insistir. Hora que cabe hoje e amanhã: pergunta "hoje ou amanhã?" em vez de marcar no palpite.
 - Vale em: estados todos; roteiro todos; executada por agenda, intent, prompt
+
+### R-040 · Recusa do par muda os horários
+
+- Origem: 2026-10-28, Leo (prints 28/10 (Alberto 5 recusas × "hoje às 14h" 2x; Wilian "nesse horário não consigo" → mesmo par; Everton 3x, Alexsandro, Edmundo))
+- Regra: Lead que recusou os horários oferecidos sem pedir outro ("nesse horário não consigo", "não dá") nunca recebe o mesmo par de novo: os horários recusados saem da lista e, se o dia inteiro foi recusado ("hoje não consigo", "minha agenda hoje tá cheia"), a oferta anda pro próximo dia útil. A comparação é por horário, não por texto: trocar a moldura da frase não vale. Sem nada novo pra oferecer, pergunta o período que fica melhor. A rajada do lead (mensagens seguidas, sem fala nossa no meio) é lida inteira: "hoje não conseguirei" + "na sexta estarei livre" é um pedido de sexta.
+- Vale em: estados todos; roteiro todos; executada por agenda, guard, prompt (validador noSameOfferAfterRefusal)
+
+### R-041 · Lotou só com prova do motor
+
+- Origem: 2026-10-28, Leo (prints 28/10 (Claudenilson "na sexta já lotou" com sexta livre; Alberto "depois das 18h já lotou" e o humano encaixou 18h; cobrança da manhã "já não estão mais livres" sobre as 10h de hoje às 9h07: Henrique, Ton, Eduardo, Sabrina))
+- Regra: Dizer que um dia, hora ou período lotou, não tem vaga ou foi preenchido é afirmação do MOTOR, nunca da IA: só sai quando o pedido reconhecido não tem vaga (requestedEmpty), quando a hora pedida não está na lista (número solto) ou quando o horário escolhido foi tomado. Fora disso a frase cai e entra a oferta real. A cobrança da manhã confere os horários de ontem com 30 min de folga (não as 2h da oferta nova) e diz "ainda consigo" enquanto estiverem livres; oferta que já passou vira par novo sem desculpa.
+- Vale em: estados todos; roteiro todos; executada por guard, flow, prompt (validador lotouWithProof)
 
 ### R-033 · Pool do closer pela nota do lead
 

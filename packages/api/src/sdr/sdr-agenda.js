@@ -10,7 +10,7 @@
 // da tarde", "Mais sim na terça feira", "Poderíamos passar amanhã?"), e cada
 // uma virava handoff pra gente marcar na mão no dia seguinte.
 import { slotsForLead, wallNow, wallFromNaive, addBusinessDaysNaive, OFFER_HOURS } from "../crm/agenda-slots.js";
-import { isOfferMsg, expandSameDay } from "./sdr-signals.js";
+import { isOfferMsg, expandSameDay, offeredSlotsIn } from "./sdr-signals.js";
 
 const ymd = (d) => d.toISOString().slice(0, 10);
 const normalize = (v) => String(v || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -25,21 +25,33 @@ function concreteDate(year, month, day) {
 }
 
 // Fala que cita data sem pedir reunião: "te respondo sexta", "comecei segunda".
-const NOT_A_REQUEST_RX = /te (?:falo|chamo|respondo|retorno)|(?:desde|comprei|comecei|vendi|vendeu)\b|quero saber mais sobre/;
+const NOT_A_REQUEST_RX = /te (?:falo|chamo|respondo|retorno)|(?:desde|comprei|comecei|vendi|vendeu|vende|vendemos|vendendo)\b|mercado livre|quero saber mais sobre/;
 // Verbos e palavras que fazem de uma data um PEDIDO ("pode ser quarta?", "só
 // sexta", "sim, terça", "poderíamos passar amanhã?").
 // "como estaria sua agenda na sexta?" (Daniel, 15/10): perguntar pela nossa
 // agenda num dia É pedir esse dia.
-const ASKED_RX = /\b(?:pode|posso|poderei|poderia|poderiamos|podia|podiamos|podemos|consigo|conseguimos|conseguiria|da|dava|daria|tem|teria|quero|prefiro|preferia|preciso|vamos|disponivel|disponibilidade|agenda|agendar|agendamento|estaria|marcar|remarcar|reuniao|call|horario|so|apenas|sim|ok|okay|beleza|bora|fechado|combinado|perfeito|certo|passar|deixar|deixa|mudar|trocar|ficar|fica|melhor|encaixa|encaixar|talvez|quem sabe|entao)\b/;
+// "estarei livre", "estou de folga", "consigo só" (28/10: "Na sexta feira
+// estarei livre" não virava pedido e o robô disse que a sexta tinha lotado).
+const ASKED_RX = /\b(?:pode|posso|poderei|poderia|poderiamos|podia|podiamos|podemos|consigo|conseguimos|conseguiria|conseguirei|da|dava|daria|tem|teria|quero|prefiro|preferia|preciso|vamos|disponivel|disponibilidade|agenda|agendar|agendamento|estaria|estarei|(?:to|estou|fico|vou estar|estaremos|ficamos) (?:livre|de folga|liberad[ao]s?|disponive(?:l|is))|marcar|remarcar|reuniao|call|horario|so|apenas|sim|ok|okay|beleza|bora|fechado|combinado|perfeito|certo|passar|deixar|deixa|mudar|trocar|ficar|fica|melhor|encaixa|encaixar|talvez|quem sabe|entao)\b/;
 // Negação que RECUSA o que vem antes dela ("amanhã não consigo", "não posso
 // amanhã"). Dia citado DEPOIS dela com uma pista de alternativa no meio
 // ("não consigo, pode ser quarta") é o pedido, não a recusa.
-const NEG_RX = /\bnao\s+(?:posso|consigo|conseguimos|da|pode|quero|vou (?:poder|conseguir)|tenho disponibilidade|vai dar|tem como|rola)\b|\bnao[.!?\s]*$/;
+// 28/10 (Alberto): "hoje não conseguirei", "minha agenda hj tá cheia", "sem
+// tempo" também são recusa; antes "tá cheia" nem era negação e a palavra
+// "agenda" fazia da frase um PEDIDO de hoje.
+const NEG_RX = /\bnao\s+(?:posso|consigo|conseguimos|conseguirei|conseguiria|da|pode|quero|vou (?:poder|conseguir)|vai (?:dar|rolar)|tenho (?:disponibilidade|como|tempo)|tem como|rola|da pra mim)\b|\b(?:ta|esta|estou|to|tenho a agenda|agenda)\s+(?:bem |muito |super |toda )?(?:cheia|cheio|lotad[ao]|complicad[ao]|corrid[ao]|ocupad[ao]|apertad[ao]|tomad[ao])\b|\bsem tempo\b|\bimpossivel\b|\bnao[.!?\s]*$/;
 const ALT_CUE_RX = /\b(?:pode|poderia|podemos|poderiamos|teria|tem|so|apenas|prefiro|prefiria|melhor|consigo|conseguimos|da|daria|dava|vamos|deixa|passa|passar|fica|ficar|quem sabe|talvez|entao|seria|ser)\b/;
-const DAY_RX = /depois de amanha|amanha|\bhoje\b|\bhj\b|segunda(?:[- ]feira)?|terca(?:[- ]feira)?|quarta(?:[- ]feira)?|quinta(?:[- ]feira)?|sexta(?:[- ]feira)?|sabado|domingo|\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}(?:\/\d{4})?|\bdia \d{1,2}\b|\b\d{1,2} de [a-z]+|semana que vem|proxima semana|outro dia|outros dias|proximos dias|daqui a \d+ dias?/g;
+const DAY_RX = /depois de amanha|amanha|\bhoje\b|\bhj\b|segunda(?:[- ]feira)?|terca(?:[- ]feira)?|quarta(?:[- ]feira)?|quinta(?:[- ]feira)?|sexta(?:[- ]feira)?|sabado|domingo|\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}(?:\/\d{4})?|\bdia \d{1,2}\b|\b\d{1,2} de [a-z]+|semana que vem|proxima semana|outra semana|semana seguinte|outro dia|outros dias|proximos dias|daqui a \d+ dias?/g;
+const NEXT_WEEK_RX = /semana que vem|proxima semana|outra semana|semana seguinte/;
 // Período do dia. "depois das 15h"/"a partir das 14h"/"antes das 11h" são
 // restrições de hora; "de manhã"/"à tarde"/"de noite" viram faixas.
-const HOUR_BOUND_RX = /\b(depois|apos|a partir|antes)\s+(?:d[aeo]s?|[ao]s?)\s*(\d{1,2})\s*(?:h\d{0,2}|hs|hrs|horas|:\d{2})?\b/;
+// Hora escrita "1800", "18:00", "18hs", "18 horas" (28/10: "só consigo depois
+// das 1800" não era lido e o robô ofereceu 14h).
+const HOUR_BOUND_RX = /\b(depois|apos|a partir|antes)\s+(?:d[aeo]s?|[ao]s?)\s*(\d{1,2})(?::?[0-5]\d)?\s*(?:h\d{0,2}|hs|hrs|horas)?\b/;
+// "Fora do horário comercial", "depois do expediente", "sou CLT", "só à noite":
+// o lead só pode no fim do dia (28/10, Everton/VitorMatheus: o robô insistia no
+// par da manhã e dizia que só atende em horário comercial).
+const LATE_RX = /fora do (?:horario )?comercial|(?:depois|apos|fora) do (?:expediente|trabalho|servico|horario de trabalho)|(?:so|apenas|somente) (?:a |de |pela )?noite|(?:final|fim) do dia|\bclt\b|(?:em |no )?horario comercial (?:eu |nos |a gente )?nao/;
 // Saudação ("olá, boa tarde", "boa noite") NÃO é pedido de período (15/10: o
 // "boa tarde" de ontem virou janela "à tarde" ancorada em ontem, e hoje o
 // robô disse que não tinha horário nenhum).
@@ -68,6 +80,7 @@ function periodOf(t, negIdx, offer = null) {
     const h = Number(bound[2]);
     if (h >= 0 && h <= 23) return bound[1] === "antes" ? { fromHour: null, toHour: h } : { fromHour: h, toHour: null };
   }
+  if (LATE_RX.test(t)) return { fromHour: PERIODS.noite.fromHour, toHour: null };
   if (offer?.hours?.length) {
     if (LATER_RX.test(t)) return { fromHour: Math.max(...offer.hours) + 1, toHour: null, relative: true };
     if (EARLIER_RX.test(t)) return { fromHour: null, toHour: Math.min(...offer.hours), relative: true };
@@ -80,7 +93,9 @@ function periodOf(t, negIdx, offer = null) {
   return { ...PERIODS[m[1]] };
 }
 
-// Uma cláusula → { date, days, period } (qualquer um pode faltar) ou null.
+// Uma cláusula → { date, days, period, refused, refusal } (qualquer um pode
+// faltar) ou null. `refused`: dias que o lead RECUSOU ("hoje não consigo");
+// `refusal`: a cláusula é uma negação sem dia novo ("nesse horário não dá").
 function parseClause(t, at, offer = null) {
   t = t.trim();
   if (!t || NOT_A_REQUEST_RX.test(t)) return null;
@@ -90,8 +105,17 @@ function parseClause(t, at, offer = null) {
   const mentions = [...t.matchAll(DAY_RX)].map((m) => ({ text: m[0], idx: m.index }));
   // Dia recusado: antes da negação, ou logo depois dela sem pista de alternativa.
   const candidates = mentions.filter((m) => negIdx < 0 || (m.idx > negIdx && ALT_CUE_RX.test(t.slice(negIdx, m.idx))));
+  const refused = negIdx < 0 ? [] : mentions.filter((m) => !candidates.includes(m))
+    .map((m) => mentionDate(m.text, t, at)).filter(Boolean).flatMap((d) => {
+      const out = [];
+      for (let i = 0; i < Math.min(d.days, 7); i++) out.push(ymd(dayPlus(d.date, i)));
+      return out;
+    });
   const pick = candidates[0] || null;
-  if (!pick) return period ? { period } : null;
+  if (!pick) {
+    if (period) return { period, refused };
+    return refused.length ? { refused } : negIdx >= 0 ? { refusal: true } : null;
+  }
   // Data citada de passagem ("fechei a loja quarta") não é pedido: sobra texto
   // sem nenhum verbo de pedido. Alternativa depois de negação já é pedido.
   // Dias ligados por "ou"/"e" e "que vem" são parte do pedido, não sobra (Leo,
@@ -101,9 +125,10 @@ function parseClause(t, at, offer = null) {
   for (const m of mentions) bare = bare.replace(m.text, "");
   bare = bare.replace(/(?:\bque vem\b|\bproxim[ao]\b|\btambem\b|\bou\b|\be\b|\bas?\b|\bde\b|\bpela\b|\bna\b|\bno\b|\bpara\b|\bpra\b|\bmanha\b|\btarde\b|\bnoite\b|\d{1,2}(?:h\d{0,2}|:\d{2})?|[\s,.!?])/g, "");
   const alternative = negIdx >= 0 && pick.idx > negIdx;
-  if (bare && !alternative && !ASKED_RX.test(t)) return period ? { period } : null;
+  const noPick = () => (period ? { period, refused } : refused.length ? { refused } : null);
+  if (bare && !alternative && !ASKED_RX.test(t)) return noPick();
   const first = mentionDate(pick.text, t, at);
-  if (!first) return period ? { period } : null;
+  if (!first) return noPick();
   let { date, days } = first;
   // "terça ou quarta": a janela cobre do primeiro ao último dia citado.
   if (candidates.length >= 2 && days === 1) {
@@ -111,7 +136,7 @@ function parseClause(t, at, offer = null) {
     const span = last ? Math.round((last.date.getTime() - date.getTime()) / 86_400_000) : 0;
     if (span > 0 && span <= 7) days = span + 1;
   }
-  return { date, days, period };
+  return { date, days, period, refused };
 }
 
 // Uma menção de dia ("quarta", "amanhã", "dia 30", "15/10") → { date, days }
@@ -137,7 +162,7 @@ function mentionDate(pickText, t, at) {
   } else if (numbered) {
     const month = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth() + (+numbered[1] < at.getUTCDate() ? 1 : 0), 1));
     date = concreteDate(month.getUTCFullYear(), month.getUTCMonth() + 1, +numbered[1]);
-  } else if (/semana que vem|proxima semana/.test(pick.text)) {
+  } else if (NEXT_WEEK_RX.test(pick.text)) {
     date = dayPlus(at, (8 - at.getUTCDay()) % 7 || 7);
     if (weekday >= 0) date = dayPlus(date, (weekday + 6) % 7);
     else days = 5;
@@ -158,21 +183,28 @@ function mentionDate(pickText, t, at) {
 // da última cláusula que pede um; o PERÍODO, da última que cita um. Assim
 // "Amanhã eu não consigo. Teria que ser quarta" pede quarta, e "quarta, de
 // manhã" pede quarta de manhã.
+// Sem pedido mas com recusa ("hoje não consigo", "nesse horário não dá"):
+// devolve { requested: false, refused: [dias], refusal: true } pra quem monta
+// a janela tirar o que foi recusado (28/10, Alberto/Wilian: o robô repetia o
+// mesmo par porque a recusa não mudava nada na lista).
 function requestedWindow(text, at, offer = null) {
   const t = normalize(text).trim();
   if (!t) return null;
   // O motivo vira cláusula própria, começando pela conjunção, pra parseClause
   // saber que ali ninguém está pedindo período.
   const clauses = t.replace(REASON_SPLIT_RX, (m) => `. ${m}`).split(/[,;.!?]|\bmas\b|\bporem\b/).map((s) => s.trim()).filter(Boolean);
-  let day = null, period = null;
+  let day = null, period = null, refusal = false;
+  const refused = new Set();
   for (const c of clauses) {
     const r = parseClause(c, at, offer);
     if (!r) continue;
     if (r.date) day = r;
     if (r.period) period = r.period;
+    if (r.refusal) refusal = true;
+    for (const d of r.refused || []) refused.add(d);
   }
-  if (!day && !period) return null;
-  const out = { requested: true };
+  if (!day && !period) return refused.size || refusal ? { requested: false, refused: [...refused], refusal: true } : null;
+  const out = { requested: true, refused: [...refused] };
   if (day) { out.startDate = ymd(day.date); out.days = day.days; }
   else if (period.relative && offer?.startDate && offer.startDate >= ymd(at)) {
     // "Depois desse horário": do dia oferecido em diante, dentro da faixa.
@@ -213,6 +245,28 @@ export function defaultWindow(now) {
 // saber se ela ficou inteira no passado).
 const lastDayOf = (w) => ymd(dayPlus(wallFromNaive(w.startDate), Math.max(0, (w.days || 1) - 1) + (w.days > 1 ? 2 : 0)));
 
+// RAJADA LIDA INTEIRA (28/10): mensagens seguidas do lead, sem fala nossa no
+// meio e com menos de 10 min entre elas, viram um texto só antes de virar
+// pedido. "Hoje não conseguirei!" + "Na sexta feira estarei livre" em dois
+// balões é UM pedido de sexta; lidos um a um, o segundo caía e o primeiro
+// não dizia nada. Mensagem nossa entre elas fecha o grupo.
+const BURST_GAP_MS = 10 * 60_000;
+function groupBursts(messages) {
+  const out = [];
+  for (const m of messages) {
+    const prev = out[out.length - 1];
+    const ms = Date.parse(m.at || "");
+    if (m.direction === "in" && prev && prev.direction === "in" && (!Number.isFinite(ms) || !Number.isFinite(prev.lastMs) || ms - prev.lastMs <= BURST_GAP_MS)) {
+      prev.texts.push(String(m.transcript || m.text || ""));
+      prev.lastMs = Number.isFinite(ms) ? ms : prev.lastMs;
+      prev.last = m;
+      continue;
+    }
+    out.push({ direction: m.direction, texts: [String(m.transcript || m.text || "")], first: m, last: m, lastMs: ms });
+  }
+  return out;
+}
+
 // Pedido vale enquanto a conversa escolhe o horário, inclusive "14h" na
 // mensagem seguinte. Nunca interpreta fala do robô como pedido do cliente.
 // Pedido que ficou inteiro no PASSADO ("amanhã" dito na segunda, lido na
@@ -220,20 +274,35 @@ const lastDayOf = (w) => ymd(dayPlus(wallFromNaive(w.startDate), Math.max(0, (w.
 // data?" pra quem só queria marcar.
 // `callAt`: com call marcada e o lead falando só de HORA ("13h estou
 // almoçando, pode ser 14h?"), o dia é o da call, não o próximo dia útil.
+// Devolve também `refused` (dias recusados, de hoje em diante) e `exclude`
+// (horários da nossa última oferta que o lead recusou sem pedir outro):
+// sdrSlotsForLead tira os dois da lista, e a janela espontânea anda pro
+// próximo dia útil quando o dia recusado era o dela.
 export function sdrAgendaWindow(messages = [], now = wallNow(), { callAt = "" } = {}) {
   let window = defaultWindow(now);
   let lastIn = null;
   let offer = null; // a última oferta nossa: { hours, startDate } pra "depois desse horário"
-  for (const m of messages.slice(-24)) {
+  let offerMsg = null; // a mensagem da última oferta nossa (pra excluir o que foi recusado)
+  const refused = new Set();
+  let exclude = [];
+  for (const g of groupBursts(messages.slice(-24))) {
+    const m = g.last;
     const parsedAt = m.at ? wallNow(new Date(m.at)) : now;
     const at = Number.isFinite(parsedAt.getTime()) ? parsedAt : now;
-    if (m.direction !== "in") {
-      if (isOfferMsg(m.text || "")) offer = offeredWindow(m.text, at);
+    if (g.direction !== "in") {
+      if (isOfferMsg(g.texts[0] || "")) { offer = offeredWindow(g.texts[0], at); offerMsg = m; exclude = []; }
       continue;
     }
     lastIn = m;
-    const requested = requestedWindow(m.transcript || m.text, at, offer);
+    const requested = requestedWindow(g.texts.join(". "), at, offer);
     if (!requested) continue;
+    for (const d of requested.refused || []) if (d >= ymd(now)) refused.add(d);
+    if (!requested.requested) {
+      // Recusa sem dia novo: o que a gente tinha acabado de oferecer sai da
+      // próxima lista (R-040). "Hoje não dá" tira o dia inteiro (refused).
+      if (offerMsg && !requested.refused?.length) exclude = offeredSlotsIn([offerMsg], offerMsg.author || "sdr-bot").map((s) => s.at);
+      continue;
+    }
     if (lastDayOf(requested) < ymd(now)) { window = defaultWindow(now); continue; }
     window = requested;
   }
@@ -248,20 +317,48 @@ export function sdrAgendaWindow(messages = [], now = wallNow(), { callAt = "" } 
     const callDay = String(callAt).slice(0, 10);
     if (callDay >= ymd(now)) return { startDate: callDay, days: 1, requested: true, callDay: true };
   }
-  return window;
+  // Janela espontânea cujo primeiro dia foi recusado ("hj não consigo"): anda
+  // pro próximo dia útil que não foi recusado, mantendo os 2 dias.
+  if (!window.requested && refused.size) {
+    let start = window.startDate;
+    for (let i = 0; i < 10 && refused.has(start); i++) start = addBusinessDaysNaive(start, 1).slice(0, 10);
+    window = { ...window, startDate: start };
+  }
+  const { refused: _r, ...rest } = window;
+  return { ...rest, ...(refused.size ? { refused: [...refused].sort() } : {}), ...(exclude.length ? { exclude } : {}) };
 }
 
 export async function sdrSlotsForLead(repo, { messages = [], now = wallNow(), ...options } = {}) {
   const window = sdrAgendaWindow(messages, now, { callAt: options.lead?.callAt || "" });
-  const { periodOnly, callDay, ...winOpts } = window;
+  const { periodOnly, callDay, refused = [], exclude = [], ...winOpts } = window;
+  // O que o lead recusou não volta (R-040): horários da última oferta e dias
+  // inteiros ("hoje não dá").
+  const drop = (slots) => slots.filter((s) => !exclude.includes(s.at) && !refused.includes(String(s.at).slice(0, 10)));
   // Pedido passado ou de fim de semana não vira oferta de outro dia sozinho.
   const day = wallFromNaive(window.startDate).getUTCDay();
   if (window.startDate < ymd(now) || (window.days === 1 && (day === 0 || day === 6))) return { slots: [], ...window };
   const result = await slotsForLead(repo, { ...options, now, ...OFFER_HOURS, ...winOpts, sdr: true });
-  if (result.slots.length || !window.requested) return { ...result, ...window };
+  result.slots = drop(result.slots);
+  if (result.slots.length) return { ...result, ...window };
+  if (!window.requested) {
+    // A recusa esvaziou a janela espontânea: próximo dia útil depois dela.
+    if (!exclude.length && !refused.length) return { ...result, ...window };
+    const nextStart = addBusinessDaysNaive(lastDayOf(window), 1).slice(0, 10);
+    const more = await slotsForLead(repo, { ...options, now, ...OFFER_HOURS, startDate: nextStart, days: 2, sdr: true });
+    more.slots = drop(more.slots);
+    return { ...more, ...window, startDate: nextStart, days: 2, extended: true };
+  }
   // O PEDIDO DO LEAD NÃO TEM VAGA. Em vez de lista vazia (que virava "vou
   // reservar e te confirmo" + handoff), a IA recebe as alternativas mais
   // próximas na janela normal e diz que o pedido lotou.
   const alt = await slotsForLead(repo, { ...options, now, ...OFFER_HOURS, ...defaultWindow(now), sdr: true });
+  alt.slots = drop(alt.slots);
+  if (!alt.slots.length && (exclude.length || refused.length)) {
+    // "Amanhã não consigo, teria que ser sexta" com a sexta cheia: amanhã
+    // foi recusado, então as alternativas vêm dos 5 dias úteis seguintes.
+    const wider = await slotsForLead(repo, { ...options, now, ...OFFER_HOURS, ...defaultWindow(now), days: 5, sdr: true });
+    wider.slots = drop(wider.slots);
+    return { ...wider, ...window, requestedEmpty: true };
+  }
   return { ...alt, ...window, requestedEmpty: true };
 }

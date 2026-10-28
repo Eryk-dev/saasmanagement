@@ -312,8 +312,26 @@ test("vendedor com conta própria na Shopee NÃO é confundido com afiliado #R-0
 });
 
 test("horário preenchido no meio do caminho: pede desculpa e diz que outro cliente pegou #R-028", async () => {
-  // Caso Gabriel (25/08): escolheu um horário que NÓS oferecemos e ouviu
-  // "Esse horário não consigo" seco.
+  // Caso Gabriel (25/08): escolheu um horário que NÓS oferecemos, outro lead
+  // pegou antes, e ele ouviu "Esse horário não consigo" seco.
+  const repo = await world({ messages: [
+    { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor?", at: ISO("2026-08-19T12:50:00Z") },
+    { direction: "in", text: "as 9h fica melhor", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  await repo.create("leads", { id: "busy", saas: "leverads", name: "Outro", phone: "41988880000", stage: "Call agendada", closer: "pl", callAt: SLOT1, createdAt: ISO("2026-08-19T10:00:00Z") });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Esse horário não consigo, mas tenho amanhã às 11h" }] });
+  await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "as 9h fica melhor" } });
+  const texto = fakes.sent.map((x) => x.text).join(" ");
+  assert.ok(!/não consigo/i.test(texto), "a recusa seca não sai");
+  assert.match(texto, /preenchido por outro cliente/);
+  assert.match(texto, /desculpa/i);
+  assert.match(texto, /às \d/, "já vem com horário novo");
+  assert.ok((await repo.get("leads", "L1")).sdrLog.slotTakenGuardAt);
+});
+
+test("hora pedida que nunca esteve na lista: 'às 15h não tenho vaga' + o par real, sem culpar outro cliente #R-028 #R-041", async () => {
+  // Raio-x 28/10 (Everton "pode ser às 12hs?", Sérgio "oito da noite"): a
+  // desculpa "acabou de ser preenchido" saía sobre horário que ninguém ofereceu.
   const repo = await world({ messages: [
     { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor?", at: ISO("2026-08-19T12:50:00Z") },
     { direction: "in", text: "as 15h fica melhor", at: ISO("2026-08-19T12:59:00Z") },
@@ -321,11 +339,8 @@ test("horário preenchido no meio do caminho: pede desculpa e diz que outro clie
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Esse horário não consigo, mas tenho amanhã às 9h" }] });
   await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "as 15h fica melhor" } });
   const texto = fakes.sent.map((x) => x.text).join(" ");
-  assert.ok(!/não consigo/i.test(texto), "a recusa seca não sai");
-  assert.match(texto, /preenchido por outro cliente/);
-  assert.match(texto, /desculpa/i);
-  assert.match(texto, /às \d/, "já vem com horário novo");
-  assert.ok((await repo.get("leads", "L1")).sdrLog.slotTakenGuardAt);
+  assert.ok(!/preenchido por outro cliente/.test(texto), "sem desculpa inventada");
+  assert.match(texto, /Às 15h não tenho vaga\. Consigo amanhã às 9h ou às 11h/);
 });
 
 test("re-oferta determinística (horário inventado pela IA) também pede desculpa #R-020 #R-028", async () => {
@@ -1388,7 +1403,9 @@ test("pedido do lead sem vaga: a IA recebe requestedEmpty e as alternativas da j
   assert.equal(ctx.requestedDate, true);
   assert.equal(ctx.requestedEmpty, true);
   assert.equal(ctx.offerDate, "2026-08-21");
-  assert.ok(ctx.slots.length && ctx.slots.every((s) => s.at.startsWith("2026-08-20T")), "alternativas de amanhã");
+  // "Amanhã não consigo": amanhã foi recusado (R-040), então as alternativas
+  // pulam pra segunda (sexta cheia, fim de semana fora).
+  assert.ok(ctx.slots.length && ctx.slots.every((s) => s.at >= "2026-08-24") && ctx.slots.some((s) => s.at.startsWith("2026-08-24T")), `alternativas da semana seguinte: ${JSON.stringify(ctx.slots.map((s) => s.at))}`);
 });
 
 test("janela da call: teto e escada de preço não disparam a minutos da call; lead sozinho na sala recebe resposta na hora, alerta e aviso pro closer #R-039", async () => {
