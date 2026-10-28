@@ -32,6 +32,16 @@ test("guards: todo validador aponta pra uma regra ativa do rulebook, e toda regr
   for (const r of RULES.filter((r) => r.guard)) assert.ok(guardById(r.guard), `${r.id} aponta pro validador ${r.guard} que não existe`);
 });
 
+test("guard lotouWithProof (R-041): com prova do motor (pedido sem vaga, hora fora da lista, horário tomado) o 'lotou' passa #R-041 #R-028", () => {
+  for (const ctx of [{ requestedEmpty: true, offerDate: "2026-08-21" }, { hourReply: true }, { takenSlot: true }]) {
+    const r = enforce(["Sexta já lotou Rafael", OFFER], ctx);
+    assert.ok(!r.fired.includes("lotouWithProof"), `não devia disparar com ${JSON.stringify(ctx)}`);
+  }
+  // Texto do motor (kind trava/motor) nunca é alvo: só a fala da IA.
+  const r = validateDraft(makeDraft(["Às 18h não tenho vaga. " + OFFER], "motor"), base(), { mode: "enforce" });
+  assert.ok(!r.fired.includes("lotouWithProof"));
+});
+
 test("guards: texto limpo não dispara nada #R-003", () => {
   const r = enforce(["Perfeito Rafael, te explico rapidinho", OFFER]);
   assert.deepEqual(r.fired, []);
@@ -50,8 +60,20 @@ const CASES = [
   ["slotInList", ["Consigo sexta às 15h ou às 17h, qual fica melhor pra você?"], { requestedEmpty: true, offerDate: "2026-08-21" }, { parts: ["Sexta já lotou, consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?"] }],
   ["noPromise", ["Deixa eu ver na agenda e te confirmo em minutos"], {}, { parts: [OFFER_RAW], stamps: ["promiseGuardAt"] }],
   ["noPromise", ["Deixa eu ver na agenda e te confirmo em minutos"], { suggestedPair: [] }, { parts: [NO_SLOT_TEXT["sem-vaga"]] }],
-  ["apologyOnTakenSlot", ["Esse horário não consigo"], {}, { parts: ["Ahh Rafael, esse horário acabou de ser preenchido por outro cliente, me desculpa! " + OFFER_RAW], stamps: ["slotTakenGuardAt"] }],
+  // Desculpa "outro cliente pegou" só sobre horário NOSSO que caiu (takenSlot).
+  ["apologyOnTakenSlot", ["Esse horário não consigo"], { takenSlot: true, lastInText: "as 9h" }, { parts: ["Ahh Rafael, esse horário acabou de ser preenchido por outro cliente, me desculpa! " + OFFER_RAW], stamps: ["slotTakenGuardAt"] }],
+  // Hora pedida que nunca esteve na lista: a verdade + o par real (raio-x 28/10).
+  ["apologyOnTakenSlot", ["Esse horário não consigo"], { leadHour: 12, lastInText: "pode ser às 12hs?" }, { parts: ["Às 12h não tenho vaga. " + OFFER_RAW], stamps: ["slotTakenGuardAt"] }],
+  ["apologyOnTakenSlot", ["Esse horário não consigo"], {}, { parts: [OFFER_RAW], stamps: ["slotTakenGuardAt"] }],
   ["noPhantomOffer", ["Algum dos horários que te passei encaixa?"], {}, { parts: [OFFER_RAW], stamps: ["fakeOfferGuardAt"] }],
+  // Oferta vencida não é oferta: "qual dos dois horários" sem oferta viva é fantasma (R-029, 28/10).
+  ["noPhantomOffer", ["Perfeito Rafael", "Qual dos dois horários fica melhor pra você?"], {}, { parts: ["Perfeito Rafael", OFFER_RAW], stamps: ["fakeOfferGuardAt"] }],
+  // R-040: o par que o lead acabou de recusar não volta, nem com outra moldura.
+  ["noSameOfferAfterRefusal", ["Ah que pena Rafael, esses horários não dão certo então", "Fica melhor amanhã às 9h ou amanhã às 11h?"], { excludeSlots: ["2026-08-20T09:00", "2026-08-20T11:00"], slotList: [...PAIR, { at: "2026-08-20T14:00", label: "amanhã às 14h" }, { at: "2026-08-20T16:00", label: "amanhã às 16h" }], suggestedPair: [{ at: "2026-08-20T14:00", label: "amanhã às 14h" }, { at: "2026-08-20T16:00", label: "amanhã às 16h" }], lastInText: "nesse horário não consigo" }, { parts: ["Ah que pena Rafael, esses horários não dão certo então", "Consigo amanhã às 14h ou amanhã às 16h, qual fica melhor pra você?"], stamps: ["refusedOfferGuardAt"] }],
+  ["noSameOfferAfterRefusal", ["Tranquilo Rafael, hoje não dá então", "Consigo amanhã às 9h, fica bom pra você?"], { refusedDays: ["2026-08-20"], suggestedPair: [], lastInText: "amanhã não consigo" }, { parts: ["Tranquilo Rafael, hoje não dá então", NO_SLOT_TEXT.periodo] }],
+  // R-041: "lotou"/"não tenho vaga" só com prova do motor.
+  ["lotouWithProof", ["Na sexta já lotou Rafael"], { lastInText: "na sexta feira estarei livre" }, { parts: [OFFER_RAW], stamps: ["lotouGuardAt"] }],
+  ["lotouWithProof", ["Depois das 18h já lotou Rafael", "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?"], { lastInText: "só consigo depois das 1800" }, { parts: [OFFER_RAW], stamps: ["lotouGuardAt"] }],
   ["noDuration", ["É uma conversa de 20 minutos com o especialista"], {}, { parts: ["É uma conversa com o especialista", OFFER_RAW] }],  // a cadeia segue: sem pergunta, a trava de beco emenda a oferta
   ["noDeviceAsk", ["Você vai entrar pelo celular ou pelo computador?", "Te espero então"], { lastInText: "vou pelo celular" }, { partsMatch: [/^Te espero então$/, /computador por perto/] }],
   ["noDeviceAsk", ["Pode sim, é só acessar o link", "Consegue entrar por ele?"], { lastInText: "vou pelo celular" }, { partsMatch: [/^Pode sim, é só acessar o link$/, /computador por perto/, /^Consegue entrar por ele\?$/] }],

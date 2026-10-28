@@ -756,7 +756,7 @@ test("oferta de ontem sem resposta: cobrança de manhã com os MESMOS horários,
   assert.equal(stats.offerNudge, 1);
   assert.equal(wa.sent.length, 1);
   assert.equal(wa.sent[0].kind, "text");
-  assert.equal(wa.sent[0].text, "Bom dia Rafael! Ficou hoje às 14h ou às 16h pra nossa conversa com o especialista?");
+  assert.equal(wa.sent[0].text, "Bom dia Rafael! Ainda consigo hoje às 14h ou às 16h, qual fica melhor pra você?");
   const lead = await repo.get("leads", "L1");
   assert.equal(lead.sdrLog.offerNudgeFor, ISO("2026-08-19T20:00:00Z"));
   assert.equal(lead.sdrLog.offerNudgeVia, "text");
@@ -771,7 +771,29 @@ test("horário de ontem tomado por outro lead: a cobrança avisa e oferece par n
   const wa = makeWa();
   await runner(repo, wa, NUDGE_NOW).tick();
   assert.equal(wa.sent.length, 1);
-  assert.match(wa.sent[0].text, /^Bom dia Rafael! Ficou hoje às 13h ou às 16h pra nossa conversa/);
+  // 14h foi tomado: fica o 16h de ontem e o primeiro livre de hoje (11h, com a folga de 30 min).
+  assert.match(wa.sent[0].text, /^Bom dia Rafael! Ainda consigo hoje às 11h ou às 16h, qual fica melhor pra você\?$/);
+});
+
+test("cobrança às 9h07 com oferta de 'amanhã 10h ou 13h': as 10h ainda estão livres (folga de 30 min, não 2h) e o texto é 'ainda consigo' #R-041 #R-025", async () => {
+  // Raio-x 28/10 (Henrique, Ton, Eduardo, Sabrina): "os horários de ontem já
+  // não estão mais livres" saía sobre as 10h de hoje, só porque a oferta nova
+  // exige 2h de folga. 4 dos 5 leads sumiram.
+  // 09:45 e a oferta era 11h: com a folga de 2h da oferta nova as 11h sumiam.
+  const repo = await nudgeWorld({ offerText: "Consigo amanhã às 11h ou amanhã às 13h, qual fica melhor pra você?" });
+  const wa = makeWa();
+  await runner(repo, wa, NUDGE_NOW).tick();
+  assert.equal(wa.sent.length, 1);
+  assert.equal(wa.sent[0].text, "Bom dia Rafael! Ainda consigo hoje às 11h ou às 13h, qual fica melhor pra você?");
+});
+
+test("cobrança de oferta que já PASSOU ('hoje 14h ou 16h' ontem): par novo sem a desculpa de 'não estão mais livres' #R-041 #R-025", async () => {
+  const repo = await nudgeWorld({ offerText: "Consigo hoje às 14h ou hoje às 16h, qual fica melhor pra você?", lastAt: ISO("2026-08-19T15:00:00Z"), inAt: ISO("2026-08-19T14:50:00Z") });
+  const wa = makeWa();
+  await runner(repo, wa, NUDGE_NOW).tick();
+  assert.equal(wa.sent.length, 1);
+  assert.match(wa.sent[0].text, /^Bom dia Rafael! Consigo hoje às \d{1,2}h ou às \d{1,2}h, qual fica melhor pra você\?$/);
+  assert.ok(!/não estão mais livres/.test(wa.sent[0].text));
 });
 
 test("cobrança não sai: lead respondeu depois da oferta, oferta é de hoje, ou ainda não deu a hora #R-025", async () => {

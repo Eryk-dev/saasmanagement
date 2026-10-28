@@ -29,11 +29,11 @@ import { slotLabel, slotLabelFull, wallNow, spreadPair, wholeHourSlots, activeHo
 import { sdrSlotsForLead, sdrAgendaWindow } from "./sdr-agenda.js";
 import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, greetName, SDR_AUTHOR, DEVICE_TIP } from "./sdr-flow.js";
 import { transcriber as defaultTranscriber } from "../whatsapp/transcribe.js";
-import { FORM_MSG_RX, SLOTS_RX, OFFER_CUE_RX, isOfferMsg, ACCEPT_RX, offeredSlotsIn, acceptedSlot, AUTO_REPLY_RX, BARE_HOUR_RX, collapseSameDay, expandSameDay, DEMO_RX, PITCH_RX } from "./sdr-signals.js";
+import { FORM_MSG_RX, SLOTS_RX, OFFER_CUE_RX, isOfferMsg, ACCEPT_RX, offeredSlotsIn, liveOfferedSlots, acceptedSlot, AUTO_REPLY_RX, BARE_HOUR_RX, collapseSameDay, expandSameDay, DEMO_RX, PITCH_RX } from "./sdr-signals.js";
 import { transcribeInbound } from "../whatsapp/wa-transcribe.js";
 import { AFFILIATE_RX, DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, NO_INTEREST_RX, LEAD_MOBILE_RX, DENY_CALL_RX, PERIOD_ASK_RX, PRICE_ASK_RX, WAITING_ROOM_RX, OBJECTION_RX, OEM_NO_RX, bareHour, leadEngaged, lastInboundText, plainReply, requestsCancellation, rescheduleReply, classifyInbound } from "./sdr-intents.js";
 import { stateOf, humanMuteHolds, GREETING_GAP_MS, DAILY_CAP, botTalkLast24h, handoffHolds } from "./sdr-state.js";
-import { PRICE_RX, REDIRECT_RX, DRY_REFUSAL_RX, FAKE_OFFER_RX, PROMISE_RX, SCHEDULE_ASK_Q_RX, DEVICE_ASK_RX, stripDuration, stripDeviceAsk, sameSentence, alreadySaid, makeDraft, validateDraft } from "./sdr-guards.js";
+import { PRICE_RX, REDIRECT_RX, DRY_REFUSAL_RX, FAKE_OFFER_RX, PROMISE_RX, SCHEDULE_ASK_Q_RX, DEVICE_ASK_RX, stripDuration, stripDeviceAsk, sameSentence, alreadySaid, isFreshOffer, makeDraft, validateDraft } from "./sdr-guards.js";
 import { reofferText, offerLine, NO_SLOT_TEXT } from "./sdr-offer.js";
 // Compat: quem importava daqui continua funcionando (replay, testes).
 export { bareHour, DEMO_RX, PITCH_RX, PRICE_RX, stripDuration, stripDeviceAsk, sameSentence };
@@ -697,7 +697,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     // o robô oferecer "amanhã às 10h" e, na resposta do lead 27 minutos depois,
     // negar o próprio horário (prod 24/08, Guilherme). Ver agenda-slots.js.
     const holds = await activeHolds(repo, product.id, { now: at }).catch(() => []);
-    const { slots, requested: requestedDate, startDate: offerDate, requestedEmpty = false } = await sdrSlotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 0, messages: agendaMessages, holds });
+    const { slots, requested: requestedDate, startDate: offerDate, requestedEmpty = false, refused: refusedDays = [], exclude: excludeSlots = [] } = await sdrSlotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 0, messages: agendaMessages, holds });
     const slotList = slots.map((s) => ({ ...s, label: slotLabel(s.at, wnow) }));
     // A OFERTA sai só de hora cheia; slotList inteiro (com as quebradas) segue
     // valendo pra AGENDAR quando o lead pede um horário específico.
@@ -735,7 +735,9 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     const gapMin = prevMsg ? Math.round((nowMs - Date.parse(prevMsg.at || 0)) / 60_000) : null;
     const canGreet = gapMin == null || gapMin >= GREETING_GAP_MS / 60_000;
     const demoOffered = msgs.some((m) => m.direction === "out" && (DEMO_RX.test(m.text || "") || PITCH_RX.test(m.text || "")));
-    const slotsOffered = agendaMessages.some((m) => m.direction === "out" && isOfferMsg(m.text || ""));
+    // Oferta VIVA (R-029, 28/10): oferta cujos horários já passaram não é
+    // "horários que te passei"; a resposta re-oferece par novo.
+    const slotsOffered = liveOfferedSlots(agendaMessages, SDR_AUTHOR, wnow).length > 0;
     // Última fala do lead (áudio já transcrito acima) e se ele já ENGAJOU
     // (respondeu positivo à descoberta ou pediu horário): antes disso, nada de
     // horário na resposta (Leo, 17/09).
@@ -825,12 +827,21 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       ? "Qual a maior dificuldade da sua operação hoje: gerenciar as contas, criar anúncio, estoque ou atendimento?"
       : "Isso ajudaria na sua operação hoje?";
     let hourReply = false;
+    // Horário NOSSO que o lead escolheu e caiu no meio do caminho (R-028: só
+    // aí cabe a desculpa "outro cliente pegou"); e a hora que ele citou, pra
+    // trava dizer "às 12h não tenho vaga" quando não existe (28/10).
+    const offeredAll = offeredSlotsIn(agendaMessages, SDR_AUTHOR);
+    const acceptedAny = offeredAll.length ? acceptedSlot(lastInText, offeredAll) : null;
+    const takenSlot = !!acceptedAny && !slotList.some((s) => s.at === acceptedAny.at);
+    const leadHourMatch = plainReply(lastInText).match(/\b(\d{1,2})\s?(?:h\d{0,2}|hs|hrs|horas|:\d{2})\b/);
+    const leadHour = leadHourMatch ? Number(leadHourMatch[1]) : bareHour(lastInText);
     // CONTEXTO DO VALIDADOR (sdr-guards.js): o que as travas precisam saber.
     // Função porque hourReply muda no caminho do número solto.
     const guardCtx = () => ({
       nome, script: st.script, msgs, callAt: lead.callAt || "", slotList, offerPool, suggestedPair, requestedDate, offerDate, requestedEmpty,
       hourReply, engaged, slotsOffered, inCallWindow, lastInText, wnow, discoveryQuestion, dayLabelOf, nowIso: new Date(nowMs).toISOString(),
       inboundText: String(message?.text || ""), priceDeferral: priceDeferral(nome, { script: st.scripted ? st.script : "" }),
+      excludeSlots, refusedDays, takenSlot, leadHour: leadHour != null && leadHour >= 0 && leadHour <= 23 ? leadHour : null,
     });
     // SOMBRA DO VALIDADOR (15/10): o texto cru da IA passa pelo validador em
     // enforce e o resultado é comparado com o que a cadeia legada produziu;
@@ -1238,7 +1249,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     // a conversa travou, e quem destrava é gente.
     // Lead pediu outro dia/período e a resposta re-oferta o mesmo par (porque o
     // pedido lotou): é informação nova pra ele, não requentada.
-    const fresh = parts.filter((t) => !alreadySaid(t, msgs) || ((requestedDate || hourReply) && isOfferMsg(t)));
+    const fresh = parts.filter((t) => !alreadySaid(t, msgs) || ((requestedDate || hourReply) && isOfferMsg(t)) || isFreshOffer(t, msgs, new Date(nowMs).toISOString()));
     if (!fresh.length) {
       if (inCallWindow) { shadowCompare(sh, rawParts, "silencio"); return "silencio"; } // na hora da call, repetição não vira handoff
       await raiseAlert(repo, thread, { text: `Robô sem resposta nova (ia repetir o que já disse) · assume: "${String(message?.text || "").slice(0, 140)}"` });
@@ -1264,7 +1275,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       // "amanhã às 9h ou às 11h": a segunda hora herda o dia antes da conferência.
       const mentions = [...expandSameDay(parts[i]).matchAll(offerMentions)];
       const offeredWindow = sdrAgendaWindow([{ direction: "in", text: parts[i] }], wnow);
-      const wrongDay = offeredWindow.requested && !allowedDays.has(offeredWindow.startDate);
+      const wrongDay = offeredWindow.requested && !offeredWindow.periodOnly && !allowedDays.has(offeredWindow.startDate);
       if ((!lead.callAt || OFFER_CUE_RX.test(parts[i])) && (mentions.some((m) => !allowedLabels.has(m[0].toLowerCase())) || wrongDay)) {
         parts.splice(i, 1);
         replacedOffer = true;
@@ -1288,10 +1299,14 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     // devolve um "não consigo" sem explicação nem desculpa (visto 25/08 com o
     // Gabriel, que tinha escolhido um horário NOSSO). Troca pela re-oferta com
     // desculpa e a causa real.
+    // Desculpa só sobre horário NOSSO que o lead escolheu e caiu (takenSlot);
+    // hora que ele pediu e nunca existiu recebe "às Xh não tenho vaga" (R-028, 28/10).
     if (parts.some((t) => DRY_REFUSAL_RX.test(t))) {
       const kept = parts.filter((t) => !DRY_REFUSAL_RX.test(t));
+      const slotsForLine = suggestedPair.length ? suggestedPair : offerPool.slice(0, 1);
       parts.length = 0;
-      parts.push(...kept, reofferText(nome, suggestedPair.length ? suggestedPair : offerPool.slice(0, 1), wnow));
+      parts.push(...kept, takenSlot ? reofferText(nome, slotsForLine, wnow)
+        : leadHour != null ? offerLine(slotsForLine, { style: "sem-vaga-hora", hour: leadHour, wnow }) : realOffer);
       await stamp(lead, { slotTakenGuardAt: new Date(nowMs).toISOString() });
       log.info?.({ lead: lead.id }, "sdr-brain: recusa seca virou desculpa + re-oferta");
     }

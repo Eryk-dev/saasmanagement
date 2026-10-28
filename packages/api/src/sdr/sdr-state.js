@@ -13,7 +13,8 @@
 // carimba `factsDiff` na thread quando divergem (sombra).
 
 import { brtToIso } from "../crm/lead-flow.js";
-import { isOfferMsg, DEMO_RX, PITCH_RX } from "./sdr-signals.js";
+import { liveOfferedSlots, DEMO_RX, PITCH_RX } from "./sdr-signals.js";
+import { wallNow } from "../crm/agenda-slots.js";
 import { leadPainFocus, SDR_AUTHOR, sdrBotConfig } from "./sdr-flow.js";
 import { isBusinessHours } from "../platform/business-hours.js";
 import { leadEngaged, lastInboundText, bareHour, PRICE_ASK_RX } from "./sdr-intents.js";
@@ -85,7 +86,7 @@ export function stateOf({ lead = {}, msgs = [], now = new Date(), product = null
   const gapMin = prevMsg ? Math.round((nowMs - Date.parse(prevMsg.at || 0)) / MIN) : null;
   const canGreet = gapMin == null || gapMin >= GREETING_GAP_MS / MIN;
   const demoOffered = msgs.some((m) => m.direction === "out" && (DEMO_RX.test(m.text || "") || PITCH_RX.test(m.text || "")));
-  const slotsOffered = agendaMessages.some((m) => m.direction === "out" && isOfferMsg(m.text || ""));
+  const slotsOffered = liveOfferedSlots(agendaMessages, SDR_AUTHOR, wallNow(now)).length > 0; // oferta VIVA (R-029)
   const lastInText = lastInboundText(msgs);
   const engaged = leadEngaged(msgs) || (slotsOffered && bareHour(lastInText) != null);
   const firstReply = !msgs.some((m) => m.direction === "out");
