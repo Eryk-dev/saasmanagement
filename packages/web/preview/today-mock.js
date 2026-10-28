@@ -54,6 +54,20 @@ export function setupTodayReview(seed) {
       {id:'orf-paulo',saas:'leverads',name:'Paulo Dias',company:'Dias Pneus',stage:'Integração',integrator:'eryk',createdAt:'2026-09-01T10:00:00Z'},
     );
   }
+  // &compromissos: compromissos da tela Agenda na fila (28/10/2026) — um de
+  // hoje mais tarde (pendente), um semanal que já acabou (feito), um com duas
+  // pessoas e um bloqueio (que NÃO entra); e a call do Bruno já aconteceu, pra
+  // o Próximo passo mostrar a 2ª reunião com a sala anterior no histórico.
+  if (params.has('compromissos')) {
+    seed.AGENDA_BLOCKS = [
+      {id:'agb1',saas:'leverads',user:'leo',users:['leo'],kind:'event',title:'Reunião com o contador',recur:'once',date:'2026-09-18',fromHour:17,toHour:18},
+      {id:'agb2',saas:'leverads',user:'leo',users:['leo'],kind:'event',title:'Daily do comercial',recur:'weekly',weekday:5,fromHour:9,toHour:9.5},
+      {id:'agb3',saas:'leverads',user:'lucas',users:['lucas','leo'],kind:'event',title:'Alinhamento de propostas',recur:'once',date:'2026-09-19',fromHour:10,toHour:11},
+      {id:'agb4',saas:'leverads',user:'leo',users:['leo'],kind:'block',reason:'almoço',recur:'weekly',weekday:5,fromHour:12,toHour:13},
+      {id:'agb5',saas:'leverads',user:'tiago',users:['tiago'],kind:'event',title:'Só do Tiago',recur:'once',date:'2026-09-18',fromHour:16,toHour:16.5},
+    ];
+    Object.assign(seed.LEADS.find(l=>l.id==='l2'), {callAt:'2026-09-18T10:00',callUrl:'https://meet.google.com/abc-defg-hij',meetEventId:'ev-bruno-1'});
+  }
   if (params.get('state') === 'empty') seed.LEADS = [];
   if (params.has('many')) seed.LEADS = [...seed.LEADS, ...Array.from({length:15},(_,i)=>({...seed.LEADS.find(l=>l.id==='l3'), id:`extra-${i}`, name:`Lead ${i + 1}`, company:`Empresa ${i + 1}`}))];
   if (params.has('callSummary')) {

@@ -48,3 +48,22 @@ test("call FUTURA sobrescrita não arquiva (não aconteceu)", async () => {
   assert.equal(l.callHistory, undefined);
   await app.close();
 });
+
+// 2ª REUNIÃO (Leo, 28/10/2026): a call anterior vai pro histórico COM a sala
+// dela (meetEventId/callUrl), e a nova nasce com os campos do Meet zerados
+// pelo cliente — o espelho `meetings` mantém a sala da reunião arquivada.
+test("2ª reunião: a call passada arquiva a sala junto e o espelho de reuniões a preserva", async () => {
+  const { callsOfLead } = await import("../src/crm/meetings.js");
+  const { app, repo } = await buildApp();
+  await repo.create("leads", { id: "l3", saas: "leverads", stage: "Call agendada", closer: "leonardo", callAt: PAST, callUrl: "https://meet.google.com/aaa-bbbb-ccc", meetEventId: "ev1" });
+  await app.inject({ method: "PATCH", url: "/api/leads/l3", payload: { callAt: FUTURE, callConfirmed: false, callUrl: "", meetEventId: "", meetScheduledAt: "", meetOrganizer: "", calCallEventId: "", calCallUser: "" } });
+  const l = await repo.get("leads", "l3");
+  assert.equal(l.callAt, FUTURE);
+  assert.equal(l.callUrl, "", "a nova call nasce sem sala (o servidor cria outra)");
+  assert.deepEqual(l.callHistory, [{ at: PAST, closer: "leonardo", meetEventId: "ev1", callUrl: "https://meet.google.com/aaa-bbbb-ccc" }]);
+  const calls = callsOfLead(l);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].eventId, "ev1", "a reunião arquivada lembra a própria sala");
+  assert.equal(calls[1].current, true);
+  await app.close();
+});

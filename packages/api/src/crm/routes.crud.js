@@ -618,7 +618,11 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
         const oldT = new Date(oldAt).getTime();
         const hist = Array.isArray(cur.callHistory) ? cur.callHistory : [];
         if (Number.isFinite(oldT) && oldT < Date.now() && !hist.some((h) => String(h?.at || "") === oldAt)) {
-          patch = { ...patch, callHistory: [...hist, { at: oldAt, closer: cur.closer || "" }].slice(-60) };
+          // A sala da call arquivada vai junto (2ª reunião, 28/10/2026): a
+          // nova call nasce com sala própria e a transcrição/resumo da
+          // anterior continuam localizáveis pelo evento dela.
+          const sala = cur.meetEventId ? { meetEventId: cur.meetEventId, callUrl: cur.callUrl || "" } : {};
+          patch = { ...patch, callHistory: [...hist, { at: oldAt, closer: cur.closer || "", ...sala }].slice(-60) };
         }
       }
       // QUANDO a call foi marcada por este caminho (a marcação do robô carimba
