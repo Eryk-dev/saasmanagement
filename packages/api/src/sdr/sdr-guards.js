@@ -57,7 +57,9 @@ export const FAKE_OFFER_RX = /(hor[áa]rios?|op[çc][õo]es)\s+que\s+(eu\s+)?(te
 // escolhido que foi tomado).
 export const LOTOU_CLAIM_RX = /\blot(?:ou|ad[ao]s?|aram)\b|n[ãa]o (?:tenho|temos|tem|t[áa]|est[áa]) (?:mais )?(?:nenhuma? )?(?:vaga|hor[áa]rio|janela|agenda|disponibilidade)|n[ãa]o est[áa] mais (?:livre|dispon)|n[ãa]o est[ãa]o mais (?:livres|dispon)|(?:foi|foram|acabou de ser|acabaram de ser|j[áa] foi|j[áa] foram) preenchid|(?:j[áa] )?(?:est[áa]|ficou|ficaram|est[ãa]o) (?:todo |toda |todos |todas )?(?:ocupad|tomad|cheia|cheio)/i;
 // PROMESSA DE VOLTAR DEPOIS (R-030): ninguém volta.
-export const PROMISE_RX = /\bte (?:confirmo|retorno|aviso|respondo)\b|\bj[áa] te (?:falo|aviso|confirmo|retorno|respondo)\b|\b(?:vou|deixa eu|vamos|consigo) (?:ver|verificar|checar|confirmar|consultar|olhar|dar uma olhada)\b[^.?!]*\b(?:agenda|hor[áa]rio|especialista|time|aqui|vaga|disponibilidade)|\bem (?:alguns |poucos |uns )?(?:minutos|instantes|minutinhos)\b/i;
+// 28/10: "te passo as opções", "vou encaminhar seu contato", "vou pedir pro
+// time", "deixo sinalizado aqui" também são promessas que ninguém cumpre.
+export const PROMISE_RX = /\bte (?:confirmo|retorno|aviso|respondo|passo)\b|\bj[áa] te (?:falo|aviso|confirmo|retorno|respondo|passo)\b|\b(?:vou|deixa eu|vamos|consigo) (?:ver|verificar|checar|confirmar|consultar|olhar|dar uma olhada)\b[^.?!]*\b(?:agenda|hor[áa]rio|especialista|time|aqui|vaga|disponibilidade)|\bem (?:alguns |poucos |uns )?(?:minutos|instantes|minutinhos)\b|\bvou (?:te )?(?:passar|encaminhar|repassar|direcionar|sinalizar)\b|\bvou (?:pedir|avisar|falar com|deixar sinalizado)\b|\bencaminho\b|\brepasso\b|\bpe[çc]o pr[ao]\b|\bdeixo sinalizado\b/i;
 // Pergunta solta de dia ao lado de uma oferta concreta (R-026).
 export const SCHEDULE_ASK_Q_RX = /\bqual (?:dia|data|hor[áa]rio|per[íi]odo|outro dia)\b[^?]*\?/i;
 // DURAÇÃO INVENTADA (R-060). "Em menos de 5 minutos" (pitch OEM) fica de fora.
@@ -184,12 +186,17 @@ export const GUARDS = [
       ] };
     } },
   { id: "noPromise", rule: "R-030", enforce: true,
-    applies: (ctx, d) => !ctx.callAt && !d.parts.some((p) => isOfferMsg(p.text)),
-    check: (d) => d.parts.filter((p) => PROMISE_RX.test(p.text) && !HAS_HOUR_RX.test(p.text)).map((p) => ({ why: "promessa de ver depois", part: p.text.slice(0, 80) })),
+    // Com call marcada também vale (28/10, Roberto: "te passo as próximas
+    // opções" com a call de hoje ainda no card): a promessa cai e a resposta
+    // lembra que a conversa segue marcada.
+    applies: (ctx, d) => !d.parts.some((p) => isOfferMsg(p.text)),
+    check: (d, ctx) => d.parts.filter((p) => p.kind !== "motor" && p.kind !== "trava" && PROMISE_RX.test(p.text) && !HAS_HOUR_RX.test(p.text)).map((p) => ({ why: "promessa de ver depois", part: p.text.slice(0, 80) })),
     fix: (d, ctx) => {
-      const kept = d.parts.filter((p) => !PROMISE_RX.test(p.text));
-      const real = (ctx.suggestedPair || []).length ? realOfferOf(ctx) : NO_SLOT_TEXT["sem-vaga"];
-      return { draft: withParts(d, [...kept, part(real)]), effects: [
+      const kept = d.parts.filter((p) => !(p.kind !== "motor" && p.kind !== "trava" && PROMISE_RX.test(p.text) && !HAS_HOUR_RX.test(p.text)));
+      const real = ctx.callAt && !ctx.rescheduling
+        ? (ctx.callLabel ? `Nossa conversa segue marcada pra ${ctx.callLabel}, qualquer imprevisto me avisa aqui` : "")
+        : (ctx.suggestedPair || []).length ? realOfferOf(ctx) : NO_SLOT_TEXT["sem-vaga"];
+      return { draft: withParts(d, real ? [...kept, part(real)] : kept), effects: [
         { type: "stamp", patch: { promiseGuardAt: ctx.nowIso } },
         { type: "log", level: "info", msg: "sdr-brain: trava da promessa trocou o 'te confirmo' pela agenda real" },
       ] };
@@ -273,6 +280,18 @@ export const GUARDS = [
       const kept = d.parts.filter((p) => !SLOTS_RX.test(p.text));
       if (!kept.some((p) => p.text.includes("?"))) kept.push(part(ctx.discoveryQuestion));
       return { draft: withParts(d, kept), effects: [{ type: "log", level: "info", msg: "sdr-brain: trava de qualificação tirou a oferta de horário" }] };
+    } },
+  { id: "noOfferWithCall", rule: "R-038", enforce: true,
+    // Conversa já marcada e sem pedido de remarcação: horário novo não sai
+    // (28/10, Roberto: "estou em viagem" e o robô ofereceu hoje às 15h ou 17h
+    // com a call de hoje no card).
+    applies: (ctx) => !!ctx.callAt && !ctx.rescheduling,
+    check: (d) => d.parts.filter((p) => isOfferMsg(p.text)).map((p) => ({ why: "oferta de horário com conversa marcada", part: p.text.slice(0, 80) })),
+    fix: (d, ctx) => {
+      const kept = d.parts.filter((p) => !isOfferMsg(p.text));
+      if (!kept.length && ctx.callLabel) kept.push(part(`Nossa conversa segue marcada pra ${ctx.callLabel}, qualquer imprevisto me avisa aqui`));
+      if (!kept.length) return { draft: { ...d, parts: [], stop: { result: "silencio" } }, effects: [] };
+      return { draft: withParts(d, kept), effects: [{ type: "log", level: "info", msg: "sdr-brain: trava da call marcada tirou a oferta de horário" }] };
     } },
   { id: "earliestFirst", rule: "R-022", enforce: true,
     applies: (ctx) => !ctx.callAt && (ctx.suggestedPair || []).length > 0 && !PERIOD_ASK_RX.test(ctx.lastInText || "") && !DAY_WORD_RX.test(ctx.lastInText || "") && !HAS_HOUR_RX.test(ctx.lastInText || ""),

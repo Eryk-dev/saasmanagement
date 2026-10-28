@@ -26,6 +26,7 @@
 // produto ligado), iniciado no index.js.
 import { findThreadByPhone, listMessages, recordMessage, waMatchKey } from "../whatsapp/wa-store.js";
 import { lastRealReply, isOfferMsg, offeredSlotsIn, windowOpenAt, AUTO_REPLY_RX, GREETING_ONLY_RX, collapseSameDay } from "./sdr-signals.js";
+import { NO_INTEREST_RX, plainReply } from "./sdr-intents.js";
 import { upsertNotification } from "../tasks/tasks-core.js";
 import { digits } from "../whatsapp/whatsapp.js";
 import { kindOf, firstStage, isNoShowStage, isWonLead, stageByKind } from "../crm/stages.js";
@@ -35,6 +36,7 @@ import { resolveWabaId, getWaHealth } from "../whatsapp/wa-health.js";
 import { raiseAlert } from "../whatsapp/wa-call-flow.js";
 import { slotLabel, slotLabelFull, wallNow, spreadPair, wholeHourSlots, activeHolds, holdSlots } from "../crm/agenda-slots.js";
 import { sdrSlotsForLead } from "./sdr-agenda.js";
+import { offerLine, NO_SLOT_TEXT } from "./sdr-offer.js";
 import { readFile } from "node:fs/promises";
 import { SDR_TEMPLATES } from "./sdr-templates.leverads.js";
 
@@ -496,6 +498,14 @@ export function offerNudgeText({ nome, pair = [], kept = false, reason = "", now
     : `${oi} O horário de ontem já não está mais livre, mas consigo ${l[0]}, fica bom pra você?`;
 }
 
+// O robô é a Manuela (R-001), seja de quem for o card. Em 27/10 a campanha
+// de backlog saiu "Aqui é a Ana" porque usava o nome do dono do lead, e a
+// resposta do lead veio endereçada à Ana.
+export function botPersona(users = []) {
+  const u = (users || []).find((x) => x.id === "sdr" || x.id === SDR_AUTHOR || (Array.isArray(x.roles) && x.roles.includes("sdr") && !x.roles.includes("closer")));
+  return firstName(u?.name) || "Manuela";
+}
+
 function rescueText({ nome, slots = [], now }) {
   const oi = nome ? `Oi ${nome},` : "Oi,";
   const base = `${oi} passei no nosso horário marcado e não te encontrei, acontece! Quer que eu remarque?`;
@@ -506,7 +516,10 @@ function rescueText({ nome, slots = [], now }) {
 
 // Resposta a um lembrete: o que é confirmação e o que precisa de gente.
 // Remarcação/negativa é testada ANTES ("sim, mas preciso remarcar" é humano).
-const RESCHEDULE_RX = /remarc|reagend|mudar|trocar|outro hor|outro dia|outra data|outra hora|adiar|cancel|imprevisto|nao vou|nao consigo|nao vai dar|nao poss/;
+// 28/10 (Roberto): "podemos deixar pra outra semana?" não casava aqui e
+// caía no AFFIRM_RX pelo "podemos": virou confirmação, link enviado e os
+// lembretes seguiram em cima de quem pediu pra adiar.
+const RESCHEDULE_RX = /remarc|reagend|mudar|trocar|outro hor|outro dia|outra data|outra hora|outro momento|outra semana|proxima semana|semana que vem|semana seguinte|mais pra frente|(?:deixar|deixa|passar|passa|jogar|joga|empurrar) pra|adiar|cancel|imprevisto|viagem|viajando|nao vou|nao consigo|nao conseguirei|nao vai dar|nao poss/;
 // Lead avisando que a conversa JÁ está rolando (ou já rolou): o lembrete que
 // vem depois disso só faz o robô parecer desligado do que está acontecendo.
 const IN_CALL_RX = /\bna sala\b|na (reuniao|chamada)\b|ja (conversamos|conversei|falei|estou|entrei)|estou (conversando|falando com)|entrei na/;
@@ -671,7 +684,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
             continue;
           }
           const nome = greetName(lead.name);
-          const sdrName = firstName(users.find((u) => u.id === lead.owner)?.name);
+          const sdrName = botPersona(users);
           const resumo = leadDigest(product, lead);
           const to = thread?.phone || phone;
           const pain = leadPainFocus(product, lead);
@@ -955,6 +968,52 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
         }
       }
 
+      // ── 1f. Retorno combinado (R-084, 28/10) ─────────────────────────────
+      // "Me chama na terça" / "te chamo amanhã": o cérebro carimbou
+      // sdrLog.callbackAt (09:30 do dia). Chegou o dia, em expediente, sem
+      // call e sem o lead ter falado depois: a Manuela chama como combinado,
+      // com a agenda real. Janela fechada: template de retomada.
+      if ((cfg.ladder || cfg.conversationTest) && isBusinessHours(product, at)) {
+        for (const lead of leads) {
+          if (sends >= CAP) break;
+          if (!eligible(lead) || !passOn(cfg.ladder, lead)) continue;
+          const cbMs = Date.parse(lead.sdrLog?.callbackAt || "");
+          if (!Number.isFinite(cbMs) || cbMs > nowMs || lead.sdrLog?.callbackDoneAt) continue;
+          if (lead.callAt || isWonLead(product, lead) || isNoShowStage(lead.stage)) { await stampLog(lead, { callbackDoneAt: nowIso, callbackVia: "skip" }); continue; }
+          if (nowMs - cbMs > 2 * DAY) { await stampLog(lead, { callbackDoneAt: nowIso, callbackVia: "skip:vencido" }); continue; }
+          const phone = lead.waPhone || lead.phone;
+          const thread = await findThreadByPhone(repo, phone);
+          if (!thread) { await stampLog(lead, { callbackDoneAt: nowIso, callbackVia: "skip:sem-thread" }); continue; }
+          const msgs = await listMessages(repo, thread.id);
+          const stampedAt = Date.parse(lead.sdrLog?.callbackSetAt || "") || 0;
+          // Lead falou (ou gente falou) depois do combinado: a conversa já andou.
+          if (msgs.some((m) => Date.parse(m.at || 0) > Math.max(stampedAt, cbMs - 12 * HOUR) && (m.direction === "in" || humanIds.has(m.author)))) { await stampLog(lead, { callbackDoneAt: nowIso, callbackVia: "skip:conversa-andou" }); continue; }
+          const nome = greetName(lead.name);
+          const to = thread.phone || digits(phone);
+          try {
+            let via = "text";
+            if (windowOpenAt(msgs, nowMs)) {
+              const holds = await activeHolds(repo, product.id, { now: at }).catch(() => []);
+              const { slots } = await sdrSlotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 0, holds });
+              const pair = spreadPair(wholeHourSlots(slots));
+              const offer = pair.length ? offerLine(pair, { wnow }) : NO_SLOT_TEXT.periodo;
+              await sendText({ phone: to, text: `Oi${nome ? ` ${nome}` : ""}, tudo bem? Como combinado, passando aqui pra gente marcar a demonstração. ${offer}`, phoneId, saas: product.id, leadId: lead.id });
+              if (pair.length) await holdSlots(repo, { saas: product.id, leadId: lead.id, slots: pair, now: at }).catch(() => {});
+            } else {
+              const names = await approvedNames();
+              if (!names.has(cfg.templates.secondTouch)) { stats.skipped++; continue; }
+              await sendTemplate({ phone: to, name: cfg.templates.secondTouch, params: [nome || "de novo"], phoneId, saas: product.id, leadId: lead.id, moveCard: false });
+              via = "template";
+            }
+            sends++; stats.callback = (stats.callback || 0) + 1;
+            await stampLog(lead, { callbackDoneAt: nowIso, callbackVia: via });
+          } catch (err) {
+            log.warn?.({ lead: lead.id, err: err.message }, "sdr: retorno combinado falhou");
+            await stampLog(lead, { callbackDoneAt: nowIso, callbackVia: "erro:" + String(err.message || err).slice(0, 120) });
+          }
+        }
+      }
+
       // ── 1e. Cobrança da oferta sem resposta, na manhã do dia útil seguinte (Leo, 30/09) ──
       // 33 das 147 conversas mortas de 17 a 30/09 pararam exatamente depois dos
       // 2 horários ofertados, e ninguém voltava ("Pode ser amanhã sim" →
@@ -1065,6 +1124,16 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           // seguidas. O link vai no de 10min. Manhã pulada = o de 2h sai normal.
           const manhaSentMs = Date.parse(log0.manha || "");
           if (!log0["2h"] && Number.isFinite(manhaSentMs) && callMs - 2 * HOUR < manhaSentMs + 30 * MIN) {
+            log0["2h"] = "manha";
+            await repo.update("leads", lead.id, { confirmLog: { ...log0 } });
+          }
+          // 28/10 (Sandra, Pedro, Caio): call das 9h recebia o de 2h às 7h e
+          // a manhã às 8h, nessa ordem. O de 2h também pula quando a manhã
+          // ainda VAI sair (está agendada, não só já enviada) a menos de 30
+          // min dele.
+          const manhaWillSkip = lead.callConfirmed || log0.confirmed || callMs - manhaAt < 40 * MIN
+            || (Number.isFinite(setAtMs) && setAtMs > manhaAt - 30 * MIN) || log0.manha === "skip";
+          if (!log0["2h"] && !manhaWillSkip && !log0.manha && nowMs >= callMs - 2 * HOUR && callMs - 2 * HOUR < manhaAt + 30 * MIN) {
             log0["2h"] = "manha";
             await repo.update("leads", lead.id, { confirmLog: { ...log0 } });
           }
@@ -1359,6 +1428,17 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
             windowOpen = windowOpenAt(msgs, nowMs);
           }
           if (humanAfter) { await stampLog(lead, { noshowFor: lead.stageSince, noshowVia: "human" }); continue; }
+          // Lead que disse não / sem interesse depois do furo não leva "quer
+          // que eu remarque?" (28/10, Sirlene: "Não. Estou. De. Acordo. Não"
+          // e 1h10 depois o resgate ofereceu 15h ou 18h). Gente decide.
+          {
+            const lastInAfter = [...msgs].reverse().find((m) => m.direction === "in" && Date.parse(m.at || 0) > sinceMs - 2 * HOUR);
+            const plainLast = plainReply(lastInAfter?.transcript || lastInAfter?.text || "");
+            if (lastInAfter && (NO_INTEREST_RX.test(plainLast) || /^\s*nao\b/.test(plainLast))) {
+              await stampLog(lead, { noshowFor: lead.stageSince, noshowVia: "skip:recusa" });
+              continue;
+            }
+          }
           // CALL QUE ACONTECEU NÃO LEVA "PASSEI NO HORÁRIO E NÃO TE ENCONTREI"
           // (raio-x 30/09: Douglas, Bernardo, Paulo e Shalom receberam o
           // resgate DIAS depois de terem comparecido; dois viraram handoff "a
@@ -1591,7 +1671,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           const tpl = kind === "contato" ? tplN : tplQ;
           try {
             const params = tpl === cfg.templates.backlogRescueNutri
-              ? [nome || "de novo", firstName(users.find((u) => u.id === l.owner)?.name) || "Manuela"]
+              ? [nome || "de novo", botPersona(users)]
               : [nome || "de novo"];
             await sendTemplate({ phone: thread?.phone || digits(l.waPhone || l.phone), name: tpl, params, phoneId, saas: product.id, leadId: l.id, moveCard: false });
             sends++; stats.backlogRescue++; quota--;

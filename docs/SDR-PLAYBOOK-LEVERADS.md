@@ -3,7 +3,7 @@
 GERADO de `packages/api/src/sdr/sdr-rules.js` (`node src/sdr/sdr-rules.js --write`). Não edite à mão: o
 teste `sdr-rulebook.test.js` recusa o arquivo quando ele difere do registro.
 
-75 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
+77 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
 origem (data, quem pediu, PR ou print), o enunciado, os estados da conversa e o roteiro em que vale, a camada
 que a executa e as exceções. Toda regra ativa tem pelo menos um teste ou cena com a tag `#R-nnn`.
 
@@ -18,7 +18,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-001 · O robô é a Manuela, e não mente que é robô
 
 - Origem: 2026-08-22, Leo (#733/#736)
-- Regra: Toda mensagem sai em nome da SDR do número (persona Manuela, login sdr); por dentro o autor é sdr-bot. Se o lead perguntar se é robô, não debate nem afirma ser humano: chama gente.
+- Regra: Toda mensagem sai em nome da SDR do número (persona Manuela, login sdr), inclusive o 1º toque e a campanha de backlog, seja de quem for o card (28/10: saiu "Aqui é a Ana" pelo dono do lead); por dentro o autor é sdr-bot. Se o lead perguntar se é robô, não debate nem afirma ser humano: chama gente.
 - Vale em: estados todos; roteiro todos; executada por prompt, effects
 
 ### R-002 · Escreve no DNA da Manuela
@@ -192,7 +192,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-030 · Promessa de ver depois vira a agenda real
 
 - Origem: 2026-10-08, Leo (#1140 (caso Tiago 21/09: "te confirmo em minutos" sem hora, ninguém voltou))
-- Regra: "Vou ver na agenda", "te confirmo em minutos", "vou reservar" sem hora e sem oferta não saem: entra o dia pedido que lotou e o par das alternativas, ou a pergunta honesta de outra data quando não há nada.
+- Regra: "Vou ver na agenda", "te confirmo em minutos", "vou reservar", "te passo as opções", "vou encaminhar seu contato", "vou pedir pro time" sem hora e sem oferta não saem: entra o dia pedido que lotou e o par das alternativas, ou a pergunta honesta de outra data quando não há nada. Com conversa marcada, a promessa cai e a resposta lembra que a conversa segue marcada.
 - Vale em: estados todos; roteiro todos; executada por guard, prompt (validador noPromise)
 
 ### R-031 · Interesse sem saída ganha a oferta; dia solto ganha hora
@@ -249,11 +249,17 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 - Regra: Lead diz que não marcou ou que não vai: o robô só avisa que vai confirmar com o especialista e chama gente. Nunca re-oferece horário nem pergunta se "algum dos horários encaixa".
 - Vale em: estados call_marcada; roteiro todos; executada por intent, prompt, alerta
 
+### R-042 · Adiar com conversa marcada libera e oferece a janela pedida
+
+- Origem: 2026-10-28, Leo (prints 28/10 (Roberto 'podemos deixar pra outra semana?' recebeu o link e 'te espero hoje às 13h'; Cecilia e Rodrigo tiveram a call antiga reconfirmada pelo lembrete))
+- Regra: Lead com conversa marcada que pede pra adiar ou remarcar ("podemos deixar pra outra semana?", "estou em viagem", "se tiver outro horário seria melhor") tem a call liberada na hora e recebe, na mesma resposta, a agenda da janela que pediu ("Claro, já liberei o de hoje. Consigo segunda às 9h ou às 11h?"); os lembretes daquele horário param e o closer é avisado. O classificador do lembrete trata o mesmo pedido como remarcação, nunca como confirmação ("podemos" não é "sim"). Cancelamento seco segue a R-036.
+- Vale em: estados call_marcada; roteiro todos; executada por intent, effects, flow, prompt, alerta
+
 ### R-038 · Objeção depois de marcar não é silêncio
 
 - Origem: 2026-09-30, Leo (#1113)
 - Regra: Objeção ou desistência com call marcada: a conversa continua marcada, o robô não re-oferece horário e gente recebe alerta pra responder, uma vez por horário.
-- Vale em: estados call_marcada; roteiro todos; executada por intent, prompt, alerta
+- Vale em: estados call_marcada; roteiro todos; executada por intent, prompt, alerta, guard (validador noOfferWithCall)
 
 ### R-039 · Janela da call: só o essencial
 
@@ -350,8 +356,8 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-084 · Silêncio quando não há o que responder
 
 - Origem: 2026-08-22, Leo (#736; "ok" pós-compromisso 05/10; reações 01/10)
-- Regra: Mensagem que encerra sem pedir resposta ("ok", "valeu", reação) fica sem resposta; o "ok" depois do compromisso do roteiro também. Reação e saudação solta não abrem alerta nem janela de 24h.
-- Vale em: estados todos; roteiro todos; executada por prompt, intent, flow
+- Regra: Mensagem que encerra sem pedir resposta ("ok", "valeu", reação) fica sem resposta; o "ok" depois do compromisso do roteiro também. Reação e saudação solta não abrem alerta nem janela de 24h. Lead que marca um dia pra ser chamado ("me chama na terça", "contato só a partir de segunda") ou robô que promete "te chamo amanhã": o dia vira carimbo (sdrLog.callbackAt) e a Manuela chama nesse dia, em expediente, com a agenda real (28/10: Reginaldo, Robson, Maurílio ficaram esperando).
+- Vale em: estados todos; roteiro todos; executada por prompt, intent, flow, effects
 
 ### R-085 · Fora do expediente a pausa de humano ativo pode ser ignorada
 
@@ -361,10 +367,16 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 
 ## Quando o robô fala
 
+### R-046 · A rajada do lead é lida inteira
+
+- Origem: 2026-10-28, Leo (prints 28/10 (Janaina 'Não consigo participar da reunião' + 'me explica por áudio?' em dois balões: o cancelamento nunca foi lido; Alberto 5 balões de recusa))
+- Regra: Os gates determinísticos (cancelar, adiar, desinteresse, preço, nega a call, pedido de dia) leem tudo que o lead mandou desde a última fala nossa, com até 10 min entre os balões, como um texto só. Hora solta e aceite continuam no último balão.
+- Vale em: estados todos; roteiro todos; executada por intent, agenda
+
 ### R-090 · Quem o robô atende
 
 - Origem: 2026-08-22, Leo (#733; modo teste #738/#739; enabledAt protege o backlog)
-- Regra: Só lead em Novo, Contato, Qualificação ou Call, criado depois de enabledAt. Fora: ganho, saída lateral (formExit), desqualificado, opt-out, número inválido, "parar robô" (sdrOff) e lead interno, salvo conversationTest ligado (aí só o interno). A conversa com IA só roda com a chave conversation ligada.
+- Regra: Só lead em Novo, Contato, Qualificação ou Call, criado depois de enabledAt. Fora: ganho, saída lateral (formExit), desqualificado, opt-out, número inválido, "parar robô" (sdrOff) e lead interno, salvo conversationTest ligado (aí só o interno). A conversa com IA só roda com a chave conversation ligada. Lead parado (desqualificado, perdido, nutrição) que manda o texto do formulário de novo é lead novo: o card reabre em Novo lead, o time é avisado e o robô atende (28/10, Margarete: form de 26/10 num card de julho, ninguém respondeu).
 - Vale em: estados todos; roteiro todos; executada por state, flow
 
 ### R-091 · Rajada, dupla e mensagem perdida
@@ -452,7 +464,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-110 · Régua de confirmação: 08:00, 2h antes e 10 min antes
 
 - Origem: 2026-09-30, Leo (#1114 (sem véspera); 08:00 pra todos #1119 (05/10))
-- Regra: Manhã às 08:00 pra toda call do dia, pedindo a positiva (pula se já confirmada, call antes de 8h40 ou marcada hoje depois das 8h). 2h antes com o link (pulado quando colaria na manhã). 10 minutos antes com o link. Sem positiva até 1h antes, alerta de ligação pro closer, uma vez. Lembrete atrasado além da tolerância não sai.
+- Regra: Manhã às 08:00 pra toda call do dia, pedindo a positiva (pula se já confirmada, call antes de 8h40 ou marcada hoje depois das 8h). 2h antes com o link (pulado quando colaria na manhã, inclusive quando a manhã ainda VAI sair: call das 9h não recebe o de 2h às 7h). 10 minutos antes com o link. Sem positiva até 1h antes, alerta de ligação pro closer, uma vez. Lembrete atrasado além da tolerância não sai.
 - Vale em: estados todos; roteiro todos; executada por flow
 
 ### R-112 · Lembrete com ação e link; sem link, nunca "te espero lá"
@@ -482,7 +494,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-116 · Resgate de no-show só de furo real
 
 - Origem: 2026-08-22, Leo (#733; furo real #1112/#1114 (30/09-01/10); 2ª tentativa #802)
-- Regra: Card em No show recebe "passei no horário e não te encontrei" uma vez por movimento, só depois de 20 minutos do horário, e nunca quando: a call aconteceu (resumo), o lead disse que entrou, o card foi movido mais de 24h depois ou o lead avisou antes que não vinha (aí o texto não diz "não te encontrei"). Sem resposta em 24h, 2ª tentativa com horários concretos (9h às 19h, dia útil); quem respondeu ou remarcou não recebe.
+- Regra: Card em No show recebe "passei no horário e não te encontrei" uma vez por movimento, só depois de 20 minutos do horário, e nunca quando: a call aconteceu (resumo), o lead disse que entrou, o card foi movido mais de 24h depois, o lead avisou antes que não vinha (aí o texto não diz "não te encontrei") ou o lead disse não / sem interesse depois do furo (gente decide; 28/10, Sirlene). Sem resposta em 24h, 2ª tentativa com horários concretos (9h às 19h, dia útil); quem respondeu ou remarcou não recebe.
 - Vale em: estados todos; roteiro todos; executada por flow, alerta
 
 ## Portão de mudança

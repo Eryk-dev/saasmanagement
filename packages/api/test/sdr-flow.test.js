@@ -421,6 +421,61 @@ test("handleSdrInbound: 'confirmado' marca a call; pedido de remarcação vira U
   assert.equal((await repo.list("wa_alerts")).length, 1);
 });
 
+test("classifyReminderReply: 'podemos deixar pra outra semana?', 'estou em viagem', 'se tiver outro horário' são remarcação, nunca confirmação #R-042 #R-113", () => {
+  for (const t of ["Podemos deixar pra outra semana?", "Eu estou em viagem. Por isso pedi pra deixar pra outra semana", "Eu estava marcada para 9h mas se tiver outro horário seria melhor", "Pode passar pra semana que vem?"]) {
+    assert.equal(classifyReminderReply(t), "reschedule", t);
+  }
+  assert.equal(classifyReminderReply("Podemos sim"), "confirm");
+});
+
+test("call das 9h: o de 2h (7h) é pulado porque a manhã (8h) ainda vai sair; nada sai às 7h e a manhã sai às 8h #R-110", async () => {
+  const nowRef = { t: new Date("2026-08-20T10:05:00Z") }; // 7h05 BRT, janela do 2h
+  const repo = await world({
+    leads: [{ id: "L1", name: "Rafael", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-20T09:00", closer: "pl", callUrl: "https://meet.google.com/abc-defg", createdAt: ISO("2026-08-10T10:00:00Z") }],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads", name: "Rafael" }],
+    messages: [{ id: "in1", thread: "5541999990000", leadId: "L1", saas: "leverads", direction: "in", text: "Fechado, amanhã às 9h", at: ISO("2026-08-19T20:00:00Z") }],
+  });
+  const wa = makeWa();
+  const r = runner(repo, wa, nowRef);
+  await r.tick();
+  assert.equal(wa.sent.length, 0, "o de 2h não sai antes da manhã");
+  assert.equal((await repo.get("leads", "L1")).confirmLog["2h"], "manha");
+  nowRef.t = new Date("2026-08-20T11:05:00Z"); // 8h05
+  await r.tick();
+  assert.equal(wa.sent.length, 1);
+  assert.match(wa.sent[0].text, /^Bom dia Rafael! Nossa conversa é hoje às 9h/);
+});
+
+test("retorno combinado: sdrLog.callbackAt vencido em expediente chama 'como combinado' com a agenda real, uma vez; lead que já falou depois não recebe #R-084", async () => {
+  const mk = (extraMessages = []) => world({
+    product: { sdrBot: { enabled: true, enabledAt: ISO("2026-08-01T00:00:00Z"), ladder: true } },
+    leads: [{ id: "L1", name: "Reginaldo Silva", phone: "41999990000", stage: "Qualificando", createdAt: ISO("2026-08-17T18:00:00Z"), sdrLog: { firstTouchAt: ISO("2026-08-17T18:05:00Z"), firstTouchVia: "brain", callbackAt: ISO("2026-08-19T12:30:00Z"), callbackSetAt: ISO("2026-08-18T20:00:00Z") } }],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads", lastDir: "out", lastOutAuthor: "sdr-bot", lastText: "Combinado Reginaldo, te chamo na quarta", lastAt: ISO("2026-08-18T20:01:00Z") }],
+    messages: [
+      { id: "i1", thread: "5541999990000", leadId: "L1", direction: "in", text: "Contato somente a partir de quarta", at: ISO("2026-08-18T20:00:00Z") },
+      { id: "o1", thread: "5541999990000", leadId: "L1", direction: "out", author: "sdr-bot", text: "Combinado Reginaldo, te chamo na quarta", at: ISO("2026-08-18T20:01:00Z") },
+      ...extraMessages,
+    ],
+  });
+  const repo = await mk();
+  const wa = makeWa();
+  const nowRef = { t: new Date("2026-08-19T13:00:00Z") }; // quarta 10h BRT
+  await runner(repo, wa, nowRef).tick();
+  assert.equal(wa.sent.length, 1);
+  assert.match(wa.sent[0].text, /^Oi Reginaldo, tudo bem\? Como combinado, passando aqui pra gente marcar a demonstração\. Consigo /);
+  const lead = await repo.get("leads", "L1");
+  assert.ok(lead.sdrLog.callbackDoneAt);
+  assert.equal(lead.sdrLog.callbackVia, "text");
+  await runner(repo, wa, nowRef).tick();
+  assert.equal(wa.sent.length, 1, "uma vez só");
+  // Lead falou depois do combinado: a conversa já andou, nada sai.
+  const talked = await mk([{ id: "i2", thread: "5541999990000", leadId: "L1", direction: "in", text: "oi, pode ser hoje", at: ISO("2026-08-19T12:40:00Z") }]);
+  const wa2 = makeWa();
+  await runner(talked, wa2, nowRef).tick();
+  assert.equal(wa2.sent.length, 0);
+  assert.equal((await talked.get("leads", "L1")).sdrLog.callbackVia, "skip:conversa-andou");
+});
+
 test("conversa comum (sem lembrete pendente) não passa pelo gancho #R-113", async () => {
   const repo = await world({
     leads: [{ id: "L1", name: "R", phone: "41999990000", stage: "Qualificando", createdAt: ISO("2026-08-10T10:00:00Z") }],

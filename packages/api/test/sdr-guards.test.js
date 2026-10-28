@@ -60,6 +60,12 @@ const CASES = [
   ["slotInList", ["Consigo sexta às 15h ou às 17h, qual fica melhor pra você?"], { requestedEmpty: true, offerDate: "2026-08-21" }, { parts: ["Sexta já lotou, consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?"] }],
   ["noPromise", ["Deixa eu ver na agenda e te confirmo em minutos"], {}, { parts: [OFFER_RAW], stamps: ["promiseGuardAt"] }],
   ["noPromise", ["Deixa eu ver na agenda e te confirmo em minutos"], { suggestedPair: [] }, { parts: [NO_SLOT_TEXT["sem-vaga"]] }],
+  // Com call marcada a promessa também cai (28/10, Roberto: "te passo as próximas opções").
+  ["noPromise", ["Claro Rafael, tranquilo", "Te passo as próximas opções disponíveis para remarcar"], { callAt: "2026-08-19T16:00", callLabel: "hoje (19/08) às 16h", lastInText: "podemos deixar pra outra semana?" }, { parts: ["Claro Rafael, tranquilo", "Nossa conversa segue marcada pra hoje (19/08) às 16h, qualquer imprevisto me avisa aqui"], stamps: ["promiseGuardAt"] }],
+  ["noPromise", ["Vou encaminhar seu contato para a Larissa explicar direitinho"], {}, { parts: [OFFER_RAW], stamps: ["promiseGuardAt"] }],
+  // R-038: conversa marcada e sem pedido de remarcar: horário novo não sai.
+  ["noOfferWithCall", ["Ahh tá entendi Rafael, tranquilo", OFFER], { callAt: "2026-08-19T16:00", callLabel: "hoje (19/08) às 16h", lastInText: "estou em viagem" }, { parts: ["Ahh tá entendi Rafael, tranquilo"] }],
+  ["noOfferWithCall", [OFFER], { callAt: "2026-08-19T16:00", callLabel: "hoje (19/08) às 16h", lastInText: "ok" }, { parts: ["Nossa conversa segue marcada pra hoje (19/08) às 16h, qualquer imprevisto me avisa aqui"] }],
   // Desculpa "outro cliente pegou" só sobre horário NOSSO que caiu (takenSlot).
   ["apologyOnTakenSlot", ["Esse horário não consigo"], { takenSlot: true, lastInText: "as 9h" }, { parts: ["Ahh Rafael, esse horário acabou de ser preenchido por outro cliente, me desculpa! " + OFFER_RAW], stamps: ["slotTakenGuardAt"] }],
   // Hora pedida que nunca esteve na lista: a verdade + o par real (raio-x 28/10).
