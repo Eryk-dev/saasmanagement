@@ -27,7 +27,7 @@ import { raiseAlert } from "../whatsapp/wa-call-flow.js";
 import { gradeRulesOf, leadGrade } from "../metrics/metrics-core.js";
 import { slotLabel, slotLabelFull, wallNow, spreadPair, wholeHourSlots, activeHolds, holdSlots, releaseHolds } from "../crm/agenda-slots.js";
 import { sdrSlotsForLead, sdrAgendaWindow } from "./sdr-agenda.js";
-import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, greetName, SDR_AUTHOR, DEVICE_TIP } from "./sdr-flow.js";
+import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, greetName, leadGreetName, SDR_AUTHOR, DEVICE_TIP } from "./sdr-flow.js";
 import { transcriber as defaultTranscriber } from "../whatsapp/transcribe.js";
 import { FORM_MSG_RX, SLOTS_RX, OFFER_CUE_RX, isOfferMsg, ACCEPT_RX, offeredSlotsIn, liveOfferedSlots, acceptedSlot, AUTO_REPLY_RX, BARE_HOUR_RX, collapseSameDay, expandSameDay, DEMO_RX, PITCH_RX } from "./sdr-signals.js";
 import { transcribeInbound } from "../whatsapp/wa-transcribe.js";
@@ -811,7 +811,9 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     // Nome do form passa pela higiene (greetName): "Oi PECAS", "Oiii GMS" e
     // "Perfeito PEDRO" saíram em prod 24/08. Sem nome utilizável, "" — e os
     // textos caem no fallback sem nome, que soa natural.
-    const nome = greetName(lead.name);
+    // Nome do form ("me chamo Sousa") vale mais que o do perfil do WhatsApp
+    // ("Central de Pedidos - SeuPosto.Com" → "Bom dia Central!", 21/10).
+    const nome = leadGreetName(lead, msgs);
     // ESTADO E INTENÇÃO EXPLÍCITOS, EM SOMBRA (15/10): stateOf/classifyInbound
     // calculam o mesmo que as contas acima, num módulo só, e vão pro carimbo
     // da thread (state/intent/facts). Enquanto o cérebro ainda faz a conta

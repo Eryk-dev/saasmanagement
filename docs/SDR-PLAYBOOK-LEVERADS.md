@@ -78,6 +78,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 - Regra: Engaja: "sim", "ajudaria", afirmação forte ("sem dúvida", "com certeza"), pedido de horário, hora solta, ou a DOR DESCRITA com as próprias palavras ("o principal é compatibilidade"); "não quero…" e "olá boa tarde" não engajam. A mensagem automática do formulário não é interesse. Horário só entra depois que o lead responde positivo à descoberta ("isso ajudaria na sua operação?") ou pede pra agendar. Pergunta de descoberta e oferta de horário nunca saem na mesma resposta. Quem já pediu horário pula a descoberta.
 - Exemplo: lead "Oi, quero saber mais sobre a LeverAds" → "Oiii Rafael, tudo bem? A LeverAds clona e sincroniza seus anúncios entre as contas, em um lugar só. Isso ajudaria na sua operação hoje?"
 - Vale em: estados novo, descoberta; roteiro todos; executada por state, guard, prompt (validador noOfferBeforeEngaged)
+- Conflito com R-050: Leo, 28/10/2026: pedido de preço do serviço engaja; a exceção da 1ª fala do lead (antes de qualquer mensagem nossa) continua: ali é descoberta
 
 ### R-012 · "Não sei" abre qualificação em passos, não convite
 
@@ -306,6 +307,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 - Exemplo: lead "quanto custa?" → "Rafael, o investimento é de acordo com as necessidades da sua operação: primeiro a gente entende o seu cenário, e aí te mostra os pontos que dá pra alavancar. É exatamente isso que o especialista faz na demonstração."
 - Vale em: estados todos; roteiro todos; executada por guard, prompt, intent, alerta (validador priceLeak)
 - Exceção: R-072 · no roteiro OEM/Price a primeira resposta de preço leva o par de horários (doc do Leo)
+- Conflito com R-011: Leo, 28/10/2026: a 1ª resposta de preço sai com a agenda mesmo sem o lead ter dito que a ferramenta ajudaria (R-072 vale no caminho genérico)
 
 ### R-051 · Escada do preço: explica na 2ª, gente na 3ª
 
@@ -349,6 +351,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 - Origem: 2026-10-05, Leo (#1119 (OEM); #1133 (Price))
 - Regra: Vale também no caminho genérico (28/10): quem pergunta o valor do serviço já engajou pra efeito de oferta, e a primeira resposta de preço sai com a agenda. Lead de OEM ou Price sem call que pergunta preço depois da abordagem recebe a copy oficial do doc ("O investimento depende da sua operação e das suas necessidades…") e, na mesma resposta, o par de horários, sem IA. Segunda e terceira insistência seguem a escada de R-051.
 - Vale em: estados todos; roteiro oem, price; executada por roteiro
+- Conflito com R-011: Leo, 28/10/2026: quem pergunta o valor do serviço já engajou pra efeito de oferta (depois da 1ª mensagem nossa); a descoberta não segura a agenda nesse caso
 
 ### R-073 · Lembretes do roteiro: manhã com foto no OEM, link no 2h e no 10min
 

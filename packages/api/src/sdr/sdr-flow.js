@@ -103,7 +103,9 @@ export function greetName(raw) {
   // separa na troca de caixa e fica com o primeiro pedaço. Em prod 21-30/09
   // saíram "Entendi BrenoHenrique" e "Oiii, Joãogabriel" — nome errado é o que
   // mais rápido denuncia robô.
-  const spaced = String(raw || "").replace(/(\p{Ll})(\p{Lu})/gu, "$1 $2");
+  // "HELANOtelris" (28/10): caixa alta grudada em caixa baixa também é dois
+  // pedaços ("HELANO telris" → "Helano"), além da troca baixa→alta de sempre.
+  const spaced = String(raw || "").replace(/(\p{Ll})(\p{Lu})/gu, "$1 $2").replace(/(\p{Lu}{3,})(\p{Ll}{3,})/gu, "$1 $2");
   const first = firstName(spaced).replace(/[^\p{L}'-]/gu, ""); // pontuação/emoji fora
   if (!first || /\d/.test(firstName(spaced))) return "";
   const flat = norm(first);
@@ -116,6 +118,23 @@ export function greetName(raw) {
   // longa demais pra ser primeiro nome de gente.
   if (flat.length > 12) return "";
   return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+}
+
+// Nome pra saudar o lead: o que ele DIGITOU no formulário ("me chamo Sousa")
+// vale mais que o nome do perfil do WhatsApp ("Central de Pedidos -
+// SeuPosto.Com" virou "Bom dia Central!" em 21/10). Sem form, o do card.
+const FORM_NAME_RX = /me chamo\s+(.{2,60}?)(?:\s+e\s+quero\b|[.,\n]|$)/i;
+export function formNameIn(msgs = []) {
+  for (const m of msgs) {
+    if (m?.direction !== "in") continue;
+    const t = String(m.transcript || m.text || "");
+    const hit = t.match(FORM_NAME_RX);
+    if (hit) return hit[1].trim();
+  }
+  return "";
+}
+export function leadGreetName(lead, msgs = []) {
+  return greetName(formNameIn(msgs)) || greetName(lead?.name);
 }
 
 // Config normalizada do robô por produto; null = desligado (default de todo
@@ -308,12 +327,28 @@ export const conversationActive = (cfg, lead) =>
 // soar como gente que leu, não como blast.
 export function leadDigest(product, lead) {
   const qs = Array.isArray(product?.leadQuestions) ? product.leadQuestions : [];
+  // Valor sem rótulo no painel ("2-3", "0-500", "outros") não vai cru pro
+  // texto (28/10, Roque: "Recebi seu diagnóstico aqui: 2-3 · outros · 0-500
+  // anúncios"): faixa vira "2 a 3 contas" / "até 500"; "outros" some.
+  const human = (key, v) => {
+    const raw = String(v);
+    const range = raw.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (range) {
+      const [a, b] = [Number(range[1]), Number(range[2])];
+      if (key === "accounts") return a <= 1 ? `${b} ${b === 1 ? "conta" : "contas"}` : `${a} a ${b} contas`;
+      return a === 0 ? `até ${b}` : `${a} a ${b}`;
+    }
+    const plus = raw.match(/^(\d+)\+$/);
+    if (plus) return `mais de ${plus[1]}${key === "accounts" ? " contas" : ""}`;
+    if (key === "niche" && /^outr[oa]s?$/i.test(raw)) return "";
+    return raw;
+  };
   const label = (key) => {
     const v = lead?.[key];
     if (v == null || v === "") return "";
     const q = qs.find((x) => x.key === key);
     const opt = (q?.options || []).find((o) => o.value === v);
-    return String(opt?.label || v);
+    return opt?.label ? String(opt.label) : human(key, v);
   };
   const parts = [];
   const accounts = label("accounts");
@@ -1002,7 +1037,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           const stampedAt = Date.parse(lead.sdrLog?.callbackSetAt || "") || 0;
           // Lead falou (ou gente falou) depois do combinado: a conversa já andou.
           if (msgs.some((m) => Date.parse(m.at || 0) > Math.max(stampedAt, cbMs - 12 * HOUR) && (m.direction === "in" || humanIds.has(m.author)))) { await stampLog(lead, { callbackDoneAt: nowIso, callbackVia: "skip:conversa-andou" }); continue; }
-          const nome = greetName(lead.name);
+          const nome = leadGreetName(lead, msgs);
           const to = thread.phone || digits(phone);
           try {
             let via = "text";
@@ -1062,7 +1097,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           }
           const lastIn = [...msgs].reverse().find((m) => m.direction === "in");
           const windowOpen = windowOpenAt(msgs, nowMs);
-          const nome = greetName(lead.name);
+          const nome = leadGreetName(lead, msgs);
           const to = t.phone || digits(lead.waPhone || lead.phone);
           try {
             let via = "text";
