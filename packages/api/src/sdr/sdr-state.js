@@ -17,7 +17,7 @@ import { liveOfferedSlots, DEMO_RX, PITCH_RX } from "./sdr-signals.js";
 import { wallNow } from "../crm/agenda-slots.js";
 import { leadPainFocus, SDR_AUTHOR, sdrBotConfig } from "./sdr-flow.js";
 import { isBusinessHours } from "../platform/business-hours.js";
-import { leadEngaged, lastInboundText, bareHour, PRICE_ASK_RX } from "./sdr-intents.js";
+import { leadEngaged, lastInboundText, bareHour, PRICE_ASK_RX, statedPainOf, NO_INTEREST_RX, burstInboundText, plainReply } from "./sdr-intents.js";
 
 const HOUR = 3_600_000;
 const MIN = 60_000;
@@ -88,7 +88,11 @@ export function stateOf({ lead = {}, msgs = [], now = new Date(), product = null
   const demoOffered = msgs.some((m) => m.direction === "out" && (DEMO_RX.test(m.text || "") || PITCH_RX.test(m.text || "")));
   const slotsOffered = liveOfferedSlots(agendaMessages, SDR_AUTHOR, wallNow(now)).length > 0; // oferta VIVA (R-029)
   const lastInText = lastInboundText(msgs);
-  const engaged = leadEngaged(msgs) || (slotsOffered && bareHour(lastInText) != null);
+  const burst = burstInboundText(msgs) || lastInText;
+  const noInterest = NO_INTEREST_RX.test(plainReply(burst)) && !/quero saber mais sobre/i.test(burst);
+  const engaged = (leadEngaged(msgs) || (slotsOffered && bareHour(lastInText) != null)) && !noInterest;
+  const painMsg = [...msgs].reverse().find((m) => m.direction === "in" && statedPainOf(m.transcript || m.text));
+  const statedPain = painMsg ? statedPainOf(painMsg.transcript || painMsg.text) : null;
   const firstReply = !msgs.some((m) => m.direction === "out");
   const script = leadPainFocus(product, lead)?.mode || "clone";
   const presenceAsked = !!callAt && log.presenceAskedFor === callAt;
@@ -112,7 +116,7 @@ export function stateOf({ lead = {}, msgs = [], now = new Date(), product = null
       callAt, inCallWindow, callFuture, callPassed, reschedule, awaitingReschedule,
       humanActive, handoffPending, botToday, capReached: botToday >= DAILY_CAP,
       gapMin, canGreet, demoOffered, slotsOffered, engaged, firstReply,
-      presenceAsked, presenceConfirmed, priceStep, priceAsks, lastInText,
+      presenceAsked, presenceConfirmed, priceStep, priceAsks, lastInText, statedPain, noInterest,
     },
   };
 }

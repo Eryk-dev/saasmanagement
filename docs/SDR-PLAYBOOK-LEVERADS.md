@@ -3,7 +3,7 @@
 GERADO de `packages/api/src/sdr/sdr-rules.js` (`node src/sdr/sdr-rules.js --write`). Não edite à mão: o
 teste `sdr-rulebook.test.js` recusa o arquivo quando ele difere do registro.
 
-77 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
+78 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
 origem (data, quem pediu, PR ou print), o enunciado, os estados da conversa e o roteiro em que vale, a camada
 que a executa e as exceções. Toda regra ativa tem pelo menos um teste ou cena com a tag `#R-nnn`.
 
@@ -75,14 +75,14 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-011 · Descoberta antes do horário
 
 - Origem: 2026-09-17, Leo (#1037 (caso Eduardo 15/09: pergunta de descoberta + horários na mesma resposta))
-- Regra: A mensagem automática do formulário não é interesse. Horário só entra depois que o lead responde positivo à descoberta ("isso ajudaria na sua operação?") ou pede pra agendar. Pergunta de descoberta e oferta de horário nunca saem na mesma resposta. Quem já pediu horário pula a descoberta.
+- Regra: Engaja: "sim", "ajudaria", afirmação forte ("sem dúvida", "com certeza"), pedido de horário, hora solta, ou a DOR DESCRITA com as próprias palavras ("o principal é compatibilidade"); "não quero…" e "olá boa tarde" não engajam. A mensagem automática do formulário não é interesse. Horário só entra depois que o lead responde positivo à descoberta ("isso ajudaria na sua operação?") ou pede pra agendar. Pergunta de descoberta e oferta de horário nunca saem na mesma resposta. Quem já pediu horário pula a descoberta.
 - Exemplo: lead "Oi, quero saber mais sobre a LeverAds" → "Oiii Rafael, tudo bem? A LeverAds clona e sincroniza seus anúncios entre as contas, em um lugar só. Isso ajudaria na sua operação hoje?"
 - Vale em: estados novo, descoberta; roteiro todos; executada por state, guard, prompt (validador noOfferBeforeEngaged)
 
 ### R-012 · "Não sei" abre qualificação em passos, não convite
 
 - Origem: 2026-08-31, Leo (#850 (caso Cyro))
-- Regra: Dúvida na descoberta vira qualificação curta, uma pergunta por vez: confirma que o lead vende em marketplace com conta própria (aproveitando o cadastro), pergunta a maior dificuldade da operação, conecta a dor em uma frase à capacidade real da ferramenta e só então convida pra demonstração. Ferramenta que não resolve o caso não agenda.
+- Regra: Lead que não entendeu ("nem sei o que é isso", "???") recebe uma frase explicando o termo e uma pergunta DIFERENTE; a pergunta de descoberta do motor é por roteiro e nunca repete uma já feita (28/10, Fábio ouviu a mesma pergunta 3x em 60 s). Dúvida na descoberta vira qualificação curta, uma pergunta por vez: confirma que o lead vende em marketplace com conta própria (aproveitando o cadastro), pergunta a maior dificuldade da operação, conecta a dor em uma frase à capacidade real da ferramenta e só então convida pra demonstração. Ferramenta que não resolve o caso não agenda.
 - Vale em: estados novo, descoberta; roteiro todos; executada por prompt
 
 ### R-013 · Foco pela dor do anúncio de origem
@@ -198,8 +198,14 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-031 · Interesse sem saída ganha a oferta; dia solto ganha hora
 
 - Origem: 2026-08-24, Leo (#787 (trava de beco); dia solto 25/08)
-- Regra: Lead com interesse, sem call marcada, e a resposta sem pergunta nenhuma: o motor emenda a oferta do par. Dia sem hora ("conseguimos essa semana?") vira oferta concreta. Lead que adiou ("te retorno amanhã") não recebe oferta.
+- Regra: Toda resposta avança (28/10): sem call marcada e fora da janela da call, resposta sem pergunta de verdade (saudação com "?" não conta) e sem oferta ganha o próximo passo: lead engajado recebe a oferta do par; lead ainda não engajado recebe a pergunta pendente ou a próxima pergunta de descoberta (nunca uma já feita). Dia sem hora ("conseguimos essa semana?") vira oferta concreta. Despedida, adiamento ("te aviso", "te retorno amanhã"), desinteresse e texto do form não recebem nada.
 - Vale em: estados todos; roteiro todos; executada por guard (validador nextStep)
+
+### R-047 · Pergunta pendente volta
+
+- Origem: 2026-10-28, Leo (prints 28/10 (Kelly: 'Hoje sua maior dificuldade…?' → 'Tudo bem e vc?' → 'Tudo certo também Kelly' e a pergunta morreu; 'Que bom' idem))
+- Regra: Pergunta nossa que o lead respondeu só com saudação, ack ou "e você?" continua pendente: a resposta seguinte responde o que ele trouxe em uma frase e refaz a pergunta (uma vez; o motor a repete tal qual se a IA não refizer, isenta da regra da frase já dita).
+- Vale em: estados descoberta, engajado, oferta_feita, novo; roteiro todos; executada por guard, prompt, state
 
 ### R-032 · O pedido do lead filtra a lista; pedido lotado diz que lotou
 
@@ -350,7 +356,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-083 · Desinteresse acolhe e para
 
 - Origem: 2026-10-08, Leo (#1140 (caso Laion: escada de preço respondeu a "não tenho mais interesse"))
-- Regra: Sem call marcada, "não tenho interesse", "agora não" ou pedido de pausa recebe uma frase ("Tranquilo Nome, sem problemas. Se fizer sentido retomar mais pra frente, é só me chamar aqui"), nada de venda, preço, horário ou motivo, e gente é avisada. Com call marcada é objeção (R-038).
+- Regra: "Não quero começar", "não quero fazer call", "agora não", "ainda não é o momento" também são desinteresse e desligam o engajamento da resposta (28/10, Helano recebeu oferta em cima do "não quero"). Sem call marcada, "não tenho interesse", "agora não" ou pedido de pausa recebe uma frase ("Tranquilo Nome, sem problemas. Se fizer sentido retomar mais pra frente, é só me chamar aqui"), nada de venda, preço, horário ou motivo, e gente é avisada. Com call marcada é objeção (R-038).
 - Vale em: estados todos; roteiro todos; executada por intent, prompt, alerta
 
 ### R-084 · Silêncio quando não há o que responder

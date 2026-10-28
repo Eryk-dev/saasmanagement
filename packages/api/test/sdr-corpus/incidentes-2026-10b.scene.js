@@ -130,4 +130,79 @@ export default [
     // O card reabre em Novo lead e a resposta do robô já o move pra Qualificando (fluxo normal de etapa).
     expect: { result: "responder", sent: [/Oiii Rafael, tudo bem\?/], lead: { disqualified: false, stage: "Qualificando" } },
   },
+  {
+    id: "C-R031-02", title: "Kelly (20/10): 'Conta jurídica' respondido com 'Perfeito Kelly' ganha a próxima pergunta de descoberta, nunca termina no ack",
+    rules: ["R-031", "R-012"],
+    world: {
+      sdrBot: V2,
+      messages: [
+        { direction: "out", author: "sdr-bot", text: "Oiii Rafael, tudo bem?", at: ISO("2026-08-18T21:43:00Z") },
+        { direction: "out", author: "sdr-bot", text: "Hoje sua maior dificuldade está em gerenciar as contas ou criar os anúncios?", at: ISO("2026-08-18T21:43:05Z") },
+        { direction: "in", text: "Tudo bem e vc?", at: ISO("2026-08-18T22:32:00Z") },
+        { direction: "out", author: "sdr-bot", text: "Tudo certo também Rafael", at: ISO("2026-08-18T22:32:30Z") },
+        { direction: "in", text: "Que bom", at: ISO("2026-08-19T10:01:00Z") },
+        { direction: "out", author: "sdr-bot", text: "Rafael, hoje você vende em marketplace com conta própria?", at: ISO("2026-08-19T10:01:30Z") },
+      ],
+    },
+    ai: [{ acao: "responder", mensagens: ["Perfeito Rafael"], oferecer: false }],
+    inbounds: ["Conta jurídica"],
+    expect: { result: "responder", sent: [/^Perfeito Rafael$/, /\?$/], notSent: [/^Consigo /, /conta própria\?$/], shadowSame: true },
+  },
+  {
+    id: "C-R047-01", title: "Kelly (19/10): 'Tudo bem e vc?' depois da pergunta de dor: responde e REFAZ a pergunta (uma vez)",
+    rules: ["R-047"],
+    world: {
+      sdrBot: V2,
+      messages: [
+        { direction: "out", author: "sdr-bot", text: "Oiii Rafael, tudo bem?", at: ISO("2026-08-19T12:10:00Z") },
+        { direction: "out", author: "sdr-bot", text: "Hoje sua maior dificuldade está em gerenciar as contas ou criar os anúncios?", at: ISO("2026-08-19T12:10:05Z") },
+      ],
+    },
+    ai: [{ acao: "responder", mensagens: ["Tudo certo também Rafael"], oferecer: false }],
+    inbounds: ["Tudo bem e vc?"],
+    expect: { result: "responder", sent: [/^Tudo certo também Rafael$/, /^Hoje sua maior dificuldade está em gerenciar as contas ou criar os anúncios\?$/], notSent: [/^Consigo /], shadowSame: true },
+  },
+  {
+    id: "C-R031-03", title: "Cristiano (26/10): turno 1 'Oiii Cristiano, tudo bem?' sozinho (a pergunta do modelo caiu com a oferta) ganha a descoberta; saudação com '?' não é pergunta",
+    rules: ["R-031", "R-011", "R-003"],
+    world: { sdrBot: V2, lead: { sourcePain: "OEM", niche: "autopecas" } },
+    ai: [{ acao: "responder", mensagens: ["Oiii Rafael, tudo bem?", "Hoje você monta os anúncios de autopeças manualmente pelo código OEM?"], oferecer: true }],
+    inbounds: ["Oi, me chamo Rafael e quero saber mais sobre o Lever OEM. Minha operação: autopeças, Só online, 1 conta, Até 500 anúncios ativos."],
+    expect: { result: "responder", sent: [/^Oiii Rafael, tudo bem\?$/, /\?$/], notSent: [/^Consigo /], state: "novo", shadowSame: true },
+  },
+  {
+    id: "C-R011-02", title: "Flavio (22/10): 'Sem dúvida alguma' depois de descrever a dor (compatibilidade) ENGAJA: a oferta sai e a pergunta de dor não volta",
+    rules: ["R-011", "R-012"],
+    world: {
+      sdrBot: V2, todayFree: true,
+      lead: { formProduct: "ads", niche: "autopecas" },
+      messages: [
+        { direction: "out", author: "sdr-bot", text: "Oiii Rafael, tudo bem?", at: ISO("2026-08-19T11:27:00Z") },
+        { direction: "out", author: "sdr-bot", text: "Para autopeças, também cria o anúncio completo pelo código OEM, com fotos, título, descrição e compatibilidade. Hoje sua maior dificuldade está em gerenciar as contas ou criar anúncios?", at: ISO("2026-08-19T11:27:10Z") },
+        { direction: "in", text: "Compatibilidade", at: ISO("2026-08-19T11:28:00Z") },
+        { direction: "in", text: "Preciso principalmente desta ferramenta.", at: ISO("2026-08-19T11:28:10Z") },
+        { direction: "out", author: "sdr-bot", text: "Entendi Rafael, então o OEM é o principal pra você", at: ISO("2026-08-19T11:28:30Z") },
+        { direction: "out", author: "sdr-bot", text: "No Lever OEM você recebe o anúncio completo pelo código, com a compatibilidade pronta para revisar. Isso ajudaria na sua operação?", at: ISO("2026-08-19T11:29:00Z") },
+      ],
+    },
+    ai: [{ acao: "responder", mensagens: ["Que bom Rafael, nosso especialista roda um código seu ao vivo e mostra a compatibilidade pronta para revisar e publicar"], oferecer: true }],
+    inbounds: ["Sem dúvida alguma"],
+    expect: { result: "responder", sent: [/Que bom Rafael/, /^Consigo hoje às \d{1,2}h ou às \d{1,2}h, qual fica melhor pra você\?$/], notSent: [/Qual a maior dificuldade da sua operação hoje/], state: "engajado", shadowSame: true },
+  },
+  {
+    id: "C-R083-02", title: "Helano (26/10): 'Não quero começar' é desinteresse: acolhe, avisa gente e para, sem oferta",
+    rules: ["R-083", "R-031"],
+    world: {
+      sdrBot: V2,
+      lead: { sourcePain: "PRICE" },
+      messages: [
+        { direction: "out", author: "sdr-bot", text: "Oiii Rafael, tudo bem?", at: ISO("2026-08-19T12:53:00Z") },
+        { direction: "out", author: "sdr-bot", text: "Você vende em marketplace com conta própria?", at: ISO("2026-08-19T12:53:05Z") },
+        { direction: "in", text: "Sim", at: ISO("2026-08-19T12:53:30Z") },
+      ],
+    },
+    ai: [{ acao: "responder", mensagens: ["Tranquilo Rafael, sem problemas"], oferecer: true }],
+    inbounds: ["Não quero começar"],
+    expect: { result: "desinteresse", sent: [/Tranquilo Rafael, sem problemas\. Se fizer sentido retomar/], notSent: [/^Consigo /], lead: { } },
+  },
 ];

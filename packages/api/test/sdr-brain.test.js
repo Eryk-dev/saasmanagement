@@ -833,7 +833,7 @@ test("confirmação de agendamento enxuta: sem re-descrever a demo e sem pedir e
 
 test("digitando… aparece pro lead enquanto a IA pensa e entre as partes #R-095", async () => {
   const repo = await world({ messages: [{ id: "in9", direction: "in", text: "me explica", at: ISO("2026-08-19T12:59:00Z") }] });
-  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Parte um.", "Parte dois."] }] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Parte um.", "Parte dois, faz sentido pra você?"] }] });
   const typed = [];
   fakes.wa.sendTyping = async (id) => { typed.push(id); };
   await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "me explica", id: "in9" } });

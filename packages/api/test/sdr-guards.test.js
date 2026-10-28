@@ -32,6 +32,19 @@ test("guards: todo validador aponta pra uma regra ativa do rulebook, e toda regr
   for (const r of RULES.filter((r) => r.guard)) assert.ok(guardById(r.guard), `${r.id} aponta pro validador ${r.guard} que não existe`);
 });
 
+test("guard nextStep (R-031): despedida, adiamento e desinteresse do lead não ganham próximo passo; discoveryQuestionFor nunca repete pergunta já feita #R-031 #R-012 #R-047", async () => {
+  const { discoveryQuestionFor } = await import("../src/sdr/sdr-guards.js");
+  for (const ctx of [{ closing: true, lastInText: "ok, obrigado" }, { postponed: true, lastInText: "te aviso" }, { noInterest: true, engaged: false, lastInText: "não quero começar" }, { inCallWindow: true }]) {
+    const r = enforce(["Combinado Rafael"], ctx);
+    assert.ok(!r.fired.includes("nextStep"), `não devia disparar com ${JSON.stringify(ctx)}`);
+  }
+  const pitch = { direction: "out", author: "sdr-bot", text: "A LeverAds faz clonagem de anúncios entre contas. Isso ajudaria na sua operação?" };
+  assert.equal(discoveryQuestionFor("clone", []), "Isso ajudaria na sua operação hoje?");
+  assert.equal(discoveryQuestionFor("clone", [pitch]), "Qual a maior dificuldade da sua operação hoje: gerenciar as contas, criar anúncio, estoque ou atendimento?");
+  assert.equal(discoveryQuestionFor("oem", [pitch, { direction: "out", author: "sdr-bot", text: "Hoje você monta os anúncios pelo código OEM ou faz tudo manualmente?" }]), "Você já vende no Mercado Livre ou Shopee com conta própria?");
+  assert.equal(discoveryQuestionFor("price", [pitch]), "Hoje sua maior dificuldade está em manter os preços atualizados sem sair da margem?");
+});
+
 test("guard lotouWithProof (R-041): com prova do motor (pedido sem vaga, hora fora da lista, horário tomado) o 'lotou' passa #R-041 #R-028", () => {
   for (const ctx of [{ requestedEmpty: true, offerDate: "2026-08-21" }, { hourReply: true }, { takenSlot: true }]) {
     const r = enforce(["Sexta já lotou Rafael", OFFER], ctx);
@@ -81,12 +94,18 @@ const CASES = [
   ["lotouWithProof", ["Na sexta já lotou Rafael"], { lastInText: "na sexta feira estarei livre" }, { parts: [OFFER_RAW], stamps: ["lotouGuardAt"] }],
   ["lotouWithProof", ["Depois das 18h já lotou Rafael", "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?"], { lastInText: "só consigo depois das 1800" }, { parts: [OFFER_RAW], stamps: ["lotouGuardAt"] }],
   ["noDuration", ["É uma conversa de 20 minutos com o especialista"], {}, { parts: ["É uma conversa com o especialista", OFFER_RAW] }],  // a cadeia segue: sem pergunta, a trava de beco emenda a oferta
-  ["noDeviceAsk", ["Você vai entrar pelo celular ou pelo computador?", "Te espero então"], { lastInText: "vou pelo celular" }, { partsMatch: [/^Te espero então$/, /computador por perto/] }],
-  ["noDeviceAsk", ["Pode sim, é só acessar o link", "Consegue entrar por ele?"], { lastInText: "vou pelo celular" }, { partsMatch: [/^Pode sim, é só acessar o link$/, /computador por perto/, /^Consegue entrar por ele\?$/] }],
+  ["noDeviceAsk", ["Você vai entrar pelo celular ou pelo computador?", "Te espero então"], { lastInText: "vou pelo celular", callAt: "2026-08-20T09:00", callLabel: "amanhã (20/08) às 9h" }, { partsMatch: [/^Te espero então$/, /computador por perto/] }],
+  ["noDeviceAsk", ["Pode sim, é só acessar o link", "Consegue entrar por ele?"], { lastInText: "vou pelo celular", callAt: "2026-08-20T09:00", callLabel: "amanhã (20/08) às 9h" }, { partsMatch: [/^Pode sim, é só acessar o link$/, /computador por perto/, /^Consegue entrar por ele\?$/] }],
   ["noOfferBeforeEngaged", ["Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?"], { engaged: false }, { parts: ["Isso ajudaria na sua operação hoje?"] }],
   ["earliestFirst", ["Consigo amanhã às 11h ou às 14h, qual fica melhor pra você?"], {}, { parts: [OFFER_RAW], stamps: ["earliestGuardAt"] }],
   ["nextStep", ["Que bom que ajuda"], {}, { parts: ["Que bom que ajuda", OFFER_RAW] }],
   ["nextStep", ["Que bom que ajuda"], { slotsOffered: true }, { parts: ["Que bom que ajuda", "Fica melhor amanhã às 9h ou amanhã às 11h?"] }],
+  // Toda resposta avança (28/10): lead ainda não engajado ganha a pergunta de descoberta, nunca horário.
+  ["nextStep", ["Perfeito Rafael"], { engaged: false, lastInText: "Conta jurídica" }, { parts: ["Perfeito Rafael", "Isso ajudaria na sua operação hoje?"] }],
+  // Pergunta pendente volta uma vez (R-047), isenta da regra da frase já dita.
+  ["nextStep", ["Tudo certo também Rafael"], { engaged: false, lastInText: "Tudo bem e vc?", pendingQuestion: "Hoje sua maior dificuldade está em gerenciar as contas ou criar os anúncios?", pendingQuestionId: "m1", msgs: [{ id: "m1", direction: "out", author: "sdr-bot", text: "Hoje sua maior dificuldade está em gerenciar as contas ou criar os anúncios?" }] }, { parts: ["Tudo certo também Rafael", "Hoje sua maior dificuldade está em gerenciar as contas ou criar os anúncios?"], stamps: ["reaskedFor"] }],
+  // Saudação com "?" não é pergunta: turno 1 vazio ganha a descoberta (28/10, Cristiano).
+  ["noOfferBeforeEngaged", ["Oiii Rafael, tudo bem?", OFFER], { engaged: false, lastInText: "Oi, me chamo Rafael e quero saber mais sobre a LeverAds" }, { parts: ["Oiii Rafael, tudo bem?", "Isso ajudaria na sua operação hoje?"] }],
   // Dependência de ordem herdada (documentada em 15/10): "mais cedo primeiro"
   // confere a PRIMEIRA oferta e "uma oferta" fica com a ÚLTIMA; sobra a oferta
   // sem o mais cedo. O residual denuncia; a reordenação é o PR5.

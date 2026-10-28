@@ -23,7 +23,7 @@
 
 import { sdrAgendaWindow } from "./sdr-agenda.js";
 import { SLOTS_RX, OFFER_CUE_RX, FORM_MSG_RX, isOfferMsg, expandSameDay, slotsInText } from "./sdr-signals.js";
-import { DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, LEAD_MOBILE_RX, PERIOD_ASK_RX } from "./sdr-intents.js";
+import { DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, LEAD_MOBILE_RX, PERIOD_ASK_RX, plainReply } from "./sdr-intents.js";
 import { offerLine, NO_SLOT_TEXT } from "./sdr-offer.js";
 import { DEVICE_TIP } from "./sdr-flow.js";
 import { SDR_AUTHOR } from "./sdr-flow.js";
@@ -114,6 +114,53 @@ export function isFreshOffer(text, msgs = [], nowIso = "") {
   return slots.some((at) => !before.has(at));
 }
 
+// Pergunta de VERDADE ≠ saudação com interrogação ("Oiii Cristiano, tudo
+// bem?"). Em 28/10 "tudo bem?" contava como pergunta e a resposta saía só
+// com a saudação (Cristiano, Giovani, Rhenan: turno 1 vazio).
+export const GREETING_Q_RX = /\btudo (?:bem|bom|certo|joia|tranquilo)\s*\?|\bcomo (?:vai|vc est[áa]|voc[êe] est[áa]|c[êe] t[áa])\s*\?/i;
+export function isRealQuestion(text) {
+  const t = String(text || "");
+  if (!t.includes("?")) return false;
+  // Tira cada frase-saudação com "?" e vê se sobrou alguma interrogação.
+  return t.replace(/[^?]*\?/g, (m) => (GREETING_Q_RX.test(m) ? "" : m)).includes("?");
+}
+
+// PERGUNTA DE DESCOBERTA do motor, por roteiro e nunca a mesma duas vezes
+// (R-011/R-012, 28/10: a pergunta era um literal fixo e saiu 2x pro Flavio,
+// que já tinha dito a dor). A ordem mantém "Isso ajudaria" primeiro enquanto
+// o pitch não terminou com ela.
+const DISCOVERY = {
+  clone: [
+    "Isso ajudaria na sua operação hoje?",
+    "Qual a maior dificuldade da sua operação hoje: gerenciar as contas, criar anúncio, estoque ou atendimento?",
+    "Hoje você vende em marketplace com conta própria?",
+    "Quantas contas de Mercado Livre e Shopee você opera hoje?",
+  ],
+  oem: [
+    "Isso ajudaria na sua operação hoje?",
+    "Hoje você monta os anúncios pelo código OEM ou faz tudo manualmente?",
+    "Você já vende no Mercado Livre ou Shopee com conta própria?",
+    "O que mais trava hoje na hora de cadastrar: ficha, compatibilidade ou fotos?",
+  ],
+  price: [
+    "Isso ajudaria na sua operação hoje?",
+    "Hoje sua maior dificuldade está em manter os preços atualizados sem sair da margem?",
+    "Você já vende em marketplace com conta própria?",
+    "Como você entra nas promoções do Mercado Livre hoje, uma a uma?",
+  ],
+};
+const DISCOVERY_FALLBACK = "Me conta um pouco de como funciona sua operação hoje?";
+// "Dia sem hora" (R-031): proposta de dia sem horário ("conseguimos essa
+// semana?"). "Hoje" fica de fora: aparece em toda pergunta de descoberta
+// ("hoje sua maior dificuldade…?") sem propor dia nenhum.
+export const DAY_PROPOSAL_RX = /\b(amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|essa semana|semana que vem|pr[óo]xima semana|outra semana)(?![\p{L}])/iu; // sem \b no fim: "amanhã," não fecha fronteira ASCII
+export function discoveryQuestionFor(script, msgs = []) {
+  const list = DISCOVERY[script] || DISCOVERY.clone;
+  const outs = (msgs || []).filter((m) => m.direction === "out").map((m) => plainReply(m.text || ""));
+  const asked = (q) => { const key = plainReply(q).replace(/\?$/, "").slice(0, 28); return outs.some((t) => t.includes(key) || sameSentence(q, t)); };
+  return list.find((q) => !asked(q)) || DISCOVERY_FALLBACK;
+}
+
 // ── Draft ───────────────────────────────────────────────────────────────────
 // { parts: [{ text, kind }], stop?: { result, effects } }
 // kind: "ia" (texto do modelo) | "roteiro" (M1-M4/preço do doc) | "confirmacao"
@@ -123,7 +170,7 @@ export const makeDraft = (texts, kind = "ia") => ({
 });
 const texts = (d) => d.parts.map((p) => p.text);
 const withParts = (d, parts) => ({ ...d, parts });
-const part = (text, kind = "trava") => ({ text, kind });
+const part = (text, kind = "trava", extra = {}) => ({ text, kind, ...extra });
 const joined = (d) => texts(d).join(" ");
 
 // Oferta REAL do motor (R-020/R-026): pra onde cai qualquer oferta inventada,
@@ -152,9 +199,9 @@ export const GUARDS = [
       ] }) },
   { id: "noRepeat", rule: "R-009", enforce: true,
     applies: () => true,
-    check: (d, ctx) => d.parts.filter((p) => alreadySaid(p.text, ctx.msgs || []) && !((ctx.requestedDate || ctx.hourReply) && isOfferMsg(p.text)) && !isFreshOffer(p.text, ctx.msgs || [], ctx.nowIso)).map((p) => ({ why: "frase já dita", part: p.text.slice(0, 80) })),
+    check: (d, ctx) => d.parts.filter((p) => !p.reask && alreadySaid(p.text, ctx.msgs || []) && !((ctx.requestedDate || ctx.hourReply) && isOfferMsg(p.text)) && !isFreshOffer(p.text, ctx.msgs || [], ctx.nowIso)).map((p) => ({ why: "frase já dita", part: p.text.slice(0, 80) })),
     fix: (d, ctx) => {
-      const fresh = d.parts.filter((p) => !alreadySaid(p.text, ctx.msgs || []) || ((ctx.requestedDate || ctx.hourReply) && isOfferMsg(p.text)) || isFreshOffer(p.text, ctx.msgs || [], ctx.nowIso));
+      const fresh = d.parts.filter((p) => p.reask || !alreadySaid(p.text, ctx.msgs || []) || ((ctx.requestedDate || ctx.hourReply) && isOfferMsg(p.text)) || isFreshOffer(p.text, ctx.msgs || [], ctx.nowIso));
       if (fresh.length) return { draft: withParts(d, fresh), effects: [] };
       if (ctx.inCallWindow) return { draft: { ...d, parts: [], stop: { result: "silencio" } }, effects: [] };
       return { draft: { ...d, parts: [], stop: { result: "repeticao-humano" } }, effects: [
@@ -278,8 +325,9 @@ export const GUARDS = [
     check: (d) => d.parts.filter((p) => SLOTS_RX.test(p.text)).map((p) => ({ why: "horário antes da descoberta", part: p.text.slice(0, 80) })),
     fix: (d, ctx) => {
       const kept = d.parts.filter((p) => !SLOTS_RX.test(p.text));
-      if (!kept.some((p) => p.text.includes("?"))) kept.push(part(ctx.discoveryQuestion));
-      return { draft: withParts(d, kept), effects: [{ type: "log", level: "info", msg: "sdr-brain: trava de qualificação tirou a oferta de horário" }] };
+      const effects = [{ type: "log", level: "info", msg: "sdr-brain: trava de qualificação tirou a oferta de horário" }];
+      if (!kept.some((p) => isRealQuestion(p.text))) kept.push(...nextQuestion(ctx, effects));
+      return { draft: withParts(d, kept), effects };
     } },
   { id: "noOfferWithCall", rule: "R-038", enforce: true,
     // Conversa já marcada e sem pedido de remarcação: horário novo não sai
@@ -309,21 +357,31 @@ export const GUARDS = [
       ] };
     } },
   { id: "nextStep", rule: "R-031", enforce: true,
-    applies: (ctx) => !ctx.callAt && !!ctx.engaged && INTEREST_RX.test(ctx.lastInText || "") && !FORM_MSG_RX.test(ctx.lastInText || ""),
+    // TODA RESPOSTA AVANÇA (28/10): antes só valia com interesse na última
+    // mensagem; "Conta jurídica" → "Perfeito Kelly" e fim passava limpo
+    // (21 becos no raio-x). Agora vale sem call marcada, fora da janela da
+    // call, salvo despedida/adiamento/desinteresse do lead ou texto do form.
+    applies: (ctx) => !ctx.callAt && !ctx.inCallWindow && !FORM_MSG_RX.test(ctx.lastInText || "") && !ctx.closing && !ctx.postponed && !ctx.noInterest && !ctx.handoff,
     check: (d) => {
-      const semSaida = !d.parts.some((p) => p.text.includes("?"));
-      const diaSemHora = DAY_WORD_RX.test(joined(d)) && !HAS_HOUR_RX.test(joined(d));
+      const semSaida = !d.parts.some((p) => isRealQuestion(p.text) || isOfferMsg(p.text));
+      const diaSemHora = DAY_PROPOSAL_RX.test(joined(d)) && !HAS_HOUR_RX.test(joined(d));
       return semSaida || diaSemHora ? [{ why: semSaida ? "sem pergunta nem próximo passo" : "dia sem hora" }] : [];
     },
     fix: (d, ctx) => {
+      const effects = [{ type: "log", level: "info", msg: "sdr-brain: trava de beco emendou o próximo passo" }];
+      const parts = d.parts.slice();
+      if (!ctx.engaged) {
+        // Lead ainda não engajou: a saída é pergunta (pendente ou de descoberta), nunca horário.
+        parts.push(...nextQuestion(ctx, effects));
+        return { draft: withParts(d, parts), effects };
+      }
       const pair = ctx.suggestedPair || [], pool = ctx.offerPool || [];
       const push = ctx.slotsOffered && pair.length >= 2 ? offerLine(pair, { style: "fica-melhor", wnow: ctx.wnow })
         : pair.length >= 2 ? offerLine(pair, { wnow: ctx.wnow })
           : pool.length ? offerLine(pool.slice(0, 1), { wnow: ctx.wnow }) : NO_SLOT_TEXT["periodo-costuma"];
-      const parts = d.parts.slice();
       if (parts.length >= 3) parts[2] = { ...parts[2], text: `${parts[2].text} ${push}` };
       else parts.push(part(push));
-      return { draft: withParts(d, parts), effects: [{ type: "log", level: "info", msg: "sdr-brain: trava de beco emendou a oferta" }] };
+      return { draft: withParts(d, parts), effects };
     } },
   { id: "oneOfferPerReply", rule: "R-026", enforce: true,
     applies: () => true,
@@ -347,12 +405,26 @@ export const GUARDS = [
     check: (d) => d.parts.filter((p) => CALL_WORD_RX.test(p.text)).map((p) => ({ why: "\"call\" pro lead", part: p.text.slice(0, 80) })) },
   { id: "singleQuestion", rule: "R-003", enforce: false,
     applies: () => true,
-    check: (d) => { const n = (joined(d).match(/\?/g) || []).length; return n > 1 ? [{ why: `${n} perguntas na mesma resposta` }] : []; } },
+    // Saudação com "?" ("tudo bem?") não conta como pergunta (28/10).
+    check: (d) => { const n = (joined(d).replace(/[^?]*\?/g, (m) => (GREETING_Q_RX.test(m) ? "" : m)).match(/\?/g) || []).length; return n > 1 ? [{ why: `${n} perguntas na mesma resposta` }] : []; } },
   { id: "budget", rule: "R-003", enforce: false,
     applies: () => true,
     check: (d) => [...(d.parts.length > 3 ? [{ why: `${d.parts.length} balões` }] : []), ...d.parts.filter((p) => p.text.length > 900).map((p) => ({ why: "balão com mais de 900 caracteres" }))] },
 ];
 export const guardById = (id) => GUARDS.find((g) => g.id === id) || null;
+
+// Próxima pergunta do motor quando a resposta ficou sem saída e o lead ainda
+// não engajou: a pergunta PENDENTE (R-047, refeita uma vez, isenta da R-009)
+// ou a de descoberta que ainda não foi feita (R-011/R-012).
+export function nextQuestionFor(ctx) {
+  if (ctx.pendingQuestion && ctx.pendingQuestionId) return { text: ctx.pendingQuestion, reask: true };
+  return { text: ctx.discoveryQuestion || DISCOVERY_FALLBACK, reask: false };
+}
+function nextQuestion(ctx, effects) {
+  const nq = nextQuestionFor(ctx);
+  if (nq.reask) effects.push({ type: "stamp", patch: { reaskedFor: ctx.pendingQuestionId } });
+  return [part(nq.text, "trava", nq.reask ? { reask: true } : {})];
+}
 
 // A oferta no texto só tem horários que o lead recusou (R-040)? Lê os slots
 // de volta do texto com a mesma régua da cobrança (offeredSlotsIn), relativo

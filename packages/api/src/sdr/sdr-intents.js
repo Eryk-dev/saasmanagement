@@ -37,7 +37,10 @@ export const AFFILIATE_RX = /\b(sou|somos|trabalho como|atuo como)\s+(um[ao]?\s+
 export const DAY_WORD_RX = /\b(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|essa semana|semana que vem|pr[óo]xima semana|outra semana|semana seguinte)/i;
 export const HAS_HOUR_RX = /\b\d{1,2}\s?h(\d{2})?\b|\b\d{1,2}:\d{2}\b/;
 // Lead sinalizou INTERESSE ("sim", "ajudaria", "quero"...).
-export const INTEREST_RX = /\b(sim|ajudaria|com certeza|claro|tenho interesse|quero|pode ser|bora|show|top|gostei|perfeito)\b/i;
+// "Não quero começar" não é interesse (28/10, Helano: o "quero" dentro da
+// negação ligava a trava de beco e a oferta saiu em cima do "não quero").
+// Afirmação forte ("sem dúvida", "com certeza", "exatamente") engaja.
+export const INTEREST_RX = /(?<!\bn[ãa]o\s)(?<!\bnem\s)(?<!\bnunca\s)\b(sim|ajudaria|com certeza|sem d[úu]vida|exatamente|isso mesmo|faz sentido|seria [óo]timo|claro|tenho interesse|quero|pode ser|bora|show|top|gostei|perfeito)\b/i;
 // Lead no celular ("vou entrar pelo celular"): a dica do computador entra.
 export const LEAD_MOBILE_RX = /celular|pelo (?:cel|fone|telefone)\b|no telefone|pelo app/i;
 // LEAD NEGA A CONVERSA MARCADA ("não tenho call às 13h", "não marquei nada"):
@@ -46,12 +49,45 @@ export const DENY_CALL_RX = /n[ãa]o (?:tenho|marquei|agendei|combinei|sei de|le
 // DESCOBERTA ANTES DO HORÁRIO: só oferece horário depois que o lead disse que
 // a ferramenta ajudaria ou pediu pra agendar. A mensagem automática do form
 // não conta (Eduardo, 15/09).
-export const SCHEDULE_ASK_RX = /hor[áa]rio|agendar|marcar|agenda\b|dispon[íi]vel|quando|que horas|\bhoje\b|\bamanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|manh[ãa]|tarde|noite|\bvamos\b/i;
+// "Olá boa tarde" não é pedido de horário (28/10, Sousa: a saudação engajava
+// e a oferta saiu antes da descoberta): mesmo lookbehind da PERIOD_ASK_RX.
+export const SCHEDULE_ASK_RX = /hor[áa]rio|agendar|marcar|agenda\b|dispon[íi]vel|quando|que horas|\bhoje\b|\bamanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|(?<![\p{L}])(?<!\bbo[am]\s)(?:manh[ãa]|tarde|noite)|\bvamos\b/iu;
+// DOR DECLARADA pelo lead com as próprias palavras (28/10, Flavio "o
+// principal é compatibilidade", Guilherme "cadastrar em massa, título,
+// pesquisa de mercado"): engaja a conversa e diz de qual produto é a dor.
+// Pedido de preço e pergunta não contam.
+const PAIN_OEM_RX = /compatibilidade|c[óo]digo (?:oem|da pe[çc]a|original)|\boem\b|cadastr|subir (?:os )?an[úu]ncio|criar (?:os )?an[úu]ncio|montar (?:os )?an[úu]ncio|t[íi]tulo|descri[çc][ãa]o|ficha t[ée]cnica|an[úu]ncio por an[úu]ncio|engessad|tudo manual|manualmente|\bmanual\b|pesquisa de mercado|categoria/i;
+const PAIN_PRICE_RX = /margem|precific|promo[çc][õo]es?|central de promo|custo|imposto|\bdre\b|atualizar (?:os )?pre[çc]o|manter (?:os )?pre[çc]o|pre[çc]o (?:dos|das|de cada|por)/i;
+const PAIN_ADS_RX = /v[áa]rias contas|m[úu]ltiplas contas|gerenciar (?:as )?contas|integra[çc][ãa]o (?:entre|de|das|com) (?:as )?contas|integrar (?:as )?contas|contas (?:de|do|no) (?:mercado|ml|shopee)|clonar|clonagem|espelhar|estoque|atendimento|pergunta dos clientes|banid/i;
+export function statedPainOf(text) {
+  const raw = String(text || "");
+  if (!raw || raw.includes("?") || FORM_MSG_RX.test(raw) || PRICE_ASK_RX.test(raw)) return null;
+  if (PAIN_OEM_RX.test(raw)) return "oem";
+  if (PAIN_PRICE_RX.test(raw)) return "price";
+  if (PAIN_ADS_RX.test(raw)) return "ads";
+  return null;
+}
 export const leadEngaged = (msgs) => msgs.some((m) => {
   if (m.direction !== "in") return false;
   const t = String(m.transcript || m.text || "");
-  return !FORM_MSG_RX.test(t) && (INTEREST_RX.test(t) || SCHEDULE_ASK_RX.test(t) || HAS_HOUR_RX.test(t));
+  return !FORM_MSG_RX.test(t) && (INTEREST_RX.test(t) || SCHEDULE_ASK_RX.test(t) || HAS_HOUR_RX.test(t) || !!statedPainOf(t));
 });
+// Resposta que NÃO responde a pergunta pendente (R-047): saudação, "que bom",
+// "ok", "e você?", reação, emoji.
+export const NON_ANSWER_RX = /^(?:que bom|legal|ok|okay|blz|beleza|entendi|show|top|certo|otimo|bacana|massa|ah ta|a ta|ata|hum+|kk+|haha+|rs+|sim sim)[.!\s]*$|^(?:tudo (?:bem|bom|certo)|bem)(?:[,!.\s]*e (?:vc|voce|ce|tu|contigo)[?!.\s]*)?$|\be (?:vc|voce|ce|tu)\?*$/;
+export function isNonAnswer(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return true;
+  if (raw.startsWith("[reaction]") || /^[\p{Extended_Pictographic}\s]+$/u.test(raw)) return true;
+  if (GREETING_ONLY_RX.test(raw)) return true;
+  return NON_ANSWER_RX.test(plainReply(raw)) && raw.length < 40;
+}
+// Lead não entendeu a pergunta ou o termo (R-012, 28/10: Fábio "Nem sei o que
+// é isso" recebeu a mesma pergunta de volta, 3x em 60 s).
+export const CONFUSED_RX = /nem sei o que (?:e|eh|seria) isso|nao entendi|nao sei o que (?:e|eh|seria)|o que (?:e|eh|seria) (?:isso|oem|esse|essa|codigo oem)|\?\?\?|como assim|que (?:isso|oem)\?|nao sei do que (?:voce|vc|ta|esta) falando|nao faco ideia/;
+// Mensagem que fecha a conversa por ora (despedida, agradecimento, "ok"
+// solto): a trava de beco não emenda nada em cima dela (R-031).
+export const CLOSING_RX = /^(?:ok|okay|blz|beleza|show|fechado|combinado|perfeito|valeu|obrigad[oa]|brigad[oa]|tchau|ate (?:mais|logo|breve|la)|falou|bom dia|boa tarde|boa noite|certo|entendi|ta bom|tudo bem|de boa|tranquilo)(?:[!.,\s]+(?:ok|okay|blz|beleza|show|fechado|combinado|perfeito|valeu|obrigad[oa]|brigad[oa]|tchau|ate (?:mais|logo|breve|la)|falou|entao|entendi|ta bom|tudo bem|de boa|tranquilo|sim))*[!.\s]*$/;
 // Pedido de dia/período do lead: aí a oferta pode pular a vaga de hoje.
 // "boa tarde"/"bom dia"/"boa noite" é saudação, não período (R-032, caso Daniel
 // 15/10), e "amanhã" é dia, não "manhã": lookbehinds iguais aos do parser da
@@ -69,7 +105,9 @@ export const bareHour = (text) => {
 
 // ── Regex sobre o texto NORMALIZADO (plain) ─────────────────────────────────
 // LEAD SEM INTERESSE / PEDIU PAUSA (Leo, 08/10, caso Laion).
-export const NO_INTEREST_RX = /nao tenho (?:mais )?interesse|sem interesse|perdi o interesse|nao (?:quero|preciso|tenho) mais\b|vamos pausar|pausar por enquanto|deixa pra la|nao (?:vou|vamos) (?:seguir|continuar|prosseguir|fechar|contratar)|pode parar|para de (?:me )?mandar|nao me (?:chame|chama|mande|manda|procure|procura) mais|nao (?:e|eh) (?:o )?momento|por enquanto nao|agora nao quero|desisti|nao quero (?:agendar|marcar|demonstracao|conversa)/;
+// 28/10: "não quero começar", "não quero fazer call", "agora não", "ainda não é
+// o momento" também são desinteresse (Helano, Ronaldo, Marcelo, Luciene).
+export const NO_INTEREST_RX = /nao tenho (?:mais )?interesse|sem interesse|perdi o interesse|nao (?:quero|preciso|tenho) mais\b|vamos pausar|pausar por enquanto|deixa pra la|nao (?:vou|vamos) (?:seguir|continuar|prosseguir|fechar|contratar)|pode parar|para de (?:me )?mandar|nao me (?:chame|chama|mande|manda|procure|procura) mais|(?:ainda )?nao (?:e|eh) (?:o )?momento|por enquanto nao|agora nao(?: quero| da| consigo)?\b(?!,? (?:mas|porem|so|apenas))|desisti|nao quero (?:fazer )?(?:agendar|marcar|demonstracao|conversa|call|reuniao|video|comecar|participar|seguir|continuar|contratar|nada)|nao quero\b(?! (?:saber|perder|dizer|falar|que|cancelar|remarcar|mudar|trocar|adiar|desmarcar))/;
 // Lead na sala do Meet esperando.
 export const WAITING_ROOM_RX = /sozinh|ninguem (?:entrou|apareceu|chegou|na sala)|nao (?:entrou|apareceu|chegou|tem) ninguem|sala (?:esta |ta )?vazia|\bcade\b|\bkd\b|\b(?:estou|to) (?:esperando|aguardando)|aguardando (?:aqui|na sala|voces|o especialista)|esperando (?:aqui|na sala|voces)|me conecte|vai entrar\?|quem (?:vai|ta) (?:entrar|na sala)/;
 // Objeção/desistência depois da call marcada.
@@ -142,7 +180,7 @@ export function callbackDay(text, wnow) {
 // "Não" seco (ou quase).
 const NO_RX = /^(?:nao|n|nop|nope|negativo)[.!\s]*$|^nao (?:consigo|posso|quero|da|vai dar|obrigad[oa])[.!\s]*$/;
 // Lead adiou a decisão (R-031/R-041: "Combinado", sem re-oferta).
-const POSTPONE_RX = /\bte (?:retorno|respondo|aviso|chamo|falo)\b|\bdepois (?:eu )?te\b|\bmais tarde\b|\b(?:vou|preciso|tenho que|deixa eu) (?:ver|falar|conversar|alinhar) com\b|\bme (?:da|de) um tempo\b|\bvou pensar\b/;
+export const POSTPONE_RX = /\bte (?:retorno|respondo|aviso|chamo|falo)\b|\bdepois (?:eu )?te\b|\bmais tarde\b|\b(?:vou|preciso|tenho que|deixa eu) (?:ver|falar|conversar|alinhar) com\b|\bme (?:da|de) um tempo\b|\bvou pensar\b|\bt aviso\b|\bte aviso\b|\bqualquer coisa (?:eu )?te chamo\b/;
 // Pedido de horário sem dia ("podemos marcar um horário?", "quais horários tem?").
 const SCHEDULE_WORDS_RX = /hor[áa]rio|\bagendar|\bmarcar|\bagenda\b|dispon[íi]vel|que horas|quais (?:dias|datas)/i;
 const EMAIL_RX = /[\w.+-]+@[\w-]+\.[\w.-]+/;

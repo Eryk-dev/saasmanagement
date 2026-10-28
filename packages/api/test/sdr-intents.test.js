@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { wallFromNaive } from "../src/crm/agenda-slots.js";
-import { classifyInbound, INTENTS, LABELS, isShortYes, asksReschedule, burstInboundText, callbackDay } from "../src/sdr/sdr-intents.js";
+import { classifyInbound, INTENTS, LABELS, isShortYes, asksReschedule, burstInboundText, callbackDay, leadEngaged, statedPainOf, isNonAnswer, NO_INTEREST_RX, plainReply } from "../src/sdr/sdr-intents.js";
 
 const WNOW = wallFromNaive("2026-09-21T08:00"); // segunda-feira
 const OFFERED = [{ at: "2026-09-22T09:00", label: "amanhã às 9h" }, { at: "2026-09-22T17:00", label: "amanhã às 17h" }];
@@ -119,4 +119,30 @@ test("callbackDay: 'me chama na terça', 'contato somente a partir de terça', '
   assert.equal(callbackDay("Pode me chamar na sexta", WNOW), "2026-09-25");
   assert.equal(callbackDay("Pode ser terça às 10h?", WNOW), null, "pedido de horário não é retorno combinado");
   assert.equal(callbackDay("te retorno", WNOW), null, "sem dia não há o que carimbar");
+});
+
+// Raio-x 28/10: engajamento de verdade, desinteresse de verdade, dor declarada.
+test("leadEngaged: 'Olá boa tarde' não engaja; 'Sem dúvida alguma', dor declarada e hora engajam; 'Não quero começar' não #R-011 #R-083", () => {
+  const eng = (t) => leadEngaged([{ direction: "in", text: t }]);
+  for (const t of ["Olá boa tarde", "Boa noite!", "Bom dia", "Não quero começar", "Não tenho interesse", "Tudo bem e vc?", "Conta jurídica"]) assert.equal(eng(t), false, t);
+  for (const t of ["Sem dúvida alguma", "Com certeza", "Em suma todos mas o principal é compatibilidade", "Manual. Meu nicho é muito específico e precisa ser técnico porém a compatibilidade atrasa o processo.", "pode ser quarta às 10h", "sim", "quero ver", "Me interessa, pode ser à tarde?"]) assert.equal(eng(t), true, t);
+});
+
+test("statedPainOf: dor com as próprias palavras, por produto; pergunta e pedido de preço não contam #R-011", () => {
+  assert.equal(statedPainOf("o meu principal problema é cadastrar produtos em massa com qualidade, título, categoria e principalmente pesquisa de mercado"), "oem");
+  assert.equal(statedPainOf("Em suma todos mas o principal é compatibilidade"), "oem");
+  assert.equal(statedPainOf("E monitorar as promoções"), "price");
+  assert.equal(statedPainOf("já tomei prejuízo por precificar errado, a margem some"), "price");
+  assert.equal(statedPainOf("Integração entre contas"), "ads");
+  assert.equal(statedPainOf("Qual o valor?"), null);
+  assert.equal(statedPainOf("Vocês cobram por anúncios feitos?"), null);
+  assert.equal(statedPainOf("Oi, me chamo Rafael e quero saber mais sobre a LeverAds. Minha operação: autopeças"), null);
+  assert.equal(statedPainOf("Tudo bem e vc?"), null);
+});
+
+test("isNonAnswer e NO_INTEREST_RX: saudação/ack/'e você?' não respondem a pergunta pendente; 'não quero começar', 'agora não', 'ainda não é o momento' são desinteresse #R-047 #R-083", () => {
+  for (const t of ["Tudo bem e vc?", "Que bom", "ok", "Bom dia", "[reaction] 👍", "👍", "Legal"]) assert.equal(isNonAnswer(t), true, t);
+  for (const t of ["Conta jurídica", "Sim, vendo no ML", "Não vendo ainda", "Quanto custa?"]) assert.equal(isNonAnswer(t), false, t);
+  for (const t of ["Não quero começar", "Nao quero fazer call, queria ver os valores", "Agora não", "ainda não é o momento para a minha empresa", "Não tenho mais interesse"]) assert.equal(NO_INTEREST_RX.test(plainReply(t)), true, t);
+  for (const t of ["Não quero cancelar, só não consigo abrir o link", "quero saber mais sobre o Lever Price", "Não quero perder tempo, pode ser hoje?"]) assert.equal(NO_INTEREST_RX.test(plainReply(t)), false, t);
 });

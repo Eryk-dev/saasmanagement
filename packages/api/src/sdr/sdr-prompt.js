@@ -182,6 +182,15 @@ export function buildUserV2({ sdrName = "", nowLabel = "", lead = {}, digest = "
     !facts.engaged && !callAt && !["handoff", "janela_da_call", "pos_call", "remarcacao_pendente", "remarcacao_oferecida"].includes(state)
       ? "O LEAD AINDA NÃO ENGAJOU (não disse que a ferramenta ajudaria nem pediu horário): oferecer=false e slotIds vazio nesta resposta. Faça ou complete a descoberta com UMA pergunta; o sistema descarta horário oferecido antes disso."
       : "",
+    facts.pendingQuestion
+      ? `PERGUNTA PENDENTE: você perguntou "${String(facts.pendingQuestion).slice(0, 140)}" e ele respondeu só com saudação/ack ("tudo bem e vc?", "que bom"). Responda o que ele trouxe em uma frase curta e REFAÇA essa pergunta com outras palavras, na mesma resposta (oferecer=false). Nunca termine só no ack.`
+      : "",
+    facts.confused
+      ? `O LEAD NÃO ENTENDEU a pergunta ou o termo anterior ("nem sei o que é isso", "???"): explique em UMA frase simples (${script === "oem" ? "código OEM é o código original da peça; com ele o Lever OEM monta o anúncio inteiro" : script === "price" ? "o Lever Price mantém o preço pelo custo, margem e imposto que você cadastra" : "clonagem é espelhar os anúncios de uma conta nas outras"}) e faça uma pergunta DIFERENTE da anterior, mais simples. Nunca repita a mesma pergunta.`
+      : "",
+    facts.statedPain?.product
+      ? `DOR QUE ELE DESCREVEU com as próprias palavras: "${String(facts.statedPain.quote || "").slice(0, 160)}" (dor de ${facts.statedPain.product === "oem" ? "criação de anúncio por código OEM" : facts.statedPain.product === "price" ? "precificação/promoções (Lever Price)" : "gestão de várias contas (clonagem)"}). NÃO pergunte a dor de novo: reconheça em uma frase, faça a ponte com o que a demonstração mostra e convide (oferecer=true se não houver conversa marcada).`
+      : "",
     "O que vale agora:",
     promptBlockFor(state, script) || "- (nenhuma regra específica deste estado: valem as regras do núcleo)",
     ...agenda,
