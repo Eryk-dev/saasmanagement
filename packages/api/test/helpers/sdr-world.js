@@ -51,7 +51,7 @@ export async function world({ lead = {}, messages = [], sdrBot = {}, users, toda
   return repo;
 }
 
-export function makeFakes({ decisions = [] } = {}) {
+export function makeFakes({ decisions = [], approved = [] } = {}) {
   const sent = [];
   const calls = [];
   const meets = [];
@@ -60,6 +60,14 @@ export function makeFakes({ decisions = [] } = {}) {
   const wa = {
     configured: () => true,
     sendText: async (to, text) => { sent.push({ to, text }); return { messageId: "wm_" + sent.length }; },
+    // Template (indicação, R-043): grava como texto "[template nome] params".
+    sendTemplate: async (to, name, lang, components) => {
+      const params = (components.find((c) => c.type === "body")?.parameters || []).map((p) => p.text);
+      sent.push({ to, text: `[template ${name}] ${params.join(" | ")}`, template: name, params });
+      return { messageId: "wm_t" + sent.length };
+    },
+    listTemplates: async () => approved.map((n) => ({ name: n })),
+    tokenWabaIds: async () => ["waba_test"],
   };
   const anthropic = {
     configured: () => true,

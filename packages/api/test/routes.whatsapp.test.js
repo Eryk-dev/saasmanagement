@@ -719,7 +719,15 @@ test("webhook POST: cartão de contato vira texto com nome e telefone; tipo desc
   const ct = await repo.get("wa_messages", "wamid.CT1");
   assert.equal(ct.text, "👤 Rafael Sócio · +55 41 99999-1234 · rafael@loja.com");
   assert.equal(ct.raw, undefined);
+  // Cartão também vai estruturado (R-043), e "null" literal nunca aparece no texto (28/10).
+  assert.deepEqual(ct.contacts, [{ name: "Rafael Sócio", phones: ["+55 41 99999-1234"], emails: ["rafael@loja.com"], org: "" }]);
   assert.equal((await repo.get("wa_threads", "5541988887777")).lastText, ct.text);
+  const nulo = { entry: [{ changes: [{ value: { contacts: [{ profile: { name: "Alexandre" } }], messages: [{
+    from: "5541988887777", id: "wamid.CT2", timestamp: "1720000100", type: "contacts",
+    contacts: [{ name: { formatted_name: "Loja Celular" }, phones: [{ phone: "+55 11 99811-6287", wa_id: "5511998116287" }], org: { company: "null" } }],
+  }] } }] }] };
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: nulo });
+  assert.equal((await repo.get("wa_messages", "wamid.CT2")).text, "👤 Loja Celular · +55 11 99811-6287");
 
   const unknown = { entry: [{ changes: [{ value: { messages: [{ from: "5541988887777", id: "wamid.UN1", timestamp: "1720000001", type: "order", order: { catalog_id: "c1" } }] } }] }] };
   await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: unknown });

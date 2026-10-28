@@ -190,4 +190,15 @@ export const SDR_TEMPLATES = [
     body: "Bom dia {{1}}, tudo bom? Temos um horário reservado para {{2}}, tudo certo? Na reunião vamos te mostrar na prática como o Lever Price cuida do preço e das promoções dos seus anúncios, além de tirar todas suas dúvidas. Posso contar com sua presença? Caso não consiga comparecer, me sinalize para liberar seu horário, por favor.",
     example: ["Roberto", "hoje às 11h"],
   },
+  // ── INDICAÇÃO (Leo, 28/10/2026) ──────────────────────────────────────────
+  // Lead pediu pra falar com outra pessoa ("chama a Larissa", cartão de
+  // contato): o motor cria o card do indicado e chama por este template,
+  // dizendo quem indicou. Até a Meta aprovar, o motor pede pro time chamar.
+  {
+    name: "sdr_indicacao",
+    category: "MARKETING",
+    language: "pt_BR",
+    body: "Oiii {{1}}, tudo bem? Aqui é a Manuela, da LeverAds. {{2}} me passou seu contato e pediu pra eu te explicar como funciona o {{3}}. Posso te mostrar por aqui?",
+    example: ["Larissa", "Alexandre", "Lever OEM"],
+  },
 ];

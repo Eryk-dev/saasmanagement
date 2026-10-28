@@ -3,7 +3,7 @@
 GERADO de `packages/api/src/sdr/sdr-rules.js` (`node src/sdr/sdr-rules.js --write`). Não edite à mão: o
 teste `sdr-rulebook.test.js` recusa o arquivo quando ele difere do registro.
 
-78 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
+79 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
 origem (data, quem pediu, PR ou print), o enunciado, os estados da conversa e o roteiro em que vale, a camada
 que a executa e as exceções. Toda regra ativa tem pelo menos um teste ou cena com a tag `#R-nnn`.
 
@@ -126,6 +126,12 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 - Origem: 2026-09-17, raio-x E2 (#1029 (silêncio logo após os 2 horários em 42 conversas))
 - Regra: Na primeira vez que oferece horário, o balão anterior diz em uma frase o que é a demonstração (o especialista mostra a ferramenta rodando na operação dele). Depois disso a ponte não se repete.
 - Vale em: estados engajado; roteiro todos; executada por prompt
+
+### R-043 · Pedido de terceiro vira contato real
+
+- Origem: 2026-10-28, Leo (prints 28/10 (Alexandre: '11998116287 Chama Larissa' → 'vou encaminhar' e nada; Flavio mandou o cartão da gerente). Decisão do Leo: chamar o indicado, com template dizendo quem indicou)
+- Regra: Lead que pede pra falar com outra pessoa (nome + número no texto, ou cartão de contato 👤): o motor cria o card do indicado (dedup por telefone; mesmo produto e dor de origem; origem "Indicação · <lead>"), manda o template sdr_indicacao ("<Indicado>, <Lead> me passou seu contato e pediu pra eu te explicar como funciona o <produto>") e só então responde "acabei de chamar". Template não aprovado ou envio falhou: resposta honesta ("vou pedir pro time chamar") e handoff "terceiro" pro time. Sem número: pede o número. Nunca "vou encaminhar" sem executar.
+- Vale em: estados todos; roteiro todos; executada por intent, effects, template, alerta, prompt
 
 ## Agenda e oferta de horário
 
