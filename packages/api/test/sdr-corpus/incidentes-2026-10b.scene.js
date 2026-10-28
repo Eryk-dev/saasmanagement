@@ -87,4 +87,47 @@ export default [
     inbounds: ["Oi"],
     expect: { result: "responder", sent: [/Perfeito Rafael/, /^Consigo hoje às \d{1,2}h ou às \d{1,2}h, qual fica melhor pra você\?$/], notSent: [/[Qq]ual dos dois horários/], state: "engajado", shadowSame: true },
   },
+  {
+    id: "C-R042-01", title: "Roberto (22/10): 'podemos deixar pra outra semana?' com a call de hoje no card libera a call e oferece a semana que vem, sem link e sem 'te passo as opções'",
+    rules: ["R-042", "R-030", "R-038"],
+    world: {
+      sdrBot: V2,
+      lead: { stage: "Call agendada", callAt: "2026-08-19T13:00", closer: "pl", callUrl: "https://meet.google.com/jqi-vhfd-dmu", confirmLog: { at: "2026-08-19T13:00", manha: ISO("2026-08-19T11:00:00Z") } },
+      messages: [
+        { direction: "out", author: "sdr-bot", text: "Bom dia Rafael, tudo bom? Temos um horário reservado para hoje às 13h, tudo certo?", at: ISO("2026-08-19T11:00:00Z") },
+        { direction: "in", text: "Bom dia", at: ISO("2026-08-19T12:59:00Z") },
+      ],
+    },
+    ai: [{ acao: "responder", mensagens: ["Claro Rafael, tranquilo", "Te passo as próximas opções disponíveis para remarcar"], oferecer: false }],
+    inbounds: ["Podemos deixar pra outra semana?"],
+    expect: { result: "remarcar-direto", sent: [/^Claro Rafael, já liberei hoje \(19\/08\) às 13h aqui$/, /^Consigo segunda às 9h ou às 11h, qual fica melhor pra você\?$/], notSent: [/link/, /te passo/i, /Te espero/], lead: { callAt: "" } },
+  },
+  {
+    id: "C-R046-01", title: "Janaina (23/10): 'Não consigo participar da reunião' + 'me explica por áudio?' em dois balões: o cancelamento é lido da rajada inteira",
+    rules: ["R-046", "R-036"],
+    world: {
+      sdrBot: V2,
+      lead: { stage: "Call agendada", callAt: "2026-08-19T14:00", closer: "pl" },
+      messages: [
+        { direction: "out", author: "sdr-bot", text: "Bom dia Rafael! Ainda consigo hoje às 14h ou às 17h, qual fica melhor pra você?", at: ISO("2026-08-19T12:20:00Z") },
+        { direction: "in", text: "Oiiii", at: ISO("2026-08-19T12:58:00Z") },
+        { direction: "in", text: "Não consigo participar da reunião", at: ISO("2026-08-19T12:59:00Z") },
+      ],
+    },
+    ai: [{ acao: "responder", mensagens: ["Ahh entendi Rafael, por áudio por aqui não consigo te mostrar o Price funcionando"], oferecer: false }],
+    inbounds: ["Consegue me explicar por áudio por aqui?"],
+    expect: { result: "desmarcar", sent: [/desmarquei/i], lead: { callAt: "" } },
+  },
+  {
+    id: "C-R090-02", title: "Margarete (26/10): lead desqualificado em julho manda o formulário de novo: o card reabre e o robô atende",
+    rules: ["R-090"],
+    world: {
+      sdrBot: V2,
+      lead: { disqualified: true, stage: "Qualificando", createdAt: ISO("2026-07-04T22:00:00Z"), sourcePain: "PRICE" },
+    },
+    ai: [{ acao: "responder", mensagens: ["Oiii Rafael, tudo bem?", "Você vende em marketplace com conta própria?"], oferecer: false }],
+    inbounds: ["Oi, me chamo Rafael e quero saber mais sobre o Lever Price. Minha operação: Casa & Decoração, Até 500 anúncios ativos, Até 200 pedidos por mês."],
+    // O card reabre em Novo lead e a resposta do robô já o move pra Qualificando (fluxo normal de etapa).
+    expect: { result: "responder", sent: [/Oiii Rafael, tudo bem\?/], lead: { disqualified: false, stage: "Qualificando" } },
+  },
 ];

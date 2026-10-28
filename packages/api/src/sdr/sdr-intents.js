@@ -17,7 +17,7 @@
 // R-036 (cancelar com consentimento), R-037 (nega a call), R-038 (objeção),
 // R-039 (lead na sala), R-050/R-051 (preço), R-083 (desinteresse), R-084.
 
-import { sdrAgendaWindow } from "./sdr-agenda.js";
+import { sdrAgendaWindow, firstDayMentioned } from "./sdr-agenda.js";
 import { FORM_MSG_RX, AUTO_REPLY_RX, GREETING_ONLY_RX, ACCEPT_RX, BARE_HOUR_RX, acceptedSlot } from "./sdr-signals.js";
 
 // ── Forma do texto ──────────────────────────────────────────────────────────
@@ -98,8 +98,47 @@ export function rescheduleReply(text, wnow) {
       || HAS_HOUR_RX.test(t) || sdrAgendaWindow([{ direction: "in", text }], wnow).requested) return "accepted";
   return "pending";
 }
-// Pedido de remarcação em texto livre (sem a pergunta do robô antes).
-export const RESCHEDULE_ASK_RX = /remarc|reagend|mudar (?:o |de |esse )?(?:hor|dia)|trocar (?:o |de |esse )?(?:hor|dia)|outro hor|outra data|outro dia|adiar/;
+// Pedido de remarcação/adiamento em texto livre (sem a pergunta do robô
+// antes). 28/10 (Roberto, Cecilia, Rodrigo): "podemos deixar pra outra
+// semana?", "estou em viagem", "se tiver outro horário seria melhor" não
+// casavam, e o lembrete lia "podemos" como confirmação.
+export const RESCHEDULE_ASK_RX = /remarc|reagend|mudar (?:o |de |esse |pra |para )?(?:hor|dia|data)|trocar (?:o |de |esse )?(?:hor|dia|data)|outro hor|outra hora|outra data|outro dia|outro momento|adiar|(?:deixar|deixa|passar|passa|jogar|joga|ficar|fica|empurrar|mudar|muda|trocar|troca) pra (?:outr[ao]|a |o |depois|mais pra frente|semana|segunda|terca|quarta|quinta|sexta|amanha|proxima)|outra semana|proxima semana|semana que vem|semana seguinte|mais pra frente|(?:estou|to|estarei|vou estar) (?:em )?viage|viajando|nao (?:vou|vamos) (?:conseguir|poder)(?! (?:acessar|abrir|entrar|usar))|nao conseguirei|(?:se )?tiver outro horario|tem outro horario/;
+// "Pede pra remarcar/adiar" de verdade (R-042): a regex acima menos a negação
+// dela ("não quero remarcar", "não precisa mudar").
+export function asksReschedule(text) {
+  const t = plainReply(text);
+  if (/\bnao (?:quero|precisa|preciso|vou|vamos) (?:remarcar|reagendar|mudar|trocar|adiar)/.test(t)) return false;
+  return RESCHEDULE_ASK_RX.test(t);
+}
+// RAJADA (R-046): tudo que o lead mandou desde a última fala nossa (balões
+// com até 10 min entre si), num texto só, do mais antigo pro mais novo. Os
+// gates determinísticos leem isto, não só o último balão (28/10, Janaina:
+// "Não consigo participar da reunião" + "me explica por áudio?" em dois
+// balões, e o cancelamento nunca foi lido).
+export function burstInboundText(msgs = [], gapMs = 10 * 60_000) {
+  const out = [];
+  let lastMs = NaN;
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    if (m.direction !== "in") break;
+    const ms = Date.parse(m.at || "");
+    if (out.length && Number.isFinite(ms) && Number.isFinite(lastMs) && lastMs - ms > gapMs) break;
+    out.unshift(String(m.transcript || m.text || ""));
+    if (Number.isFinite(ms)) lastMs = ms;
+  }
+  return out.filter(Boolean).join(". ");
+}
+// RETORNO COMBINADO (R-084, 28/10): "me chama na terça", "contato só a partir
+// de segunda", "te chamo amanhã" viram um dia; o motor carimba
+// sdrLog.callbackAt e a escada (seção 1f) chama nesse dia, em vez de a
+// promessa morrer na conversa (Reginaldo, Robson, Othelo, Maurílio).
+const CALLBACK_RX = /\bme (?:chama|chame|liga|ligue|procura|procure|manda (?:uma )?mensagem|retorna|retorne)\b|\bte (?:chamo|ligo|procuro|retorno|falo)\b|\bcontato (?:so |somente |apenas )?a partir d[ea]\b|\b(?:so|somente|apenas) (?:a partir d[ea] )?(?:segunda|terca|quarta|quinta|sexta|amanha|semana que vem|proxima semana)\b|\bpode me chamar\b/;
+export function callbackDay(text, wnow) {
+  const t = plainReply(text);
+  if (!CALLBACK_RX.test(t) || !wnow) return null;
+  const day = firstDayMentioned(text, wnow);
+  return day && day > wnow.toISOString().slice(0, 10) ? day : null;
+}
 // "Não" seco (ou quase).
 const NO_RX = /^(?:nao|n|nop|nope|negativo)[.!\s]*$|^nao (?:consigo|posso|quero|da|vai dar|obrigad[oa])[.!\s]*$/;
 // Lead adiou a decisão (R-031/R-041: "Combinado", sem re-oferta).

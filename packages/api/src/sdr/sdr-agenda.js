@@ -221,6 +221,16 @@ function requestedWindow(text, at, offer = null) {
   return out;
 }
 
+// Primeiro dia citado num texto, sem exigir verbo de pedido ("me chama
+// segunda", "te chamo amanhã"): o retorno combinado (R-084) usa.
+export function firstDayMentioned(text, now = wallNow()) {
+  const t = normalize(text).trim();
+  const m = t.match(new RegExp(DAY_RX.source));
+  if (!m) return null;
+  const d = mentionDate(m[0], t, now);
+  return d ? ymd(d.date) : null;
+}
+
 // O que a nossa oferta disse: as horas citadas e o dia (lido com o mesmo
 // parser do pedido, relativo a quando a oferta saiu).
 function offeredWindow(text, at) {

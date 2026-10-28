@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { wallFromNaive } from "../src/crm/agenda-slots.js";
-import { classifyInbound, INTENTS, LABELS, isShortYes } from "../src/sdr/sdr-intents.js";
+import { classifyInbound, INTENTS, LABELS, isShortYes, asksReschedule, burstInboundText, callbackDay } from "../src/sdr/sdr-intents.js";
 
 const WNOW = wallFromNaive("2026-09-21T08:00"); // segunda-feira
 const OFFERED = [{ at: "2026-09-22T09:00", label: "amanhã às 9h" }, { at: "2026-09-22T17:00", label: "amanhã às 17h" }];
@@ -88,4 +88,35 @@ test("isShortYes é o 'sim' curto do roteiro: sem pergunta, preço, dia, hora ou
 test("saudação não é período, e 'amanhã' é dia (não 'manhã'): PERIOD_ASK_RX com os lookbehinds do parser #R-032 #R-022", () => {
   for (const t of ["Olá, boa tarde", "Bom dia!", "boa noite", "te retorno amanhã", "Amanhã pode ser"]) assert.ok(!classifyInbound(t).all.has("period_ask"), t);
   for (const t of ["pode ser de manhã", "à tarde fica melhor", "só depois das 15h", "mais tarde", "semana que vem", "prefiro de noite"]) assert.ok(classifyInbound(t).all.has("period_ask"), t);
+});
+
+// Raio-x 28/10: adiar com call marcada, rajada inteira e retorno combinado.
+test("asksReschedule: 'podemos deixar pra outra semana?', 'estou em viagem', 'se tiver outro horário' pedem remarcação; 'não quero remarcar' não #R-042", () => {
+  for (const t of ["Podemos deixar pra outra semana?", "Eu estou em viagem. Por isso pedi pra deixar pra outra semana", "Eu estava marcada para 9h mas se tiver outro horário seria melhor", "Quais seriam os horários disponíveis após o almoço? Preciso adiar", "não vou conseguir hoje, podemos remarcar", "Dá pra mudar pra quinta?"]) {
+    assert.equal(asksReschedule(t), true, t);
+  }
+  for (const t of ["Não quero remarcar, pode cancelar", "Pode confirmar", "Bom dia", "Sim, pode ser às 10h"]) assert.equal(asksReschedule(t), false, t);
+});
+
+test("burstInboundText: balões seguidos do lead (até 10 min, sem fala nossa) viram um texto só #R-046", () => {
+  const at = (m) => `2026-09-21T11:${String(m).padStart(2, "0")}:00Z`;
+  const msgs = [
+    { direction: "out", author: "sdr-bot", text: "Consigo hoje às 14h, fica bom pra você?", at: at(0) },
+    { direction: "in", text: "Não consigo participar da reunião", at: at(1) },
+    { direction: "in", text: "Consegue me explicar por áudio por aqui?", at: at(2) },
+  ];
+  assert.equal(burstInboundText(msgs), "Não consigo participar da reunião. Consegue me explicar por áudio por aqui?");
+  // Fala nossa no meio fecha a rajada; balão com mais de 10 min também.
+  assert.equal(burstInboundText([...msgs, { direction: "out", author: "sdr-bot", text: "Claro", at: at(3) }, { direction: "in", text: "ok", at: at(4) }]), "ok");
+  assert.equal(burstInboundText([{ direction: "in", text: "oi", at: "2026-09-21T10:00:00Z" }, { direction: "in", text: "tudo bem?", at: at(30) }]), "tudo bem?");
+  assert.equal(burstInboundText([]), "");
+});
+
+test("callbackDay: 'me chama na terça', 'contato somente a partir de terça', 'te chamo amanhã' viram o dia; conversa comum não #R-084", () => {
+  assert.equal(callbackDay("Me chama segunda e agendamos", WNOW), "2026-09-28");
+  assert.equal(callbackDay("Contato somente a partir de terça", WNOW), "2026-09-22");
+  assert.equal(callbackDay("Amanhã cedo te chamo aqui para combinarmos", WNOW), "2026-09-22");
+  assert.equal(callbackDay("Pode me chamar na sexta", WNOW), "2026-09-25");
+  assert.equal(callbackDay("Pode ser terça às 10h?", WNOW), null, "pedido de horário não é retorno combinado");
+  assert.equal(callbackDay("te retorno", WNOW), null, "sem dia não há o que carimbar");
 });

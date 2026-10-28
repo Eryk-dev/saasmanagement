@@ -31,9 +31,9 @@ import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, greetName,
 import { transcriber as defaultTranscriber } from "../whatsapp/transcribe.js";
 import { FORM_MSG_RX, SLOTS_RX, OFFER_CUE_RX, isOfferMsg, ACCEPT_RX, offeredSlotsIn, liveOfferedSlots, acceptedSlot, AUTO_REPLY_RX, BARE_HOUR_RX, collapseSameDay, expandSameDay, DEMO_RX, PITCH_RX } from "./sdr-signals.js";
 import { transcribeInbound } from "../whatsapp/wa-transcribe.js";
-import { AFFILIATE_RX, DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, NO_INTEREST_RX, LEAD_MOBILE_RX, DENY_CALL_RX, PERIOD_ASK_RX, PRICE_ASK_RX, WAITING_ROOM_RX, OBJECTION_RX, OEM_NO_RX, bareHour, leadEngaged, lastInboundText, plainReply, requestsCancellation, rescheduleReply, classifyInbound } from "./sdr-intents.js";
+import { AFFILIATE_RX, DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, NO_INTEREST_RX, LEAD_MOBILE_RX, DENY_CALL_RX, PERIOD_ASK_RX, PRICE_ASK_RX, WAITING_ROOM_RX, OBJECTION_RX, OEM_NO_RX, bareHour, leadEngaged, lastInboundText, plainReply, requestsCancellation, rescheduleReply, classifyInbound, asksReschedule, burstInboundText, callbackDay } from "./sdr-intents.js";
 import { stateOf, humanMuteHolds, GREETING_GAP_MS, DAILY_CAP, botTalkLast24h, handoffHolds } from "./sdr-state.js";
-import { PRICE_RX, REDIRECT_RX, DRY_REFUSAL_RX, FAKE_OFFER_RX, PROMISE_RX, SCHEDULE_ASK_Q_RX, DEVICE_ASK_RX, stripDuration, stripDeviceAsk, sameSentence, alreadySaid, isFreshOffer, makeDraft, validateDraft } from "./sdr-guards.js";
+import { PRICE_RX, REDIRECT_RX, DRY_REFUSAL_RX, FAKE_OFFER_RX, PROMISE_RX, SCHEDULE_ASK_Q_RX, DEVICE_ASK_RX, stripDuration, stripDeviceAsk, sameSentence, alreadySaid, isFreshOffer, realOfferOf, makeDraft, validateDraft } from "./sdr-guards.js";
 import { reofferText, offerLine, NO_SLOT_TEXT } from "./sdr-offer.js";
 // Compat: quem importava daqui continua funcionando (replay, testes).
 export { bareHour, DEMO_RX, PITCH_RX, PRICE_RX, stripDuration, stripDeviceAsk, sameSentence };
@@ -601,13 +601,25 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     // Elegibilidade — as mesmas cercas da Fase 1 + região do funil. Walk-in
     // (sem lead) pula as cercas: o card nasce limpo logo adiante.
     if (lead) {
-      if (lead.formExit || lead.disqualified) return null;
       if (lead.whatsappOptOut || lead.whatsappInvalid) return null;
       // Botão "parar robô" do inbox (lead.sdrOff): a conversa é 100% humana.
       if (lead.sdrOff) return null;
       if (isWonLead(product, lead)) return null;
       const kind = kindOf(product, lead.stage || firstStage(product));
-      if (!BRAIN_KINDS.has(kind)) return null;
+      // FORMULÁRIO NOVO DE LEAD PARADO (R-090, 28/10, Margarete: card
+      // Desqualificado de julho, preencheu o form de novo em 26/10 e ninguém
+      // respondeu, nem robô nem gente). Lead que volta pelo form é lead novo:
+      // o card reabre em Novo lead, o time é avisado e o robô atende.
+      const voltouPeloForm = FORM_MSG_RX.test(message?.text || "") && (lead.disqualified || !BRAIN_KINDS.has(kind)) && kind !== "call";
+      if (voltouPeloForm) {
+        const stage = firstStage(product);
+        await repo.update("leads", lead.id, { stage, stageSince: now().toISOString(), disqualified: false, lostReason: "", lostNote: "", sdrLog: { ...(lead.sdrLog || {}), reopenedAt: now().toISOString(), reopenedFrom: lead.stage || "" } });
+        lead = (await repo.get("leads", lead.id)) || { ...lead, stage, disqualified: false };
+        await raiseAlert(repo, thread, { text: `Lead antigo voltou pelo formulário (estava em ${lead.sdrLog?.reopenedFrom || "?"}) · card reaberto em ${stage}, robô atendendo` });
+      } else {
+        if (lead.formExit || lead.disqualified) return null;
+        if (!BRAIN_KINDS.has(kind)) return null;
+      }
     }
 
     // DEBOUNCE DE RAJADA (Leo, 23/08): espera o lead terminar de digitar. Ao
@@ -742,6 +754,11 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     // (respondeu positivo à descoberta ou pediu horário): antes disso, nada de
     // horário na resposta (Leo, 17/09).
     const lastInText = lastInboundText(msgs);
+    // RAJADA (R-046, 28/10): os gates determinísticos (cancelar, adiar,
+    // desinteresse, preço, nega a call) leem tudo que o lead mandou desde a
+    // última fala nossa; só hora solta/aceite ficam com o último balão.
+    const burstText = burstInboundText(msgs) || lastInText;
+    const burstPlain = plainReply(burstText);
     // Número solto depois de uma oferta nossa ("11") também é engajamento.
     const engaged = leadEngaged(msgs) || (slotsOffered && bareHour(lastInText) != null);
     // O que a agenda tinha na hora da decisão vai pro carimbo da thread
@@ -842,6 +859,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       hourReply, engaged, slotsOffered, inCallWindow, lastInText, wnow, discoveryQuestion, dayLabelOf, nowIso: new Date(nowMs).toISOString(),
       inboundText: String(message?.text || ""), priceDeferral: priceDeferral(nome, { script: st.scripted ? st.script : "" }),
       excludeSlots, refusedDays, takenSlot, leadHour: leadHour != null && leadHour >= 0 && leadHour <= 23 ? leadHour : null,
+      callLabel: lead.callAt ? slotLabelFull(lead.callAt, wnow) : "", rescheduling: !!awaitingReschedule || reschedule?.status === "offered",
     });
     // SOMBRA DO VALIDADOR (15/10): o texto cru da IA passa pelo validador em
     // enforce e o resultado é comparado com o que a cadeia legada produziu;
@@ -935,7 +953,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     // e porta aberta, sem pitch, sem preço, sem horário. O robô para e o time
     // decide o destino do card (nutrição ou desqualificação). Com call marcada
     // é objeção pré-call (tratada abaixo); pergunta junto fica com a IA.
-    if (!lead.callAt && !awaitingReschedule && !inCallWindow && !lastInText.includes("?") && NO_INTEREST_RX.test(plainIn) && !FORM_MSG_RX.test(lastInText)) {
+    if (!lead.callAt && !awaitingReschedule && !inCallWindow && !burstText.includes("?") && NO_INTEREST_RX.test(burstPlain) && !FORM_MSG_RX.test(burstText)) {
       const iso = new Date(nowMs).toISOString();
       await raiseAlert(repo, thread, { text: `Lead disse que não tem interesse / pediu pausa · robô acolheu e parou; decide nutrição ou desqualifica: "${String(message?.text || "").slice(0, 140)}"` });
       await stamp(lead, { handoffAt: iso, handoffKind: "desinteresse", noInterestAt: iso });
@@ -971,7 +989,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       promptVersion: cfg.promptVersion,
       state: st.state,
       script: st.script,
-      facts: { demoOffered, slotsOffered, engaged, firstReply, askingNow: PRICE_ASK_RX.test(lastInText) },
+      facts: { demoOffered, slotsOffered, engaged, firstReply, askingNow: PRICE_ASK_RX.test(burstText) },
     });
     // Quem respondeu e quanto custou: vai pro carimbo da thread e pro uso do dia.
     Object.assign(meta, { model: decision.model || "", usage: decision.usage || null, ms: decision.ms || 0, saas: product.id, promptVersion: decision.promptVersion || cfg.promptVersion, contract: offerContract });
@@ -985,14 +1003,40 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     // dizendo que não tem/não marcou, o card pode estar errado (Renan, 16/09:
     // callAt em UTC, lembrete disse 13h pra uma call das 10h). Gente confere;
     // o robô só avisa que vai confirmar. Vale seja qual for a ação da IA.
-    if (lead.callAt && DENY_CALL_RX.test(lastInText)) {
+    if (lead.callAt && DENY_CALL_RX.test(burstText)) {
       await raiseAlert(repo, thread, { text: `Lead nega a conversa marcada (${slotLabelFull(lead.callAt, wnow)}) · confere o card e responde: "${String(message?.text || "").slice(0, 140)}"` });
       await stamp(lead, { handoffAt: new Date(nowMs).toISOString(), denyCallGuardAt: new Date(nowMs).toISOString(), handoffKind: "nega-call" });
       await send(`${nome ? `${nome}, d` : "D"}eixa eu confirmar aqui com o especialista e já te retorno`, { path: "nega-call" });
       return "nega-call-humano";
     }
 
-    if (lead.callAt && requestsCancellation(lastInText)) decision.acao = "desmarcar";
+    // ADIAR/REMARCAR COM CALL MARCADA (R-042, 28/10: Roberto "podemos deixar
+    // pra outra semana?", Cecilia, Rodrigo): libera a call e oferece a janela
+    // pedida na MESMA resposta. Antes o classificador do lembrete lia
+    // "podemos" como confirmação (mandava o link), o cérebro prometia "te
+    // passo as opções" e os lembretes seguiam em cima de quem pediu pra adiar.
+    // Cancelamento seco ("não vou conseguir comparecer") segue na R-036.
+    // Lead que já diz a hora nova ("pode remarcar pra amanhã às 9h?") segue
+    // pelo remarcar da IA (R-035), que marca direto.
+    if (lead.callAt && !inCallWindow && asksReschedule(burstText) && !requestsCancellation(burstText) && !HAS_HOUR_RX.test(burstText)) {
+      const fresh = (await repo.get("leads", lead.id)) || lead;
+      if (fresh.callAt) {
+        const quando = slotLabelFull(fresh.callAt, wnow);
+        const lastInMsg = [...msgs].reverse().find((m) => m.direction === "in");
+        await cancelCall(repo, { lead: fresh, product, now: at });
+        await stamp(lead, { reschedule: { status: "offered", afterMessageId: lastInMsg?.id || "", at: lastInMsg?.at || at.toISOString() } });
+        await repo.update("leads", lead.id, { confirmLog: { ...(fresh.confirmLog && fresh.confirmLog.at === fresh.callAt ? fresh.confirmLog : { at: fresh.callAt }), rescheduleAskedAt: new Date(nowMs).toISOString() } }).catch(() => {});
+        await releaseHolds(repo, { saas: product.id, leadId: lead.id, now: at }).catch(() => {});
+        if (cancelCallMeet) cancelCallMeet(lead.id).catch(() => { /* o alerta cobre */ });
+        const line = suggestedPair.length ? realOfferOf({ ...guardCtx(), callAt: "" }) : NO_SLOT_TEXT.periodo;
+        await raiseAlert(repo, thread, { text: `Pediu pra remarcar a call de ${quando} · robô liberou o horário e ofereceu a agenda pedida: "${String(message?.text || "").slice(0, 120)}"` });
+        await send([`Claro${nome ? ` ${nome}` : ""}, já liberei ${quando} aqui`, line], { path: "remarcar-direto" });
+        if (aborted) return "abortado";
+        if (suggestedPair.length) await holdSlots(repo, { saas: product.id, leadId: lead.id, slots: suggestedPair, now: at }).catch(() => {});
+        return "remarcar-direto";
+      }
+    }
+    if (lead.callAt && requestsCancellation(burstText)) decision.acao = "desmarcar";
     // OBJEÇÃO DEPOIS DE MARCAR (raio-x 30/09, Guilherme: 4 min após marcar,
     // "acho que nao vou utilizar muito / ja uso upseller"; a IA calou, os
     // lembretes saíram, furou). Silêncio aqui não é silêncio: gente é avisada
@@ -1003,7 +1047,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     }
     if (decision.acao === "silencio" && !awaitingReschedule) return "silencio";
 
-    const askingNow = PRICE_ASK_RX.test(lastInboundText(msgs));
+    const askingNow = PRICE_ASK_RX.test(burstText);
     const priceAsks = msgs.filter((m) => m.direction === "in" && PRICE_ASK_RX.test(m.transcript || m.text || "")).length;
     // ACEITE + PREÇO NA MESMA MENSAGEM (raio-x 30/09): "Pode" + "Qual valor do
     // serviço" (Matheusv) e "Certo" + "E qual valor" (Luís) perdiam o aceite,
@@ -1220,6 +1264,15 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
         const sentSlots = offerSlots.length ? offerSlots : suggestedPair;
         if (sentSlots.length) await holdSlots(repo, { saas: product.id, leadId: lead.id, slots: sentSlots, now: at }).catch(() => {});
         await stamp(lead, { lastOffer: { at: new Date(nowMs).toISOString(), slots: sentSlots.map((x) => x.at) } }).catch(() => {});
+      }
+      // RETORNO COMBINADO (R-084): "me chama na terça" / "te chamo amanhã"
+      // vira carimbo que a escada (seção 1f do flow) executa no dia.
+      if (!lead.callAt) {
+        const cbDay = callbackDay(burstText, wnow) || callbackDay(finalParts.join(" "), wnow);
+        if (cbDay) {
+          const [y, mo, d] = cbDay.split("-").map(Number);
+          await stamp(lead, { callbackAt: new Date(Date.UTC(y, mo - 1, d, 12, 30)).toISOString(), callbackSetAt: new Date(nowMs).toISOString(), callbackDoneAt: null }).catch(() => {});
+        }
       }
       return "responder";
     }
