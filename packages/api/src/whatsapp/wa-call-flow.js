@@ -111,7 +111,7 @@ export const alertKind = (a) => (a?.kind === "lead" ? "lead" : "hot");
 // DOIS lembretes de cada um falharam sem levantar nada, e os dois deram no-show
 // (prod 24/08). Agora a chave carrega o horário da call — falha de lembrete de
 // uma call nova sempre alerta, repetição da mesma call não vira spam.
-const TEMPLATE_BLOCKED = new Set([131049, 131050]); // frequência da Meta · experimento
+const TEMPLATE_BLOCKED = new Set([131049, 131050, 130472]); // frequência da Meta · experimento · número no grupo de experimento da Meta (28/10: Caio, Acioly)
 const TEMPLATE_BLOCKED_RX = /healthy ecosystem|part of an experiment/i;
 
 export async function flagFailedBotSend(repo, waMessageId, { now = new Date() } = {}) {

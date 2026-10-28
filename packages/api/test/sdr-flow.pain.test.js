@@ -102,3 +102,12 @@ test("leadPainFocus: dor declarada pivota o foco (Price→OEM, OEM→clonagem) s
   assert.equal(leadPainFocus(product, { declaredPain: "price" }).mode, "price");
   assert.equal(leadPainFocus(product, {}), null);
 });
+
+test("leadDigest: valor sem rótulo no painel vira texto humano ('2-3' → '2 a 3 contas', '0-500' → 'até 500 anúncios', 'outros' some) #R-100", async () => {
+  const { leadDigest } = await import("../src/sdr/sdr-flow.js");
+  const product = { leadQuestions: [{ key: "accounts", label: "Contas", options: [{ value: "3-5", label: "3 a 5 contas" }] }] };
+  assert.equal(leadDigest(product, { accounts: "2-3", niche: "outros", listings: "0-500" }), "2 a 3 contas · até 500 anúncios");
+  assert.equal(leadDigest(product, { accounts: "3-5", niche: "autopecas", listings: "1000+" }), "3 a 5 contas · autopecas · mais de 1000 anúncios");
+  assert.equal(leadDigest(product, { accounts: "1", listings: "0-500" }), "1 · até 500 anúncios");
+  assert.equal(leadDigest(product, {}), "sua operação de marketplace");
+});
