@@ -90,7 +90,7 @@ export async function linkThreadToLead(repo, tid, lead) {
 // Grava uma mensagem e atualiza o thread. Idempotente por id (a Meta re-entrega
 // o webhook). Resolve o lead pelo telefone se leadId não veio. Retorna o id da
 // mensagem, ou null se foi deduplicada.
-export async function recordMessage(repo, { id, phone, direction, text = "", at, status = "", from = "", author = "", leadId, saas, contactName = "", waPhoneId = "", saasHint = "", media = null, raw = null, via = "" }) {
+export async function recordMessage(repo, { id, phone, direction, text = "", at, status = "", from = "", author = "", leadId, saas, contactName = "", waPhoneId = "", saasHint = "", media = null, raw = null, via = "", contacts = null }) {
   const rawTid = digits(phone || from);
   if (!rawTid) return null;
   // Casa com a thread JÁ existente pela chave NORMALIZADA (tolerante ao 9 e ao
@@ -142,6 +142,7 @@ export async function recordMessage(repo, { id, phone, direction, text = "", at,
     // Tipo que ainda não traduzimos: o payload bruto da Meta fica guardado pra
     // ninguém perder informação (o texto mostra só "[tipo]").
     ...(raw ? { raw } : {}),
+    ...(Array.isArray(contacts) && contacts.length ? { contacts } : {}),
     // Origem do envio automático: "flow" = poller do SDR (toque, lembrete,
     // escada, resgate), fora do teto de conversa do robô (sdr-state.js).
     ...(via ? { via } : {}),

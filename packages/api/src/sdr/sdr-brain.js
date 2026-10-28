@@ -31,7 +31,9 @@ import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, greetName,
 import { transcriber as defaultTranscriber } from "../whatsapp/transcribe.js";
 import { FORM_MSG_RX, SLOTS_RX, OFFER_CUE_RX, isOfferMsg, ACCEPT_RX, offeredSlotsIn, liveOfferedSlots, acceptedSlot, AUTO_REPLY_RX, BARE_HOUR_RX, collapseSameDay, expandSameDay, DEMO_RX, PITCH_RX } from "./sdr-signals.js";
 import { transcribeInbound } from "../whatsapp/wa-transcribe.js";
-import { AFFILIATE_RX, DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, NO_INTEREST_RX, LEAD_MOBILE_RX, DENY_CALL_RX, PERIOD_ASK_RX, PRICE_ASK_RX, WAITING_ROOM_RX, OBJECTION_RX, OEM_NO_RX, bareHour, leadEngaged, lastInboundText, plainReply, requestsCancellation, rescheduleReply, classifyInbound, asksReschedule, burstInboundText, callbackDay, statedPainOf, isNonAnswer, CONFUSED_RX, CLOSING_RX, POSTPONE_RX } from "./sdr-intents.js";
+import { AFFILIATE_RX, DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, NO_INTEREST_RX, LEAD_MOBILE_RX, DENY_CALL_RX, PERIOD_ASK_RX, PRICE_ASK_RX, WAITING_ROOM_RX, OBJECTION_RX, OEM_NO_RX, bareHour, leadEngaged, lastInboundText, plainReply, requestsCancellation, rescheduleReply, classifyInbound, asksReschedule, burstInboundText, callbackDay, statedPainOf, isNonAnswer, CONFUSED_RX, CLOSING_RX, POSTPONE_RX, referralIn } from "./sdr-intents.js";
+import { SDR_TEMPLATES } from "./sdr-templates.leverads.js";
+import { resolveWabaId } from "../whatsapp/wa-health.js";
 import { stateOf, humanMuteHolds, GREETING_GAP_MS, DAILY_CAP, botTalkLast24h, handoffHolds } from "./sdr-state.js";
 import { PRICE_RX, REDIRECT_RX, DRY_REFUSAL_RX, FAKE_OFFER_RX, PROMISE_RX, SCHEDULE_ASK_Q_RX, DEVICE_ASK_RX, stripDuration, stripDeviceAsk, sameSentence, alreadySaid, isFreshOffer, realOfferOf, discoveryQuestionFor, GREETING_Q_RX, isRealQuestion, nextQuestionFor, DAY_PROPOSAL_RX, makeDraft, validateDraft } from "./sdr-guards.js";
 import { reofferText, offerLine, NO_SLOT_TEXT } from "./sdr-offer.js";
@@ -913,6 +915,69 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     };
     // No roteiro OEM/Price a confirmação É a M3 (texto fixo do doc do Leo): rótulo "roteiro" pra exceção R-070 valer.
     const sendConfirm = (t) => send(t, { kind: st.scripted ? "roteiro" : "confirmacao", path: "agendar" });
+
+    // ── TERCEIRO INDICADO (R-043, Leo 28/10) ────────────────────────────────
+    // "11998116287 Chama Larissa explica pra ela" / cartão 👤 da gerente: o
+    // robô prometia encaminhar e nada acontecia (Alexandre cobrou no dia
+    // seguinte). Agora o motor cria o card do indicado (dedup por telefone),
+    // manda o template de indicação dizendo quem indicou e só então responde
+    // "acabei de chamar"; template não aprovado ou envio falhou = resposta
+    // honesta + handoff "terceiro" pro time chamar. Sem número: pede o número.
+    {
+      const ref = referralIn(burstText, { ownPhone: thread.phone || thread.id });
+      const already = ref?.phone && (lead.sdrLog?.referralAt || {})[ref.phone];
+      if (ref && !already) {
+        const iso = new Date(nowMs).toISOString();
+        const quem = ref.name ? greetName(ref.name) || ref.name : "";
+        if (!ref.phone) {
+          await stamp(lead, { referralAskedAt: iso });
+          await send(`Claro${nome ? ` ${nome}` : ""}, me manda o número ${quem ? `d${/a$/i.test(quem) ? "a" : "o"} ${quem}` : "dessa pessoa"} aqui que eu chamo`, { path: "terceiro-numero" });
+          return aborted ? "abortado" : "terceiro-numero";
+        }
+        const productLabel = st.script === "price" ? "Lever Price" : st.script === "oem" ? "Lever OEM" : "LeverAds";
+        let sentOk = false, refLead = null, why = "";
+        try {
+          refLead = await findLeadByPhone(repo, ref.phone);
+          if (!refLead) {
+            const stage = firstStage(product);
+            refLead = await repo.create("leads", {
+              saas: product.id, owner: lead.owner || (await autoLeadOwner(repo, product.id)) || "",
+              name: ref.name || "", nome: ref.name || "", phone: ref.phone, whatsapp: ref.phone,
+              stage, stageSince: iso, createdAt: iso, priority: "P2",
+              source: `Indicação · ${lead.name || "lead"} (WhatsApp)`, referredBy: lead.id,
+              nextActionAt: initialNextActionAt(product, stage) || "",
+              ...(lead.sourcePain ? { sourcePain: lead.sourcePain } : {}), ...(lead.niche ? { niche: lead.niche } : {}),
+              ...(lead.formProduct ? { formProduct: lead.formProduct } : {}), ...(lead.company ? { company: lead.company } : {}),
+            });
+            await logActivity(repo, { saas: product.id, lead: refLead.id, type: "system", text: `Lead criado pelo SDR automático: indicado por ${lead.name || lead.id} na conversa do WhatsApp` }).catch(() => {});
+          }
+          const tplName = cfg.templates?.referral || "sdr_indicacao";
+          let approved = false;
+          try {
+            const wabaId = await resolveWabaId(repo, wa);
+            approved = !!wabaId && typeof wa.listTemplates === "function" && (await wa.listTemplates(wabaId)).some((t) => t.name === tplName);
+          } catch { approved = false; }
+          if (refLead.sdrLog?.firstTouchAt) { sentOk = true; why = "já estava em conversa"; }
+          else if (approved && typeof wa.sendTemplate === "function") {
+            const params = [quem || "tudo bem", nome || lead.name || "Um cliente", productLabel];
+            const components = [{ type: "body", parameters: params.map((t) => ({ type: "text", text: String(t) })) }];
+            const { messageId } = await wa.sendTemplate(ref.phone, tplName, "pt_BR", components, { phoneId });
+            const body = (SDR_TEMPLATES.find((t) => t.name === tplName)?.body || tplName).replace(/\{\{\s*(\d+)\s*\}\}/g, (_, n) => params[Number(n) - 1] || "");
+            await recordMessage(repo, { id: messageId, phone: ref.phone, direction: "out", text: body, status: "sent", author: SDR_AUTHOR, waPhoneId: phoneId || "", saas: product.id, leadId: refLead.id, at: iso, via: "flow" });
+            await repo.update("leads", refLead.id, { sdrLog: { ...(refLead.sdrLog || {}), firstTouchAt: iso, firstTouchVia: "referral", referredFrom: lead.id } });
+            sentOk = true;
+          } else why = approved ? "sem envio de template" : "template de indicação não aprovado";
+        } catch (err) { why = String(err?.message || err).slice(0, 120); log.warn?.({ lead: lead.id, err: why }, "sdr-brain: indicação falhou"); }
+        await stamp(lead, { referralAt: { ...(lead.sdrLog?.referralAt || {}), [ref.phone]: iso }, ...(sentOk ? {} : { handoffAt: iso, handoffKind: "terceiro", handoffWhy: `pediu contato com ${quem || ref.phone}: ${why}` }) });
+        await raiseAlert(repo, thread, { text: sentOk
+          ? `Lead pediu pra falar com ${quem || "outra pessoa"} (${ref.phone}) · robô criou o card e já chamou no WhatsApp${refLead ? ` · card ${refLead.id}` : ""}`
+          : `Lead pediu pra falar com ${quem || "outra pessoa"} (${ref.phone}) · robô NÃO conseguiu chamar (${why}) · chama você${refLead ? ` · card ${refLead.id}` : ""}` });
+        await send(sentOk
+          ? `Combinado${nome ? ` ${nome}` : ""}, acabei de chamar ${quem || "essa pessoa"} no WhatsApp`
+          : `Combinado${nome ? ` ${nome}` : ""}, vou pedir pro time chamar ${quem || "essa pessoa"} ainda hoje`, { path: "terceiro" });
+        return aborted ? "abortado" : "terceiro";
+      }
+    }
 
     // ── ROTEIRO LEVER OEM (doc do Leo, 05/10/2026) ──────────────────────────
     // Lead de OEM anda num roteiro fixo; a IA só entra no que ele não cobre.

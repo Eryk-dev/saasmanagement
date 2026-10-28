@@ -42,15 +42,21 @@ function mediaOf(m) {
 // Cartão de contato compartilhado (type "contacts"): vira texto com nome,
 // telefones e e-mails — é o que o inbox mostra e o que o robô lê (15/10: o
 // Daniel mandou o contato do sócio e a tela só mostrou "[contacts]").
-function contactsText(m) {
+// 28/10: "null" literal no cartão (org/phone nulos vindos como string) não
+// vai pro texto; e o cartão também vai ESTRUTURADO na mensagem (`contacts`),
+// pro robô ler nome e número sem depender do texto (R-043).
+const clean = (v) => { const t = String(v ?? "").trim(); return t && t !== "null" && t !== "undefined" ? t : ""; };
+export function contactsOf(m) {
   const list = Array.isArray(m?.contacts) ? m.contacts : [];
-  const lines = list.map((c) => {
-    const name = c?.name?.formatted_name || [c?.name?.first_name, c?.name?.last_name].filter(Boolean).join(" ") || "";
-    const phones = (c?.phones || []).map((p) => p?.phone || (p?.wa_id ? `+${p.wa_id}` : "")).filter(Boolean);
-    const emails = (c?.emails || []).map((e) => e?.email).filter(Boolean);
-    const org = c?.org?.company || "";
-    return ["👤 " + (name || "contato"), ...phones, ...emails, org].filter(Boolean).join(" · ");
-  }).filter(Boolean);
+  return list.map((c) => ({
+    name: clean(c?.name?.formatted_name) || [clean(c?.name?.first_name), clean(c?.name?.last_name)].filter(Boolean).join(" "),
+    phones: (c?.phones || []).map((p) => clean(p?.phone) || (clean(p?.wa_id) ? `+${clean(p.wa_id)}` : "")).filter(Boolean),
+    emails: (c?.emails || []).map((e) => clean(e?.email)).filter(Boolean),
+    org: clean(c?.org?.company),
+  })).filter((c) => c.name || c.phones.length || c.emails.length);
+}
+function contactsText(m) {
+  const lines = contactsOf(m).map((c) => ["👤 " + (c.name || "contato"), ...c.phones, ...c.emails, c.org].filter(Boolean).join(" · "));
   return lines.length ? lines.join("\n") : "👤 contato";
 }
 
@@ -193,6 +199,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
                 at: m.timestamp ? new Date(Number(m.timestamp) * 1000).toISOString() : undefined,
                 from: m.from, status: "received", contactName,
                 waPhoneId: inPhoneId, saasHint: owner?.id || "", media: mediaOf(m), raw: rawOf(m),
+                ...(m.type === "contacts" ? { contacts: contactsOf(m) } : {}),
               });
               // Fluxo de permissão de ligação: 1º contato de lead conhecido →
               // pede pra ligar; resposta com fluxo aberto → alerta quente

@@ -243,3 +243,30 @@ export function classifyInbound(text, { wnow = null, offered = [], slotsOffered 
                                     : question ? "question" : "other";
   return { primary, all, hour, slot, window, email, plain };
 }
+
+// TERCEIRO INDICADO (R-043, 28/10: Alexandre "11998116287 Chama Larissa
+// explica para ela como funciona"; Flavio mandou o cartão da gerente). O lead
+// pede pra falar com outra pessoa e dá o número (texto ou cartão 👤): o motor
+// cria o card do indicado e chama. Sem número, pede o número.
+// Só com VERBO de ação (chama/fala com/explica pra/passa pra/pedir pra
+// chamar/te passo o contato): "esse número é do meu sócio" não é pedido.
+export const REFERRAL_RX = /\bchama(?:r)?\s+(?!(?:aqui|ai|depois|amanha|mais|hoje|agora|a gente|voce|vcs|voces|no|na|me|comigo|que|quando|sim|nao|um tempinho|antes)\b)[a-z]+|\bexplica(?:r)? (?:pra|para) (?:ela|ele)\b|\bfal(?:a|ar|e)\s+com\s+(?:a |o |minha |meu |nossa |nosso )(?!mim\b)|\bcontato\s+(?:d[ao]|dela|dele)\s+(?:minha |meu |nossa |nosso )?(?:gerente|socio|socia|responsavel|gestor|gestora|esposa|marido)|\b(?:vou te |te )?pass(?:o|ar)\s+(?:o|um)\s+(?:numero|contato)\b|\bpassa pra (?:ela|ele)\b|\bpedir (?:pra|para) (?:chamar|falar|ligar)\b|\bconversa com (?:ela|ele)\b|\bliga pra (?:ela|ele|minha|meu)\b/;
+const CARD_RX = /👤\s*([^·\n]+?)\s*(?:·|$)/;
+const PHONE_RX = /\+?\d[\d\s().-]{7,}\d/g;
+export function referralIn(text, { ownPhone = "" } = {}) {
+  const raw = String(text || "");
+  const plain = plainReply(raw);
+  const card = raw.match(CARD_RX);
+  const asked = REFERRAL_RX.test(plain) || !!card;
+  if (!asked) return null;
+  const own = String(ownPhone || "").replace(/\D/g, "").slice(-8);
+  const phones = [...raw.matchAll(PHONE_RX)].map((m) => m[0].replace(/\D/g, "")).filter((d) => d.length >= 10 && d.length <= 13 && !(own && d.endsWith(own)));
+  let phone = phones[0] || "";
+  if (phone && !phone.startsWith("55") && (phone.length === 10 || phone.length === 11)) phone = `55${phone}`;
+  let name = card ? card[1].trim() : "";
+  if (!name) {
+    const m = raw.match(/(?:[Cc]hama(?:r)?|[Ff]ala(?:r)? com|[Cc]ontato d[ao]|[Pp]assa pra|[Ee]xplica pra)\s+(?:a |o |minha |meu |nossa |nosso )?([A-ZÀ-Ú][\wÀ-ú]+)/) || raw.match(/(?:^|\s)[ée] [ao] ([A-ZÀ-Ú][\wÀ-ú]+)/);
+    if (m && !/^(?:Ela|Ele|Ela\b|Bom|Boa|Para|Pra)$/.test(m[1])) name = m[1];
+  }
+  return { phone, name: name.slice(0, 60), asked: true };
+}

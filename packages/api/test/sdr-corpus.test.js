@@ -22,7 +22,7 @@ const THREAD = "5541999990000";
 
 async function run(sc) {
   const repo = await world(sc.world || {});
-  const fakes = makeFakes({ decisions: sc.ai || [] });
+  const fakes = makeFakes({ decisions: sc.ai || [], approved: sc.approved || [] });
   const brain = brainOf(repo, fakes);
   let result = null, seq = 500;
   for (const text of sc.inbounds || []) {
@@ -32,7 +32,8 @@ async function run(sc) {
   }
   const lead = await repo.get("leads", "L1");
   const thread = await repo.get("wa_threads", THREAD);
-  return { result, lead, thread, sent: fakes.sent.map((s) => s.text), calls: fakes.calls };
+  const leads = await repo.list("leads");
+  return { result, lead, thread, leads, sent: fakes.sent.map((s) => s.text), calls: fakes.calls };
 }
 
 for (const f of files) {
@@ -47,6 +48,9 @@ for (const f of files) {
       for (const rx of e.sent || []) assert.ok(r.sent.some((t) => rx.test(t)), `devia ter enviado ${rx}; enviou: ${JSON.stringify(r.sent)}`);
       for (const rx of e.notSent || []) assert.ok(!r.sent.some((t) => rx.test(t)), `não devia ter enviado ${rx}; enviou: ${JSON.stringify(r.sent)}`);
       for (const [k, v] of Object.entries(e.lead || {})) assert.equal(r.lead[k], v, `lead.${k}`);
+      // `otherLead`: um lead além do L1 com estes campos (o indicado, R-043).
+      if (e.otherLead) assert.ok(r.leads.some((l) => l.id !== "L1" && Object.entries(e.otherLead).every(([k, v]) => (v instanceof RegExp ? v.test(String(l[k] || "")) : l[k] === v))), `devia existir outro lead com ${JSON.stringify(e.otherLead)}; leads: ${JSON.stringify(r.leads.map((l) => ({ id: l.id, name: l.name, phone: l.phone, source: l.source })))}`);
+      if (e.leadCount != null) assert.equal(r.leads.length, e.leadCount, "quantidade de leads");
       if (e.state) assert.equal(r.thread.brain?.state, e.state, "estado carimbado");
       if (e.intent) assert.equal(r.thread.brain?.intent, e.intent, "intenção carimbada");
       const vio = r.thread.brain?.audit?.violations || [];

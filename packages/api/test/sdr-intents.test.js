@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { wallFromNaive } from "../src/crm/agenda-slots.js";
-import { classifyInbound, INTENTS, LABELS, isShortYes, asksReschedule, burstInboundText, callbackDay, leadEngaged, statedPainOf, isNonAnswer, NO_INTEREST_RX, plainReply } from "../src/sdr/sdr-intents.js";
+import { classifyInbound, INTENTS, LABELS, isShortYes, asksReschedule, burstInboundText, callbackDay, leadEngaged, statedPainOf, isNonAnswer, NO_INTEREST_RX, plainReply, referralIn } from "../src/sdr/sdr-intents.js";
 
 const WNOW = wallFromNaive("2026-09-21T08:00"); // segunda-feira
 const OFFERED = [{ at: "2026-09-22T09:00", label: "amanhã às 9h" }, { at: "2026-09-22T17:00", label: "amanhã às 17h" }];
@@ -145,4 +145,14 @@ test("isNonAnswer e NO_INTEREST_RX: saudação/ack/'e você?' não respondem a p
   for (const t of ["Conta jurídica", "Sim, vendo no ML", "Não vendo ainda", "Quanto custa?"]) assert.equal(isNonAnswer(t), false, t);
   for (const t of ["Não quero começar", "Nao quero fazer call, queria ver os valores", "Agora não", "ainda não é o momento para a minha empresa", "Não tenho mais interesse"]) assert.equal(NO_INTEREST_RX.test(plainReply(t)), true, t);
   for (const t of ["Não quero cancelar, só não consigo abrir o link", "quero saber mais sobre o Lever Price", "Não quero perder tempo, pode ser hoje?"]) assert.equal(NO_INTEREST_RX.test(plainReply(t)), false, t);
+});
+
+test("referralIn: pedido de falar com terceiro (texto com número, cartão 👤, 'é o Lucas'); número próprio e pedido de dia não são indicação #R-043", () => {
+  assert.deepEqual(referralIn("11998116287\nChama Larissa explica para ela como funciona\nBom dia", { ownPhone: "5511939426885" }), { phone: "5511998116287", name: "Larissa", asked: true });
+  assert.deepEqual(referralIn("👤 Vitória Ecommerce Digital · +55 11 92505-5005 · Vitória Ecommerce Digital", {}), { phone: "5511925055005", name: "Vitória Ecommerce Digital", asked: true });
+  assert.deepEqual(referralIn("vou te passar um numero, é o Lucas, responsavel pelo meu ecommerce. 11 96213-5572", {}), { phone: "5511962135572", name: "Lucas", asked: true });
+  assert.deepEqual(referralIn("Pedir para chamar minha gerente de mercado livre", {}), { phone: "", name: "", asked: true });
+  assert.equal(referralIn("meu numero é 41 99999-0000", { ownPhone: "5541999990000" }), null);
+  assert.equal(referralIn("me chama na terça", {}), null);
+  assert.equal(referralIn("Pode ser quarta às 10h?", {}), null);
 });

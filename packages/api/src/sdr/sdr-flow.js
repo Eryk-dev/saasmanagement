@@ -256,6 +256,8 @@ export function sdrBotConfig(product) {
       // APROVADO na Meta a escada não fecha, e o corte nunca acontece.
       ladderBreakup: cfg.templates?.ladderBreakup || "sdr_encerramento_atendimento",
       rescue2: cfg.templates?.rescue2 || "sdr_remarcar_noshow",
+      // Lead indicou outra pessoa (R-043): o motor chama o indicado por aqui.
+      referral: cfg.templates?.referral || "sdr_indicacao",
     },
   };
 }
