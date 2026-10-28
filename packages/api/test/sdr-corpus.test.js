@@ -51,6 +51,9 @@ for (const f of files) {
       // `otherLead`: um lead além do L1 com estes campos (o indicado, R-043).
       if (e.otherLead) assert.ok(r.leads.some((l) => l.id !== "L1" && Object.entries(e.otherLead).every(([k, v]) => (v instanceof RegExp ? v.test(String(l[k] || "")) : l[k] === v))), `devia existir outro lead com ${JSON.stringify(e.otherLead)}; leads: ${JSON.stringify(r.leads.map((l) => ({ id: l.id, name: l.name, phone: l.phone, source: l.source })))}`);
       if (e.leadCount != null) assert.equal(r.leads.length, e.leadCount, "quantidade de leads");
+      for (const [k, v] of Object.entries(e.sdrLog || {})) { const got = r.lead.sdrLog?.[k]; if (v instanceof RegExp) assert.match(String(got || ""), v, `sdrLog.${k}`); else assert.equal(got, v, `sdrLog.${k}`); }
+      // `aiPainMode`: o foco (pain.mode) que a IA recebeu na ÚLTIMA decisão (R-045).
+      if (e.aiPainMode) assert.equal(r.calls.at(-1)?.pain?.mode, e.aiPainMode, "foco enviado à IA");
       if (e.state) assert.equal(r.thread.brain?.state, e.state, "estado carimbado");
       if (e.intent) assert.equal(r.thread.brain?.intent, e.intent, "intenção carimbada");
       const vio = r.thread.brain?.audit?.violations || [];

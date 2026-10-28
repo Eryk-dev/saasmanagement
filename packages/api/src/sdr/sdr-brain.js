@@ -31,7 +31,7 @@ import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, greetName,
 import { transcriber as defaultTranscriber } from "../whatsapp/transcribe.js";
 import { FORM_MSG_RX, SLOTS_RX, OFFER_CUE_RX, isOfferMsg, ACCEPT_RX, offeredSlotsIn, liveOfferedSlots, acceptedSlot, AUTO_REPLY_RX, BARE_HOUR_RX, collapseSameDay, expandSameDay, DEMO_RX, PITCH_RX } from "./sdr-signals.js";
 import { transcribeInbound } from "../whatsapp/wa-transcribe.js";
-import { AFFILIATE_RX, DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, NO_INTEREST_RX, LEAD_MOBILE_RX, DENY_CALL_RX, PERIOD_ASK_RX, PRICE_ASK_RX, WAITING_ROOM_RX, OBJECTION_RX, OEM_NO_RX, bareHour, leadEngaged, lastInboundText, plainReply, requestsCancellation, rescheduleReply, classifyInbound, asksReschedule, burstInboundText, callbackDay, statedPainOf, isNonAnswer, CONFUSED_RX, CLOSING_RX, POSTPONE_RX, referralIn } from "./sdr-intents.js";
+import { AFFILIATE_RX, DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, NO_INTEREST_RX, LEAD_MOBILE_RX, DENY_CALL_RX, PERIOD_ASK_RX, PRICE_ASK_RX, WAITING_ROOM_RX, OBJECTION_RX, OEM_NO_RX, bareHour, leadEngaged, lastInboundText, plainReply, requestsCancellation, rescheduleReply, classifyInbound, asksReschedule, burstInboundText, callbackDay, statedPainOf, isNonAnswer, CONFUSED_RX, CLOSING_RX, POSTPONE_RX, referralIn, DEMO_COST_RX, WEAK_PROFILE_RX, EXPLAIN_HERE_RX } from "./sdr-intents.js";
 import { SDR_TEMPLATES } from "./sdr-templates.leverads.js";
 import { resolveWabaId } from "../whatsapp/wa-health.js";
 import { stateOf, humanMuteHolds, GREETING_GAP_MS, DAILY_CAP, botTalkLast24h, handoffHolds } from "./sdr-state.js";
@@ -765,7 +765,11 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     // Desinteresse na rajada atual desliga o engajamento desta resposta
     // (R-083/R-031, 28/10: "não quero começar" recebia oferta de horário).
     const noInterestNow = NO_INTEREST_RX.test(burstPlain) && !FORM_MSG_RX.test(burstText);
-    const engaged = (leadEngaged(msgs) || (slotsOffered && bareHour(lastInText) != null)) && !noInterestNow;
+    // Pedido de preço LEVA a agenda (R-072 também no caminho genérico, 28/10:
+    // Fabiano e Jorge ouviram o desvio sem horário): quem pergunta o valor do
+    // serviço já quer saber se compra; a oferta pode sair.
+    const askingPriceNow = PRICE_ASK_RX.test(burstText) && !FORM_MSG_RX.test(burstText) && !DEMO_COST_RX.test(burstText) && msgs.some((m) => m.direction === "out");
+    const engaged = (leadEngaged(msgs) || (slotsOffered && bareHour(lastInText) != null) || askingPriceNow) && !noInterestNow;
     // Dor que o lead descreveu com as próprias palavras (produto + trecho):
     // engaja, não se pergunta de novo e, se for do outro produto, pivota (R-045).
     const painMsg = [...msgs].reverse().find((m) => m.direction === "in" && statedPainOf(m.transcript || m.text));
@@ -776,6 +780,24 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     const afterQ = lastBotQ ? msgs.slice(msgs.indexOf(lastBotQ) + 1).filter((m) => m.direction === "in") : [];
     const pendingQuestion = lastBotQ && afterQ.length && afterQ.every((m) => isNonAnswer(m.transcript || m.text)) && lead.sdrLog?.reaskedFor !== lastBotQ.id ? lastBotQ.text : "";
     const confused = CONFUSED_RX.test(burstPlain);
+    // PERFIL FRACO (R-048): não encerra; carimba uma vez e o closer é avisado na marcação.
+    const weakProfile = WEAK_PROFILE_RX.test(burstPlain) && !FORM_MSG_RX.test(burstText);
+    if (weakProfile && !lead.sdrLog?.profileNote) {
+      const note = burstText.slice(0, 160);
+      await stamp(lead, { profileNote: note, profileNoteAt: new Date(nowMs).toISOString() }).catch(() => {});
+      lead.sdrLog = { ...(lead.sdrLog || {}), profileNote: note };
+    }
+    // DOR DECLARADA ≠ dor de origem (R-045): o pitch pivota pro produto da dor
+    // descrita; sourcePain e pool do closer ficam.
+    if (statedPain?.product && !lead.callAt) {
+      const want = statedPain.product === "ads" ? "clone" : statedPain.product;
+      const cur = leadPainFocus(product, lead)?.mode || "clone";
+      if (want !== cur && lead.declaredPain !== statedPain.product) {
+        await repo.update("leads", lead.id, { declaredPain: statedPain.product, declaredPainAt: new Date(nowMs).toISOString(), declaredPainQuote: statedPain.quote }).catch(() => {});
+        lead.declaredPain = statedPain.product;
+        await logActivity(repo, { saas: product.id, lead: lead.id, type: "system", text: `Dor declarada pelo lead (${statedPain.product}) difere da origem (${cur}): robô pivotou o pitch · "${statedPain.quote.slice(0, 100)}"` }).catch(() => {});
+      }
+    }
     const closing = CLOSING_RX.test(burstPlain) && !burstText.includes("?");
     const postponed = POSTPONE_RX.test(burstPlain) && !burstText.includes("?");
     // O que a agenda tinha na hora da decisão vai pro carimbo da thread
@@ -875,7 +897,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       inboundText: String(message?.text || ""), priceDeferral: priceDeferral(nome, { script: st.scripted ? st.script : "" }),
       excludeSlots, refusedDays, takenSlot, leadHour: leadHour != null && leadHour >= 0 && leadHour <= 23 ? leadHour : null,
       callLabel: lead.callAt ? slotLabelFull(lead.callAt, wnow) : "", rescheduling: !!awaitingReschedule || reschedule?.status === "offered",
-      statedPain, pendingQuestion, pendingQuestionId: pendingQuestion ? lastBotQ.id : "", confused, closing, postponed, noInterest: noInterestNow,
+      statedPain, pendingQuestion, pendingQuestionId: pendingQuestion ? lastBotQ.id : "", confused, closing, postponed, noInterest: noInterestNow, weakProfile,
     });
     // SOMBRA DO VALIDADOR (15/10): o texto cru da IA passa pelo validador em
     // enforce e o resultado é comparado com o que a cadeia legada produziu;
@@ -979,6 +1001,41 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       }
     }
 
+    // ── CUSTO DA DEMONSTRAÇÃO (28/10, Caio "tem algum custo?", Kelly "qual o
+    // valor da consulta?") não é pedido de preço: a demonstração é grátis.
+    if (!lead.callAt && DEMO_COST_RX.test(burstText) && !lead.sdrLog?.demoCostAt) {
+      await stamp(lead, { demoCostAt: new Date(nowMs).toISOString() });
+      const line = slotsOffered && suggestedPair.length >= 2 ? offerLine(suggestedPair, { style: "fica-melhor", wnow }) : suggestedPair.length ? actualOffer : "";
+      await send([`${nome ? `${nome}, a` : "A"} demonstração não tem custo nenhum, é só pra você ver a plataforma rodando com a sua operação`, ...(line ? [line] : [])], { path: "custo-demo" });
+      return aborted ? "abortado" : "custo-demo";
+    }
+    // ── NÃO QUER CALL E PEDE PREÇO (28/10, Ronaldo "nao quero fazer call,
+    // queria ver os valores dos planos", Diego): preço só na call (R-050) e o
+    // lead não quer call: gente decide. Ponte sem promessa de valor.
+    if (!lead.callAt && noInterestNow && askingPriceNow && !lead.sdrLog?.priceHandoffAt) {
+      const iso = new Date(nowMs).toISOString();
+      await raiseAlert(repo, thread, { text: `Não quer a conversa e pede preço · PREÇO SÓ NA CALL: assume e decide (não manda valor por aqui): "${String(message?.text || "").slice(0, 140)}"` });
+      await stamp(lead, { handoffAt: iso, priceHandoffAt: iso, handoffKind: "preco", handoffWhy: "não quer call e pede preço" });
+      await send(priceBridgeText(nome), { path: "preco-humano" });
+      return aborted ? "abortado" : "preco-humano";
+    }
+    // ── EXPLICAÇÃO "POR AQUI" (R-044, 28/10, Janaina "me explica por áudio por
+    // aqui?"): resumo oficial em uma frase + por que a demonstração + o time
+    // manda um vídeo curto (handoff "material"). Uma vez por lead.
+    if (!lead.callAt && !inCallWindow && EXPLAIN_HERE_RX.test(burstPlain) && !lead.sdrLog?.materialAskedAt && !askingPriceNow) {
+      const iso = new Date(nowMs).toISOString();
+      const resumo = st.script === "oem"
+        ? "Com o Lever OEM você digita o código da peça e recebe o anúncio completo, com fotos, título, descrição e compatibilidade, pronto pra revisar e publicar no Mercado Livre e Shopee"
+        : st.script === "price"
+          ? "O Lever Price mantém o preço dos seus anúncios pelo custo, margem e imposto que você cadastra, e coloca seus produtos nas promoções do Mercado Livre sem você precisar entrar uma a uma"
+          : "A LeverAds espelha e gerencia seus anúncios entre as contas de Mercado Livre e Shopee, com estoque, atendimento e edição num lugar só";
+      const amostra = st.script === "oem" ? "um código seu" : "um anúncio seu";
+      await raiseAlert(repo, thread, { text: `Lead pediu explicação por aqui (áudio/texto/material) · manda o vídeo explicativo e segue por mensagem: "${String(message?.text || "").slice(0, 140)}"` });
+      await stamp(lead, { materialAskedAt: iso, handoffAt: iso, handoffKind: "material", handoffWhy: "pediu explicação por aqui" });
+      await send([`Claro${nome ? ` ${nome}` : ""}. ${resumo}`, `O que faz diferença é ver isso rodando com ${amostra} na tela, por isso a demonstração. Se preferir, peço pro time te mandar um vídeo curto por aqui`], { path: "material" });
+      return aborted ? "abortado" : "material";
+    }
+
     // ── ROTEIRO LEVER OEM (doc do Leo, 05/10/2026) ──────────────────────────
     // Lead de OEM anda num roteiro fixo; a IA só entra no que ele não cobre.
     // Resposta curta e positiva, sem pergunta, sem preço e sem dia/hora pedidos
@@ -1068,7 +1125,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       promptVersion: cfg.promptVersion,
       state: st.state,
       script: st.script,
-      facts: { demoOffered, slotsOffered, engaged, firstReply, askingNow: PRICE_ASK_RX.test(burstText), statedPain, pendingQuestion, confused, noInterest: noInterestNow },
+      facts: { demoOffered, slotsOffered, engaged, firstReply, askingNow: askingPriceNow, statedPain, pendingQuestion, confused, noInterest: noInterestNow, weakProfile: weakProfile || !!lead.sdrLog?.profileNote, profileNote: lead.sdrLog?.profileNote || "" },
     });
     // Quem respondeu e quanto custou: vai pro carimbo da thread e pro uso do dia.
     Object.assign(meta, { model: decision.model || "", usage: decision.usage || null, ms: decision.ms || 0, saas: product.id, promptVersion: decision.promptVersion || cfg.promptVersion, contract: offerContract });
@@ -1276,6 +1333,8 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       const fresh = await repo.get("leads", lead.id);
       const rebook = decision.acao === "remarcar" || !!(fresh || lead).callAt;
       await bookCall(repo, { lead: fresh || lead, product, at: pick.at, closer: pick.closer, now: at });
+      // Perfil fraco marcou (R-048): o closer entra sabendo.
+      if (lead.sdrLog?.profileNote) await raiseAlert(repo, thread, { text: `Marcou com PERFIL FRACO (decisão do Leo 28/10: mantém a call) · o lead disse: "${String(lead.sdrLog.profileNote).slice(0, 140)}"` }).catch(() => {});
       if (reschedule) await stamp(lead, { reschedule: null });
       // Marcou: o que este lead segurava volta pro pool na hora (o horário dele
       // agora ocupa a agenda de verdade).

@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { wallFromNaive } from "../src/crm/agenda-slots.js";
-import { classifyInbound, INTENTS, LABELS, isShortYes, asksReschedule, burstInboundText, callbackDay, leadEngaged, statedPainOf, isNonAnswer, NO_INTEREST_RX, plainReply, referralIn } from "../src/sdr/sdr-intents.js";
+import { classifyInbound, INTENTS, LABELS, isShortYes, asksReschedule, burstInboundText, callbackDay, leadEngaged, statedPainOf, isNonAnswer, NO_INTEREST_RX, plainReply, referralIn, PRICE_ASK_RX, DEMO_COST_RX, WEAK_PROFILE_RX, EXPLAIN_HERE_RX } from "../src/sdr/sdr-intents.js";
 
 const WNOW = wallFromNaive("2026-09-21T08:00"); // segunda-feira
 const OFFERED = [{ at: "2026-09-22T09:00", label: "amanhã às 9h" }, { at: "2026-09-22T17:00", label: "amanhã às 17h" }];
@@ -128,7 +128,7 @@ test("leadEngaged: 'Olá boa tarde' não engaja; 'Sem dúvida alguma', dor decla
   for (const t of ["Sem dúvida alguma", "Com certeza", "Em suma todos mas o principal é compatibilidade", "Manual. Meu nicho é muito específico e precisa ser técnico porém a compatibilidade atrasa o processo.", "pode ser quarta às 10h", "sim", "quero ver", "Me interessa, pode ser à tarde?"]) assert.equal(eng(t), true, t);
 });
 
-test("statedPainOf: dor com as próprias palavras, por produto; pergunta e pedido de preço não contam #R-011", () => {
+test("statedPainOf: dor com as próprias palavras, por produto; pergunta e pedido de preço não contam #R-011 #R-045", () => {
   assert.equal(statedPainOf("o meu principal problema é cadastrar produtos em massa com qualidade, título, categoria e principalmente pesquisa de mercado"), "oem");
   assert.equal(statedPainOf("Em suma todos mas o principal é compatibilidade"), "oem");
   assert.equal(statedPainOf("E monitorar as promoções"), "price");
@@ -155,4 +155,18 @@ test("referralIn: pedido de falar com terceiro (texto com número, cartão 👤,
   assert.equal(referralIn("meu numero é 41 99999-0000", { ownPhone: "5541999990000" }), null);
   assert.equal(referralIn("me chama na terça", {}), null);
   assert.equal(referralIn("Pode ser quarta às 10h?", {}), null);
+});
+
+test("PRICE_ASK_RX: pedido de preço do SERVIÇO pega; 'valores médios de mercado', 'tenho produto é preço', 'preço e margem' não; custo da demonstração é outra régua #R-050", () => {
+  for (const t of ["Qual é o valor da plataforma de vocês?", "quanto custa?", "Qual o valor?", "Os valores", "Isso, gostaria de saber os valores", "Eu gostaria de sabet o valor", "qual valores", "Quer me adiantar o valor", "Bom dia qual valor, ja que no site nao informa.", "Eu quero saber como funciona e valor", "Vocês cobram por anúncios feitos ?", "voce tem os valores dos planos ?", "Ok como funciona os valores", "Mas os planos não tem disponível? Só por uma conversa?", "mensalidade?", "quanto custa por mês o sistema?"]) assert.equal(PRICE_ASK_RX.test(t), true, t);
+  for (const t of ["Hoje temos uma equipe de anúncios que executa muito bem o serviço mas não entendem muito sobre compatibilidade e valores médios de mercado", "Tenho produto é preço preciso vender", "Preço e margem", "Porque temos produtos com valor do frete diferentes para o mesmo produto", "nós utilizamos o shopping de preços", "já tomei prejuízo por precificar errado"]) assert.equal(PRICE_ASK_RX.test(t), false, t);
+  for (const t of ["tem algum custo ?", "Qual o valor da consulta?", "essa demonstração é paga?"]) assert.equal(DEMO_COST_RX.test(t), true, t);
+  for (const t of ["quanto custa?", "Qual o valor da plataforma?"]) assert.equal(DEMO_COST_RX.test(t), false, t);
+});
+
+test("WEAK_PROFILE_RX e EXPLAIN_HERE_RX: perfil fraco (não vende / só físico / só TikTok / começando) e pedido de explicação por aqui #R-048 #R-044", () => {
+  for (const t of ["Na vdd só trabalhamos com loja física", "No momento ainda não estou vendendo", "Eu vendo por enquanto na Shoppe e no Tik Tok estou iniciando", "Apenas pelo Instagram, Facebook", "Quero começar", "Pretendo começar no ML mês que vem", "sou analfabeto digital"]) assert.equal(WEAK_PROFILE_RX.test(plainReply(t)), true, t);
+  for (const t of ["Sim vendo no ML", "hoje nao", "Conta jurídica", "vendo na Shopee e no Mercado Livre"]) assert.equal(WEAK_PROFILE_RX.test(plainReply(t)), false, t);
+  for (const t of ["Consegue me explicar por áudio por aqui ?", "Pode ser por aqui mesmo?", "Pode me passar por aqui mesmo", "nao tem pdf explicando", "Eu queria ver preços e só receber mensagem,nada ao vivo.", "Consegue enviar uma apresentação, para a reunião ser mais produtiva?", "Vcs podem enviar áudios"]) assert.equal(EXPLAIN_HERE_RX.test(plainReply(t)), true, t);
+  for (const t of ["Vc pode me explicar como funciona?", "Pode ser quarta?", "Como funciona a clonagem?"]) assert.equal(EXPLAIN_HERE_RX.test(plainReply(t)), false, t);
 });

@@ -114,7 +114,7 @@ COMO TRATAR O QUE APARECE (padrões que comprovadamente viram conversa marcada):
 - "Sem tempo / depois te chamo": valide e devolva uma pergunta de horário (oferecer true).
 - Conta banida/suspensa: vira caso de uso (clonamos tudo pra conta nova sem recadastrar, a operação não para).
 - Amazon/Magalu/TikTok: honestidade, hoje é ML e Shopee, as demais no radar. E segue pro agendamento.
-- "Ainda não vendo em marketplace": responda com gentileza que a plataforma é pra quem já vende, e acao humano (o time direciona pra mentoria).
+- "Ainda não vendo em marketplace" / só loja física / só TikTok-Instagram / começando agora: NÃO desqualifique nem acao humano (decisão do Leo, 28/10): diga em uma frase que a LeverAds atende quem vende no Mercado Livre e Shopee com conta própria e que a demonstração mostra como começa; siga a descoberta e convide normalmente.
 - Afiliado da Shopee/Mercado Livre (divulga produto de terceiro por link/comissão): não é cliente. O sistema já trata; se chegar até você, diga com gentileza que a ferramenta é pra quem vende com conta própria e acao humano.
 
 REGRAS QUE VALEM SEMPRE:
@@ -149,7 +149,7 @@ const yn = (v) => (v ? "sim" : "não");
 export function buildUserV2({ sdrName = "", nowLabel = "", lead = {}, digest = "", grade = "", stage = "", pain = null, callAt = "", state = "descoberta", script = "clone", facts = {}, canGreet = true, gapMin = null, slots = [], suggestedPair = [], requestedDate = false, offerDate = "", requestedEmpty = false, conversation = [] } = {}) {
   const autop = /auto\s*pe[çc]/i.test(lead.niche || "");
   const foco = pain
-    ? `DOR DO ANÚNCIO que trouxe o lead: [${pain.code}] ${pain.label || ""} → FOCO da conversa: ${pain.mode === "oem" ? "criação de anúncio por código OEM (fale só disso; não empurre a clonagem)" : pain.mode === "price" ? "precificação automática do Lever Price (fale só disso, sem repetir o pitch da abordagem; não empurre a clonagem nem o OEM)" : autop ? "clonagem entre contas ancorada nessa dor, E, por ser AUTOPEÇAS, mencione TAMBÉM o OEM como segundo benefício, curto" : "clonagem entre contas ancorada nessa dor (não puxe o OEM)"}`
+    ? `DOR DO ANÚNCIO que trouxe o lead: [${pain.code || "sem código"}] ${pain.label || ""} → FOCO da conversa: ${pain.mode === "oem" ? "criação de anúncio por código OEM (fale só disso; não empurre a clonagem)" : pain.mode === "price" ? "precificação automática do Lever Price (fale só disso, sem repetir o pitch da abordagem; não empurre a clonagem nem o OEM)" : autop ? "clonagem entre contas ancorada nessa dor, E, por ser AUTOPEÇAS, mencione TAMBÉM o OEM como segundo benefício, curto" : "clonagem entre contas ancorada nessa dor (não puxe o OEM)"}${pain.pivotedFrom ? ` · PIVOTADO: a dor de origem era ${pain.pivotedFrom === "oem" ? "OEM" : pain.pivotedFrom === "price" ? "Price" : "clonagem"}, mas o lead descreveu a dor deste produto com as próprias palavras; reconheça em uma frase que a Lever cobre isso com ${pain.mode === "oem" ? "o Lever OEM" : pain.mode === "price" ? "o Lever Price" : "a clonagem da LeverAds"} e siga só por aqui` : ""}`
     : autop ? "Sem dor de origem registrada, mas o lead é de AUTOPEÇAS: apresentação geral com o pitch multi-contas E o OEM como segundo benefício, curto." : "Sem dor de origem registrada: apresentação geral da plataforma.";
   const greet = state === "novo" || canGreet
     ? `SAUDAÇÃO: liberada${gapMin != null && state !== "novo" ? ` (última troca há ${Math.round(gapMin / 60)}h)` : " (primeira resposta sua)"}: uma saudação curta no início.`
@@ -187,6 +187,9 @@ export function buildUserV2({ sdrName = "", nowLabel = "", lead = {}, digest = "
       : "",
     facts.confused
       ? `O LEAD NÃO ENTENDEU a pergunta ou o termo anterior ("nem sei o que é isso", "???"): explique em UMA frase simples (${script === "oem" ? "código OEM é o código original da peça; com ele o Lever OEM monta o anúncio inteiro" : script === "price" ? "o Lever Price mantém o preço pelo custo, margem e imposto que você cadastra" : "clonagem é espelhar os anúncios de uma conta nas outras"}) e faça uma pergunta DIFERENTE da anterior, mais simples. Nunca repita a mesma pergunta.`
+      : "",
+    facts.weakProfile
+      ? `PERFIL: o lead disse que ainda não vende / só loja física / só TikTok-Instagram / está começando${facts.profileNote ? ` ("${String(facts.profileNote).slice(0, 120)}")` : ""}. NÃO desqualifique, NÃO encerre, NÃO acao humano por isso (decisão do Leo, 28/10): diga em uma frase que a LeverAds atende quem vende no Mercado Livre e Shopee com conta própria e que na demonstração o especialista mostra como começa; siga a descoberta e convide normalmente (oferecer=true quando ele topar).`
       : "",
     facts.statedPain?.product
       ? `DOR QUE ELE DESCREVEU com as próprias palavras: "${String(facts.statedPain.quote || "").slice(0, 160)}" (dor de ${facts.statedPain.product === "oem" ? "criação de anúncio por código OEM" : facts.statedPain.product === "price" ? "precificação/promoções (Lever Price)" : "gestão de várias contas (clonagem)"}). NÃO pergunte a dor de novo: reconheça em uma frase, faça a ponte com o que a demonstração mostra e convide (oferecer=true se não houver conversa marcada).`

@@ -90,3 +90,15 @@ test("templates: o roteiro Price tem a abordagem e a manhã próprias, com o cor
     assert.ok(!/R\$|\d+ ?reais|Essencial|Escala|Enterprise/.test(t.body), `${t.name}: sem preço nem plano`);
   }
 });
+
+test("leadPainFocus: dor declarada pivota o foco (Price→OEM, OEM→clonagem) sem mexer na origem; sem origem, a dor declarada basta #R-045", () => {
+  const product = { id: "leverads", painMap: { OEM: "x", PRICE: "y" } };
+  const price = leadPainFocus(product, { sourcePain: "PRICE", niche: "autopecas", declaredPain: "oem" });
+  assert.equal(price.mode, "oem"); assert.equal(price.pivotedFrom, "price"); assert.equal(price.code, "PRICE");
+  const oem = leadPainFocus(product, { sourcePain: "OEM", niche: "autopecas", declaredPain: "ads" });
+  assert.equal(oem.mode, "clone"); assert.equal(oem.pivotedFrom, "oem");
+  assert.equal(leadPainFocus(product, { sourcePain: "OEM", niche: "autopecas", declaredPain: "oem" }).pivotedFrom, undefined, "mesma dor não é pivô");
+  assert.equal(leadPainFocus(product, { sourcePain: "PRICE", niche: "moda", declaredPain: "oem" }).mode, "price", "OEM só cabe em autopeças");
+  assert.equal(leadPainFocus(product, { declaredPain: "price" }).mode, "price");
+  assert.equal(leadPainFocus(product, {}), null);
+});

@@ -3,7 +3,7 @@
 GERADO de `packages/api/src/sdr/sdr-rules.js` (`node src/sdr/sdr-rules.js --write`). Não edite à mão: o
 teste `sdr-rulebook.test.js` recusa o arquivo quando ele difere do registro.
 
-79 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
+82 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
 origem (data, quem pediu, PR ou print), o enunciado, os estados da conversa e o roteiro em que vale, a camada
 que a executa e as exceções. Toda regra ativa tem pelo menos um teste ou cena com a tag `#R-nnn`.
 
@@ -118,8 +118,26 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-018 · Objeções com resposta oficial
 
 - Origem: 2026-08-22, mineração + Leo (SDR_DECIDE_SYSTEM, bloco COMO TRATAR)
-- Regra: "Como funciona": pitch canônico em 2 frases + convite. "Manda material/vídeo": aceita e reposiciona pra ver ao vivo. "Já uso Bling/Upseller/ERP": diferencial nomeado + testar ao vivo. "Sem tempo": valida e devolve uma pergunta de horário. Conta banida: vira caso de uso. Amazon/Magalu/TikTok: honestidade (hoje ML e Shopee) e segue pro agendamento. "Ainda não vendo em marketplace": acolhe e chama gente. A LeverAds não entra nem acessa as contas do lead: a conversa demonstra a ferramenta.
+- Regra: "Como funciona": pitch canônico em 2 frases + convite. "Manda material/vídeo": aceita e reposiciona pra ver ao vivo. "Já uso Bling/Upseller/ERP": diferencial nomeado + testar ao vivo. "Sem tempo": valida e devolve uma pergunta de horário. Conta banida: vira caso de uso. Amazon/Magalu/TikTok: honestidade (hoje ML e Shopee) e segue pro agendamento. "Ainda não vendo em marketplace": segue a descoberta e convida, avisando o closer (R-048, 28/10). A LeverAds não entra nem acessa as contas do lead: a conversa demonstra a ferramenta.
 - Vale em: estados todos; roteiro todos; executada por prompt
+
+### R-044 · Explicação por aqui: resumo + por que a demonstração + material via gente
+
+- Origem: 2026-10-28, Leo (raio-x 28/10 (Janaina 'me explica por áudio por aqui?' → 'não consigo te mostrar' e silêncio; Edson, Gabriel, VitorMatheus, Deborah, Rodrigo 'não tem pdf?'))
+- Regra: Lead que pede pra entender por áudio, texto ou material em vez da demonstração recebe, uma vez: o resumo oficial do produto em uma frase, o motivo da demonstração (ver rodando com um código/anúncio dele) e a promessa de um vídeo curto pelo time; o time é avisado (handoff "material") e manda o vídeo. Nunca a recusa seca ("por áudio não consigo").
+- Vale em: estados todos; roteiro todos; executada por intent, effects, alerta, prompt
+
+### R-045 · Dor declarada manda no pitch
+
+- Origem: 2026-10-28, Leo (prints 28/10 (Guilherme, lead de Price: 'cadastrar produtos em massa, título, pesquisa de mercado' e o robô insistiu em margem; Danilo 'integração entre contas' descartado no OEM; Fábio precificação no OEM))
+- Regra: Lead que descreve com as próprias palavras uma dor do OUTRO produto (cadastro em massa/compatibilidade = OEM; margem/promoções/custo = Price; várias contas/clonagem/estoque = clonagem) tem o pitch, o roteiro e a demonstração pivotados pra esse produto (lead.declaredPain). A dor de origem (sourcePain) e o pool do closer não mudam. O robô reconhece em uma frase que a Lever cobre aquilo e segue só por ali.
+- Vale em: estados todos; roteiro todos; executada por intent, state, prompt, effects
+
+### R-048 · Perfil fraco não encerra
+
+- Origem: 2026-10-28, Leo (raio-x 28/10 (24 leads 'ainda não vendo' / só loja física / só TikTok: robô ora agendava, ora cortava seco e chamava gente). Decisão do Leo: manter a call)
+- Regra: Lead que ainda não vende em marketplace, só tem loja física, só vende em TikTok/Instagram ou está começando NÃO é desqualificado nem encerrado pelo robô: ele diz em uma frase que a LeverAds atende quem vende no Mercado Livre e Shopee com conta própria e que a demonstração mostra como começa, segue a descoberta e convida normalmente. O trecho fica carimbado (sdrLog.profileNote) e o closer é avisado quando a call é marcada. Afiliado continua na R-016.
+- Vale em: estados todos; roteiro todos; executada por intent, prompt, alerta, effects
 
 ### R-019 · Ponte antes da primeira oferta
 
@@ -284,7 +302,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-050 · Preço só na call
 
 - Origem: 2026-09-18, Leo (#1040 ("não quero que o robô fale o preço; essa informação é revelada apenas na call de vendas"))
-- Regra: Nunca número, faixa, "a partir de", parcela, desconto, forma de pagamento nem nome de plano, e nunca "te passo o valor por aqui". Primeira pergunta de preço recebe a resposta oficial: o investimento é de acordo com as necessidades da operação; primeiro a gente entende o cenário e mostra os pontos a alavancar, que é o que o especialista faz na demonstração. Quem assume a conversa também não manda valor pelo WhatsApp.
+- Regra: Pedido de preço é o do SERVIÇO ("qual o valor?", "quanto custa", "os valores"), não qualquer menção a preço ("valores médios de mercado", "preço dos meus produtos" ficam de fora); "tem algum custo?" sobre a demonstração recebe "não tem custo"; "não quero call, quero os valores" vai pra gente na hora com a ponte sem valor (28/10). Nunca número, faixa, "a partir de", parcela, desconto, forma de pagamento nem nome de plano, e nunca "te passo o valor por aqui". Primeira pergunta de preço recebe a resposta oficial: o investimento é de acordo com as necessidades da operação; primeiro a gente entende o cenário e mostra os pontos a alavancar, que é o que o especialista faz na demonstração. Quem assume a conversa também não manda valor pelo WhatsApp.
 - Exemplo: lead "quanto custa?" → "Rafael, o investimento é de acordo com as necessidades da sua operação: primeiro a gente entende o seu cenário, e aí te mostra os pontos que dá pra alavancar. É exatamente isso que o especialista faz na demonstração."
 - Vale em: estados todos; roteiro todos; executada por guard, prompt, intent, alerta (validador priceLeak)
 - Exceção: R-072 · no roteiro OEM/Price a primeira resposta de preço leva o par de horários (doc do Leo)
@@ -329,7 +347,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-072 · No roteiro, a primeira pergunta de preço leva os horários
 
 - Origem: 2026-10-05, Leo (#1119 (OEM); #1133 (Price))
-- Regra: Lead de OEM ou Price sem call que pergunta preço depois da abordagem recebe a copy oficial do doc ("O investimento depende da sua operação e das suas necessidades…") e, na mesma resposta, o par de horários, sem IA. Segunda e terceira insistência seguem a escada de R-051.
+- Regra: Vale também no caminho genérico (28/10): quem pergunta o valor do serviço já engajou pra efeito de oferta, e a primeira resposta de preço sai com a agenda. Lead de OEM ou Price sem call que pergunta preço depois da abordagem recebe a copy oficial do doc ("O investimento depende da sua operação e das suas necessidades…") e, na mesma resposta, o par de horários, sem IA. Segunda e terceira insistência seguem a escada de R-051.
 - Vale em: estados todos; roteiro oem, price; executada por roteiro
 
 ### R-073 · Lembretes do roteiro: manhã com foto no OEM, link no 2h e no 10min
