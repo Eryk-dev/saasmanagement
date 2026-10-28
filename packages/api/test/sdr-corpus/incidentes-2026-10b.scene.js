@@ -231,4 +231,84 @@ export default [
     inbounds: ["Pedir para chamar minha gerente de mercado livre. Para ela te passar melhor as demandas", "👤 Vitória Ecommerce Digital · +55 11 92505-5005 · Vitória Ecommerce Digital"],
     expect: { result: "terceiro", sent: [/me manda o número d(a|o) .* aqui que eu chamo|me manda o número dessa pessoa aqui que eu chamo/, /^\[template sdr_indicacao\] Vitória \| Rafael \| LeverAds$/, /acabei de chamar Vitória no WhatsApp$/], otherLead: { phone: "5511925055005" } },
   },
+  {
+    id: "C-R045-01", title: "Guilherme (21/10): lead de Price descreve a dor de cadastro em massa: o pitch pivota pro OEM, a IA recebe o foco OEM e a oferta sai",
+    rules: ["R-045", "R-011"],
+    world: {
+      sdrBot: V2, todayFree: true,
+      lead: { sourcePain: "PRICE", niche: "autopecas" },
+      messages: [
+        { direction: "out", author: "sdr-bot", text: "Oiii Rafael, tudo bem?", at: ISO("2026-08-19T12:32:00Z") },
+        { direction: "out", author: "sdr-bot", text: "Hoje sua maior dificuldade está em manter os preços atualizados sem sair da margem?", at: ISO("2026-08-19T12:32:05Z") },
+      ],
+    },
+    ai: [{ acao: "responder", mensagens: ["Entendi Rafael, cadastrar em massa com qualidade é exatamente o que o Lever OEM resolve: você digita o código e recebe o anúncio completo"], oferecer: true }],
+    inbounds: ["Tambem, mas o meu principal problema, e cadastrar produtos em massa com qualidade, atualmente conto com 50 anuncios, tenho capacidade de subir 1000 anuncios de produtos diferentes. Porem tenho dificuldade em titulo, categoria e principalmente pesquisa de mercado."],
+    expect: { result: "responder", sent: [/Lever OEM resolve/, /^Consigo /], lead: { declaredPain: "oem", sourcePain: "PRICE" }, aiPainMode: "oem", state: "engajado" },
+  },
+  {
+    id: "C-R048-01", title: "Roberto (27/10): 'só trabalhamos com loja física' não encerra nem chama gente: carimba o perfil e a conversa segue (decisão do Leo: manter a call)",
+    rules: ["R-048", "R-018"],
+    world: {
+      sdrBot: V2,
+      lead: { sourcePain: "OEM", niche: "autopecas" },
+      messages: [
+        { direction: "out", author: "sdr-bot", text: "Oiii Rafael, tudo bem? Vi que você trabalha com autopeças e quer conhecer o Lever OEM", at: ISO("2026-08-19T12:11:00Z") },
+        { direction: "out", author: "sdr-bot", text: "Hoje sua maior dificuldade é montar anúncios completos a partir do código OEM?", at: ISO("2026-08-19T12:12:00Z") },
+      ],
+    },
+    ai: [{ acao: "responder", mensagens: ["Ahh tá entendi Rafael, a LeverAds atende quem vende no Mercado Livre e Shopee com conta própria, e na demonstração o especialista mostra como começa", "Você pretende abrir a conta no Mercado Livre em breve?"], oferecer: false }],
+    inbounds: ["Na vdd só trabalhamos com loja física"],
+    expect: { result: "responder", sent: [/como começa/, /em breve\?$/], sdrLog: { profileNote: /loja física/, handoffKind: undefined } },
+  },
+  {
+    id: "C-R044-01", title: "Janaina (23/10): 'me explica por áudio por aqui?' recebe o resumo oficial + por que a demonstração + vídeo pelo time (handoff material), nunca a recusa seca",
+    rules: ["R-044", "R-081"],
+    world: {
+      sdrBot: V2,
+      lead: { sourcePain: "PRICE", niche: "casa" },
+      messages: [
+        { direction: "out", author: "sdr-bot", text: "Tenho agenda para amanhã às 14h ou às 17h. Qual funciona melhor para você?", at: ISO("2026-08-19T00:16:00Z") },
+        { direction: "in", text: "Oiiii", at: ISO("2026-08-19T12:24:00Z") },
+        { direction: "in", text: "Não consigo participar da reunião", at: ISO("2026-08-19T12:24:10Z") },
+      ],
+    },
+    ai: [{ acao: "responder", mensagens: ["Ahh entendi Rafael, por áudio por aqui não consigo te mostrar o Price funcionando"], oferecer: false }],
+    inbounds: ["Consegue me explicar por áudio por aqui ?"],
+    expect: { result: "material", sent: [/^Claro Rafael\. O Lever Price mantém o preço/, /vídeo curto por aqui$/], notSent: [/não consigo te mostrar/], sdrLog: { handoffKind: "material" } },
+  },
+  {
+    id: "C-R050-03", title: "Ronaldo (23/10): 'nao quero fazer call, queria ver os valores dos planos' vai pra gente na hora, com a ponte sem valor",
+    rules: ["R-050", "R-083"],
+    world: {
+      sdrBot: V2,
+      messages: [{ direction: "out", author: "sdr-bot", text: PITCH, at: ISO("2026-08-19T12:00:00Z") }],
+    },
+    ai: [{ acao: "responder", mensagens: ["Te explico o porquê Ronaldo: a gente tem planos diferentes"], oferecer: true }],
+    inbounds: ["Nao quero fazer call queria ver os valores dos planos"],
+    expect: { result: "preco-humano", sent: [/^Entendo Rafael, vou pedir pra alguém do time falar contigo por aqui$/], notSent: [/^Consigo /, /planos diferentes/], sdrLog: { handoffKind: "preco" } },
+  },
+  {
+    id: "C-R050-04", title: "Leonardo (25/10): 'não entendem muito sobre compatibilidade e valores médios de mercado' NÃO é pedido de preço: é dor (OEM) e a resposta segue a dor",
+    rules: ["R-050", "R-045"],
+    world: { sdrBot: V2, todayFree: true, lead: { sourcePain: "OEM", niche: "autopecas" }, messages: [{ direction: "out", author: "sdr-bot", text: "Oiii Rafael, tudo bem? Hoje você monta os anúncios de autopeças manualmente pelo código OEM?", at: ISO("2026-08-19T12:00:00Z") }] },
+    ai: [{ acao: "responder", mensagens: ["Entendi Rafael, a compatibilidade e a pesquisa de mercado são justamente o que o Lever OEM entrega pronto pelo código"], oferecer: true }],
+    inbounds: ["Hoje temos uma equipe de anúncios que executa muito bem o serviço mas não entendem muito sobre compatibilidade e valores médios de mercado"],
+    expect: { result: "responder", sent: [/Lever OEM entrega pronto/, /^Consigo /], notSent: [/investimento/i], state: "engajado" },
+  },
+  {
+    id: "C-R050-05", title: "Caio (26/10): 'tem algum custo?' é sobre a demonstração: 'não tem custo nenhum' + a escolha do horário, sem a escada de preço",
+    rules: ["R-050"],
+    world: {
+      sdrBot: V2,
+      messages: [
+        { direction: "out", author: "sdr-bot", text: PITCH, at: ISO("2026-08-19T12:00:00Z") },
+        { direction: "in", text: "sim, ajudaria", at: ISO("2026-08-19T12:30:00Z") },
+        { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?", at: ISO("2026-08-19T12:31:00Z") },
+      ],
+    },
+    ai: [{ acao: "responder", mensagens: ["O investimento é de acordo com as necessidades da sua operação"], oferecer: false }],
+    inbounds: ["tem algum custo ?"],
+    expect: { result: "custo-demo", sent: [/^Rafael, a demonstração não tem custo nenhum/, /^Fica melhor amanhã às 9h ou às 11h\?$/], notSent: [/investimento/], sdrLog: { priceGuardAt: undefined } },
+  },
 ];

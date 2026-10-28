@@ -17,7 +17,7 @@ import { liveOfferedSlots, DEMO_RX, PITCH_RX } from "./sdr-signals.js";
 import { wallNow } from "../crm/agenda-slots.js";
 import { leadPainFocus, SDR_AUTHOR, sdrBotConfig } from "./sdr-flow.js";
 import { isBusinessHours } from "../platform/business-hours.js";
-import { leadEngaged, lastInboundText, bareHour, PRICE_ASK_RX, statedPainOf, NO_INTEREST_RX, burstInboundText, plainReply } from "./sdr-intents.js";
+import { leadEngaged, lastInboundText, bareHour, PRICE_ASK_RX, DEMO_COST_RX, statedPainOf, NO_INTEREST_RX, burstInboundText, plainReply } from "./sdr-intents.js";
 
 const HOUR = 3_600_000;
 const MIN = 60_000;
@@ -90,7 +90,10 @@ export function stateOf({ lead = {}, msgs = [], now = new Date(), product = null
   const lastInText = lastInboundText(msgs);
   const burst = burstInboundText(msgs) || lastInText;
   const noInterest = NO_INTEREST_RX.test(plainReply(burst)) && !/quero saber mais sobre/i.test(burst);
-  const engaged = (leadEngaged(msgs) || (slotsOffered && bareHour(lastInText) != null)) && !noInterest;
+  // Preço leva a agenda (R-072), menos na primeira fala do lead (antes de
+  // qualquer mensagem nossa a resposta é descoberta, R-011).
+  const askingPriceNow = PRICE_ASK_RX.test(burst) && !/quero saber mais sobre/i.test(burst) && !DEMO_COST_RX.test(burst) && msgs.some((m) => m.direction === "out");
+  const engaged = (leadEngaged(msgs) || (slotsOffered && bareHour(lastInText) != null) || askingPriceNow) && !noInterest;
   const painMsg = [...msgs].reverse().find((m) => m.direction === "in" && statedPainOf(m.transcript || m.text));
   const statedPain = painMsg ? statedPainOf(painMsg.transcript || painMsg.text) : null;
   const firstReply = !msgs.some((m) => m.direction === "out");

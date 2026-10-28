@@ -94,7 +94,29 @@ export const CLOSING_RX = /^(?:ok|okay|blz|beleza|show|fechado|combinado|perfeit
 // agenda (sdr-agenda.js). Sem isso a saudação desligava "mais cedo primeiro".
 export const PERIOD_ASK_RX = /(?<![\p{L}])(?<!\bbo[am]\s)(?:manh[ãa]|tarde|noite)|depois d[ao]s|antes d[ao]s|a partir d[ao]s|depois d[eo]ss|antes d[eo]ss|mais cedo|semana que vem|pr[óo]xima semana|outra semana|semana seguinte|outro dia|s[óo] (?:na |no )?(?:segunda|ter[çc]a|quarta|quinta|sexta)/iu;
 // O LEAD pedindo preço (≠ PRICE_RX do cérebro, que pega VALOR dito por nós).
-export const PRICE_ASK_RX = /pre[çc]o|\bvalor(es)?\b|quanto (custa|fica|sai|é|e)\b|mensalidade|qual o (investimento|custo)|tabela de pre[çc]/i;
+// PEDIDO DE PREÇO DO SERVIÇO, não qualquer "preço" (28/10: "valores médios de
+// mercado", "tenho produto é preço", "preço e margem" disparavam o desvio de
+// preço no lugar da resposta à dor). Pergunta direta ("qual o valor?", "os
+// valores", "quanto custa") continua pegando.
+// Forma: exclusões no começo (lookahead negativo sobre o texto inteiro) +
+// a lista larga de sempre. Assim "qual o valor?", "só me diz a faixa de
+// preço", "me dá uma ideia do valor" seguem pegando.
+const PRICE_EXCLUDE = "(?![\\s\\S]*(?:valores? m[ée]dios|pre[çc]os? (?:de mercado|m[ée]dios?|d[oa]s? (?:meus? |seus? )?produtos?|d[ao] concorr|de venda|de custo)|precific|tenho produto [ée] pre[çc]o|valor (?:do|de) (?:frete|pedido|venda)|valor agregado|shopping de pre[çc]os?|pre[çc]o e margem|margem e pre[çc]o|pesquisa de pre[çc]o|comparar pre[çc]o))";
+export const PRICE_ASK_RX = new RegExp("^" + PRICE_EXCLUDE + "[\\s\\S]*?(?:" + [
+  /pre[çc]o/, /\bvalor(?:es)?\b/, /quanto (?:custa|fica|sai|[ée]|eh|seria|cobra|cobram|vou pagar|pago)\b/, /mensalidade/, /qual o (?:investimento|custo)/, /tabela de pre[çc]/,
+  /\bcobram? (?:por|pra|para|quanto|algum|alguma)\b/, /\b(?:tem|teria|h[áa]) (?:algum |alguma )?(?:custo|taxa)\b/, /\bde gra[çc]a\b|gratuit/, /\bos planos\b/, /\bplanos?\b.{0,12}\bvalores?/, /\bconsigo pagar\b|\bvai custar\b|\bvale quanto\b|\binvestimento (?:mensal|do plano|da ferramenta|necess)/,
+].map((r) => r.source).join("|") + ")", "i");
+// Custo da DEMONSTRAÇÃO, não do serviço ("tem algum custo?" sobre a conversa,
+// "a consulta é paga?"): a resposta é "não tem custo" (28/10, Caio, Kelly).
+export const DEMO_COST_RX = /\b(?:demonstra[çc][ãa]o|reuni[ãa]o|conversa|consulta|chamada|apresenta[çc][ãa]o|essa (?:call|reuni[ãa]o)|isso)\b.{0,30}\b(?:custo|cobra|paga|pago|gratuit|gr[áa]tis|de gra[çc]a|taxa|valor)|\b(?:custo|cobra|paga|pago|gratuit|gr[áa]tis|de gra[çc]a|taxa|valor)\b.{0,30}\b(?:demonstra[çc][ãa]o|reuni[ãa]o|conversa|consulta|chamada|apresenta[çc][ãa]o)\b|\b(?:tem|teria) algum custo\s*\?*\s*$/i;
+// PERFIL FRACO (R-048, decisão do Leo 28/10: manter a call): ainda não vende,
+// só loja física, só TikTok/Instagram, começando/drop. O robô não encerra nem
+// desqualifica; segue a descoberta e avisa o closer.
+export const WEAK_PROFILE_RX = /\b(?:ainda |no momento |por enquanto )?nao (?:vendo|vendemos|estou vendendo|to vendendo|tenho loja|tenho conta|anuncio|opero|estou operando)\b|\b(?:so|apenas|somente) (?:loja |no )?fisic|\bloja fisica\b|\b(?:so|apenas|somente) (?:na |no |pel[ao] |por )?(?:tiktok|tik tok|instagram|insta|facebook|site proprio|site)\b|\b(?:vou|quero|pretendo|estou querendo|to querendo) (?:comecar|iniciar|entrar|montar)\b|\bcomecando agora\b|\b(?:estou|to) (?:iniciando|comecando|montando)\b|\bdrop ?shipping\b|\bnao sei (?:nem )?como (?:faz|funciona|comecar|comeca)\b|\banalfabeto digital\b/;
+// EXPLICAÇÃO "POR AQUI" (R-044): o lead quer entender por áudio/texto/
+// material em vez da demonstração ao vivo (28/10: Janaina, Edson, Gabriel,
+// VitorMatheus, Deborah, Rodrigo "não tem pdf?").
+export const EXPLAIN_HERE_RX = /por (?:audio|aqui|mensagem|escrito|texto|whats(?:app)?|chat|zap)\b.{0,40}\b(?:explica|explicar|passa|passar|manda|mandar|fala|falar|pode ser|mesmo|consegue|da pra)|\b(?:explica|explicar|passa|passar|manda|mandar|fala|falar|detalha|detalhar|mostra)\b.{0,40}\bpor (?:audio|aqui|mensagem|escrito|texto|whats(?:app)?|chat|zap)\b|\bpode ser por aqui\b|\bpor aqui mesmo\b|\b(?:tem|teria|manda|mandar|envia|enviar|me passa|me manda|me envia|nao tem|nao teria|consegue (?:me )?(?:enviar|mandar|passar)) (?:algum |um |uma |o |a )?(?:pdf|material|apresentacao|video|catalogo|portfolio|proposta)\b|\b(?:so|apenas|somente) (?:por |receber )?mensage|\bpodem? (?:me )?(?:enviar|mandar|passar|gravar) (?:uns? |alguns? |um |uma )?(?:audios?|videos?|materia(?:l|is)|apresentacao|gravac)|\bnada ao vivo\b|\bsem (?:fazer )?(?:call|reuniao|video ?chamada|ligacao)\b|\bnao (?:quero|consigo|posso) (?:fazer )?(?:call|reuniao|video ?chamada)\b.{0,40}\b(?:explica|por aqui|mensagem|audio)/;
 // NÚMERO SOLTO depois da oferta é HORA (Leo, 08/10): "18" a "terça às 17h ou
 // quarta às 17h". Hora entre 6 e 21; fora disso não é hora.
 export const bareHour = (text) => {

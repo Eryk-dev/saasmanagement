@@ -269,7 +269,12 @@ export function sdrBotConfig(product) {
 // dor registrada, apresentação geral.
 export function leadPainFocus(product, lead) {
   const code = String(lead?.sourcePain || "").toUpperCase().trim();
-  if (!code) return null;
+  if (!code) {
+    const declared = String(lead?.declaredPain || "").toLowerCase();
+    if (declared === "price") return { code: "", label: "", mode: "price", pivotedFrom: "clone" };
+    if (declared === "oem" && (!lead?.niche || isAutoPecas(lead.niche))) return { code: "", label: "", mode: "oem", pivotedFrom: "clone" };
+    return null;
+  }
   // Dor OEM só cabe em autopeças: lead de OUTRO nicho que clicou no anúncio de
   // part number conversa pela clonagem (o pitch OEM dizia "sua autopeça" pra
   // lead de eletrônicos — visto 23/08). Nicho vazio mantém o OEM: o anúncio
@@ -280,8 +285,15 @@ export function leadPainFocus(product, lead) {
   // cerca do `oemFits`. Desde 08/10 o modo "price" anda no MESMO roteiro fixo
   // do OEM (M1..M4, preço, lembretes), com a copy própria do Lever Price
   // (price*Text aqui e scriptParts no sdr-brain.js).
-  const mode = code === "PRICE" ? "price" : code === "OEM" && oemFits ? "oem" : "clone";
-  return { code, label: product?.painMap?.[code] || "", mode };
+  const origin = code === "PRICE" ? "price" : code === "OEM" && oemFits ? "oem" : "clone";
+  // DOR DECLARADA manda no pitch (R-045, Leo 28/10): o lead de Price que
+  // descreve a dor de cadastro em massa (Guilherme) ouve o OEM; o de OEM que
+  // pede "integração entre contas" (Danilo) ouve a clonagem. `sourcePain` e o
+  // pool do closer não mudam; só o roteiro/pitch.
+  const declared = String(lead?.declaredPain || "").toLowerCase();
+  const pivot = declared === "price" ? "price" : declared === "oem" && oemFits ? "oem" : declared === "ads" ? "clone" : "";
+  const mode = pivot && pivot !== origin ? pivot : origin;
+  return { code, label: product?.painMap?.[code] || "", mode, ...(mode !== origin ? { pivotedFrom: origin } : {}) };
 }
 
 // A conversa com IA vale pra este lead? Modo normal: chave `conversation` e
