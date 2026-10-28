@@ -15,7 +15,7 @@ import { limitsSummary, featuresIncluded, PLAN_PRODUCTS, ORG_FIELD_LABEL as FIEL
 const { useState, useEffect } = React;
 
 const BOX = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "12px 14px", background: "var(--bg-inset)" };
-const CLOSED_LABEL = { anual: "Anual", semestral: "Semestral", mensal: "Mensal", unico: "Serviço único" };
+const CLOSED_LABEL = { anual: "Anual", semestral: "Semestral", mensal: "Mensal", unico: "Serviço único", teste: "Teste grátis" };
 const cycleLabel = (c) => CLOSED_LABEL[c] || CYCLE_TITLE[c] || c || "";
 const PRODUCT_LABEL = { leverads: "LeverAds", leverprice: "Lever Price" };
 const TYPE_LABEL = {

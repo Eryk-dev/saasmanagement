@@ -1,12 +1,24 @@
 import {
   CLOSED_PLANS as CLOSED_PLAN_DEFS, CLOSED_PLAN_MONTHS as RECURRING_PLAN_MONTHS, CLOSED_PLAN_TITLE,
   CYCLE_LABEL, CYCLE_MONTHS, CYCLE_SHORT, CYCLE_TITLE, annualized, closedPlanFromLabel,
+  TRIAL_PLAN, CLOSED_PLAN_DAYS, isTrialPlan, trialEndsAt,
 } from "../../../api/src/shared/plan-cycles.js";
 import { PLAN_PRODUCTS, planProductOf } from "../../../api/src/shared/plan-resources.js";
 
 // Ciclos e planos de fechamento vêm da régua compartilhada com a API
 // (plan-cycles.js); as telas importam daqui.
 export { CLOSED_PLAN_TITLE, CYCLE_LABEL, CYCLE_MONTHS, CYCLE_SHORT, CYCLE_TITLE, annualized, closedPlanFromLabel };
+// Teste grátis (28/10/2026): plano de fechamento "teste" (R$ 0, N dias) —
+// vendido pelo produto do catálogo que tem `trial` (Lever Price · Teste grátis).
+export { TRIAL_PLAN, CLOSED_PLAN_DAYS, isTrialPlan, trialEndsAt };
+export const TRIAL_DAYS = CLOSED_PLAN_DAYS[TRIAL_PLAN] || 15;
+// Venda que é teste grátis: TODOS os itens fechados como "teste" (espelho do
+// isTrialDeal de crm/won-lead.js). Um item pago no meio é venda de verdade.
+export function isTrialDeal(lead) {
+  const rows = Array.isArray(lead?.dealItems) ? lead.dealItems.filter((i) => i && (String(i.product || "").trim() || Number(i.amount) > 0)) : [];
+  const plans = rows.length > 1 ? rows.map((i) => i.planClosed) : [lead?.planClosed];
+  return plans.length > 0 && plans.every((p) => isTrialPlan(p));
+}
 
 // Modo de pagamento com que o closer FECHOU o negócio — assinalado na virada pra
 // Ganho/Integração (o momento do fechamento), junto do valor. Guardado em
@@ -126,6 +138,7 @@ export const DEAL_PRODUCTS = [
   { id: "price_essencial", label: "Lever Price · Essencial" },
   { id: "price_escala", label: "Lever Price · Escala" },
   { id: "price_enterprise", label: "Lever Price · Enterprise" },
+  { id: "price_teste", label: "Lever Price · Teste grátis" },
   // Serviço único (pacote de anúncios OEM cobrado uma vez): vende, mas não é
   // produto do deck — não vira apresentação.
   { id: "oem_pack", label: "Pacote de OEM avulso" },
@@ -182,15 +195,19 @@ export function closingPlansOf(saas) {
       return {
         id: p.code, label: p.name, product, group: PLAN_PRODUCTS.find((x) => x.id === product)?.label || "",
         oneOff, custom: p.pricing === "custom", cycles: cyclesOf(oneOff, prices), prices,
+        trial: Number(deal.get(p.code)?.trial || p.trial?.days) || 0,
       };
     });
   const known = new Set(rows.map((r) => r.id));
   const extra = [...deal.values()].filter((p) => !known.has(p.id)).map((p) => ({
     id: p.id, label: p.label, product: "", group: p.group || "", oneOff: !!p.oneOff, custom: false,
-    cycles: cyclesOf(!!p.oneOff, p.prices || []), prices: p.prices || [],
+    cycles: cyclesOf(!!p.oneOff, p.prices || []), prices: p.prices || [], trial: Number(p.trial) || 0,
   }));
   return [...rows, ...extra];
 }
+// Produto do catálogo que é TESTE GRÁTIS (dias > 0): fecha como plano "teste",
+// sem valor nem pagamento obrigatório.
+export const isTrialProduct = (saas, id) => Number(dealProductsOf(saas).find((p) => p.id === id)?.trial) > 0;
 export const dealProductLabel = (id, saas = "") =>
   dealProductsOf(saas).find((p) => p.id === id)?.label
   || plansOf(saas).find((p) => p.code === id)?.name

@@ -114,7 +114,11 @@ export const LEGACY_PRODUCT_LABEL = {
 // "oem_pack" não existe em catalog.products, então nunca pode virar produto
 // ativo do deck (applyCatalog ignoraria).
 export const ONE_OFF_KEY = "oem_pack";
-export const DEAL_PRODUCT_LABEL = { ...PRODUCT_LABEL, [ONE_OFF_KEY]: "Pacote de OEM avulso", ...LEGACY_PRODUCT_LABEL };
+// Teste grátis do Lever Price (28/10/2026): plano da coleção `plans` com
+// `trial.days`, vendido pelo gate como fechamento "teste" (R$ 0). Também não
+// existe em catalog.products: nunca vira produto do deck.
+export const TRIAL_KEY = "price_teste";
+export const DEAL_PRODUCT_LABEL = { ...PRODUCT_LABEL, [ONE_OFF_KEY]: "Pacote de OEM avulso", [TRIAL_KEY]: "Lever Price · Teste grátis", ...LEGACY_PRODUCT_LABEL };
 
 // Só o shape v2 é lido em runtime. Um snapshot v1 que escape da migração
 // renderiza o deck cru do template (sem tela zero de catálogo), nunca quebra.

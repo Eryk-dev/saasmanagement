@@ -335,7 +335,8 @@ function CatalogPriceChips({ all, plan, amount, onPick }) {
   const prices = scoped.length ? scoped : all;
   if (!prices.length) return null;
   // Valor cheio ("R$ 11.988"): o compacto ("R$12,0k") escondia o preço de tabela.
-  const money = (v) => (typeof window !== "undefined" && window.fmt?.moneyFull?.(v)) || `R$ ${v}`;
+  // Teste grátis (valor 0): o chip diz "grátis" em vez de R$ 0.
+  const money = (v) => (Number(v) > 0 ? (typeof window !== "undefined" && window.fmt?.moneyFull?.(v)) || `R$ ${v}` : "grátis");
   const chipLabel = (r) => {
     let l = String(r.label || "");
     const cyc = closedPlanLabel(r.plan);

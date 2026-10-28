@@ -25,7 +25,7 @@ import { clientSummary, ClientSummaryCard, AttributionCard, LeadChecklist, Scrip
 import { SelectPopover } from "../components/select-popover.jsx";
 import { Choice } from "../components/plan-editor.jsx";
 import { resolveScript, scriptTokens, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor } from "../lib/scripts.js";
-import { CLOSED_PLANS, withLegacyOption, closedPlanLabel, dealProductLabel, closingPlansOf, paymentPickerValue, paymentPatchOf } from "../lib/payments.js";
+import { CLOSED_PLANS, withLegacyOption, closedPlanLabel, dealProductLabel, closingPlansOf, paymentPickerValue, paymentPatchOf, isTrialPlan, TRIAL_DAYS } from "../lib/payments.js";
 import { LeadSendActions, useLeadProposalActions } from "../components/lead-send-actions.jsx";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
 import { PresentationConfig, LeadOriginRow } from "../components/presentation-config.jsx";
@@ -2557,8 +2557,12 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     const plan = plans.find((p) => p.id === it.product) || null;
     return { ...it, planObj: plan, closed: cycleFor(plan, it.plan), value: parseMoneyInput(it.amount) };
   });
-  const amountNum = rows.reduce((sum, r) => sum + r.value, 0);
-  const dealReady = !!payment && rows.every((r) => r.value > 0 && (!askProduct || (!!r.product && !!r.closed)));
+  // Teste grátis (28/10/2026): item fechado como "teste" vale R$ 0 e, quando a
+  // venda inteira é teste, o modo de pagamento é opcional (ele decide depois).
+  const trialRow = (r) => askProduct && isTrialPlan(r.closed);
+  const allTrial = rows.length > 0 && rows.every(trialRow);
+  const amountNum = rows.reduce((sum, r) => sum + (trialRow(r) ? 0 : r.value), 0);
+  const dealReady = (allTrial || !!payment) && rows.every((r) => (r.value > 0 || trialRow(r)) && (!askProduct || (!!r.product && !!r.closed)));
   // Proposta na mesa completa = ciclo escolhido E, em quem tem catálogo, o
   // produto ofertado ("não chegou na proposta" dispensa o produto).
   const offerDone = !!offer && (offer === "nenhuma" || !askProduct || !!offerProduct);
@@ -2581,7 +2585,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     ...paymentPatchOf(payment),
     ...(askProduct ? { dealProduct: rows[0].product, planClosed: rows[0].closed } : {}),
     ...(askProduct && rows.length > 1
-      ? { dealItems: rows.map((r) => ({ product: r.product, planClosed: r.closed, amount: r.value })) }
+      ? { dealItems: rows.map((r) => ({ product: r.product, planClosed: r.closed, amount: trialRow(r) ? 0 : r.value })) }
       : Array.isArray(lead.dealItems) && lead.dealItems.length ? { dealItems: [] } : {}),
   });
 
@@ -2609,7 +2613,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
       patch.integrator = integrator;
       if (slot) patch.integrationAt = slot;
       if (integNote.trim() !== String(lead.integrationNote || "")) patch.integrationNote = integNote.trim();
-      if (dest.kind === "integracao" && amountNum > 0) Object.assign(patch, dealPatch());
+      if (dest.kind === "integracao" && (amountNum > 0 || allTrial)) Object.assign(patch, dealPatch());
     }
     else if (setup === "won") { Object.assign(patch, dealPatch()); }
     else if (setup === "loss") { patch.lostReason = reason; if (note.trim()) patch.lostNote = note.trim(); }
@@ -2667,8 +2671,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   // mais vale pra venda inteira e desce pro fim, ao lado do total.
   const paymentField = (
     <div>
-      <div className="kicker" style={label}>Modo de pagamento *</div>
+      <div className="kicker" style={label}>Modo de pagamento {allTrial ? "" : "*"}</div>
       <PaymentMethodPicker value={payment} onChange={setPayment} style={pickStyle} inputStyle={inputStyle} />
+      {allTrial && <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>opcional no teste grátis: como ele pretende pagar se continuar</div>}
     </div>
   );
   const dealFields = (hint) => (
@@ -2704,6 +2709,13 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                   {r.planObj?.custom && <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>plano sob consulta: sem preço de tabela, informe o valor fechado</div>}
                 </div>
               )}
+              {trialRow(r) ? (
+                <div>
+                  <div className="kicker" style={label}>{multi ? `Valor deste produto` : "Valor do negócio"}</div>
+                  <div className="today-dest-static">Teste grátis · {TRIAL_DAYS} dias · sem cobrança</div>
+                  {!multi && <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>entra nas vendas como “Teste grátis” e o pagamento fica “Não pago” até ele decidir</div>}
+                </div>
+              ) : (
               <div>
                 <label className="kicker" style={label} htmlFor={`deal-amount-${lead.id}-${i}`}>{monthly ? "Valor mensal (R$) *" : multi ? "Valor deste produto (R$) *" : "Valor do negócio (R$) *"}</label>
                 <input id={`deal-amount-${lead.id}-${i}`} type="text" inputMode="decimal" autoComplete="off" value={r.amount} placeholder={monthly ? "ex.: 599" : "ex.: 7.188"}
@@ -2711,6 +2723,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                 {monthly ? <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>recorrência: a cada 30 dias do fechamento o acumulado do cliente soma mais uma mensalidade</div>
                   : !multi && <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>{hint}</div>}
               </div>
+              )}
               {!multi && paymentField}
             </div>
           </div>

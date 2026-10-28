@@ -12,7 +12,7 @@ import { legacyDoneKey, DEFAULT_COLUMNS as TASK_DEFAULT_COLUMNS, assetIdFromUrl 
 import { catalogAmount } from "../proposals/proposal-catalog.js";
 import { createClosedSubscription } from "../billing/billing.js";
 import { CLOSED_PLAN_ANNUAL_FACTOR } from "../shared/plan-cycles.js";
-import { ensurePlansCatalog, ensurePlanResources, syncPlanCatalogProjection } from "../billing/plan-catalog.js";
+import { ensurePlansCatalog, ensurePlanResources, ensurePriceTrialPlan, syncPlanCatalogProjection } from "../billing/plan-catalog.js";
 import { backfillCustomerPlans } from "../billing/plan-history.js";
 import { FLASHCARD_DEFAULTS } from "../training/flashcards.js";
 import { LEVERADS_DECKS, LEVERADS_V2 } from "../training/flashcard-decks.leverads.js";
@@ -2650,6 +2650,8 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] catálogo de planos: ${n} plano(s) criado(s) a partir do catálogo das propostas`);
     const r = await ensurePlanResources(repo);
     if (r) console.log(`[migration] catálogo de planos: ${r} plano(s) com os recursos do LeverAds (cópias por dia e módulos) preenchidos`);
+    const t = await ensurePriceTrialPlan(repo);
+    if (t) console.log(`[migration] catálogo de planos: ${t} plano(s) de teste grátis do Lever Price criado(s)`);
     for (const saas of new Set((await repo.list("plans")).filter((p) => p.code && p.saas).map((p) => p.saas))) {
       const changed = await syncPlanCatalogProjection(repo, saas);
       if (changed) console.log(`[migration] catálogo de planos (${saas}): ${changed} template(s) de proposta realinhado(s) aos planos`);

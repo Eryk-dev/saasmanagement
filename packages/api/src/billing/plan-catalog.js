@@ -13,9 +13,9 @@
 //
 // Limites: chave AUSENTE = não se aplica ao plano; `null` = ilimitado.
 
-import { CYCLE_MONTHS } from "../shared/plan-cycles.js";
+import { CYCLE_MONTHS, TRIAL_PLAN, CLOSED_PLAN_DAYS } from "../shared/plan-cycles.js";
 import {
-  PRODUCT_KEYS, PRODUCT_LABEL, LEGACY_PRODUCT_LABEL, DEAL_PRODUCT_LABEL, ONE_OFF_KEY,
+  PRODUCT_KEYS, PRODUCT_LABEL, LEGACY_PRODUCT_LABEL, DEAL_PRODUCT_LABEL, ONE_OFF_KEY, TRIAL_KEY,
   hasCatalog, moneyOf, fmtBR,
 } from "../proposals/proposal-catalog.js";
 import { defaultResources, PLAN_PRODUCTS, planProductOf, planAccessOf } from "../shared/plan-resources.js";
@@ -57,6 +57,10 @@ const PRODUCT_OF_LINE = { oem: "leverads", ads: "leverads", price: "leverprice" 
 
 export const planIdOf = (saas, code) => `plan_${saas}_${code}`;
 export const isPlanV2 = (p) => Number(p?.v) === PLAN_VERSION && !!p?.code;
+// Plano de TESTE GRÁTIS (`trial.days`): assinatura sem preço que o gate fecha
+// como plano "teste" (R$ 0). Fica fora do deck e da projeção pros templates.
+export const isTrialPlan = (p) => Number(p?.trial?.days) > 0;
+export const trialDaysOf = (p) => (isTrialPlan(p) ? Math.round(Number(p.trial.days)) : 0);
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
 // Igualdade por CONTEÚDO, sem depender da ordem das chaves: o Postgres (JSONB)
@@ -204,7 +208,7 @@ export function mentoriaToPlans(block, { saas = MENTORIA_SAAS } = {}) {
 const byOrder = (a, b) => (Number(a.order) || 0) - (Number(b.order) || 0) || String(a.code).localeCompare(String(b.code));
 const selling = (p) => isPlanV2(p) && p.status !== "archived";
 const isMentoriaPlan = (p) => p.line === "mentoria";
-const deckPlans = (plans) => plans.filter((p) => selling(p) && p.kind === "subscription" && p.pricing !== "custom").sort(byOrder);
+const deckPlans = (plans) => plans.filter((p) => selling(p) && p.kind === "subscription" && p.pricing !== "custom" && !isTrialPlan(p)).sort(byOrder);
 
 function productFromPlan(p) {
   const P = { ...(p.extra || {}), line: p.line, tier: p.tier, name: p.name };
@@ -259,6 +263,13 @@ export function dealCatalogFromPlans(plans) {
   const out = [];
   const all = (plans || []).filter(selling).sort(byOrder);
   for (const p of all.filter((x) => !isMentoriaPlan(x) && x.kind === "subscription" && x.pricing !== "custom")) {
+    // Teste grátis: um "preço" só, R$ 0 no plano de fechamento "teste" — é
+    // por ele que o gate sabe que esse produto fecha sem valor nem cobrança.
+    if (isTrialPlan(p)) {
+      const days = trialDaysOf(p);
+      out.push({ id: p.code, label: p.name, group: p.group, trial: days, prices: [{ plan: TRIAL_PLAN, label: `Teste grátis · ${days} dias`, value: 0 }] });
+      continue;
+    }
     const prices = [];
     for (const cycle of Object.keys(CATALOG_CYCLE)) {
       const total = moneyOf(p.prices?.[cycle]?.total);
@@ -284,6 +295,7 @@ export const slimPlan = (p) => ({
   line: p.line, tier: p.tier, order: Number(p.order) || 0, status: p.status, prices: p.prices || {}, options: p.options || [],
   limits: p.limits || {}, features: p.features || {}, accessProduct: p.access?.product || "", priceVersion: Number(p.priceVersion) || 1,
   requiresIntegration: requiresIntegration(p),
+  ...(isTrialPlan(p) ? { trial: { days: trialDaysOf(p) } } : {}),
 });
 
 // O plano pede integração com o cliente depois da venda? Decide se o Ganho
@@ -363,6 +375,7 @@ export function newPlanDoc(body, opts) {
     prices: body.prices, options: body.options, limits: body.limits,
     features: body.features && typeof body.features === "object" ? body.features : {},
     requiresIntegration: body.requiresIntegration === true,
+    ...(kind === "subscription" && Number(body.trial?.days) > 0 ? { trial: { days: Math.round(Number(body.trial.days)) } } : {}),
     deliverables: body.deliverables && typeof body.deliverables === "object" ? body.deliverables : {},
     labels: body.labels && typeof body.labels === "object" ? body.labels : {},
     extra: {},
@@ -474,6 +487,41 @@ export async function ensurePlansCatalog(repo, { defaults = {} } = {}) {
   if (!sameJson(done, flag?.seeded || {})) {
     if (flag) await repo.update("app_config", SEED_FLAG, { seeded: done, at: now });
     else await repo.create("app_config", { id: SEED_FLAG, seeded: done, at: now });
+  }
+  return created;
+}
+
+// Teste grátis do Lever Price (Leo, 28/10/2026): a modalidade "usa 15 dias e
+// decide" entra no catálogo como um plano próprio do Lever Price, pra sair no
+// select do gate de fechamento como qualquer produto. Nasce do Essencial (os
+// mesmos limites e entregáveis, sem preço) em todo produto que já tem o Price
+// semeado e ainda não tem o teste. Uma vez por produto; depois é da tela Planos.
+export async function ensurePriceTrialPlan(repo) {
+  const all = await plansOf(repo);
+  let created = 0;
+  for (const base of all.filter((p) => p.code === "price_essencial")) {
+    const id = planIdOf(base.saas, TRIAL_KEY);
+    if (all.some((p) => p.id === id) || await repo.get("plans", id).catch(() => null)) continue;
+    const days = CLOSED_PLAN_DAYS[TRIAL_PLAN] || 15;
+    await repo.create("plans", nextPlan(null, {
+      id, v: PLAN_VERSION, saas: base.saas, code: TRIAL_KEY,
+      name: DEAL_PRODUCT_LABEL[TRIAL_KEY],
+      kind: "subscription", pricing: "table",
+      product: base.product || "leverprice",
+      access: { product: base.access?.product || "leverprice" },
+      line: base.line || "price", tier: "teste", group: base.group || "Lever Price",
+      order: (Number(base.order) || 50) + 25,
+      status: "active",
+      prices: {}, options: [], limits: clone(base.limits || {}), features: clone(base.features || {}),
+      deliverables: clone(base.deliverables || {}),
+      labels: { priceLabel: `${days} dias grátis` }, extra: {},
+      trial: { days },
+      requiresIntegration: base.requiresIntegration === true,
+      // Nasce depois do ensurePlanResources e não tem recurso do LeverAds pra
+      // ganhar: leva o carimbo do Essencial pra não voltar a passar por lá.
+      ...(base.resourcesV ? { resourcesV: base.resourcesV } : {}),
+    }, { by: "migration" }));
+    created++;
   }
   return created;
 }

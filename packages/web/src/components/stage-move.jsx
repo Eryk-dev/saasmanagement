@@ -3,7 +3,7 @@ import { PrimaryButton } from "../atoms.jsx";
 import { Modal } from "./overlay.jsx";
 import { stageKind, phaseOf, isLossKind, isWonKind, lossReasonsOf } from "../lib/funnel.js";
 import { usersByRole, currentUser, displayName } from "../lib/users.js";
-import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, CONSULT_PACKAGES, CLOSED_PLAN_MONTHS, dealProductsOf, paymentUpfront, paymentRecurring, paymentCustom, paymentPickerValue, paymentPatchOf } from "../lib/payments.js";
+import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, CONSULT_PACKAGES, CLOSED_PLAN_MONTHS, dealProductsOf, paymentUpfront, paymentRecurring, paymentCustom, paymentPickerValue, paymentPatchOf, isTrialProduct, isTrialPlan, TRIAL_PLAN, TRIAL_DAYS } from "../lib/payments.js";
 import { DealProductField, isOneOffProduct, PopoverWithCustom, PaymentMethodPicker } from "./lead-blocks.jsx";
 import { SelectPopover } from "./select-popover.jsx";
 import { Choice } from "./plan-editor.jsx";
@@ -134,6 +134,12 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   const [dealProduct, setDealProduct] = React.useState(lead.dealProduct || "");
   const askProduct = isWonGate && !isKidsWon && dealProductsOf(lead.saas).length > 0;
   const oneOff = isOneOffProduct(lead.saas, dealProduct);
+  // Teste grátis (28/10/2026): o produto "Lever Price · Teste grátis" fecha
+  // como plano "teste", vale R$ 0 e não exige modo de pagamento (o cliente
+  // decide depois dos dias de teste). O lead que já está em teste também
+  // entra aqui (gate da Integração confirmando o fechamento).
+  const trialProduct = !isKidsWon && !oneOff && isTrialProduct(lead.saas, dealProduct);
+  const isTrial = trialProduct || (!isKidsWon && !oneOff && isTrialPlan(planClosed));
   // Assinatura mensal (recorrência): o valor lançado é o MENSAL — o acumulado
   // do cliente soma outra mensalidade a cada 30 dias (accruedAmountOf). Não há
   // Nº de parcelas (a cobrança é indefinida), então o faturado fica fora.
@@ -141,7 +147,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   // Condição personalizada fica fora do "faturado em quantas vezes": o que o
   // closer escreveu não é N parcelas iguais — o recebido entra pelo espelho do
   // MP ou pela baixa manual em Clientes.
-  const isFaturado = !!payment && paymentUpfront(payment) === false && !paymentRecurring(payment) && !paymentCustom(payment) && !isMonthly;
+  const isFaturado = !isTrial && !!payment && paymentUpfront(payment) === false && !paymentRecurring(payment) && !paymentCustom(payment) && !isMonthly;
   const amountNum = parseMoneyInput(amount);
   const effInstallments = Number(installments) > 0 ? Number(installments)
     : (CLOSED_PLAN_MONTHS[isKidsWon || oneOff ? "unico" : planClosed] || 12);
@@ -171,7 +177,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   // A call é OBRIGATÓRIA pra entrar na etapa (regra do servidor), tanto no gate
   // de call quanto no handoff que já cai numa etapa de call.
   const ready = isLost ? !!reason
-    : isWonGate ? (amountNum > 0 && !!payment && (!askProduct || !!dealProduct) && (!askInteg || !!integrator))
+    : isWonGate ? ((isTrial || (amountNum > 0 && !!payment)) && (!askProduct || !!dealProduct) && (!askInteg || !!integrator))
       : isOffer ? (!!followDay && (!askOffer || (!!offer && (offer === "nenhuma" || !offerProducts.length || !!offerProduct))))
         : askCall ? (!!closer && !!callAt)
           : !!closer;
@@ -188,12 +194,13 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
       patch.lostReason = reason;
       if (note.trim()) patch.lostNote = note.trim();
     } else if (isWonGate) {
-      patch.amount = amountNum;
+      // Teste grátis vale R$ 0 — o valor digitado antes (se houver) não conta.
+      patch.amount = isTrial ? 0 : amountNum;
       Object.assign(patch, paymentPatchOf(payment));
       // À vista/cartão zera o parcelamento (um faturado antigo não assombra).
       patch.paymentInstallments = isFaturado ? effInstallments : "";
       // Mentoria é compra única (o valor não anualiza); o pacote é o "plano".
-      patch.planClosed = isKidsWon ? "unico" : oneOff ? "unico" : planClosed;
+      patch.planClosed = isKidsWon ? "unico" : oneOff ? "unico" : isTrial ? TRIAL_PLAN : planClosed;
       if (isKidsWon) patch.consultPackage = Number(consultPackage) || 8;
       if (askProduct) patch.dealProduct = dealProduct;
       // Entrega: dono da integração e, se um horário foi escolhido, a hora dela.
@@ -264,11 +271,21 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
               <>
                 <DealProductField saas={lead.saas} value={dealProduct} plan={planClosed} amount={amount}
                   fieldStyle={field} labelStyle={label}
-                  onChange={(id, p) => { setDealProduct(id); if (p?.oneOff) setPlanClosed("unico"); }}
+                  onChange={(id, p) => { setDealProduct(id); if (p?.oneOff) setPlanClosed("unico"); else if (p?.trial) setPlanClosed(TRIAL_PLAN); else if (isTrialPlan(planClosed)) setPlanClosed("anual"); }}
                   onPick={(r) => { setAmount(String(r.value)); if (r.plan) setPlanClosed(r.plan); }} />
                 <div style={{ height: 12 }} />
               </>
             )}
+            {isTrial ? (
+              <>
+                <label className="kicker" style={label}>Valor do negócio</label>
+                <div className="mono" style={{ fontSize: 12.5, color: "var(--fg-2)" }}>Teste grátis · {TRIAL_DAYS} dias · sem cobrança</div>
+                <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
+                  entra nas vendas como “Teste grátis” e o pagamento fica “Não pago” até ele decidir; depois é só reeditar o fechamento com o plano e o valor
+                </div>
+              </>
+            ) : (
+              <>
             <label className="kicker" style={label}>{isMonthly ? "Valor mensal (R$) *" : "Valor do negócio (R$) *"}</label>
             <input type="text" inputMode="decimal" autoComplete="off" aria-label={isMonthly ? "Valor mensal" : "Valor do negócio"}
               value={amount} autoFocus={!askProduct} placeholder={isMonthly ? "ex.: 599" : "ex.: 7.188"}
@@ -282,6 +299,8 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
                   ? "ajustar aqui atualiza o cliente e a assinatura criados no fechamento"
                   : "vira a receita da campanha no relatório de marketing e o valor da conversão enviada pra Meta"}
             </div>
+              </>
+            )}
             {/* Mentoria não tem plano recorrente: o PACOTE de consultas é o que
                 foi comprado, então ele substitui o "Plano fechado" no Kids. */}
             <div style={{ height: 12 }} />
@@ -302,13 +321,16 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
                     (legado) aparece apenas quando já é o plano deste lead. */}
                 {oneOff
                   ? <div className="mono" style={{ fontSize: 12.5, color: "var(--fg-2)" }}>Serviço único · o plano é o próprio produto</div>
-                  : <Choice label="Plano fechado" size="sm" value={planClosed} onChange={setPlanClosed}
-                      options={withLegacyOption(CLOSED_PLANS_ACTIVE, CLOSED_PLANS, planClosed).map((p) => ({ value: p.id, label: p.label }))} />}
+                  : trialProduct
+                    ? <div className="mono" style={{ fontSize: 12.5, color: "var(--fg-2)" }}>Teste grátis · {TRIAL_DAYS} dias · o plano é o próprio produto</div>
+                    : <Choice label="Plano fechado" size="sm" value={planClosed} onChange={setPlanClosed}
+                      options={withLegacyOption(CLOSED_PLANS_ACTIVE.filter((p) => !isTrialPlan(p.id)), CLOSED_PLANS, planClosed).map((p) => ({ value: p.id, label: p.label }))} />}
               </>
             )}
             <div style={{ height: 12 }} />
-            <label className="kicker" style={label}>Modo de pagamento *</label>
+            <label className="kicker" style={label}>Modo de pagamento {isTrial ? "" : "*"}</label>
             <PaymentMethodPicker value={payment} onChange={setPayment} inputStyle={field} />
+            {isTrial && <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>opcional no teste grátis: como ele pretende pagar se continuar</div>}
             {isFaturado && (
               <>
                 <div style={{ height: 12 }} />
