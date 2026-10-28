@@ -48,7 +48,7 @@ export function callsOfLead(lead, { now = Date.now() } = {}) {
   if (cur) byMinute.set(key(cur), { at: cur, closer: lead.closer || "", status: statusOf(lead, cur, now), current: true });
   for (const h of Array.isArray(lead.callHistory) ? lead.callHistory : []) {
     const at = momentOf(h?.at);
-    if (at && !byMinute.has(key(at))) byMinute.set(key(at), { at, closer: h.closer || lead.closer || "", status: "realizada", current: false });
+    if (at && !byMinute.has(key(at))) byMinute.set(key(at), { at, closer: h.closer || lead.closer || "", status: "realizada", current: false, meetUrl: h.callUrl || "", eventId: h.meetEventId || "" });
   }
   return [...byMinute.values()].sort((a, b) => a.at - b.at);
 }
@@ -67,8 +67,8 @@ export async function syncLeadMeetings(repo, lead, { now = Date.now() } = {}) {
     const want = {
       lead: lead.id, saas: lead.saas || "", customer: lead.customerId || "", kind: "call",
       at: c.at.toISOString(), closer: c.closer, status: c.status,
-      meetUrl: c.current ? lead.callUrl || "" : (existing.get(id)?.meetUrl || ""),
-      eventId: c.current ? lead.meetEventId || "" : (existing.get(id)?.eventId || ""),
+      meetUrl: c.current ? lead.callUrl || "" : (existing.get(id)?.meetUrl || c.meetUrl || ""),
+      eventId: c.current ? lead.meetEventId || "" : (existing.get(id)?.eventId || c.eventId || ""),
       summarized: Boolean(c.current && lead.callSummaryFor && lead.callSummaryFor === lead.meetEventId) || Boolean(existing.get(id)?.summarized),
     };
     const prev = existing.get(id);

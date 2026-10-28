@@ -253,7 +253,24 @@ export function confirmStepDone(lead, window, at) {
 
 // Monta a fila: um item por lead trabalhável, no bloco do dia certo e
 // classificado no grupo de prioridade (que define a ordem dentro do bloco).
-function buildQueue(leads, consultas, saasCfg, person) {
+// Ocorrências de um compromisso da Agenda (agenda_blocks) a partir de hoje:
+// pontual = a data dele (se ainda não passou); semanal = cada dia da janela
+// que cai no dia da semana. Devolve o início do dia (ms, hora local).
+function blockOccurrences(b, startToday, days) {
+  const out = [];
+  if (b.recur === "weekly") {
+    for (let i = 0; i <= days; i++) {
+      const d = new Date(startToday); d.setDate(d.getDate() + i);
+      if (d.getDay() === Number(b.weekday)) out.push(d.getTime());
+    }
+  } else if (b.date) {
+    const d = parseYMD(b.date);
+    if (Number.isFinite(d.getTime()) && d.getTime() >= startToday.getTime()) out.push(d.getTime());
+  }
+  return out;
+}
+
+function buildQueue(leads, consultas, saasCfg, person, blocks = (typeof window !== "undefined" && window.SEED?.AGENDA_BLOCKS) || []) {
   const workable = new Set(workableStages(saasCfg));
   const open = new Set(openStages(saasCfg));
   const nowMs = Date.now();
@@ -441,6 +458,32 @@ function buildQueue(leads, consultas, saasCfg, person) {
     if (t <= endToday.getTime()) g.hoje.push(item);
     else if (t <= endTomorrow.getTime()) g.amanha.push(item);
     else g.proximos.push(item);
+  }
+
+  // Compromissos da tela Agenda (agenda_blocks kind "event") na fila de quem
+  // participa (Leo, 28/10/2026): o que está na agenda tem que estar nas
+  // atividades. Entram como compromisso ("appt") no horário marcado, lado a
+  // lado com calls e consultas; abrir leva à Agenda. Bloqueio (kind "block")
+  // não é tarefa: fica só na agenda ocupada. Recorrente gera uma ocorrência
+  // por dia da janela (hoje a +7); compromisso de hoje que já terminou vira
+  // "feito". Dono OU participante conta (compromisso com várias pessoas).
+  for (const b of (blocks || [])) {
+    if (!b || b.kind !== "event") continue;
+    if (saasCfg && b.saas && b.saas !== saasCfg.id) continue;
+    const parts = [b.user, ...(Array.isArray(b.users) ? b.users : [])].filter(Boolean);
+    if (person && !parts.includes(person)) continue;
+    for (const day0 of blockOccurrences(b, startToday, 7)) {
+      const H = 3600000;
+      const t = b.allDay ? day0 : day0 + (Number(b.fromHour) || 0) * H;
+      const end = b.allDay ? day0 + DAY - 1 : day0 + (Number(b.toHour) || Number(b.fromHour) || 0) * H;
+      const item = {
+        block: b, kind: "compromisso", who: b.user || "", due: { t, type: "compromisso", end, allDay: !!b.allDay },
+        done: end <= nowMs, stage: "Compromisso", group: "appt", title: b.title || b.reason || "Compromisso",
+      };
+      if (t <= endToday.getTime()) g.hoje.push(item);
+      else if (t <= endTomorrow.getTime()) g.amanha.push(item);
+      else g.proximos.push(item);
+    }
   }
 
   // Ordem dentro do bloco: prioridade do processo; no empate, novos por chegada
@@ -632,7 +675,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   const [scriptItem, setScriptItem] = useS(null); // item com o painel de roteiro aberto
   useE(() => { setScriptItem(null); }, [saasCfg?.id]);
 
-  const q = useM(() => buildQueue(leads, consultas, saasCfg, person), [leads, consultas, saasCfg, person]);
+  const q = useM(() => buildQueue(leads, consultas, saasCfg, person), [leads, consultas, saasCfg, person, version]); // eslint-disable-line react-hooks/exhaustive-deps
   const total = q.hoje.length;
   // Tick do relógio do cabeçalho — de quebra mantém a previsão de cada linha
   // ("em 25 min", "agora") em dia sem esperar um refresh de dados.
@@ -803,7 +846,10 @@ Se remarcar agora, ela não será mais resumida automaticamente. Remarcar mesmo 
       || (c.customerId ? leads.find((x) => x.customerId === c.customerId) : null);
     if (lead) onOpenLead && onOpenLead(lead);
   }
-  const openRow = (item) => (item.consulta ? openConsulta(item) : setScriptItem(item));
+  // Compromisso da Agenda não tem roteiro: abrir leva pra tela Agenda (é lá
+  // que ele se edita). Navegação por hash, igual à moldura (app.jsx).
+  const openAgenda = () => { try { window.location.hash = "#agenda"; } catch { /* ignore */ } };
+  const openRow = (item) => (item.block ? openAgenda() : item.consulta ? openConsulta(item) : setScriptItem(item));
 
   const users = useM(() => allUsers().filter((u) => !u.saas || u.saas === saasCfg?.id), [saasCfg?.id]);
   const firstPending = q.hoje.find((i) => !i.done);
@@ -820,7 +866,7 @@ Se remarcar agora, ela não será mais resumida automaticamente. Remarcar mesmo 
     return Object.fromEntries(users.map((u) => [u.id, buildQueue(pool, consultas, saasCfg, u.id).hoje.filter((i) => !i.done).length]));
   }, [leads, consultas, saasCfg, users]);
   // O primeiro pendente fica em Agora; os demais e as feitas têm áreas próprias.
-  const queueRows = q.hoje.filter(item => !item.done && (item.consulta || item !== firstPending));
+  const queueRows = q.hoje.filter(item => !item.done && (item.consulta || item.block || item !== firstPending));
   const lateItems = pendingToday.filter((i) => isLateItem(i, now));
   const lateCount = lateItems.length;
   const lateFollowups = lateItems.filter((i) => i.due.type === "followup").length;
@@ -833,8 +879,8 @@ Se remarcar agora, ela não será mais resumida automaticamente. Remarcar mesmo 
     const t = busca.trim().toLowerCase();
     if (!t) return rows;
     return rows.filter((i) => {
-      const nome = i.consulta ? (i.consulta.clientName || "") : (i.l?.name || "");
-      const empresa = i.consulta ? (i.consulta.childName || "") : (i.l?.company || "");
+      const nome = i.block ? (i.title || "") : i.consulta ? (i.consulta.clientName || "") : (i.l?.name || "");
+      const empresa = i.block ? "" : i.consulta ? (i.consulta.childName || "") : (i.l?.company || "");
       return `${nome} ${empresa}`.toLowerCase().includes(t);
     });
   };
@@ -896,7 +942,7 @@ Se remarcar agora, ela não será mais resumida automaticamente. Remarcar mesmo 
                   igual às outras: a tela prometia "hoje em ordem de execução"
                   e não dizia qual é o próximo. Ele SAI da lista abaixo (a
                   contagem desconta), pra não existir em dois lugares. */}
-              {firstPending && !firstPending.consulta && (
+              {firstPending && !firstPending.consulta && !firstPending.block && (
                 <AgoraBlock item={firstPending} saasCfg={saasCfg} onScript={() => setScriptItem(firstPending)}
                   onClaim={() => claim(firstPending)} onWhatsapp={onOpenWhatsapp} />
               )}
@@ -957,7 +1003,7 @@ Se remarcar agora, ela não será mais resumida automaticamente. Remarcar mesmo 
                   return (
                     <React.Fragment key={key}>
                       <QueueRow item={item} block="hoje" featured={false} selected={!!scriptItem && rowKey(scriptItem) === key}
-                        onScript={() => setScriptItem(item)} onClaim={() => claim(item)} onWhatsapp={onOpenWhatsapp} onOpen={() => item.consulta ? openConsulta(item) : onOpenLead?.(item.l)} />
+                        onScript={() => setScriptItem(item)} onClaim={() => claim(item)} onWhatsapp={onOpenWhatsapp} onOpen={() => item.block ? openAgenda() : item.consulta ? openConsulta(item) : onOpenLead?.(item.l)} />
                     </React.Fragment>
                   );
                 })}
@@ -968,7 +1014,7 @@ Se remarcar agora, ela não será mais resumida automaticamente. Remarcar mesmo 
                 </nav>}
 
               </section>
-                {doneTodayRows.length > 0 && <details className="today-completed"><summary>{doneTodayRows.length} feitas hoje</summary>{doneTodayRows.map(item => <QueueRow key={item.l?.id || item.consulta?.id} item={item} block="hoje" onScript={() => openRow(item)} onOpen={() => openRow(item)} />)}</details>}
+                {doneTodayRows.length > 0 && <details className="today-completed"><summary>{doneTodayRows.length} feitas hoje</summary>{doneTodayRows.map(item => <QueueRow key={rowKey(item)} item={item} block="hoje" onScript={() => openRow(item)} onOpen={() => openRow(item)} />)}</details>}
           </>
         )}
         <CompactSchedule title="Atividades futuras" rows={q.amanha} laterRows={q.proximos} onOpen={openRow} />
@@ -1054,6 +1100,51 @@ function ConsultaRow({ item, block, featured, ordem, onOpen }) {
   );
 }
 
+// Linha de compromisso da Agenda na fila: horário, "Compromisso", título,
+// quem participa e o botão pra abrir a Agenda (é lá que ele se edita). Não
+// participa do fluxo de roteiro/toque dos leads.
+function CompromissoRow({ item, block, featured, ordem, onOpen }) {
+  const b = item.block;
+  const t = item.due?.t;
+  const now = Date.now();
+  const parts = [b.user, ...(Array.isArray(b.users) ? b.users : [])].filter((id, i, arr) => id && arr.indexOf(id) === i);
+  let when;
+  if (item.due?.allDay) when = { pill: block === "proximos" ? ddmmOf(t) : block === "amanha" ? "amanhã" : "hoje", note: "dia todo", tone: "mut" };
+  else if (block === "amanha") when = { pill: hhmmOf(t), note: "amanhã", tone: "mut" };
+  else if (block === "proximos") when = { pill: ddmmOf(t), note: hhmmOf(t), tone: "mut" };
+  else if (item.done || now >= item.due.end) when = { pill: hhmmOf(t), note: "encerrado", tone: "mut" };
+  else if (t <= now) when = { pill: hhmmOf(t), note: "em andamento", tone: "warn" };
+  else when = { pill: hhmmOf(t), note: untilNote(t, now), tone: "pos" };
+  const detalhe = [
+    b.recur === "weekly" ? "toda semana" : "",
+    item.due?.allDay ? "dia todo" : `até ${hhmmOf(item.due.end)}`,
+    parts.length > 1 ? parts.map((id) => displayName(id)).join(", ") : "",
+  ].filter(Boolean).join(" · ");
+  return (
+    <div onClick={onOpen} role="button" tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
+      title="Abrir a Agenda (é lá que o compromisso se edita)" style={{
+      display: "flex", alignItems: "center", gap: 14, padding: featured ? "16px var(--inset-x)" : "14px var(--inset-x)",
+      borderTop: "1px solid var(--line-faint)", background: featured ? "var(--accent-soft)" : "transparent", cursor: "pointer", flexWrap: "wrap",
+      opacity: item.done ? 0.62 : 1,
+    }}>
+      <span className="mono tnum" style={{ width: 24, flexShrink: 0, fontSize: 11.5, color: "var(--fg-4)", textAlign: "right" }}>{ordem ?? "—"}</span>
+      <TimeCell pill={when.pill} note={when.note} tone={when.tone} soft={when.soft} />
+      <span style={{ width: 118, flexShrink: 0 }}>
+        <span style={{ display: "inline-block", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: "20px", padding: "0 8px", borderRadius: "var(--r-1)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 11.5, fontWeight: 600 }}>Compromisso</span>
+      </span>
+      <div style={{ flex: 1, minWidth: "min(200px, 100%)" }}>
+        <div style={{ fontSize: 14, fontWeight: 600, textDecoration: item.done ? "line-through" : "none" }}>{item.title}</div>
+        <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 3 }}>compromisso da Agenda{detalhe ? ` · ${detalhe}` : ""}</div>
+      </div>
+      {/* A linha inteira abre a Agenda; o texto só diz pra onde vai (um botão
+          de 32px quebrava a linha em 1440). */}
+      <button onClick={(e) => { e.stopPropagation(); onOpen(); }} className="mono" aria-label="abrir agenda"
+        style={{ flexShrink: 0, background: "none", border: 0, padding: 0, fontSize: 11.5, fontWeight: 600, color: "var(--accent)", cursor: "pointer" }}>agenda →</button>
+    </div>
+  );
+}
+
 // EM ANDAMENTO (07/10/2026): passar da hora não é atrasar — a call das 9h às
 // 9h01 está acontecendo, não vencida. Cada item tem uma janela depois do
 // horário em que ainda está sendo cumprido no prazo: o compromisso dura o que
@@ -1066,6 +1157,7 @@ function runEndOf(item) {
   const M = 60 * 1000;
   if (type === "call" || type === "integração") return t + CALL_MIN * M;
   if (type === "consulta") return t + (Number(item.consulta?.durationMin) > 0 ? Number(item.consulta.durationMin) : 60) * M;
+  if (type === "compromisso") return Number(item.due.end) || t + 60 * M; // dura o que a Agenda diz
   const end = t + RUN_MIN * M;
   if (type === "confirm") {
     const appt = new Date((item.confirmKind === "integracao" ? item.l?.integrationAt : item.l?.callAt) || NaN).getTime();
@@ -1073,7 +1165,7 @@ function runEndOf(item) {
   }
   return end;
 }
-const isApptType = (type) => type === "call" || type === "integração" || type === "consulta";
+const isApptType = (type) => type === "call" || type === "integração" || type === "consulta" || type === "compromisso";
 
 // ATRASO (05/10/2026): item pendente cuja janela de execução já fechou — ou,
 // no follow-up (que é por DIA), cujo dia do contato já passou. É a régua única
@@ -1082,6 +1174,8 @@ export function isLateItem(item, now = Date.now()) {
   if (!item?.due || item.done) return false;
   // Confirmação da integração é só confirmação: não atrasa (15/10/2026).
   if (item.confirmKind === "integracao") return false;
+  // Compromisso da Agenda não atrasa: terminou, encerrou (vira feito na fila).
+  if (item.due.type === "compromisso") return false;
   if (item.due.type === "followup") return item.due.t < new Date(now).setHours(0, 0, 0, 0);
   return now >= runEndOf(item);
 }
@@ -1095,13 +1189,14 @@ export function isRunningItem(item, now = Date.now()) {
 }
 
 // Chave estável da linha: a confirmação de call tem uma por janela do mesmo lead.
-const rowKey = (item) => (item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id);
+const rowKey = (item) => (item.block ? `b-${item.block.id}-${item.due?.t}` : item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id);
 
 // Uma linha da fila: sequência, quando, etapa (coluna do funil), ação a fazer,
 // lead com a qualificação compilada e as ações. Clique no corpo abre o ROTEIRO
 // (o painel de execução), não o card de status; o drawer fica no "abrir lead".
 function QueueRow({ item, block, featured, ordem, selected = false, onScript, onClaim, onWhatsapp, onOpen }) {
   const { l, consulta, kind, due, stage, who, group } = item;
+  if (item.block) return <CompromissoRow item={item} block={block} featured={featured} ordem={ordem} onOpen={onOpen} />;
   if (consulta) return <ConsultaRow item={item} block={block} featured={featured} ordem={ordem} onOpen={onOpen} />;
   const now = Date.now();
 
@@ -1216,8 +1311,8 @@ function ScheduleLane({ label, rows, amanha, onOpen }) {
           <button key={rowKey(item)} onClick={() => onOpen(item)} style={{ width: "100%", display: "flex", gap: 10, alignItems: "baseline", padding: "10px 0", borderTop: "1px solid var(--line-faint)", textAlign: "left" }}>
             <span className="tnum" style={{ fontSize: 12.5, color: "var(--fg-4)", flexShrink: 0 }}>{timeOf(item)}</span>
             <span style={{ minWidth: 0 }}>
-              <span style={{ display: "block", fontSize: 13.5, fontWeight: 600 }}>{item.consulta ? (item.consulta.clientName || "cliente") : item.l.name}</span>
-              <span style={{ display: "block", fontSize: 12, color: "var(--fg-3)" }}>{item.consulta ? `Consulta ${item.consulta.n || "?"}/${item.consulta.packageTotal || 8} · UniqueKids` : `${ACTION_LABELS[item.kind] || "contato"}${item.l.company ? ` · ${item.l.company}` : ""}`}</span>
+              <span style={{ display: "block", fontSize: 13.5, fontWeight: 600 }}>{item.block ? item.title : item.consulta ? (item.consulta.clientName || "cliente") : item.l.name}</span>
+              <span style={{ display: "block", fontSize: 12, color: "var(--fg-3)" }}>{item.block ? `compromisso da Agenda${item.due?.allDay ? " · dia todo" : ""}` : item.consulta ? `Consulta ${item.consulta.n || "?"}/${item.consulta.packageTotal || 8} · UniqueKids` : `${ACTION_LABELS[item.kind] || "contato"}${item.l.company ? ` · ${item.l.company}` : ""}`}</span>
             </span>
           </button>
         ))}
@@ -2007,7 +2102,25 @@ export function destinationsFor(saasCfg, lead) {
     if (curKind === "followup" && dayStageNumber(stage)) continue;
     if (stage && !seen.has(stage)) { seen.add(stage); out.push({ stage, kind: stageKind(saasCfg, stage) }); }
   }
+  // 2ª REUNIÃO (Leo, 28/10/2026): em Call agendada, marcar OUTRA call com o
+  // lead sem mudar de etapa — pra quando a primeira pede continuação (sócio,
+  // demonstração, decisão). A anterior fica no histórico (callHistory, com a
+  // sala) e a nova nasce com sala e convite próprios (secondCallPatch).
+  if (curKind === "call") out.push({ secondCall: true, stage: curStage, kind: curKind });
   return out;
+}
+
+// O que a 2ª reunião grava além do horário: a call anterior JÁ ACONTECEU → ela
+// vai pro histórico (o PATCH arquiva callAt passado em callHistory, junto da
+// sala) e zerar os campos do Meet faz o servidor criar OUTRA sala em vez de
+// mover o evento da reunião que já foi — a transcrição e o resumo da primeira
+// ficam na sala dela. Call anterior ainda no futuro é remarcação: o evento se
+// move e nada é zerado. A confirmação recomeça (callConfirmed) em qualquer caso.
+export function secondCallPatch(lead) {
+  const prev = new Date(lead?.callAt || NaN).getTime();
+  const base = { callConfirmed: false };
+  if (!Number.isFinite(prev) || prev > Date.now()) return base;
+  return { ...base, callUrl: "", meetEventId: "", meetScheduledAt: "", meetOrganizer: "", calCallEventId: "", calCallUser: "" };
 }
 
 // Valor digitado em reais, sem as setinhas do <input type=number> (que somavam
@@ -2513,12 +2626,15 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   // Escolher um destino inicializa a agenda com o horário que já existe no lead
   // (call/follow-up = callAt; integração = integrationAt), pra permitir reagendar.
   const chooseDest = (d) => {
-    const same = dest && dest.stage === d.stage && !!dest.retry === !!d.retry && !!dest.reschedule === !!d.reschedule;
+    const same = dest && dest.stage === d.stage && !!dest.retry === !!d.retry && !!dest.reschedule === !!d.reschedule && !!dest.secondCall === !!d.secondCall;
     const next = same ? null : d;
     setDest(next);
     if (!next) return;
     // Remarcar: a grade começa vazia (o horário antigo é o que está sendo trocado).
     if (next.reschedule) { setSlot(""); setDay(nextBusinessDays(1)[0]); return; }
+    // 2ª reunião: grade vazia também (é OUTRO horário, não o da call atual);
+    // o closer continua o mesmo.
+    if (next.secondCall) { setCloser(lead.closer || closer); setSlot(""); setDay(nextBusinessDays(1)[0]); return; }
     // Retomar: já nasce preenchido com a cadência do estágio (o "amanhã" de
     // antes), então quem só quer registrar a tentativa confirma num clique e
     // quem precisa de outra data muda ali mesmo.
@@ -2600,7 +2716,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     if (isRetry) { onTouch && onTouch(retryAt, inInteg ? "integração feita · segue na Integração" : ""); return; }
     if (setup === "reschedule") { onReschedule && onReschedule(slot); return; }
     const patch = { stage: dest.stage };
-    if (setup === "call") { patch.closer = closer; patch.callAt = slot; if (email.trim()) patch.email = email.trim(); }
+    if (setup === "call") { patch.closer = closer; patch.callAt = slot; if (email.trim()) patch.email = email.trim(); if (dest.secondCall) Object.assign(patch, secondCallPatch(lead)); }
     // Follow-up: mantém o closer e marca o DIA do Contato 1 (followupAt, sem
     // hora: não ocupa a agenda). O servidor zera a sequência e põe o GPS em
     // 00:00 desse dia. Já foi gravado no callAt e dava ruim: a agenda desenhava
@@ -2630,7 +2746,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     if (!meetReady || !onMoveMeet) return;
     setMeetBusy(true); setMeetErr(null); setMeetRes(null);
     try {
-      const res = await onMoveMeet({ stage: dest.stage, closer, callAt: slot }, email.trim());
+      const res = await onMoveMeet({ stage: dest.stage, closer, callAt: slot, ...(dest.secondCall ? secondCallPatch(lead) : {}) }, email.trim());
       setMeetRes(res || { ok: true });
     } catch (e) {
       setMeetErr(e?.message || "falha ao criar o Meet");
@@ -2790,7 +2906,22 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
               </button>
             );
           }
-          const on = dest?.stage === d.stage;
+          if (d.secondCall) {
+            const on = !!dest?.secondCall;
+            return (
+              <button key="second-call" onClick={() => chooseDest(d)}
+                title="Marcar outra call com este lead · o card fica em Call agendada, a reunião anterior vai pro histórico e a nova ganha sala própria do Meet"
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 7, height: 42, padding: "0 16px", borderRadius: 999,
+                  background: on ? "var(--accent-soft)" : "var(--bg-1)",
+                  border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-strong)"),
+                  color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 13, fontWeight: 600,
+                }}>
+                ＋ Marcar 2ª reunião
+              </button>
+            );
+          }
+          const on = dest?.stage === d.stage && !dest?.secondCall;
           const color = stageMeta[d.stage]?.color || "var(--accent)";
           return (
             <button key={d.stage} onClick={() => chooseDest(d)} style={{
@@ -2856,6 +2987,11 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
 
           {setup === "call" && (
             <>
+              {dest?.secondCall && (
+                <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)" }}>
+                  2ª reunião com {lead.name || "o lead"}{lead.callAt ? ` · a call de ${slotFmt(lead.callAt)} ${new Date(lead.callAt).getTime() < Date.now() ? "fica no histórico e a nova ganha sala própria do Meet" : "ainda não aconteceu: o horário dela é trocado e o convite acompanha"}` : ""}
+                </div>
+              )}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
                 <div>
                   <div className="kicker" style={label}>Closer da call *</div>
