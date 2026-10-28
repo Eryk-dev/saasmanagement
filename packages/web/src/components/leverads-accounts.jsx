@@ -3,6 +3,8 @@ import { api } from "../lib/api.js";
 import { Popover } from "./popover.jsx";
 import { Card, FilterTab } from "./viz.jsx";
 import { EmptyState } from "../atoms.jsx";
+import { pendingSignupProducts } from "../lib/leverid.js";
+import { signupProductLabel } from "../../../api/src/shared/signup-products.js";
 import "./leverads-accounts.css";
 // Contas do LeverAds na tela Clientes (espelho `leverads_orgs` da API,
 // customers/leverads-orgs.js):
@@ -15,7 +17,8 @@ import "./leverads-accounts.css";
 //                       plano da venda;
 //   · SignupInviteLink  o mesmo "Link de cadastro" nos cards do Negócio e da
 //                       Integração, para o integrador mandar ao cliente sem
-//                       conta.
+//                       conta; um botão por produto do negócio (LeverAds e/ou
+//                       LeverPrice).
 // Conta gratuita não é cliente: não entra em KPI, churn nem régua.
 
 const { useCallback, useEffect, useMemo, useRef, useState } = React;
@@ -98,24 +101,42 @@ const orgFacts = (o) => [o.email || "sem e-mail", o.paymentActive ? "pagante" : 
 const VIA = { convite: "vinculada pelo link de cadastro", email: "vinculada pelo e-mail", manual: "vinculada na ficha" };
 
 // Link de cadastro da venda (convite): copiar e mandar pro cliente. A conta
-// criada por ele vincula sozinha a este cliente e recebe o plano.
-export function SignupInviteLink({ customer }) {
+// criada por ele vincula sozinha a este cliente e recebe o plano. Um botão por
+// produto do negócio ainda sem conta (LeverAds e/ou LeverPrice, ver
+// lib/leverid.js pendingSignupProducts); o convite é um só e a API devolve a
+// URL de cada produto em `links`.
+export function SignupInviteLink({ customer, lead = null }) {
   const [invite, setInvite] = useState(null);
-  const [state, setState] = useState("");
-  async function copy() {
-    setState("…");
+  const [state, setState] = useState({ product: "", msg: "" });
+  const products = pendingSignupProducts(customer, lead);
+  if (!products.length) return null;
+  const urlOf = (res, product) => (res?.links || []).find((l) => l.product === product)?.url
+    || (product === "leverads" && !res?.links ? res?.url : "");
+  async function copy(product) {
+    setState({ product, msg: "…" });
     try {
-      const res = invite || await api.leveradsInvite(customer.id);
+      const res = invite || await api.signupInvite(customer.id);
       setInvite(res);
-      await navigator.clipboard?.writeText(res.url);
-      setState("copiado");
-    } catch (e) { setState(e?.message || "não deu pra gerar o link"); }
+      const url = urlOf(res, product);
+      if (!url) throw new Error(`este negócio não tem link do ${signupProductLabel(product)}`);
+      await navigator.clipboard?.writeText(url);
+      setState({ product, msg: "copiado" });
+    } catch (e) { setState({ product, msg: e?.message || "não deu pra gerar o link" }); }
   }
+  // Só o LeverAds (o de sempre): o texto de sempre. Senão, o produto no botão.
+  const plain = products.length === 1 && products[0] === "leverads";
   return (
     <>
-      <button type="button" onClick={copy} disabled={state === "…"} title={invite ? invite.url : "o cliente cria a conta por este link e já entra no plano da venda"}>
-        {state === "copiado" ? "link copiado" : "Link de cadastro"}</button>
-      {state && state !== "…" && state !== "copiado" && <small className="lva-err">{state}</small>}
+      {products.map((p) => {
+        const label = signupProductLabel(p);
+        const mine = state.product === p;
+        return (
+          <button key={p} type="button" onClick={() => copy(p)} disabled={mine && state.msg === "…"}
+            title={urlOf(invite, p) || `o cliente cria a conta no ${label} por este link e já entra no plano da venda`}>
+            {mine && state.msg === "copiado" ? "link copiado" : plain ? "Link de cadastro" : `Link de cadastro ${label}`}</button>
+        );
+      })}
+      {state.msg && state.msg !== "…" && state.msg !== "copiado" && <small className="lva-err">{state.msg}</small>}
     </>
   );
 }
@@ -161,8 +182,15 @@ export function CustomerOrgLink({ customer, lead, onChanged }) {
           <div><small>{mirror.configured ? "sem conta vinculada" : "lista de contas desligada aqui"}</small></div>
           <div className="lva-actions">
             {mirror.configured && <button ref={ref} type="button" className="lva-primary" onClick={() => setOpen(true)} disabled={!!busy}>Vincular</button>}
-            <SignupInviteLink customer={customer} />
+            <SignupInviteLink customer={customer} lead={lead} />
           </div>
+        </div>
+      )}
+      {/* Conta do LeverAds já vinculada e o negócio inclui o LeverPrice sem conta. */}
+      {orgId && pendingSignupProducts(customer, lead).length > 0 && (
+        <div className="lva-linked lva-linked-more">
+          <div><small>LeverPrice sem conta vinculada</small></div>
+          <div className="lva-actions"><SignupInviteLink customer={customer} lead={lead} /></div>
         </div>
       )}
       {err && <p className="lva-err" role="alert">{err}</p>}

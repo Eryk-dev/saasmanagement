@@ -8,8 +8,9 @@
 //   POST   /api/customers/:id/leverads-org        { orgId } vincula na mão
 //   DELETE /api/customers/:id/leverads-org        desfaz (e o automático não
 //                                                  religa essa org)
-//   POST   /api/customers/:id/leverads-invite     { rotate? } link de cadastro
-//                                                  com convite (vínculo exato)
+//   POST   /api/customers/:id/signup-invite       { rotate? } link de cadastro
+//          (alias antigo: .../leverads-invite)      com convite (vínculo exato),
+//                                                  um por produto do negócio
 //   POST   /public/leverads/org-created           aviso do cadastro do LeverAds
 //                                                  (X-Cockpit-Service-Key)
 
@@ -58,11 +59,16 @@ export function registerLeveradsOrgRoutes(app, repo, { mirror }) {
     return saved;
   });
 
-  app.post("/api/customers/:id/leverads-invite", async (req, reply) => {
+  // Link de cadastro com convite: um por produto do negócio (LeverAds e/ou
+  // LeverPrice) em `links`; `url` é o primeiro. `signup-invite` é o nome
+  // neutro; `leverads-invite` fica por compatibilidade.
+  const invite = async (req, reply) => {
     const customer = await repo.get("customers", req.params.id);
     if (!customer) return reply.code(404).send({ error: "Cliente não encontrado." });
     return ensureSignupInvite(repo, customer, { rotate: req.body?.rotate === true });
-  });
+  };
+  app.post("/api/customers/:id/signup-invite", invite);
+  app.post("/api/customers/:id/leverads-invite", invite);
 
   // Aberta no gate de sessão (OPEN_PREFIXES); a chave de serviço é a credencial.
   // Responde na hora e vincula/sincroniza em seguida: o cadastro não espera.
