@@ -6,6 +6,7 @@ import { Popover } from "../components/popover.jsx";
 import { InfoLink } from "../components/story.jsx";
 import { UserPicker } from "../components/user-picker.jsx";
 import { SelectPopover } from "../components/select-popover.jsx";
+import { DayJumpCalendar } from "../components/day-jump.jsx";
 import "./agenda.css";
 import { stageKind } from "../lib/funnel.js";
 import { isNoShowStage } from "../lib/scripts.js";
@@ -173,6 +174,9 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, move, per
   };
   const [pickerOpen, setPickerOpen] = useStP(false);
   const pickerAnchor = React.useRef(null);
+  // Clicar na data da barra abre o calendário pra pular direto pro dia.
+  const [jumpOpen, setJumpOpen] = useStP(false);
+  const jumpAnchor = React.useRef(null);
   // ARRASTAR (09/10/2026): HTML5 nativo, nas mesmas convenções do Kanban
   // (components/kanban/dnd.js: setData pro Firefox começar o arrasto,
   // effectAllowed "move", `.is-dragging` no card de origem). O useBoardDnd não
@@ -620,7 +624,25 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, move, per
           <button style={navBtn} onClick={() => setDayOff(0)}>Hoje</button>
           <button style={navBtn} onClick={() => passo(1)} title={isMonth ? "próximo mês" : isWeek ? "próxima semana" : "próximo dia"}>›</button>
         </span>
-        <span style={{ fontSize: 14.5, fontWeight: 650, fontFamily: "var(--display)", whiteSpace: "nowrap" }}>{label}</span>
+        {/* A data abre o calendário: pular pra outro dia sem clicar a seta
+            dia a dia. Escolher um dia mantém a visão (Semana vai pra semana
+            dele, Mês pro mês dele). */}
+        <button ref={jumpAnchor} type="button" className="agenda-date-jump"
+          aria-haspopup="dialog" aria-expanded={jumpOpen} title="escolher a data"
+          onClick={() => setJumpOpen((o) => !o)}>
+          <span>{label}</span>
+          <Chevron open={jumpOpen} />
+        </button>
+        {jumpOpen && (
+          <DayJumpCalendar anchor={jumpAnchor} value={anchor} today={today}
+            range={isWeek ? [days[0], days[6]] : null}
+            onClose={() => setJumpOpen(false)}
+            onPick={(d) => {
+              const alvo = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+              setDayOff(Math.round((alvo.getTime() - today.getTime()) / 86400000));
+              setJumpOpen(false);
+            }} />
+        )}
         {/* O resumo da janela, ao lado do período: o que a grade tem dentro. */}
         <span style={{ fontSize: 11.5, color: "var(--fg-3)", whiteSpace: "nowrap" }}>
           {`${callCount} ${callCount === 1 ? "call" : "calls"} · ${events.length} ${events.length === 1 ? "item" : "itens"} na grade`}
