@@ -215,12 +215,13 @@ async function promoverPorResposta(repo, leadId) {
 // criados no período × quantos têm conversa INICIADA POR ELES (1ª mensagem
 // inbound). Casamento tolerante ao nono dígito (waMatchKey).
 // `threads`/`messages` opcionais: quem já leu as coleções (o /insights chama
-// esta e a waInsights na mesma requisição) passa por aqui e evita reparsear
-// os ~7 MB de wa_messages duas vezes.
+// esta e a waInsights na mesma requisição) passa por aqui e evita ler as
+// mensagens duas vezes.
 export async function waFormEngagement(repo, { days = 30, now = Date.now(), threads: pThreads, messages: pMessages } = {}) {
   const since = now - Math.max(1, Number(days) || 30) * 24 * 3600_000;
   const [threads, messages, leads] = await Promise.all([
-    pThreads || repo.list("wa_threads"), pMessages || repo.list("wa_messages"), repo.list("leads"),
+    pThreads || repo.list("wa_threads"), pMessages || insightMessages(repo),
+    repo.listWhere("leads", {}, { fields: ["source", "phone", "createdAt"] }),
   ]);
   const at = (m) => new Date(m.at || 0).getTime();
   const firstByThread = new Map();
@@ -371,8 +372,14 @@ export async function listThreads(repo) {
 // resposta; "esperando" e "janela" são SEMPRE do estado atual — o que está em
 // aberto agora é o que muda a ação, não o recorte do período.
 const HOUR = 3_600_000;
+
+// Mensagens só com o que as réguas usam. A coleção inteira (texto, mídia,
+// ~15 MB) parseada a cada abertura do painel estourava a memória da API
+// (29/10/2026).
+export const insightMessages = (repo) => repo.listWhere("wa_messages", {}, { fields: ["thread", "at", "direction"] });
+
 export async function waInsights(repo, { days = 30, now = Date.now(), threads: pThreads, messages: pMessages } = {}) {
-  const [threads, messages] = await Promise.all([pThreads || repo.list("wa_threads"), pMessages || repo.list("wa_messages")]);
+  const [threads, messages] = await Promise.all([pThreads || repo.list("wa_threads"), pMessages || insightMessages(repo)]);
   const since = now - Math.max(1, Number(days) || 30) * 24 * HOUR;
   const at = (m) => new Date(m.at || 0).getTime();
   const inWindowOf = (t) => t >= now - 24 * HOUR;

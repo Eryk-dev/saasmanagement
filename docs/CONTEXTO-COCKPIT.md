@@ -591,6 +591,11 @@ mesma VPS (`docs/PLANO-MIGRACAO-COCKPIT-VPS.md`). Push na `main` não sobe: o
 deploy é manual, `python3 /opt/cockpit-migracao/cockpit-coolify.py deploy` na
 VPS (~80 s), e leva junto tudo que estiver na `main`. Cada deploy reinicia o
 processo; decisão do robô em curso é retomada pela varredura (`sdrBrainSweep`).
+Memória: container com 4 GB (`limits_memory` no Coolify) e heap da API em 3 GB
+(`--max-old-space-size` em `deploy/start.sh`), desde 29/10/2026. Com 2 GB e o
+heap padrão (~1 GB) a API morria por memória a cada ~10 min; quem mudar um dos
+dois ajusta o outro. Coleção grande (proposals, wa_messages, leads) em rota
+quente ou rotina: ler por `listWhere` com `fields`, não `list()`.
 Backup: `/usr/local/sbin/leverads-backup.sh` (cron 07:00 UTC) faz `pg_dump`
 dos bancos `postgres` e `cockpit` (este só desde 22/10/2026; antes ficou fora)
 em `/opt/backups`, com 7 dias de retenção e sem cópia fora da VPS.

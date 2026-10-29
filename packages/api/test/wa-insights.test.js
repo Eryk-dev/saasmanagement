@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { waInsights } = await import("../src/whatsapp/wa-store.js");
+const { waInsights, waFormEngagement } = await import("../src/whatsapp/wa-store.js");
 
 const NOW = new Date("2026-07-18T18:00:00.000Z").getTime();
 const hoursAgo = (h) => new Date(NOW - h * 3_600_000).toISOString();
@@ -96,4 +96,21 @@ test("conversa sem lead vinculado entra na contagem própria", async () => {
   const r = await waInsights(repo, { days: 30, now: NOW });
   assert.equal(r.withLead, 1);
   assert.equal(r.withoutLead, 1);
+});
+
+test("réguas leem só os campos usados de wa_messages e leads, nunca as coleções inteiras", async () => {
+  // wa_messages (~15 MB com texto/mídia) e leads (~9 MB) parseados inteiros a
+  // cada abertura do painel estouravam a memória da API (29/10/2026).
+  const repo = await seed({
+    "5541900000001": { msgs: [["in", hoursAgo(5)], ["out", hoursAgo(4)]] },
+  });
+  await repo.create("leads", { id: "l1", source: "form-site", phone: "5541900000001", createdAt: hoursAgo(5) });
+  const listed = [];
+  const spy = { ...repo, list: (name) => (listed.push(name), repo.list(name)), listWhere: (...args) => repo.listWhere(...args) };
+  const r = await waInsights(spy, { days: 30, now: NOW });
+  const f = await waFormEngagement(spy, { days: 30, now: NOW });
+  assert.deepEqual(listed.filter((n) => n === "wa_messages" || n === "leads"), []);
+  assert.equal(r.inbound, 1);
+  assert.equal(r.outbound, 1);
+  assert.deepEqual([f.formLeads, f.formStarted], [1, 1]);
 });

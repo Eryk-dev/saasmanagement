@@ -96,6 +96,20 @@ test("alertas: renovação abre acompanhamento, 1º pagamento, go-live, oferta, 
   assert.equal((await repo.list("cs_followups")).length, 1);
 });
 
+test("alertas: oferta vencendo lê só accepted/lead/state das propostas, nunca a coleção inteira", async () => {
+  // proposals inteira são ~82 MB (slides, calc, data): parsear tudo derrubava a API por memória (29/10/2026)
+  const now = Date.parse("2026-10-20T12:00:00Z");
+  const repo = makeMemRepo();
+  await repo.create("leads", { id: "l2", saas: "leverads", name: "Bruno", closer: "leo" });
+  const amanha = new Date(now + 12 * 3600_000).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  await repo.create("proposals", { lead: "l2", accepted: false, state: { validUntil: amanha }, slides: ["pesado"] });
+  const listed = [];
+  const spy = { ...repo, list: (name) => (listed.push(name), repo.list(name)), listWhere: (...args) => repo.listWhere(...args) };
+  await runCrmAlerts(spy, { now });
+  assert.ok(!listed.includes("proposals"), "proposals não pode ser lida inteira");
+  assert.deepEqual((await repo.list("notifications")).map((n) => `${n.type}:${n.user}`), ["offer_expiring:leo"]);
+});
+
 test("validade da proposta em dd/mm/aaaa vira o fim do dia em Brasília", () => {
   assert.equal(new Date(validUntilMs("21/10/2026")).toISOString(), "2026-10-22T02:59:59.000Z");
   assert.ok(Number.isNaN(validUntilMs("amanhã")));

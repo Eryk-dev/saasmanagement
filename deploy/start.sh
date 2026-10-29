@@ -6,7 +6,10 @@ echo "[start] testando config do nginx:"
 nginx -t 2>&1 || true
 
 echo "[start] subindo API :8787 + MCP :8788 + nginx :80"
-node packages/api/src/index.js & api=$!
+# Heap da API: o padrão do Node (~1 GB num container de 2 GB) ficava no teto com
+# o tráfego normal e a API morria por memória a cada ~10 min (29/10/2026).
+# 3 GB pede o container com 4 GB no Coolify (limits_memory).
+node --max-old-space-size=3072 packages/api/src/index.js & api=$!
 node packages/mcp/src/index.js & mcp=$!
 nginx -g 'daemon off;' & ng=$!
 

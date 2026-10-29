@@ -2,7 +2,7 @@
 // conversas (tela dedicada) e envio. As mensagens vivem em wa_threads/wa_messages
 // (ver wa-store.js) — canônico pro inbox e pro chat do drawer.
 import { makeWhatsapp } from "./whatsapp.js";
-import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead, threadId, setLeadWhatsappOptOut, waInsights, waFormEngagement, findLeadByPhone, findThreadByPhone, linkThreadToLead } from "./wa-store.js";
+import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead, threadId, setLeadWhatsappOptOut, waInsights, waFormEngagement, insightMessages, findLeadByPhone, findThreadByPhone, linkThreadToLead } from "./wa-store.js";
 import { applyHealthEvent, getWaHealth, reconcileAccountAlert, waHealthSummary, recordWebhookDelivery, resolveWabaId } from "./wa-health.js";
 import { runInboundCallFlow, openAlerts, closeThreadAlerts, parsePermissionReply, flagFailedBotSend } from "./wa-call-flow.js";
 import { runWaAutomations } from "./wa-automations.js";
@@ -401,8 +401,8 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
 
   app.get("/api/whatsapp/insights", async (req) => {
     const days = Math.min(365, Math.max(1, Number(req.query?.days) || 30));
-    // wa_messages (~7 MB) e wa_threads lidos UMA vez pras duas réguas.
-    const [threads, messages] = await Promise.all([repo.list("wa_threads"), repo.list("wa_messages")]);
+    // wa_threads e as mensagens (só os campos das réguas) lidos UMA vez pras duas.
+    const [threads, messages] = await Promise.all([repo.list("wa_threads"), insightMessages(repo)]);
     const [stats, health, form, costs] = await Promise.all([
       waInsights(repo, { days, threads, messages }),
       reconcileAccountAlert(repo, wa).catch(() => null),

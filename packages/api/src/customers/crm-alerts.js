@@ -103,7 +103,9 @@ async function lateGoLive(repo, out, { now, customers }) {
 }
 
 async function expiringOffers(repo, out, { now, leads }) {
-  for (const p of await repo.list("proposals")) {
+  // Só os campos usados: a proposta inteira (slides, calc, data) soma ~82 MB e
+  // parseá-la estourava a memória da API (29/10/2026).
+  for (const p of await repo.listWhere("proposals", {}, { fields: ["accepted", "lead", "state"] })) {
     if (p.accepted || !p.lead) continue;
     const until = validUntilMs(p.state?.validUntil);
     if (!Number.isFinite(until) || until < now || until - now > DAY) continue;
