@@ -43,11 +43,19 @@ export default [
     expect: { result: "agendar", sent: [/agendado então pra amanhã \(20\/08\) às 9h/], lead: { callAt: "2026-08-20T09:00" } },
   },
   {
-    id: "C-V2-05", title: "id inválido (fora da lista) não marca nada: re-oferta com desculpa",
-    rules: ["R-020", "R-028"],
+    id: "C-V2-05", title: "id inválido (fora da lista) com a HORA dita pelo lead: o motor marca a hora dele (29/10, R-035), não pede desculpa por horário livre",
+    rules: ["R-020", "R-035"],
     world: after([...pitched, { direction: "in", text: "sim", at: ISO("2026-08-19T12:30:00Z") }, { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?", at: ISO("2026-08-19T12:31:00Z") }]),
     ai: [{ acao: "agendar", mensagens: [], horario: "", slotIds: [], slots: [] }],
     inbounds: ["pode ser às 9h então"],
+    expect: { result: "agendar", sent: [/amanhã \(20\/08\) às 9h/], lead: { callAt: "2026-08-20T09:00" } },
+  },
+  {
+    id: "C-V2-05b", title: "id inválido (fora da lista) sem hora no texto do lead: não marca nada, re-oferta com desculpa",
+    rules: ["R-020", "R-028"],
+    world: after([...pitched, { direction: "in", text: "sim", at: ISO("2026-08-19T12:30:00Z") }, { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?", at: ISO("2026-08-19T12:31:00Z") }]),
+    ai: [{ acao: "agendar", mensagens: [], horario: "", slotIds: [], slots: [] }],
+    inbounds: ["o primeiro"],
     expect: { result: "reoferta", sent: [/me desculpa! Consigo amanhã às 9h ou às 11h/], lead: { callAt: undefined } },
   },
   {

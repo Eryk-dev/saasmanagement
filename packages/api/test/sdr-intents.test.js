@@ -170,3 +170,18 @@ test("WEAK_PROFILE_RX e EXPLAIN_HERE_RX: perfil fraco (não vende / só físico 
   for (const t of ["Consegue me explicar por áudio por aqui ?", "Pode ser por aqui mesmo?", "Pode me passar por aqui mesmo", "nao tem pdf explicando", "Eu queria ver preços e só receber mensagem,nada ao vivo.", "Consegue enviar uma apresentação, para a reunião ser mais produtiva?", "Vcs podem enviar áudios"]) assert.equal(EXPLAIN_HERE_RX.test(plainReply(t)), true, t);
   for (const t of ["Vc pode me explicar como funciona?", "Pode ser quarta?", "Como funciona a clonagem?"]) assert.equal(EXPLAIN_HERE_RX.test(plainReply(t)), false, t);
 });
+
+test("29/10: 'muito'/'exato' engajam; 'não tenho mais de uma' não é desinteresse; 'estou em viagem' é adiamento; liberação de cadastro e reclamação do robô têm régua própria #R-011 #R-083 #R-084 #R-090 #R-001", async () => {
+  const { POSTPONE_RX, ONBOARDING_RX, COMPLAINT_RX, SHORT_YES_RX } = await import("../src/sdr/sdr-intents.js");
+  for (const t of ["Muito", "Exato", "Demais!", "Com certeza", "Isso mesmo"]) assert.equal(leadEngaged([{ direction: "in", text: t }]), true, t);
+  assert.equal(SHORT_YES_RX.test(plainReply("muito caro pra mim")), false);
+  assert.equal(statedPainOf("Compro estoque obsoleto"), null, "estoque sozinho não é dor de multi-contas");
+  assert.equal(statedPainOf("preciso sincronizar o estoque entre as contas"), "ads");
+  assert.equal(NO_INTEREST_RX.test(plainReply("Eu creio que seja isso porque eu tenho uma conta só hoje, não tenho mais de uma")), false);
+  assert.equal(NO_INTEREST_RX.test(plainReply("não tenho mais interesse, obrigado")), true);
+  for (const t of ["Estou em viagem", "to viajando essa semana", "quando eu voltar te chamo"]) assert.equal(POSTPONE_RX.test(plainReply(t)), true, t);
+  assert.equal(ONBOARDING_RX.test("Olá! Quero solicitar a liberação do meu cadastro na LeverAds. Email: comercial@x.com.br"), true);
+  assert.equal(ONBOARDING_RX.test("Oi, me chamo Rafael e quero saber mais sobre a LeverAds"), false);
+  assert.equal(COMPLAINT_RX.test(plainReply("Seu robô ta com defeito .... Por isso odeio esses atendimentos automatizados")), true);
+  assert.equal(COMPLAINT_RX.test(plainReply("To falando com Ia?")), false, "perguntar se é robô segue na R-001 do prompt, não é reclamação");
+});

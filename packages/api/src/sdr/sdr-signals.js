@@ -115,7 +115,8 @@ export const hasLiveOffer = (msgs = [], botAuthor = "sdr-bot", wnow = null) => l
 export const BARE_HOUR_RX = /^\s*(?:[àa]s\s*)?(\d{1,2})\s*(?:h|hrs|horas)?\s*[.!?]*$/i;
 export function acceptedSlot(text, offered = []) {
   const t = String(text || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-  const hm = t.match(/\b(\d{1,2})(?:\s?h\s?(\d{2})?|:(\d{2}))\b|\b(?:as|às)\s+(\d{1,2})\b/) || t.match(BARE_HOUR_RX);
+  // "17 horas por favor" (29/10, Alonso: a IA remarcou pra 10h30).
+  const hm = t.match(/\b(\d{1,2})(?:\s?h\s?(\d{2})?|:(\d{2})|\s?(?:hrs|hs|horas))\b|\b(?:as|às)\s+(\d{1,2})\b/) || t.match(BARE_HOUR_RX);
   if (hm) {
     const h = Number(hm[1] || hm[4]), mm = hm[2] || hm[3] || "00";
     const exact = offered.filter((s) => s.at.slice(11, 13) === pad2(h) && s.at.slice(14, 16) === mm);

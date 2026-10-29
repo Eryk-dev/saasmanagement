@@ -311,4 +311,77 @@ export default [
     inbounds: ["tem algum custo ?"],
     expect: { result: "custo-demo", sent: [/^Rafael, a demonstração não tem custo nenhum/, /^Fica melhor amanhã às 9h ou às 11h\?$/], notSent: [/investimento/], sdrLog: { priceGuardAt: undefined } },
   },
+  {
+    id: "C-R040-03", title: "Gustavo (29/10): 'Pode ser amanhã?' + 'Hoje no período da tarde vou estar ocupado' recebe AMANHÃ, nunca o par de hoje de novo",
+    rules: ["R-040", "R-032"],
+    world: {
+      sdrBot: V2, todayFree: true,
+      messages: [
+        { direction: "out", author: "sdr-bot", text: PITCH, at: ISO("2026-08-19T12:00:00Z") },
+        { direction: "in", text: "sim", at: ISO("2026-08-19T12:30:00Z") },
+        { direction: "out", author: "sdr-bot", text: "Consigo hoje às 15h ou às 17h, qual fica melhor pra você?", at: ISO("2026-08-19T12:31:00Z") },
+        { direction: "in", text: "Pode ser amanhã?", at: ISO("2026-08-19T12:59:00Z") },
+      ],
+    },
+    ai: [{ acao: "responder", mensagens: ["Tranquilo Rafael, vamos ajustar então"], oferecer: true }],
+    inbounds: ["Hoje no período da tarde vou estar ocupado"],
+    expect: { result: "responder", sent: [/Tranquilo Rafael/, /^Consigo amanhã às 9h ou às 11h, qual fica melhor pra você\?$/], notSent: [/hoje às 15h/] },
+  },
+  {
+    id: "C-R084-02", title: "Ariel (29/10): 'Estou em viagem' é adiamento: 'me chama quando voltar' sem oferta de horário",
+    rules: ["R-084", "R-031"],
+    world: { sdrBot: V2, lead: { sourcePain: "OEM", niche: "autopecas" }, messages: [{ direction: "out", author: "sdr-bot", text: PITCH, at: ISO("2026-08-19T12:00:00Z") }, { direction: "in", text: "sim", at: ISO("2026-08-19T12:30:00Z") }] },
+    ai: [{ acao: "responder", mensagens: ["Tranquilo Rafael, sem problemas", "Quando estiver de volta, me chama aqui e combinamos a demonstração"], oferecer: true }],
+    inbounds: ["Estou em viagem"],
+    expect: { result: "responder", sent: [/Quando estiver de volta/], notSent: [/^Consigo /, /Fica melhor/] },
+  },
+  {
+    id: "C-R035-02", title: "Alonso (28/10): '17 horas por favor' ao resgate de no-show remarca ÀS 17h mesmo que a IA escolha outro id",
+    rules: ["R-035", "R-116"],
+    world: {
+      sdrBot: V2, todayFree: true,
+      lead: { stage: "No show", callAt: "2026-08-18T09:00", closer: "pl", email: "r@x.com", callUrl: "https://meet.google.com/abc" },
+      messages: [{ direction: "out", author: "sdr-bot", text: "Oi Rafael, passei no nosso horário marcado e não te encontrei, acontece! Quer que eu remarque? Tenho amanhã às 10h ou às 17h livres, me diz qual fica bom que eu já reservo.", at: ISO("2026-08-19T12:05:00Z") }],
+    },
+    ai: [{ acao: "remarcar", slotIds: [], horario: "2026-08-20T10:30" }],
+    inbounds: ["17 horas por favor"],
+    expect: { result: "remarcar", sent: [/amanhã \(20\/08\) às 17h/], lead: { callAt: "2026-08-20T17:00" } },
+  },
+  {
+    id: "C-R090-03", title: "Gustavo (29/10): 'Quero solicitar a liberação do meu cadastro' é onboarding: encaminha pro time, sem oferta",
+    rules: ["R-090", "R-081"],
+    world: { sdrBot: V2 },
+    ai: [{ acao: "responder", mensagens: ["Claro, com o Lever OEM você digita o código e recebe o anúncio completo"], oferecer: true }],
+    inbounds: ["Olá! Quero solicitar a liberação do meu cadastro na LeverAds. Email: comercial@lumosdigital.com.br"],
+    expect: { result: "cadastro", sent: [/encaminhar aqui pro time responsável pela liberação/], notSent: [/^Consigo /], sdrLog: { handoffKind: "cadastro" } },
+  },
+  {
+    id: "C-R001-03", title: "Guilherme (28/10): 'Seu robô tá com defeito… odeio esses atendimentos automatizados' pede desculpa e chama gente, sem M2 por cima",
+    rules: ["R-001", "R-081"],
+    world: {
+      sdrBot: V2, lead: { sourcePain: "OEM", niche: "autopecas" },
+      messages: [
+        { direction: "out", author: "sdr-bot", text: "Oiii Rafael, tudo bem? Recebemos aqui seu interesse, com o Lever OEM você digita o código e recebe o anúncio completo. Isso ajudaria na sua operação?", at: ISO("2026-08-19T12:00:00Z") },
+        { direction: "in", text: "Criar anúncio msm", at: ISO("2026-08-19T12:31:00Z") },
+      ],
+    },
+    ai: [{ acao: "responder", mensagens: ["Perfeito Rafael"], oferecer: true }],
+    inbounds: ["Seu robô ta com defeito .... Por isso odeio esses atendimentos automatizados"],
+    expect: { result: "reclamacao", sent: [/^Desculpa Rafael, vou te passar agora pra alguém do time/], notSent: [/Tenho agenda/, /^Consigo /], sdrLog: { handoffKind: "reclamacao" } },
+  },
+  {
+    id: "C-R083-03", title: "Matheus (28/10): áudio longo com 'não tenho mais de uma conta' NÃO é desinteresse: a conversa segue com a IA",
+    rules: ["R-083"],
+    world: {
+      sdrBot: V2, todayFree: true, lead: { sourcePain: "OEM", niche: "autopecas" },
+      messages: [
+        { direction: "out", author: "sdr-bot", text: PITCH, at: ISO("2026-08-19T12:00:00Z") },
+        { direction: "in", text: "Mercado livre", at: ISO("2026-08-19T12:26:00Z") },
+        { direction: "out", author: "sdr-bot", text: "Consigo hoje às 11h ou às 13h, qual fica melhor pra você?", at: ISO("2026-08-19T12:33:00Z") },
+      ],
+    },
+    ai: [{ acao: "responder", mensagens: ["Entendi Rafael, a parte do anúncio é justamente o que o especialista mostra com um código seu"], oferecer: false }],
+    inbounds: ["Eu creio que seja isso porque eu tenho uma conta só hoje, não tenho mais de uma. Eh, a parte do anúncio que eu acredito que é algo mais, mais assim, mais, não vou falar difícil, mas ele é pouco mais, ai Jesus, mas gelatinoso, talvez nove, a palavra que eu tô buscando, complexo, mas um pouco mais complexo. E a parte do estoque tá de boa também, o atendimento, eu consigo manter com a demanda atual, mas essa parte dos anúncios, creio que eu acredito que precise de um pouco mais de padrão."],
+    expect: { result: "responder", sent: [/Entendi Rafael/], notSent: [/Se fizer sentido retomar mais pra frente/], sdrLog: { handoffKind: undefined } },
+  },
 ];

@@ -76,6 +76,9 @@ const CASES = [
   // Com call marcada a promessa também cai (28/10, Roberto: "te passo as próximas opções").
   ["noPromise", ["Claro Rafael, tranquilo", "Te passo as próximas opções disponíveis para remarcar"], { callAt: "2026-08-19T16:00", callLabel: "hoje (19/08) às 16h", lastInText: "podemos deixar pra outra semana?" }, { parts: ["Claro Rafael, tranquilo", "Nossa conversa segue marcada pra hoje (19/08) às 16h, qualquer imprevisto me avisa aqui"], stamps: ["promiseGuardAt"] }],
   ["noPromise", ["Vou encaminhar seu contato para a Larissa explicar direitinho"], {}, { parts: [OFFER_RAW], stamps: ["promiseGuardAt"] }],
+  // R-084: adiamento do lead ("estou em viagem") não leva oferta.
+  ["noOfferWhenPostponed", ["Quando estiver de volta, me chama aqui e combinamos a demonstração", OFFER], { postponed: true, lastInText: "Estou em viagem" }, { parts: ["Quando estiver de volta, me chama aqui e combinamos a demonstração"] }],
+  ["noOfferWhenPostponed", [OFFER], { postponed: true, lastInText: "Estou em viagem" }, { parts: ["Combinado Rafael, quando der me chama aqui que a gente combina a demonstração"] }],
   // R-038: conversa marcada e sem pedido de remarcar: horário novo não sai.
   ["noOfferWithCall", ["Ahh tá entendi Rafael, tranquilo", OFFER], { callAt: "2026-08-19T16:00", callLabel: "hoje (19/08) às 16h", lastInText: "estou em viagem" }, { parts: ["Ahh tá entendi Rafael, tranquilo"] }],
   ["noOfferWithCall", [OFFER], { callAt: "2026-08-19T16:00", callLabel: "hoje (19/08) às 16h", lastInText: "ok" }, { parts: ["Nossa conversa segue marcada pra hoje (19/08) às 16h, qualquer imprevisto me avisa aqui"] }],

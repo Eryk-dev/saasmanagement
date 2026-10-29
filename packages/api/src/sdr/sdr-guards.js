@@ -329,6 +329,16 @@ export const GUARDS = [
       if (!kept.some((p) => isRealQuestion(p.text))) kept.push(...nextQuestion(ctx, effects));
       return { draft: withParts(d, kept), effects };
     } },
+  { id: "noOfferWhenPostponed", rule: "R-084", enforce: true,
+    // "Estou em viagem", "te aviso", "vou ver com meu sócio": sem oferta em
+    // cima do adiamento (29/10, Ariel levou "fica melhor amanhã às 13h ou 16h?").
+    applies: (ctx) => !!ctx.postponed && !ctx.callAt,
+    check: (d) => d.parts.filter((p) => isOfferMsg(p.text)).map((p) => ({ why: "oferta em cima do adiamento", part: p.text.slice(0, 80) })),
+    fix: (d, ctx) => {
+      const kept = d.parts.filter((p) => !isOfferMsg(p.text));
+      if (!kept.length) kept.push(part(`Combinado${ctx.nome ? ` ${ctx.nome}` : ""}, quando der me chama aqui que a gente combina a demonstração`));
+      return { draft: withParts(d, kept), effects: [{ type: "log", level: "info", msg: "sdr-brain: adiamento do lead tirou a oferta" }] };
+    } },
   { id: "noOfferWithCall", rule: "R-038", enforce: true,
     // Conversa já marcada e sem pedido de remarcação: horário novo não sai
     // (28/10, Roberto: "estou em viagem" e o robô ofereceu hoje às 15h ou 17h

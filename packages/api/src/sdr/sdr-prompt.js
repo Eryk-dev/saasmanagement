@@ -131,7 +131,7 @@ export function buildCoreV2() {
 }
 
 export const STATE_DESC = {
-  novo: "o lead escreveu antes de qualquer mensagem nossa: a primeira resposta é descoberta",
+  novo: "o lead escreveu antes de qualquer mensagem nossa: a primeira resposta é saudação + UMA frase do que o produto faz + UMA pergunta de descoberta (ele ainda não sabe o que a LeverAds faz)",
   descoberta: "o pitch já saiu e ele ainda não disse que a ferramenta ajudaria",
   engajado: "ele respondeu positivo à descoberta ou pediu horário: convide com a ponte e oferecer=true",
   oferta_feita: "você já ofereceu horários e ele ainda não escolheu",
@@ -187,6 +187,9 @@ export function buildUserV2({ sdrName = "", nowLabel = "", lead = {}, digest = "
       : "",
     facts.confused
       ? `O LEAD NÃO ENTENDEU a pergunta ou o termo anterior ("nem sei o que é isso", "???"): explique em UMA frase simples (${script === "oem" ? "código OEM é o código original da peça; com ele o Lever OEM monta o anúncio inteiro" : script === "price" ? "o Lever Price mantém o preço pelo custo, margem e imposto que você cadastra" : "clonagem é espelhar os anúncios de uma conta nas outras"}) e faça uma pergunta DIFERENTE da anterior, mais simples. Nunca repita a mesma pergunta.`
+      : "",
+    !facts.demoOffered && !callAt && !["handoff", "janela_da_call", "pos_call"].includes(state)
+      ? `O PITCH AINDA NÃO SAIU nesta conversa (29/10, Roberto/Ricardo: o lead ouviu só perguntas e depois "pra que seria isso?"): antes da pergunta, diga em UMA frase o que ${script === "oem" ? "o Lever OEM faz (digita o código da peça e recebe o anúncio completo, com fotos, título, descrição e compatibilidade)" : script === "price" ? "o Lever Price faz (mantém o preço dos anúncios pelo custo, margem e imposto cadastrados e entra nas promoções do Mercado Livre sozinho)" : "a LeverAds faz (espelha e gerencia os anúncios entre as contas de Mercado Livre e Shopee)"}.`
       : "",
     facts.weakProfile
       ? `PERFIL: o lead disse que ainda não vende / só loja física / só TikTok-Instagram / está começando${facts.profileNote ? ` ("${String(facts.profileNote).slice(0, 120)}")` : ""}. NÃO desqualifique, NÃO encerre, NÃO acao humano por isso (decisão do Leo, 28/10): diga em uma frase que a LeverAds atende quem vende no Mercado Livre e Shopee com conta própria e que na demonstração o especialista mostra como começa; siga a descoberta e convide normalmente (oferecer=true quando ele topar).`
