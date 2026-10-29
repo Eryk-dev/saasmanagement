@@ -17,7 +17,7 @@ export function register(app, repo, ctx) {
   // Follow-up em 4 contatos: mensagens e prazos globais (Configurações).
   registerFollowupConfigRoutes(app, repo);
   // Carga inicial do SPA (SEED), portfólio e leaderboard.
-  registerBootstrapRoutes(app, repo, { googleClient: ctx.google, mpClient: ctx.mp, asaasClient: ctx.asaas, appmaxClient: ctx.appmax, metaClient: ctx.meta, anthropicClient: ctx.anthropic, discordClient: ctx.discord, whatsappClient: ctx.whatsapp, mailerClient: ctx.mailer });
+  registerBootstrapRoutes(app, repo, { googleClient: ctx.google, mpClient: ctx.mp, asaasClient: ctx.asaas, appmaxClient: ctx.appmax, metaClient: ctx.meta, anthropicClient: ctx.anthropic, discordClient: ctx.discord, whatsappClient: ctx.whatsapp, mailerClient: ctx.mailer, callfaceClient: ctx.callface });
   // Foto anexada a um toque da timeline.
   registerActivityAssetRoutes(app, repo);
   // Views salvas por usuário (filtros com nome), antes do CRUD genérico.

@@ -65,6 +65,8 @@ function canonWhen(body) {
 // task_events/notifications: atividade e caixa de entrada das tarefas — lidas
 // só pelas rotas dedicadas (routes.tasks.js), nunca pelo CRUD genérico.
 const PRIVATE = new Set(["users", "icp_versions", "integration_secrets", "product_updates", "product_update_assets", "sessions", "user_assets", "activity_assets", "task_assets", "followup_assets", "task_events", "notifications", "wa_threads", "wa_messages", "wa_media", "wa_template_media", "blog_posts",
+  // callface_calls guarda a transcrição inteira da ligação: só o webhook escreve e ninguém lê pelo CRUD.
+  "callface_calls",
   // comp_months tem R$ por pessoa: só pelas rotas /api/comp/, que exigem
   // etiqueta admin (ADMIN_PREFIXES), nunca pelo CRUD genérico.
   "comp_months",

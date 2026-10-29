@@ -1,4 +1,5 @@
-import { LeadGrade } from "../components/lead-card.jsx";
+import { LeadGrade, LeadPhoneCopy } from "../components/lead-card.jsx";
+import { CallfaceButton } from "../components/callface-button.jsx";
 
 import React from "react";
 import { createPortal } from "react-dom";
@@ -1075,7 +1076,12 @@ function CustomerPeek(props) {
       <div className="customer-peek">
         <header className="customer-peek-head">
           <LeadGrade tier={tier} placeholder />
-          <div><div className="customer-peek-title"><h2>{customer.name}</h2><LeverIdBadge org={props.leverId} orgId={customerOrgId(customer)} /><button className="customer-peek-edit" aria-label="Editar cliente" title="Editar cliente" onClick={()=>setOperation('edit')} disabled={!!busy}><Icon name="pencil" size={13}/></button></div><p>{[customer.contact,customer.keyAccount?'conta grande':null,tenureLabel(customer)?`${tenureLabel(customer)} de casa`:null].filter(Boolean).join(' · ')}</p><CustomerStateChips customer={customer}/></div>
+          <div><div className="customer-peek-title"><h2>{customer.name}</h2><LeverIdBadge org={props.leverId} orgId={customerOrgId(customer)} /><button className="customer-peek-edit" aria-label="Editar cliente" title="Editar cliente" onClick={()=>setOperation('edit')} disabled={!!busy}><Icon name="pencil" size={13}/></button></div><p>{[customer.contact,customer.keyAccount?'conta grande':null,tenureLabel(customer)?`${tenureLabel(customer)} de casa`:null].filter(Boolean).join(' · ')}</p>
+            {/* Telefone do cliente (campo WhatsApp) com copiar + Ligar pela Callface
+                (29/10/2026): o pós-venda liga daqui sem procurar o número em Editar.
+                Cliente sem telefone cai no do lead de origem. */}
+            {(customer.phone||lead?.phone)&&<div className="customer-peek-phone"><LeadPhoneCopy phone={customer.phone||lead?.phone}/><CallfaceButton variant="inline" phone={customer.phone||lead?.phone} leadId={lead?.id||''}/></div>}
+            <CustomerStateChips customer={customer}/></div>
           <button aria-label="Fechar ficha" onClick={onClose} disabled={!!busy}>✕</button>
         </header>
         <div className="customer-peek-body">

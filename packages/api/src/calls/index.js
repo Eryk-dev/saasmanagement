@@ -5,6 +5,8 @@ import { registerPitchRoutes } from "./routes.pitch.js";
 import { registerConsultationRoutes } from "./routes.consultations.js";
 import { registerCopilotRoutes } from "./copilot.js";
 import { registerRecordMeetingRoutes } from "./routes.record-meetings.js";
+import { registerCallfaceRoutes } from "./routes.callface.js";
+import { callface as defaultCallface } from "./callface.js";
 import { startRecordMeetingSummaries } from "./record-meetings.js";
 import { startCallSummaries } from "./call-summaries.js";
 import { startIntegrationBriefs } from "./integration-brief.js";
@@ -23,6 +25,11 @@ export function register(app, repo, ctx) {
   // Reunião com Meet próprio na integração e no acompanhamento do cliente
   // (Lever CRM, Fases 1B-b e 3), sem passar pelo lead.
   registerRecordMeetingRoutes(app, repo, { google: ctx.google, googleUser: ctx.googleUser, anthropic: ctx.anthropic });
+  // Callface (telefonia com IA): o botão "Ligar" do card abre o discador deles
+  // (shared/callface-dial.js) e o webhook de saída traz a ligação de volta pra
+  // timeline do lead. Publica o cliente no ctx pro bootstrap mostrar o estado.
+  ctx.callface = ctx.opts.callface || defaultCallface;
+  registerCallfaceRoutes(app, repo, { callface: ctx.callface });
 }
 
 export function start(repo, { clients, log, jobOn }) {

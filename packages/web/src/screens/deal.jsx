@@ -3,6 +3,7 @@ import { MoreMenu, WaButton } from "../atoms.jsx";
 import { Pill } from "../components/viz.jsx";
 import { Drawer, Modal } from "../components/overlay.jsx";
 import { LeadGrade, LeadSection, LeadDisclosure, LeadPhoneCopy } from "../components/lead-card.jsx";
+import { CallfaceButton } from "../components/callface-button.jsx";
 import { ActivityList, ActivityComposer, mergeTimeline } from "../components/timeline.jsx";
 import { RoutineSuggestion } from "../components/routine-suggestion.jsx";
 import { moveGate, MoveLeadModal, applyGatedMove, moveErrorText } from "../components/stage-move.jsx";
@@ -1064,7 +1065,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
         style={pipeline ? {padding:"80px 18px 18px",background:"transparent"} : undefined}
         painelStyle={{ background: pipeline ? "var(--bg-1)" : "var(--bg-0)", overflow:pipeline?"hidden":"auto" }}>
         {pipeline ? <div className="pipeline-lead-panel">
-          <header><LeadGrade tier={tier} size={28} placeholder/><div><div className="lead-panel-name-row"><h2>{leadName}</h2><LeadPhoneCopy phone={lead.phone} /></div><p>{lead.company}</p></div><button aria-label="Fechar lead" onClick={close}>✕</button></header>
+          <header><LeadGrade tier={tier} size={28} placeholder/><div><div className="lead-panel-name-row"><h2>{leadName}</h2><LeadPhoneCopy phone={lead.phone} /><CallfaceButton variant="inline" phone={lead.phone} leadId={lead.id} /></div><p>{lead.company}</p></div><button aria-label="Fechar lead" onClick={close}>✕</button></header>
           <div className="pipeline-lead-body">
             {summaryCard}
             <LeadDisclosure title="Respostas do formulário" hint={`${checklist.filter(c=>c.value).length} de ${checklist.length}`}><LeadChecklist key={lead.id} checklist={checklist} onPatch={patch} leadId={lead.id}/></LeadDisclosure>
@@ -1130,6 +1131,10 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
                   ? <WaButton onClick={() => onOpenWhatsapp(lead)} title="Abrir a conversa no Inbox do cockpit">WhatsApp</WaButton>
                   : <WaButton href={wa} title="Abrir no WhatsApp Web">WhatsApp ↗</WaButton>)
                 : <button style={actBtn} onClick={() => setShowComposer(true)}>Registrar contato</button>}
+              {/* Ligar pela Callface (29/10/2026): abre o discador deles com o
+                  número e o id do card; a ligação volta pelo webhook e vira
+                  toque na timeline. Some quando o número não é BR discável. */}
+              <CallfaceButton phone={lead.phone} leadId={lead.id} />
               {(onOpenWhatsapp || wa) && (
                 <button onClick={propostaNoWhats} disabled={propBusy} style={{ ...actBtn, opacity: propBusy ? 0.6 : 1 }}
                   title={lead.proposalUrl

@@ -105,6 +105,7 @@
 .customer-peek-edit { flex-shrink:0; display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:999px; color:var(--fg-3); }
 .customer-peek-edit:hover { background:var(--bg-2); color:var(--fg-1); }
 .customer-peek-head p { margin:3px 0 0; font-size:12px; color:var(--fg-3); }
+.customer-peek-phone { display:flex; align-items:center; flex-wrap:wrap; column-gap:10px; margin-top:4px; }
 .customer-peek-head > button { flex-shrink:0; width:30px; height:30px; border-radius:999px; background:var(--bg-2); color:var(--fg-3); font-size:13px; }
 .customer-peek-body { flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:10px; padding:0 20px 18px; }
 .customer-peek-body > section { padding:15px 16px; border-radius:20px; background:var(--bg-inset); flex-shrink:0; }
