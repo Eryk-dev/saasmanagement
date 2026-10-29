@@ -26,6 +26,7 @@
 import crypto from "node:crypto";
 import { envClient, syncLeveradsAccessNow } from "../billing/leverads-access.js";
 import { isChurnedCustomer } from "../billing/churn.js";
+import { signupProductLabel, signupProductsOf } from "../shared/signup-products.js";
 
 export const ORGS = "leverads_orgs";
 export const MIRROR_INTERVAL_MS = 10 * 60 * 1000;
@@ -39,15 +40,31 @@ export const newInviteToken = () => `cvt_${crypto.randomBytes(18).toString("base
 export const signupUrl = (token, env = process.env) =>
   `${String(env.LEVERADS_APP_URL || "https://leverads.com.br").replace(/\/+$/, "")}/signup?convite=${encodeURIComponent(token)}`;
 
+// O LeverPrice aceita o MESMO convite na página de cadastro dele (um convite
+// por cliente; a URL muda por produto). O cadastro avisa em
+// /public/leverprice/org-created (leverprice-orgs.js).
+export const leverpriceSignupUrl = (token, env = process.env) =>
+  `${String(env.LEVERPRICE_APP_URL || "https://leverprice.com.br").replace(/\/+$/, "")}/cadastro?convite=${encodeURIComponent(token)}`;
+
+const SIGNUP_URL = { leverads: signupUrl, leverprice: leverpriceSignupUrl };
+
+// Um link por produto com página de cadastro (shared/signup-products.js).
+export const signupLinksOf = (token, products, env = process.env) =>
+  products.filter((p) => SIGNUP_URL[p]).map((product) => ({ product, label: signupProductLabel(product), url: SIGNUP_URL[product](token, env) }));
+
 // Convite do cliente (cria na primeira vez; `rotate` troca o antigo, que deixa
-// de vincular). Devolve o que a ficha mostra.
-export async function ensureSignupInvite(repo, customer, { rotate = false, now = () => new Date() } = {}) {
+// de vincular). Devolve o que a ficha mostra: um link por produto do negócio
+// (`links`) e, por compatibilidade, o primeiro deles em `url`.
+export async function ensureSignupInvite(repo, customer, { rotate = false, now = () => new Date(), env = process.env } = {}) {
   let invite = customer.signupInvite;
   if (!invite?.token || rotate) {
     invite = { token: newInviteToken(), createdAt: now().toISOString() };
     await repo.update("customers", customer.id, { signupInvite: invite });
   }
-  return { token: invite.token, url: signupUrl(invite.token), createdAt: invite.createdAt || "" };
+  const lead = customer.leadId ? await repo.get("leads", customer.leadId).catch(() => null) : null;
+  const plans = await repo.list("plans").catch(() => []);
+  const links = signupLinksOf(invite.token, signupProductsOf({ customer, lead, plans }), env);
+  return { token: invite.token, url: links[0]?.url || signupUrl(invite.token, env), createdAt: invite.createdAt || "", links };
 }
 
 // Vínculos pelo convite: a org guardou o convite de UM cliente. Cliente já

@@ -11,7 +11,7 @@ import { stageByKind, firstStage } from "../lib/funnel.js";
 import { Popover } from "./popover.jsx";
 import { SignupInviteLink } from "./leverads-accounts.jsx";
 import { CustomerLeverIdBadge } from "./leverid-badge.jsx";
-import { customerOrgId } from "../lib/leverid.js";
+import { pendingSignupProducts } from "../lib/leverid.js";
 
 export const DEAL_TYPES = [
   { value: "nova_venda", label: "Nova venda" },
@@ -112,7 +112,7 @@ export function LeadCrmStrip({ lead, onPatch, onLeave }) {
       {links.onboarding && <button type="button" style={link} onClick={() => { onLeave?.(); openOnboarding(links.onboarding.id); }} title="Abrir o card da integração">
         integração {links.onboarding.progress ?? 0}% →</button>}
       {/* Cliente sem conta: o integrador manda o link de cadastro daqui. */}
-      {lead.saas === "leverads" && !customerOrgId(links.customer) && <span className="lva-inline"><SignupInviteLink customer={links.customer} /></span>}
+      {pendingSignupProducts(links.customer, lead).length > 0 && <span className="lva-inline"><SignupInviteLink customer={links.customer} lead={lead} /></span>}
     </>}
   </div>;
 }

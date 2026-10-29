@@ -127,7 +127,8 @@ export const api = {
   refreshLeveradsOrgs: () => req("POST", "/api/customers/leverads-orgs/refresh"),
   linkLeveradsOrg: (customerId, orgId) => req("POST", `/api/customers/${encodeURIComponent(customerId)}/leverads-org`, { orgId }),
   unlinkLeveradsOrg: (customerId) => req("DELETE", `/api/customers/${encodeURIComponent(customerId)}/leverads-org`),
-  leveradsInvite: (customerId, rotate = false) => req("POST", `/api/customers/${encodeURIComponent(customerId)}/leverads-invite`, { rotate }),
+  // { token, url, createdAt, links: [{ product, label, url }] } — um link por produto do negócio.
+  signupInvite: (customerId, rotate = false) => req("POST", `/api/customers/${encodeURIComponent(customerId)}/signup-invite`, { rotate }),
   // Versões e novidades (só admin).
   appVersions: () => req("GET", "/api/releases/apps"),
   productUpdates: (saas = "") => req("GET", `/api/releases/updates${saas ? `?saas=${encodeURIComponent(saas)}` : ""}`),

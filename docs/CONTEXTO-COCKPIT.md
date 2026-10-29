@@ -490,7 +490,23 @@ internos; depois a comparação de modelos com o mesmo conjunto.
    Nos cards do Negócio e da Integração (produto leverads), o badge do LeverId
    aparece ao lado do nome quando o cliente já tem conta
    (`CustomerLeverIdBadge`); sem conta, só o botão "Link de cadastro"
-   (`SignupInviteLink`), para o integrador mandar ao cliente. Ausência do badge
+   (`SignupInviteLink`), para o integrador mandar ao cliente. O link é um por
+   produto do negócio (28/10/2026): `shared/signup-products.js`
+   (`signupProductsOf`) diz se o negócio inclui LeverAds e/ou LeverPrice
+   (`customer.products`; sem eles, a união de `planSnapshot`, dos itens do
+   lead e de `planCode`/`dealProduct`, pelo plano do catálogo ou pelo prefixo
+   `price_`; sem dado, LeverAds; Mentoria não tem link). O convite é o mesmo;
+   `POST /api/customers/:id/signup-invite` (alias antigo `.../leverads-invite`)
+   devolve `links: [{ product, label, url }]` e `url` = o primeiro. LeverPrice
+   = `LEVERPRICE_APP_URL/cadastro?convite=…`. O botão do LeverAds some com a
+   org do LeverAds; o do LeverPrice, com `leverpriceOrgId`. O cadastro do
+   LeverPrice avisa `POST /public/leverprice/org-created` (`X-Cockpit-Service-Key`
+   = `LEVERPRICE_SERVICE_KEY`, chave própria; 202 na hora), e
+   `customers/leverprice-orgs.js` grava `leverpriceOrgId` +
+   `leverpriceOrgLink` (`via` convite ou e-mail, `coreOrgId` do LeverId só como
+   informação) pelo convite ou pelo e-mail 1 × 1 de cliente com LeverPrice no
+   negócio, ativo e sem org; org já vinculada não regrava e `leveradsOrgId`/`orgId`
+   não mudam. Ausência do badge
    é o "sem conta": não há linha escrita. Vincular e desfazer só no card do
    cliente. No card da Integração, escolher o integrador mostra o link da
    agenda dele (`BookingLinkActions`, o mesmo do gate de Integração); com

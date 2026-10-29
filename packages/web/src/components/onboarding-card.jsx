@@ -16,7 +16,7 @@ import { RecordMeetings } from "./record-meetings.jsx";
 import { BookingLinkActions } from "./booking-link.jsx";
 import { SignupInviteLink } from "./leverads-accounts.jsx";
 import { CustomerLeverIdBadge } from "./leverid-badge.jsx";
-import { customerOrgId } from "../lib/leverid.js";
+import { pendingSignupProducts } from "../lib/leverid.js";
 import { allUsers, displayName } from "../lib/users.js";
 import { brtMs } from "../lib/format.js";
 import { meetingInviteText } from "../lib/wa-copy.js";
@@ -172,7 +172,7 @@ export function OnboardingDrawer({ id, onClose }) {
             <p style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               {customer ? <button type="button" className="customer-peek-link" onClick={() => { onClose(); openCustomer(customer.id); }}>{customer.name} →</button> : (draft ? "cliente" : "")}
               {customer && <CustomerLeverIdBadge customer={customer} />}
-              {customer?.saas === "leverads" && !customerOrgId(customer) && <span className="lva-inline"><SignupInviteLink customer={customer} /></span>}
+              {pendingSignupProducts(customer, lead).length > 0 && <span className="lva-inline"><SignupInviteLink customer={customer} lead={lead} /></span>}
             </p>
           </div>
           <button aria-label="Fechar integração" onClick={close} disabled={busy}>✕</button>

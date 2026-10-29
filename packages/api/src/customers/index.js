@@ -7,6 +7,7 @@ import { registerNpsRoutes } from "./routes.nps.js";
 import { registerCustomerResultsRoutes } from "./routes.customer-results.js";
 import { registerLeverIdRoutes } from "./routes.leverid.js";
 import { registerLeveradsOrgRoutes } from "./routes.leverads-orgs.js";
+import { registerLeverpriceOrgRoutes } from "./routes.leverprice-orgs.js";
 import { registerLifecycleRoutes } from "./routes.lifecycle.js";
 import { registerOnboardingRoutes } from "./routes.onboardings.js";
 import { registerFollowupRoutes } from "./routes.cs-followups.js";
@@ -44,6 +45,9 @@ export function register(app, repo, ctx) {
   // cliente × org (manual na ficha ou automático pelo e-mail).
   orgMirror = makeLeveradsOrgMirror(repo, { identity, ...(ctx.opts.leveradsOrgs || {}) });
   registerLeveradsOrgRoutes(app, repo, { mirror: orgMirror });
+  // Contas do LeverPrice: o aviso do cadastro vincula `leverpriceOrgId` pelo
+  // convite (o mesmo do link de cadastro) ou pelo e-mail 1 × 1.
+  registerLeverpriceOrgRoutes(app, repo);
   // Empresa, contatos, estágio de vida, status financeiro e workspaces.
   registerLifecycleRoutes(app, repo);
   // Integração como registro do cliente, separada do ganho (Fase 1B).
