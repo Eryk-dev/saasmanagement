@@ -361,7 +361,8 @@ test("oferta só em hora cheia; hora quebrada só quando o LEAD pede #R-023", as
   // O PAR que a IA recebeu também é de hora cheia.
   for (const s of fakes.calls[0].suggestedPair) assert.ok(s.at.endsWith(":00"), `par sugerido em hora cheia: ${s.at}`);
   // Mas a lista COMPLETA (pra agendar o que o lead pedir) mantém as quebradas.
-  assert.ok(fakes.calls[0].slots.some((s) => s.at.endsWith(":30")), "lista completa mantém meia hora");
+  // Leo, 29/10: a IA só vê os :30 quando o lead pede hora quebrada.
+  assert.ok(fakes.calls[0].slots.length > 0 && fakes.calls[0].slots.every((s) => s.at.endsWith(":00")), "sem pedido, a lista da IA é só hora cheia");
 });
 
 test("lead que pede hora quebrada é agendado nela #R-023", async () => {
@@ -1877,4 +1878,15 @@ test("fora do horário do robô, com a opção ligada, a fala recente do time n�
   const desligado = makeFakes();
   assert.equal(await brainAt(await world({ messages: msgs }), desligado).handleInbound(INBOUND), "human-active");
   assert.equal(desligado.calls.length, 0);
+});
+
+test("a IA só recebe horários de hora cheia na lista, salvo pedido de hora quebrada do lead #R-023", async () => {
+  const repo = await world({ todayFree: true, messages: [{ direction: "out", author: "sdr-bot", text: "Isso ajudaria na sua operação?", at: ISO("2026-08-19T12:50:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Que bom" }, { acao: "responder", mensagem: "Claro" }] });
+  const brain = brainOf(repo, fakes);
+  await brain.handleInbound({ message: { from: "5541999990000", text: "sim, ajudaria", id: "h1" } });
+  assert.ok(fakes.calls[0].slots.length > 0 && fakes.calls[0].slots.every((x) => x.at.endsWith(":00")), "sem :30 na lista");
+  await repo.create("wa_messages", { id: "h2", thread: "5541999990000", leadId: "L1", saas: "leverads", direction: "in", text: "consegue às 10h30?", at: ISO("2026-08-19T13:00:00Z") });
+  await brain.handleInbound({ message: { from: "5541999990000", text: "consegue às 10h30?", id: "h2" } });
+  assert.ok(fakes.calls[1].slots.some((x) => x.at.endsWith(":30")), "pediu hora quebrada: os :30 entram");
 });

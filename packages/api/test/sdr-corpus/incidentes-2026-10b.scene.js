@@ -384,4 +384,27 @@ export default [
     inbounds: ["Eu creio que seja isso porque eu tenho uma conta só hoje, não tenho mais de uma. Eh, a parte do anúncio que eu acredito que é algo mais, mais assim, mais, não vou falar difícil, mas ele é pouco mais, ai Jesus, mas gelatinoso, talvez nove, a palavra que eu tô buscando, complexo, mas um pouco mais complexo. E a parte do estoque tá de boa também, o atendimento, eu consigo manter com a demanda atual, mas essa parte dos anúncios, creio que eu acredito que precise de um pouco mais de padrão."],
     expect: { result: "responder", sent: [/Entendi Rafael/], notSent: [/Se fizer sentido retomar mais pra frente/], sdrLog: { handoffKind: undefined } },
   },
+  {
+    id: "C-R023-02", title: "Leo (29/10): a IA escolheu 10h30 sem o lead pedir hora quebrada: o motor marca 10h (hora cheia)",
+    rules: ["R-023", "R-035"],
+    world: {
+      sdrBot: V2, todayFree: true,
+      lead: { stage: "No show", callAt: "2026-08-18T09:00", closer: "pl", email: "r@x.com", callUrl: "https://meet.google.com/abc" },
+      messages: [{ direction: "out", author: "sdr-bot", text: "Oi Rafael, passei no nosso horário marcado e não te encontrei, acontece! Quer que eu remarque? Tenho amanhã às 10h ou às 17h livres, me diz qual fica bom que eu já reservo.", at: ISO("2026-08-19T12:05:00Z") }],
+    },
+    ai: [{ acao: "remarcar", slotIds: [], horario: "2026-08-20T10:30" }],
+    inbounds: ["o primeiro, por favor"],
+    expect: { result: "remarcar", sent: [/amanhã \(20\/08\) às 10h,/], lead: { callAt: "2026-08-20T10:00" } },
+  },
+  {
+    id: "C-R023-03", title: "Lead pediu 10h30 explicitamente: a hora quebrada vale e a IA recebe os :30 na lista",
+    rules: ["R-023"],
+    world: {
+      sdrBot: V2, todayFree: true,
+      messages: [{ direction: "out", author: "sdr-bot", text: PITCH, at: ISO("2026-08-19T12:00:00Z") }, { direction: "in", text: "sim", at: ISO("2026-08-19T12:30:00Z") }, { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?", at: ISO("2026-08-19T12:31:00Z") }],
+    },
+    ai: [{ acao: "agendar", slotIds: [], horario: "2026-08-20T10:30" }],
+    inbounds: ["consegue às 10h30?"],
+    expect: { result: "agendar", sent: [/amanhã \(20\/08\) às 10h30/], lead: { callAt: "2026-08-20T10:30" } },
+  },
 ];

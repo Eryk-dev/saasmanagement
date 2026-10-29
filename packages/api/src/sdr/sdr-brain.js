@@ -31,7 +31,7 @@ import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, greetName,
 import { transcriber as defaultTranscriber } from "../whatsapp/transcribe.js";
 import { FORM_MSG_RX, SLOTS_RX, OFFER_CUE_RX, isOfferMsg, ACCEPT_RX, offeredSlotsIn, liveOfferedSlots, acceptedSlot, AUTO_REPLY_RX, BARE_HOUR_RX, collapseSameDay, expandSameDay, DEMO_RX, PITCH_RX } from "./sdr-signals.js";
 import { transcribeInbound } from "../whatsapp/wa-transcribe.js";
-import { AFFILIATE_RX, DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, NO_INTEREST_RX, LEAD_MOBILE_RX, DENY_CALL_RX, PERIOD_ASK_RX, PRICE_ASK_RX, WAITING_ROOM_RX, OBJECTION_RX, OEM_NO_RX, bareHour, leadEngaged, lastInboundText, plainReply, requestsCancellation, rescheduleReply, classifyInbound, asksReschedule, burstInboundText, callbackDay, statedPainOf, isNonAnswer, CONFUSED_RX, CLOSING_RX, POSTPONE_RX, referralIn, DEMO_COST_RX, WEAK_PROFILE_RX, EXPLAIN_HERE_RX, ONBOARDING_RX, COMPLAINT_RX } from "./sdr-intents.js";
+import { AFFILIATE_RX, DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, NO_INTEREST_RX, LEAD_MOBILE_RX, DENY_CALL_RX, PERIOD_ASK_RX, PRICE_ASK_RX, WAITING_ROOM_RX, OBJECTION_RX, OEM_NO_RX, bareHour, leadEngaged, lastInboundText, plainReply, requestsCancellation, rescheduleReply, classifyInbound, asksReschedule, burstInboundText, callbackDay, statedPainOf, isNonAnswer, CONFUSED_RX, CLOSING_RX, POSTPONE_RX, referralIn, DEMO_COST_RX, WEAK_PROFILE_RX, EXPLAIN_HERE_RX, ONBOARDING_RX, COMPLAINT_RX, asksHalfHour } from "./sdr-intents.js";
 import { SDR_TEMPLATES } from "./sdr-templates.leverads.js";
 import { resolveWabaId } from "../whatsapp/wa-health.js";
 import { stateOf, humanMuteHolds, GREETING_GAP_MS, DAILY_CAP, botTalkLast24h, handoffHolds } from "./sdr-state.js";
@@ -1129,7 +1129,9 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       stage: lead.stage || firstStage(product),
       callAt: lead.callAt || "",
       nowLabel: nowLabelOf(wnow),
-      slots: awaitingReschedule ? [] : slotList,
+      // HORA CHEIA (R-023, Leo 29/10): a IA só vê os :30 quando o lead pediu
+      // hora quebrada; senão ela escolhia "10h30" sozinha (Alonso, 28/10).
+      slots: awaitingReschedule ? [] : (asksHalfHour(burstText) ? slotList : slotList.filter((x) => x.at.endsWith(":00"))),
       conversation,
       pain: leadPainFocus(product, lead),
       canGreet,
@@ -1355,6 +1357,13 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
           const best = slotList.find((x) => offeredDays.has(x.at.slice(0, 10)) && Number(x.at.slice(11, 13)) === leadHour && x.at.endsWith(":00"));
           if (best) { log.info?.({ lead: lead.id, de: decision.horario, para: best.at }, "sdr-brain: hora dita pelo lead corrigiu o horário escolhido pela IA"); decision.horario = best.at; }
         }
+      }
+      // Hora quebrada sem o lead ter pedido: cai pra hora cheia do mesmo
+      // horário; sem vaga nela, re-oferta (R-023).
+      if (/:30$/.test(String(decision.horario || "")) && !asksHalfHour(burstText)) {
+        const whole = slotList.find((x) => x.at === `${String(decision.horario).slice(0, 13)}:00`);
+        log.info?.({ lead: lead.id, de: decision.horario, para: whole?.at || "" }, "sdr-brain: hora quebrada sem pedido virou hora cheia");
+        decision.horario = whole ? whole.at : "";
       }
       const pick = slotList.find((s) => s.at === decision.horario);
       if (!pick) {
