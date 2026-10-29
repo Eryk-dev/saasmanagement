@@ -58,7 +58,9 @@ export const SCHEDULE_ASK_RX = /hor[áa]rio|agendar|marcar|agenda\b|dispon[íi]v
 // Pedido de preço e pergunta não contam.
 const PAIN_OEM_RX = /compatibilidade|c[óo]digo (?:oem|da pe[çc]a|original)|\boem\b|cadastr|subir (?:os )?an[úu]ncio|criar (?:os )?an[úu]ncio|montar (?:os )?an[úu]ncio|t[íi]tulo|descri[çc][ãa]o|ficha t[ée]cnica|an[úu]ncio por an[úu]ncio|engessad|tudo manual|manualmente|\bmanual\b|pesquisa de mercado|categoria/i;
 const PAIN_PRICE_RX = /margem|precific|promo[çc][õo]es?|central de promo|custo|imposto|\bdre\b|atualizar (?:os )?pre[çc]o|manter (?:os )?pre[çc]o|pre[çc]o (?:dos|das|de cada|por)/i;
-const PAIN_ADS_RX = /v[áa]rias contas|m[úu]ltiplas contas|gerenciar (?:as )?contas|integra[çc][ãa]o (?:entre|de|das|com) (?:as )?contas|integrar (?:as )?contas|contas (?:de|do|no) (?:mercado|ml|shopee)|clonar|clonagem|espelhar|estoque|atendimento|pergunta dos clientes|banid/i;
+// "estoque"/"atendimento" sozinhos não são dor de multi-contas (29/10,
+// Guilherme "compro estoque obsoleto" é OEM): só em contexto de contas/sincronização.
+const PAIN_ADS_RX = /v[áa]rias contas|m[úu]ltiplas contas|gerenciar (?:as )?contas|integra[çc][ãa]o (?:entre|de|das|com) (?:as )?contas|integrar (?:as )?contas|contas (?:de|do|no) (?:mercado|ml|shopee)|clonar|clonagem|espelhar|sincroniz\w* (?:o )?estoque|estoque (?:entre|nas|das|em v[áa]rias) contas|controle de estoque|atendimento (?:das|nas|de) (?:v[áa]rias )?contas|pergunta dos clientes|banid/i;
 export function statedPainOf(text) {
   const raw = String(text || "");
   if (!raw || raw.includes("?") || FORM_MSG_RX.test(raw) || PRICE_ASK_RX.test(raw)) return null;
@@ -67,11 +69,23 @@ export function statedPainOf(text) {
   if (PAIN_ADS_RX.test(raw)) return "ads";
   return null;
 }
+// Resposta curta e positiva à nossa pergunta ("Muito", "Exato", "Demais",
+// "Com certeza") engaja (29/10, Guilherme respondeu "Muito" a "isso te
+// ajudaria?" e o robô voltou pra descoberta).
+export const SHORT_YES_RX = /^\s*(?:muito|muito mesmo|demais|bastante|exato|exatamente|isso|isso mesmo|isso ai|obvio|logico|claro|claro que sim|com certeza|certeza|sim sim|siim+|ajudaria|ajuda sim|seria otimo|otimo|perfeito|show|top|massa|bora|quero|quero sim|me interessa|interessante|tenho interesse|pode ser|pode|blz|beleza|fechado)\s*[!.]*\s*$/;
 export const leadEngaged = (msgs) => msgs.some((m) => {
   if (m.direction !== "in") return false;
   const t = String(m.transcript || m.text || "");
-  return !FORM_MSG_RX.test(t) && (INTEREST_RX.test(t) || SCHEDULE_ASK_RX.test(t) || HAS_HOUR_RX.test(t) || !!statedPainOf(t));
+  return !FORM_MSG_RX.test(t) && (INTEREST_RX.test(t) || SHORT_YES_RX.test(plainReply(t)) || SCHEDULE_ASK_RX.test(t) || HAS_HOUR_RX.test(t) || !!statedPainOf(t));
 });
+// PEDIDO DE LIBERAÇÃO DE CADASTRO / ACESSO (29/10, Gustavo: "Quero solicitar a
+// liberação do meu cadastro na LeverAds" recebeu oferta de demonstração): é
+// cliente/onboarding, vai pra gente.
+export const ONBOARDING_RX = /libera[çc][ãa]o d[oe] (?:meu )?cadastro|liberar (?:o )?(?:meu )?cadastro|cadastro (?:na|da) leverads|(?:meu|o) acesso (?:a|à) plataforma|liberar (?:o )?(?:meu )?acesso|j[áa] sou cliente|j[áa] (?:assinei|contratei|comprei|paguei)|segunda via|minha fatura|cancelar (?:a |minha )?assinatura/i;
+// RECLAMAÇÃO DO ROBÔ (R-001, 28/10, Guilherme "Seu robô tá com defeito… odeio
+// esses atendimentos automatizados"): pede desculpa e chama gente, nunca
+// segue o roteiro por cima.
+export const COMPLAINT_RX = /(?:rob[oô]|bot|atendimento automatizado|atendimento automatico|automa[çc][ãa]o|ia\b).{0,60}(?:defeito|bugad|travad|quebrad|nao funciona|odeio|ridicul|lixo|pessim|horrivel|burr|nao entende|nao le|loop|repetindo)|(?:defeito|bugad|travad|quebrad|odeio|ridicul|lixo|pessim|horrivel|burr).{0,60}(?:rob[oô]|bot|atendimento automatizado|automa[çc][ãa]o)/;
 // Resposta que NÃO responde a pergunta pendente (R-047): saudação, "que bom",
 // "ok", "e você?", reação, emoji.
 export const NON_ANSWER_RX = /^(?:que bom|legal|ok|okay|blz|beleza|entendi|show|top|certo|otimo|bacana|massa|ah ta|a ta|ata|hum+|kk+|haha+|rs+|sim sim)[.!\s]*$|^(?:tudo (?:bem|bom|certo)|bem)(?:[,!.\s]*e (?:vc|voce|ce|tu|contigo)[?!.\s]*)?$|\be (?:vc|voce|ce|tu)\?*$/;
@@ -129,7 +143,7 @@ export const bareHour = (text) => {
 // LEAD SEM INTERESSE / PEDIU PAUSA (Leo, 08/10, caso Laion).
 // 28/10: "não quero começar", "não quero fazer call", "agora não", "ainda não é
 // o momento" também são desinteresse (Helano, Ronaldo, Marcelo, Luciene).
-export const NO_INTEREST_RX = /nao tenho (?:mais )?interesse|sem interesse|perdi o interesse|nao (?:quero|preciso|tenho) mais\b|vamos pausar|pausar por enquanto|deixa pra la|nao (?:vou|vamos) (?:seguir|continuar|prosseguir|fechar|contratar)|pode parar|para de (?:me )?mandar|nao me (?:chame|chama|mande|manda|procure|procura) mais|(?:ainda )?nao (?:e|eh) (?:o )?momento|por enquanto nao|agora nao(?: quero| da| consigo)?\b(?!,? (?:mas|porem|so|apenas))|desisti|nao quero (?:fazer )?(?:agendar|marcar|demonstracao|conversa|call|reuniao|video|comecar|participar|seguir|continuar|contratar|nada)|nao quero\b(?! (?:saber|perder|dizer|falar|que|cancelar|remarcar|mudar|trocar|adiar|desmarcar))/;
+export const NO_INTEREST_RX = /nao tenho (?:mais )?interesse|sem interesse|perdi o interesse|nao (?:quero|preciso|tenho) mais\b(?! (?:de |do |da |dos |das |que |um |uma |nenhum|nenhuma|ninguem|nada|tempo|como))|vamos pausar|pausar por enquanto|deixa pra la|nao (?:vou|vamos) (?:seguir|continuar|prosseguir|fechar|contratar)|pode parar|para de (?:me )?mandar|nao me (?:chame|chama|mande|manda|procure|procura) mais|(?:ainda )?nao (?:e|eh) (?:o )?momento|por enquanto nao|agora nao(?: quero| da| consigo)?\b(?!,? (?:mas|porem|so|apenas))|desisti|nao quero (?:fazer )?(?:agendar|marcar|demonstracao|conversa|call|reuniao|video|comecar|participar|seguir|continuar|contratar|nada)|nao quero\b(?! (?:saber|perder|dizer|falar|que|cancelar|remarcar|mudar|trocar|adiar|desmarcar))/;
 // Lead na sala do Meet esperando.
 export const WAITING_ROOM_RX = /sozinh|ninguem (?:entrou|apareceu|chegou|na sala)|nao (?:entrou|apareceu|chegou|tem) ninguem|sala (?:esta |ta )?vazia|\bcade\b|\bkd\b|\b(?:estou|to) (?:esperando|aguardando)|aguardando (?:aqui|na sala|voces|o especialista)|esperando (?:aqui|na sala|voces)|me conecte|vai entrar\?|quem (?:vai|ta) (?:entrar|na sala)/;
 // Objeção/desistência depois da call marcada.
@@ -202,7 +216,8 @@ export function callbackDay(text, wnow) {
 // "Não" seco (ou quase).
 const NO_RX = /^(?:nao|n|nop|nope|negativo)[.!\s]*$|^nao (?:consigo|posso|quero|da|vai dar|obrigad[oa])[.!\s]*$/;
 // Lead adiou a decisão (R-031/R-041: "Combinado", sem re-oferta).
-export const POSTPONE_RX = /\bte (?:retorno|respondo|aviso|chamo|falo)\b|\bdepois (?:eu )?te\b|\bmais tarde\b|\b(?:vou|preciso|tenho que|deixa eu) (?:ver|falar|conversar|alinhar) com\b|\bme (?:da|de) um tempo\b|\bvou pensar\b|\bt aviso\b|\bte aviso\b|\bqualquer coisa (?:eu )?te chamo\b/;
+// 29/10 (Ariel): "estou em viagem" é adiamento: sem oferta, "me chama quando voltar".
+export const POSTPONE_RX = /\bte (?:retorno|respondo|aviso|chamo|falo)\b|\bdepois (?:eu )?te\b|\bmais tarde\b|\b(?:vou|preciso|tenho que|deixa eu) (?:ver|falar|conversar|alinhar) com\b|\bme (?:da|de) um tempo\b|\bvou pensar\b|\bt aviso\b|\bte aviso\b|\bqualquer coisa (?:eu )?te chamo\b|\b(?:estou|to|tou|estamos) (?:em )?viage|\bviajando\b|\bem viagem\b|\bfora da cidade\b|\bquando (?:eu )?(?:voltar|retornar|estiver de volta)\b/;
 // Pedido de horário sem dia ("podemos marcar um horário?", "quais horários tem?").
 const SCHEDULE_WORDS_RX = /hor[áa]rio|\bagendar|\bmarcar|\bagenda\b|dispon[íi]vel|que horas|quais (?:dias|datas)/i;
 const EMAIL_RX = /[\w.+-]+@[\w-]+\.[\w.-]+/;

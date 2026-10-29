@@ -31,7 +31,7 @@ import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, greetName,
 import { transcriber as defaultTranscriber } from "../whatsapp/transcribe.js";
 import { FORM_MSG_RX, SLOTS_RX, OFFER_CUE_RX, isOfferMsg, ACCEPT_RX, offeredSlotsIn, liveOfferedSlots, acceptedSlot, AUTO_REPLY_RX, BARE_HOUR_RX, collapseSameDay, expandSameDay, DEMO_RX, PITCH_RX } from "./sdr-signals.js";
 import { transcribeInbound } from "../whatsapp/wa-transcribe.js";
-import { AFFILIATE_RX, DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, NO_INTEREST_RX, LEAD_MOBILE_RX, DENY_CALL_RX, PERIOD_ASK_RX, PRICE_ASK_RX, WAITING_ROOM_RX, OBJECTION_RX, OEM_NO_RX, bareHour, leadEngaged, lastInboundText, plainReply, requestsCancellation, rescheduleReply, classifyInbound, asksReschedule, burstInboundText, callbackDay, statedPainOf, isNonAnswer, CONFUSED_RX, CLOSING_RX, POSTPONE_RX, referralIn, DEMO_COST_RX, WEAK_PROFILE_RX, EXPLAIN_HERE_RX } from "./sdr-intents.js";
+import { AFFILIATE_RX, DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, NO_INTEREST_RX, LEAD_MOBILE_RX, DENY_CALL_RX, PERIOD_ASK_RX, PRICE_ASK_RX, WAITING_ROOM_RX, OBJECTION_RX, OEM_NO_RX, bareHour, leadEngaged, lastInboundText, plainReply, requestsCancellation, rescheduleReply, classifyInbound, asksReschedule, burstInboundText, callbackDay, statedPainOf, isNonAnswer, CONFUSED_RX, CLOSING_RX, POSTPONE_RX, referralIn, DEMO_COST_RX, WEAK_PROFILE_RX, EXPLAIN_HERE_RX, ONBOARDING_RX, COMPLAINT_RX } from "./sdr-intents.js";
 import { SDR_TEMPLATES } from "./sdr-templates.leverads.js";
 import { resolveWabaId } from "../whatsapp/wa-health.js";
 import { stateOf, humanMuteHolds, GREETING_GAP_MS, DAILY_CAP, botTalkLast24h, handoffHolds } from "./sdr-state.js";
@@ -764,7 +764,9 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     // Número solto depois de uma oferta nossa ("11") também é engajamento.
     // Desinteresse na rajada atual desliga o engajamento desta resposta
     // (R-083/R-031, 28/10: "não quero começar" recebia oferta de horário).
-    const noInterestNow = NO_INTEREST_RX.test(burstPlain) && !FORM_MSG_RX.test(burstText);
+    // Explicação longa (áudio de 50 s, 28/10 Matheus: "não tenho mais de uma
+    // conta…") não é despedida: a régua de desinteresse só vale em fala curta.
+    const noInterestNow = NO_INTEREST_RX.test(burstPlain) && !FORM_MSG_RX.test(burstText) && burstText.length <= 220;
     // Pedido de preço LEVA a agenda (R-072 também no caminho genérico, 28/10:
     // Fabiano e Jorge ouviram o desvio sem horário): quem pergunta o valor do
     // serviço já quer saber se compra; a oferta pode sair.
@@ -1003,6 +1005,24 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       }
     }
 
+    // ── LIBERAÇÃO DE CADASTRO / JÁ É CLIENTE (29/10, Gustavo): não é lead de
+    // demonstração, é onboarding/suporte: gente assume, sem oferta.
+    if (ONBOARDING_RX.test(burstText) && !lead.sdrLog?.onboardingHandoffAt) {
+      const iso = new Date(nowMs).toISOString();
+      await raiseAlert(repo, thread, { text: `Pediu liberação de cadastro / acesso (não é demonstração) · encaminha pro responsável: "${String(message?.text || "").slice(0, 140)}"` });
+      await stamp(lead, { handoffAt: iso, handoffKind: "cadastro", onboardingHandoffAt: iso, handoffWhy: "liberação de cadastro/acesso" });
+      await send(`${nome ? `${nome}, d` : "D"}eixa eu encaminhar aqui pro time responsável pela liberação, que eles já te retornam por aqui`, { path: "cadastro" });
+      return aborted ? "abortado" : "cadastro";
+    }
+    // ── RECLAMAÇÃO DO ROBÔ (R-001, 28/10, Guilherme "seu robô tá com defeito"):
+    // desculpa e gente, nunca o roteiro por cima da reclamação.
+    if (COMPLAINT_RX.test(burstPlain) && !lead.sdrLog?.complaintHandoffAt) {
+      const iso = new Date(nowMs).toISOString();
+      await raiseAlert(repo, thread, { text: `Lead reclamou do atendimento automatizado · assume AGORA: "${String(message?.text || "").slice(0, 140)}"` });
+      await stamp(lead, { handoffAt: iso, handoffKind: "reclamacao", complaintHandoffAt: iso, handoffWhy: "reclamou do robô" });
+      await send(`Desculpa${nome ? ` ${nome}` : ""}, vou te passar agora pra alguém do time continuar com você por aqui`, { path: "reclamacao" });
+      return aborted ? "abortado" : "reclamacao";
+    }
     // ── CUSTO DA DEMONSTRAÇÃO (28/10, Caio "tem algum custo?", Kelly "qual o
     // valor da consulta?") não é pedido de preço: a demonstração é grátis.
     if (!lead.callAt && DEMO_COST_RX.test(burstText) && !lead.sdrLog?.demoCostAt) {
@@ -1325,6 +1345,17 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     }
 
     if (decision.acao === "agendar" || decision.acao === "remarcar") {
+      // A HORA QUE O LEAD DISSE manda (29/10, Alonso: "17 horas por favor" e a IA
+      // remarcou pra 10h30): se existe horário livre nessa hora, ele é o escolhido,
+      // preferindo o dia que a gente ofereceu.
+      if (leadHour != null) {
+        const chosenHour = Number(String(decision.horario || "").slice(11, 13));
+        const offeredDays = new Set(offeredSlotsIn(agendaMessages, SDR_AUTHOR).map((o) => o.at.slice(0, 10)));
+        if (chosenHour !== leadHour && offeredDays.size) {
+          const best = slotList.find((x) => offeredDays.has(x.at.slice(0, 10)) && Number(x.at.slice(11, 13)) === leadHour && x.at.endsWith(":00"));
+          if (best) { log.info?.({ lead: lead.id, de: decision.horario, para: best.at }, "sdr-brain: hora dita pelo lead corrigiu o horário escolhido pela IA"); decision.horario = best.at; }
+        }
+      }
       const pick = slotList.find((s) => s.at === decision.horario);
       if (!pick) {
         // Horário fora da agenda real: re-oferta determinística (com o par

@@ -18,7 +18,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-001 · O robô é a Manuela, e não mente que é robô
 
 - Origem: 2026-08-22, Leo (#733/#736)
-- Regra: Toda mensagem sai em nome da SDR do número (persona Manuela, login sdr), inclusive o 1º toque e a campanha de backlog, seja de quem for o card (28/10: saiu "Aqui é a Ana" pelo dono do lead); por dentro o autor é sdr-bot. Se o lead perguntar se é robô, não debate nem afirma ser humano: chama gente.
+- Regra: Reclamação do atendimento automatizado ("seu robô tá com defeito", "odeio esses atendimentos automatizados") ou pedido de gente de verdade: pede desculpa e chama gente na hora, nunca segue o roteiro por cima (28/10, Guilherme recebeu a M2 depois de reclamar). Toda mensagem sai em nome da SDR do número (persona Manuela, login sdr), inclusive o 1º toque e a campanha de backlog, seja de quem for o card (28/10: saiu "Aqui é a Ana" pelo dono do lead); por dentro o autor é sdr-bot. Se o lead perguntar se é robô, não debate nem afirma ser humano: chama gente.
 - Vale em: estados todos; roteiro todos; executada por prompt, effects
 
 ### R-002 · Escreve no DNA da Manuela
@@ -43,7 +43,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-005 · Pitch dito uma vez
 
 - Origem: 2026-08-23, Leo (#744/#754; Price em 08/10 (#1133))
-- Regra: O 1º toque (texto ou template) já conta como pitch. Capacidades e benefícios citados não se re-listam, nem com outras palavras; se precisar referenciar, "como te falei" e só o novo. No Price o pitch é a M1 e a M2 só acrescenta o DRE e os horários.
+- Regra: Mas o pitch SAI uma vez: lead que só ouviu perguntas ("você vende com conta própria?") e depois recebeu horário perguntou "pra que seria isso?" (29/10, Roberto); na primeira resposta e na retomada sem pitch, uma frase do que o produto faz vem antes da pergunta. O 1º toque (texto ou template) já conta como pitch. Capacidades e benefícios citados não se re-listam, nem com outras palavras; se precisar referenciar, "como te falei" e só o novo. No Price o pitch é a M1 e a M2 só acrescenta o DRE e os horários.
 - Vale em: estados todos; roteiro todos; executada por state, prompt
 
 ### R-006 · É "conversa" ou "demonstração", nunca "call" pro lead
@@ -265,7 +265,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-035 · Agendar e remarcar pelo caminho canônico, com confirmação enxuta
 
 - Origem: 2026-08-22, Leo (#736; confirmação enxuta #754 (23/08); Meet automático 01/09)
-- Regra: Marcar = applyStageMove pra etapa de call, callHistory, callSetAt, Meet criado sozinho. A confirmação é curta e escrita ("agendado então pra quinta (21/08) às 10h"), sem re-descrever a demonstração, avisa do convite por e-mail só quando o card tem e-mail, e diz que chama antes pra confirmar. Remarcar confirma curto e manda o callAt antigo pro histórico.
+- Regra: A hora que o lead escreveu ("17 horas por favor") manda sobre o id escolhido pela IA quando existe horário livre nessa hora (29/10, Alonso foi remarcado pra 10h30). Marcar = applyStageMove pra etapa de call, callHistory, callSetAt, Meet criado sozinho. A confirmação é curta e escrita ("agendado então pra quinta (21/08) às 10h"), sem re-descrever a demonstração, avisa do convite por e-mail só quando o card tem e-mail, e diz que chama antes pra confirmar. Remarcar confirma curto e manda o callAt antigo pro histórico.
 - Vale em: estados todos; roteiro todos; executada por effects, prompt
 
 ### R-036 · Cancelar com consentimento antes de oferecer
@@ -383,14 +383,14 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-083 · Desinteresse acolhe e para
 
 - Origem: 2026-10-08, Leo (#1140 (caso Laion: escada de preço respondeu a "não tenho mais interesse"))
-- Regra: "Não quero começar", "não quero fazer call", "agora não", "ainda não é o momento" também são desinteresse e desligam o engajamento da resposta (28/10, Helano recebeu oferta em cima do "não quero"). Sem call marcada, "não tenho interesse", "agora não" ou pedido de pausa recebe uma frase ("Tranquilo Nome, sem problemas. Se fizer sentido retomar mais pra frente, é só me chamar aqui"), nada de venda, preço, horário ou motivo, e gente é avisada. Com call marcada é objeção (R-038).
+- Regra: Só em fala curta (até ~220 caracteres): explicação longa com "não tenho mais de uma conta" não é despedida (28/10, Matheus foi acolhido e silenciado enquanto pedia 13h). "Não quero começar", "não quero fazer call", "agora não", "ainda não é o momento" também são desinteresse e desligam o engajamento da resposta (28/10, Helano recebeu oferta em cima do "não quero"). Sem call marcada, "não tenho interesse", "agora não" ou pedido de pausa recebe uma frase ("Tranquilo Nome, sem problemas. Se fizer sentido retomar mais pra frente, é só me chamar aqui"), nada de venda, preço, horário ou motivo, e gente é avisada. Com call marcada é objeção (R-038).
 - Vale em: estados todos; roteiro todos; executada por intent, prompt, alerta
 
 ### R-084 · Silêncio quando não há o que responder
 
 - Origem: 2026-08-22, Leo (#736; "ok" pós-compromisso 05/10; reações 01/10)
-- Regra: Mensagem que encerra sem pedir resposta ("ok", "valeu", reação) fica sem resposta; o "ok" depois do compromisso do roteiro também. Reação e saudação solta não abrem alerta nem janela de 24h. Lead que marca um dia pra ser chamado ("me chama na terça", "contato só a partir de segunda") ou robô que promete "te chamo amanhã": o dia vira carimbo (sdrLog.callbackAt) e a Manuela chama nesse dia, em expediente, com a agenda real (28/10: Reginaldo, Robson, Maurílio ficaram esperando).
-- Vale em: estados todos; roteiro todos; executada por prompt, intent, flow, effects
+- Regra: Adiamento do lead ("estou em viagem", "te aviso", "vou ver com meu sócio") nunca recebe oferta de horário na mesma resposta (29/10, Ariel): a trava tira a oferta e fica o "me chama quando voltar". Mensagem que encerra sem pedir resposta ("ok", "valeu", reação) fica sem resposta; o "ok" depois do compromisso do roteiro também. Reação e saudação solta não abrem alerta nem janela de 24h. Lead que marca um dia pra ser chamado ("me chama na terça", "contato só a partir de segunda") ou robô que promete "te chamo amanhã": o dia vira carimbo (sdrLog.callbackAt) e a Manuela chama nesse dia, em expediente, com a agenda real (28/10: Reginaldo, Robson, Maurílio ficaram esperando).
+- Vale em: estados todos; roteiro todos; executada por prompt, intent, flow, effects, guard (validador noOfferWhenPostponed)
 
 ### R-085 · Fora do expediente a pausa de humano ativo pode ser ignorada
 
@@ -409,7 +409,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-090 · Quem o robô atende
 
 - Origem: 2026-08-22, Leo (#733; modo teste #738/#739; enabledAt protege o backlog)
-- Regra: Só lead em Novo, Contato, Qualificação ou Call, criado depois de enabledAt. Fora: ganho, saída lateral (formExit), desqualificado, opt-out, número inválido, "parar robô" (sdrOff) e lead interno, salvo conversationTest ligado (aí só o interno). A conversa com IA só roda com a chave conversation ligada. Lead parado (desqualificado, perdido, nutrição) que manda o texto do formulário de novo é lead novo: o card reabre em Novo lead, o time é avisado e o robô atende (28/10, Margarete: form de 26/10 num card de julho, ninguém respondeu).
+- Regra: Pedido de liberação de cadastro/acesso ou "já sou cliente" não é lead de demonstração: gente assume (handoff "cadastro"), sem oferta (29/10, Gustavo). Só lead em Novo, Contato, Qualificação ou Call, criado depois de enabledAt. Fora: ganho, saída lateral (formExit), desqualificado, opt-out, número inválido, "parar robô" (sdrOff) e lead interno, salvo conversationTest ligado (aí só o interno). A conversa com IA só roda com a chave conversation ligada. Lead parado (desqualificado, perdido, nutrição) que manda o texto do formulário de novo é lead novo: o card reabre em Novo lead, o time é avisado e o robô atende (28/10, Margarete: form de 26/10 num card de julho, ninguém respondeu).
 - Vale em: estados todos; roteiro todos; executada por state, flow
 
 ### R-091 · Rajada, dupla e mensagem perdida

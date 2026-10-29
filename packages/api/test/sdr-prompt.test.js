@@ -153,3 +153,10 @@ test("API da Anthropic: o schema vai sem maxItems/minItems (recusados em output_
   await router.sdrDecide({ ...CTX, contract: "v2" });
   assert.equal(rc[0].body.response_format.json_schema.schema.properties.partes.maxItems, 3, "OpenRouter mantém maxItems");
 });
+
+test("prompt v2: sem pitch na conversa, o bloco manda dizer em uma frase o que o produto faz antes da pergunta (29/10, Roberto/Ricardo) #R-005", async () => {
+  const { buildUserV2 } = await import("../src/sdr/sdr-prompt.js");
+  const base = { sdrName: "Manuela", nowLabel: "x", lead: { name: "Roberto" }, state: "descoberta", script: "price", conversation: [] };
+  assert.match(buildUserV2({ ...base, facts: { demoOffered: false } }), /O PITCH AINDA NÃO SAIU[\s\S]*Lever Price faz/);
+  assert.doesNotMatch(buildUserV2({ ...base, facts: { demoOffered: true } }), /O PITCH AINDA NÃO SAIU/);
+});

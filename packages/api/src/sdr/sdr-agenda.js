@@ -32,14 +32,16 @@ const NOT_A_REQUEST_RX = /te (?:falo|chamo|respondo|retorno)|(?:desde|comprei|co
 // agenda num dia É pedir esse dia.
 // "estarei livre", "estou de folga", "consigo só" (28/10: "Na sexta feira
 // estarei livre" não virava pedido e o robô disse que a sexta tinha lotado).
-const ASKED_RX = /\b(?:pode|posso|poderei|poderia|poderiamos|podia|podiamos|podemos|consigo|conseguimos|conseguiria|conseguirei|da|dava|daria|tem|teria|quero|prefiro|preferia|preciso|vamos|disponivel|disponibilidade|agenda|agendar|agendamento|estaria|estarei|(?:to|estou|fico|vou estar|estaremos|ficamos) (?:livre|de folga|liberad[ao]s?|disponive(?:l|is))|marcar|remarcar|reuniao|call|horario|so|apenas|sim|ok|okay|beleza|bora|fechado|combinado|perfeito|certo|passar|deixar|deixa|mudar|trocar|ficar|fica|melhor|encaixa|encaixar|talvez|quem sabe|entao)\b/;
+const ASKED_RX = /\b(?:pode|posso|poderei|poderia|poderiamos|podia|podiamos|podemos|consigo|conseguimos|conseguiria|conseguirei|da(?: pra| para| certo| sim)?(?=\s*$)|da (?:pra|para|certo|sim)|dava|daria|tem|teria|quero|prefiro|preferia|preciso|vamos|disponivel|disponibilidade|agenda|agendar|agendamento|estaria|estarei|(?:to|estou|fico|vou estar|estaremos|ficamos) (?:livre|de folga|liberad[ao]s?|disponive(?:l|is))|marcar|remarcar|reuniao|call|horario|so|apenas|sim|ok|okay|beleza|bora|fechado|combinado|perfeito|certo|passar|deixar|deixa|mudar|trocar|ficar|fica|melhor|encaixa|encaixar|talvez|quem sabe|entao)\b/;
 // Negação que RECUSA o que vem antes dela ("amanhã não consigo", "não posso
 // amanhã"). Dia citado DEPOIS dela com uma pista de alternativa no meio
 // ("não consigo, pode ser quarta") é o pedido, não a recusa.
 // 28/10 (Alberto): "hoje não conseguirei", "minha agenda hj tá cheia", "sem
 // tempo" também são recusa; antes "tá cheia" nem era negação e a palavra
 // "agenda" fazia da frase um PEDIDO de hoje.
-const NEG_RX = /\bnao\s+(?:posso|consigo|conseguimos|conseguirei|conseguiria|da|pode|quero|vou (?:poder|conseguir)|vai (?:dar|rolar)|tenho (?:disponibilidade|como|tempo)|tem como|rola|da pra mim)\b|\b(?:ta|esta|estou|to|tenho a agenda|agenda)\s+(?:bem |muito |super |toda )?(?:cheia|cheio|lotad[ao]|complicad[ao]|corrid[ao]|ocupad[ao]|apertad[ao]|tomad[ao])\b|\bsem tempo\b|\bimpossivel\b|\bnao[.!?\s]*$/;
+// 29/10 (Gustavo): "hoje no período da tarde vou estar ocupado" virava
+// PEDIDO de hoje à tarde; "vou estar/estarei ocupado", "em viagem" são recusa.
+const NEG_RX = /\bnao\s+(?:posso|consigo|conseguimos|conseguirei|conseguiria|da|pode|quero|vou (?:poder|conseguir)|vai (?:dar|rolar)|tenho (?:disponibilidade|como|tempo)|tem como|rola|da pra mim)\b|\b(?:ta|esta|estou|to|tenho a agenda|agenda)\s+(?:bem |muito |super |toda )?(?:cheia|cheio|lotad[ao]|complicad[ao]|corrid[ao]|ocupad[ao]|apertad[ao]|tomad[ao])\b|\b(?:vou estar|estarei|estaremos|vamos estar|fico|ficarei|vou ficar|estou|to|tou)\s+(?:ocupad[ao]s?|fora|viajando|em viagem|em reuniao|trabalhando|sem tempo|atarefad[ao])\b|\b(?:em viagem|viajando)\b|\bsem tempo\b|\bimpossivel\b|\bnao[.!?\s]*$/;
 const ALT_CUE_RX = /\b(?:pode|poderia|podemos|poderiamos|teria|tem|so|apenas|prefiro|prefiria|melhor|consigo|conseguimos|da|daria|dava|vamos|deixa|passa|passar|fica|ficar|quem sabe|talvez|entao|seria|ser)\b/;
 const DAY_RX = /depois de amanha|amanha|\bhoje\b|\bhj\b|segunda(?:[- ]feira)?|terca(?:[- ]feira)?|quarta(?:[- ]feira)?|quinta(?:[- ]feira)?|sexta(?:[- ]feira)?|sabado|domingo|\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}(?:\/\d{4})?|\bdia \d{1,2}\b|\b\d{1,2} de [a-z]+|semana que vem|proxima semana|outra semana|semana seguinte|outro dia|outros dias|proximos dias|daqui a \d+ dias?/g;
 const NEXT_WEEK_RX = /semana que vem|proxima semana|outra semana|semana seguinte/;

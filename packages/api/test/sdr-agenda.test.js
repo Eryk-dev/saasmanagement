@@ -316,3 +316,12 @@ test("frases reais de 28/10: recusa do par, dia recusado, 'estarei livre', 'outr
   const hoje = await sdrSlotsForLead(repo, { ...options, grade: "C", messages: [offer("Consigo hoje às 10h, fica bom pra você?"), inbound("Hj não consigo")] });
   assert.ok(hoje.slots.length && hoje.slots.every((s) => !s.at.startsWith("2026-09-21T")), "hoje recusado: só amanhã em diante");
 });
+
+test("29/10 (Gustavo): 'Pode ser amanhã?' + 'Hoje no período da tarde vou estar ocupado' pede AMANHÃ e recusa hoje; 'quarta dá?' segue pedido #R-032 #R-040", () => {
+  const offer = { direction: "out", author: "sdr-bot", text: "Consigo hoje às 15h ou às 17h, qual fica melhor pra você?", at: "2026-09-21T11:00:00Z" };
+  const w = sdrAgendaWindow([offer, { direction: "in", text: "Pode ser amanhã?", at: "2026-09-21T11:01:00Z" }, { direction: "in", text: "Hoje no período da tarde vou estar ocupado", at: "2026-09-21T11:01:10Z" }], NOW);
+  assert.deepEqual([w.requested, w.startDate, w.days, w.refused], [true, "2026-09-22", 1, ["2026-09-21"]]);
+  assert.equal(sdrAgendaWindow([inbound("Hoje no período da tarde vou estar ocupado")], NOW).requested, false, "sozinha é recusa, não pedido");
+  assert.equal(sdrAgendaWindow([inbound("quarta dá?")], NOW).startDate, "2026-09-23");
+  assert.equal(sdrAgendaWindow([inbound("dá pra ser quarta?")], NOW).startDate, "2026-09-23");
+});
