@@ -307,3 +307,9 @@ export function referralIn(text, { ownPhone = "" } = {}) {
   }
   return { phone, name: name.slice(0, 60), asked: true };
 }
+
+// HORA QUEBRADA pedida pelo lead ("10h30", "10:30", "dez e meia", "e meia"):
+// só aí a lista da IA inclui os :30 (R-023, Leo 29/10: o robô nunca oferece
+// nem marca hora quebrada por conta própria).
+export const HALF_HOUR_RX = /\b\d{1,2}\s?(?:h|:)\s?30\b|\be meia\b|\bmeia hora\b|\b\d{1,2}h30\b/i;
+export const asksHalfHour = (text) => HALF_HOUR_RX.test(String(text || ""));

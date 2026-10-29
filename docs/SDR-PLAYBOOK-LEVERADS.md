@@ -175,8 +175,8 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-023 · Par com 2h de respiro, em hora cheia
 
 - Origem: 2026-08-25, Leo (oferta só em hora cheia)
-- Regra: Duas opções têm pelo menos 2h entre si e saem em hora cheia (9h, 14h). Hora quebrada (9h30) só entra quando o lead pede; aí ele é agendado nela. A janela de oferta vai das 9h às 19h e pula o almoço.
-- Vale em: estados todos; roteiro todos; executada por agenda
+- Regra: Duas opções têm pelo menos 2h entre si e saem em hora cheia (9h, 14h). Hora quebrada (9h30) só entra quando o lead pede ("10h30", "e meia"); aí ele é agendado nela. A IA só recebe os :30 na lista quando o lead pediu, e horário quebrado escolhido sem pedido vira a hora cheia do mesmo horário ou re-oferta (Leo, 29/10; Alonso foi remarcado pra 10h30 sem pedir). A janela de oferta vai das 9h às 19h e pula o almoço.
+- Vale em: estados todos; roteiro todos; executada por agenda, prompt, effects
 
 ### R-024 · Horário ofertado fica reservado 30 minutos
 
