@@ -68,7 +68,11 @@ export function registerBootstrapRoutes(app, repo, { googleClient, mpClient, asa
     const promise = buildBootstrap(req);
     bootstrapMemo.set(key, { at: now, promise });
     promise.catch(() => bootstrapMemo.delete(key));
-    if (bootstrapMemo.size > 64) for (const [k, v] of bootstrapMemo) if (now - v.at > BOOTSTRAP_TTL_MS) bootstrapMemo.delete(k);
+    // Varre as vencidas a cada montagem, não só acima de 64: cada entrada
+    // segura um bootstrap inteiro (~4 MB serializado, bem mais como objeto) e
+    // cada escrita gera chave nova; esperar 64 delas prendia ~1 GB de heap
+    // (API caindo por memória, 29/10/2026).
+    for (const [k, v] of bootstrapMemo) if (now - v.at > BOOTSTRAP_TTL_MS) bootstrapMemo.delete(k);
     return promise;
   });
 
