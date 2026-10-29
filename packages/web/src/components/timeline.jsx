@@ -43,7 +43,50 @@ function when(iso) {
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "");
 }
 
+// Resumo da Callface vem em markdown simples e a timeline não tem renderer:
+// tira os marcadores e deixa o texto legível (negrito, títulos, listas).
+function plainMd(text) {
+  return String(text || "")
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*[-*]\s+/gm, "• ")
+    .trim();
+}
+const mmss = (sec) => { const s = Math.max(0, Math.round(Number(sec) || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+const CALL_STATUS = { FINISHED: "", ANSWERED: "", COMPLETED: "", NO_ANSWER: "não atendida", NOANSWER: "não atendida", NOT_ANSWERED: "não atendida", BUSY: "ocupado", FAILED: "falhou", CANCELED: "cancelada", CANCELLED: "cancelada", VOICEMAIL: "caixa postal" };
+const callStatusLabel = (s) => { const k = String(s || "").toUpperCase(); return k in CALL_STATUS ? CALL_STATUS[k] : k.toLowerCase().replace(/_/g, " "); };
+
+// Ligação pela Callface (webhook de saída, api calls/callface.js): resumo da
+// IA + duração, estado, quem ligou (quando não casou com usuário do cockpit)
+// e os links do áudio e da ligação no app deles.
+function CallfaceItem({ a }) {
+  const m = a.meta || {};
+  const bits = [];
+  if (m.durationSec) bits.push(`${mmss(m.durationSec)} de ligação`);
+  const st = callStatusLabel(m.status);
+  if (st) bits.push(st);
+  if (a.author === "callface" && m.userName) bits.push(`por ${m.userName}`);
+  const link = { color: "var(--accent)", fontSize: 11.5 };
+  const items = Array.isArray(m.scheduling?.items) ? m.scheduling.items.filter(Boolean) : [];
+  return (
+    <div>
+      <div style={{ whiteSpace: "pre-wrap", color: "var(--fg-1)" }}>{plainMd(a.text)}</div>
+      {items.length > 0 && (
+        <div style={{ marginTop: 4, fontSize: 12, color: "var(--fg-2)" }}>
+          {items.map((it, i) => <div key={i}>Combinado: {[it.category, it.date, it.status].filter(Boolean).join(" · ")}</div>)}
+        </div>
+      )}
+      <div className="mono" style={{ display: "flex", flexWrap: "wrap", gap: "2px 10px", alignItems: "center", marginTop: 6, fontSize: 11.5, color: "var(--fg-3)" }}>
+        <span>Callface{bits.length ? ` · ${bits.join(" · ")}` : ""}</span>
+        {m.audioUrl && <a href={m.audioUrl} target="_blank" rel="noopener noreferrer" style={link}>▶ ouvir gravação</a>}
+        {m.callLink && <a href={m.callLink} target="_blank" rel="noopener noreferrer" style={link}>abrir na Callface ↗</a>}
+      </div>
+    </div>
+  );
+}
+
 function itemText(a) {
+  if (a.type === "call" && a.meta?.provider === "callface") return <CallfaceItem a={a} />;
   // Resumo de call e briefing de integração gerados pela IA: texto completo
   // multiline + link da gravação.
   if (a.type === "system" && (a.meta?.event === "call_summary" || a.meta?.event === "integration_brief")) {

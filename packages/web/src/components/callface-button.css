@@ -1,0 +1,13 @@
+/* Botão "Ligar" pela Callface (components/callface-button.jsx). */
+
+/* Fileira "A ação de agora": mesmo desenho do actBtn de deal.jsx (32px, borda
+   line-1 sobre bg-1), com o glifo de telefone na frente. */
+.callface-action { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 13px; border: 1px solid var(--line-1); border-radius: var(--r-2); background: var(--bg-1); color: var(--fg-2); font-size: 12.5px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+@media (hover: hover) { .callface-action:hover { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); } }
+.callface-action:focus-visible, .callface-inline:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Ao lado do telefone no cabeçalho: mesma tipografia do .lead-panel-phone
+   (lead-card.css), sem borda, pra ler como "número · ligar". */
+.callface-inline { display: inline-flex; align-items: center; gap: 4px; padding: 2px 5px; margin: 0 -2px; border: 0; border-radius: 6px; background: transparent; color: var(--accent); font-size: 12.5px; font-weight: 600; line-height: 1.2; white-space: nowrap; position: relative; top: .1em; cursor: pointer; }
+@media (hover: hover) { .callface-inline:hover { background: var(--accent-soft); } }
+.callface-glyph { font-size: 13px; line-height: 1; }

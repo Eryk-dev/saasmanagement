@@ -83,6 +83,7 @@ export const COLLECTIONS = {
   wa_messages: [],   // inbox de WhatsApp: TODAS as mensagens in/out (wa-store.js)
   wa_alerts: [],     // alertas quentes do fluxo de ligação: lead respondeu → pop-up pro SDR (wa-call-flow.js)
   wa_calls: [],      // ligações pelo WhatsApp direto do cockpit (Calling API): estado da chamada + SDP answer do webhook + log (routes.whatsapp.js)
+  callface_calls: [], // ligações pela Callface (webhook de saída, calls/callface.js): payload normalizado + transcrição, 1 por call_link; o toque vai em activities (type call, meta.provider callface); PRIVADA
   wa_media: [],      // cache do binário de mídia recebida (áudio/imagem/…) em base64: o id da Meta expira, então baixa 1x e guarda (routes.whatsapp.js)
   wa_template_media: [], // foto PADRÃO por template (header de imagem): id = nome do template, binário em base64 — o composer preenche sozinho e o envio sobe pra Meta a cada disparo (routes.whatsapp.js)
   wa_automations: [], // automações do Inbox: regras reativas gatilho → resposta automática na mensagem recebida (wa-automations.js)

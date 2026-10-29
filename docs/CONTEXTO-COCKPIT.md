@@ -965,6 +965,16 @@ alteração funcional nesta preparação.
   `/api/webhooks/resend` (devolução → `emailInvalid`, spam → `emailOptOut`); inscrição manual na tela. Na API a coleção segue `campaigns`.
   Broadcast de e-mail também em fila no servidor (`marketing/broadcast-email.js`, `jobOn("emailBroadcasts")`);
   um broadcast pode sair pelos dois canais (`channel: "both"`).
+- **Callface (29/10/2026):** telefonia com IA pras SDRs ligarem de dentro do cockpit. Não há API
+  de click-to-call: o botão Ligar do card (`components/callface-button.jsx`, ficha do lead nos dois
+  layouts e ficha do cliente) abre o discador `app.callface.ai/calls?call_to=<DDD+número>&deal_id=<lead>`
+  (`shared/callface-dial.js`, número nacional sem o 55), na aba fixa "Callface"; cada pessoa precisa
+  estar logada lá no mesmo navegador, com o mesmo e-mail do cockpit. O clique não registra nada: a
+  ligação encerrada volta pelo webhook de saída `POST /api/webhooks/callface` (`calls/callface.js`,
+  secret `CALLFACE_WEBHOOK_SECRET` conferido no header `X-Callface-Signature`, aceita o valor puro ou
+  HMAC do corpo), casa o lead por `deal_id` ou telefone, vira toque `call` com `meta.provider: "callface"`
+  (resumo da IA, áudio, duração, quem ligou) e passa por `onActivityCreated`. Tudo que chega fica na
+  coleção privada `callface_calls` (com a transcrição), mesmo sem lead. Estado em Configurações → Integrações.
   Falha de entrega e reenvio (23/10/2026):
   - O aceite da Meta grava `waStatus: "sent"`. A recusa que chega depois pelo
     webhook (`markBroadcastDeliveryFailed`) vira `waStatus: "failed"`, com o

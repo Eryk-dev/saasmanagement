@@ -1271,6 +1271,10 @@ function IntegrationsSettings({ s }) {
   const appmaxCfg = window.SEED?.CONFIG?.appmax || {};
   const asaasWebhookUrl = `${apiBase}/public/asaas/webhook`;
   const appmaxWebhookUrl = `${apiBase}/public/appmax/webhook?token=<APPMAX_WEBHOOK_TOKEN>`;
+  // Callface (29/10/2026): o botão Ligar do card não depende de chave; o webhook
+  // da ligação (resumo, áudio, duração) depende do secret no env.
+  const callfaceCfg = window.SEED?.CONFIG?.callface || {};
+  const callfaceWebhookUrl = `${apiBase}/api/webhooks/callface`;
   const [gwMsg, setGwMsg] = useStS(null);
   const copyText = (text, msg) => { try { navigator.clipboard.writeText(text); setGwMsg(msg); } catch { window.prompt("URL do webhook:", text); } };
 
@@ -1357,6 +1361,24 @@ function IntegrationsSettings({ s }) {
               style={{ height: 24, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11 }}>copiar</button>
           </div>
         )}
+      </div>
+      {/* Callface: discador (botão Ligar do card) + webhook da ligação */}
+      <div style={{ padding: "14px 16px", border: callfaceCfg.configured ? "1px solid var(--line-1)" : "1px dashed var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", marginBottom: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>Callface</div>
+            <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>
+              telefonia com IA: o botão Ligar do card abre o discador em app.callface.ai (cada pessoa precisa estar logada lá no mesmo navegador, com o mesmo e-mail do cockpit); ao encerrar, a ligação volta pelo webhook e vira toque na timeline do lead com resumo, áudio e duração
+            </div>
+          </div>
+          <span className={"chip " + (callfaceCfg.configured ? "pos" : "")} style={{ height: 22 }}>{callfaceCfg.configured ? "webhook ligado" : "configurar CALLFACE_WEBHOOK_SECRET"}</span>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
+          <span className="kicker" style={{ whiteSpace: "nowrap" }}>webhook de saída</span>
+          <code className="mono" style={{ fontSize: 11, padding: "4px 8px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-2)", overflowWrap: "anywhere" }}>{callfaceWebhookUrl}</code>
+          <button onClick={() => copyText(callfaceWebhookUrl, "URL copiada · cole em app.callface.ai → Integrações → Webhooks → Saída e use o mesmo valor de CALLFACE_WEBHOOK_SECRET no campo Header secret")}
+            style={{ height: 24, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11 }}>copiar</button>
+        </div>
       </div>
       {gwMsg && <div className="mono" style={{ fontSize: 10.5, color: "var(--accent)", margin: "-4px 0 10px" }}>{gwMsg}</div>}
 

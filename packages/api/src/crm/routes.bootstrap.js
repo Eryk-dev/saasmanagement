@@ -24,7 +24,7 @@ async function peopleObject(repo) {
   return obj;
 }
 
-export function registerBootstrapRoutes(app, repo, { googleClient, mpClient, asaasClient, appmaxClient, metaClient, anthropicClient, discordClient, whatsappClient, mailerClient } = {}) {
+export function registerBootstrapRoutes(app, repo, { googleClient, mpClient, asaasClient, appmaxClient, metaClient, anthropicClient, discordClient, whatsappClient, mailerClient, callfaceClient } = {}) {
   // Everything the cockpit web app needs in one shot (mirrors window.SEED).
   // Usuário com telas restritas (user.screens) recebe o payload FILTRADO:
   // esconder o menu no SPA sem cortar os dados aqui não seria restrição —
@@ -238,6 +238,9 @@ export function registerBootstrapRoutes(app, repo, { googleClient, mpClient, asa
         ai: { configured: anthropicClient.configured() },
         discord: { configured: discordClient.configured() },
         whatsapp: { configured: whatsappClient.configured(), health: waHealthSummary(waHealth) },
+        // Callface: o botão Ligar não depende de chave; `configured` diz se o
+        // webhook da ligação (CALLFACE_WEBHOOK_SECRET) está ligado.
+        callface: { configured: !!callfaceClient?.configured?.() },
       },
     };
   }
