@@ -14,6 +14,9 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { callBusyKeys, integBusyKeys, occupySlots, slotVal } from "./today.jsx";
 import { moveErrorText } from "../components/stage-move.jsx";
 import { bizWall, bizNow } from "../lib/format.js";
+import { SelectPopover } from "../components/select-popover.jsx";
+import { meetingTypeOptions } from "../components/customer-meeting.jsx";
+import { openCustomer, openLeadById } from "../lib/open-record.js";
 import "./agenda.css";
 
 // Tela Agenda — a agenda DE VERDADE do time, tudo num calendário só:
@@ -52,6 +55,18 @@ const VIEW_OPTIONS = [
   { value: "team", label: "Equipe" },
 ];
 
+// COMPROMISSO COM CLIENTE (30/10/2026): o item da agenda pode apontar pra um
+// cliente (`customer` + `customerName`). "Só vincular" guarda o vínculo; "com
+// reunião" marca, no MESMO horário, a reunião do card do cliente (rota
+// /api/customers/:id/meeting: sala do Meet, convite por e-mail, histórico e
+// resumo da IA) e guarda em `meeting` onde ela mora, pra remarcar e cancelar
+// junto com o compromisso. A reunião vive no registro do cliente (integração
+// ou acompanhamento de CS); o compromisso é o que aparece na grade.
+const meetAt = (date, from) => `${date}T${fmtH(from)}`;
+// Segmento da URL das reuniões do registro (routes.record-meetings.js).
+const meetSeg = (collection) => (collection === "cs_followups" ? "followups" : collection);
+const customerOf = (id) => (window.SEED?.CUSTOMERS || []).find((c) => c.id === id) || null;
+
 export function AgendaScreen({ onOpenLead }) {
   const { version } = useData();
   // Agenda POR PRODUTO: o workspace ativo vê só os seus compromissos. Leads
@@ -86,6 +101,9 @@ export function AgendaScreen({ onOpenLead }) {
   useE(() => { setBlocks((window.SEED?.AGENDA_BLOCKS || []).map((b) => ({ ...b }))); }, [version]);
   const [leads, setLeads] = useS(() => (window.SEED?.LEADS || []).filter(ofSaas));
   useE(() => { setLeads((window.SEED?.LEADS || []).filter(ofSaas)); }, [version, saasId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Clientes do produto ativo, pro vínculo do compromisso.
+  const customers = useM(() => (window.SEED?.CUSTOMERS || []).filter(ofSaas), [version, saasId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [editor, setEditor] = useS(null); // { block? , date, fromHour } → modal
   const [notice, setNotice] = useS("");
@@ -166,7 +184,7 @@ export function AgendaScreen({ onOpenLead }) {
       ...b,
       _tone: b.kind === "event" ? toneOf(b.user) : null,
       _label: b.kind === "event"
-        ? `${b.recur === "weekly" ? "↻ " : ""}${b.title || b.reason || "compromisso"}${parts.length > 1 ? ` · ${parts.length} pessoas` : ""}`
+        ? `${b.recur === "weekly" ? "↻ " : ""}${b.meeting ? "🎥 " : ""}${b.title || b.reason || "compromisso"}${b.customerName ? ` · ${b.customerName}` : ""}${parts.length > 1 ? ` · ${parts.length} pessoas` : ""}`
         : `bloqueado${b.recur === "weekly" ? " ↻" : ""}${b.reason ? ` · ${b.reason}` : ""}`,
       _who: parts.map((id) => displayName(id)).join(", "),
     };
@@ -217,6 +235,8 @@ export function AgendaScreen({ onOpenLead }) {
   }
   async function removeBlocks(list) {
     for (const b of list) {
+      // Reunião vinculada sai junto (o cliente recebe o cancelamento do convite).
+      if (b.meeting?.id) await api.cancelRecordMeeting(meetSeg(b.meeting.host), b.meeting.record, b.meeting.id);
       await api.remove("agenda_blocks", b.id);
       setBlocks((prev) => prev.filter((item) => item.id !== b.id));
     }
@@ -233,7 +253,7 @@ export function AgendaScreen({ onOpenLead }) {
   // Recorrência abrangente: `weekdaysSel` = dias da semana alvo (null = pontual);
   // cada dia vira um registro weekly. Devolve string de erro ou null quando ok.
   async function saveItem(form, existing) {
-    const { kind, text, usersSel, date, weekdaysSel } = form;
+    const { kind, text, usersSel, date, weekdaysSel, customer = "", withMeeting = false, meetingHost = null } = form;
     const allDay = !!form.allDay;
     // Dia inteiro: ocupa o dia todo (fromHour/toHour cobrem a grade); o render e o
     // matchBlock já tratam allDay. Sem allDay, usa o intervalo escolhido.
@@ -244,6 +264,10 @@ export function AgendaScreen({ onOpenLead }) {
     if (!weekdaysSel && !date) return "Escolha a data.";
     if (weekdaysSel && !weekdaysSel.length) return "Escolha pelo menos um dia da semana.";
     if (kind === "event" && !text.trim()) return "Dê um título pro compromisso.";
+    const linked = kind === "event" ? customer : "";
+    const meet = !!(linked && withMeeting);
+    if (meet && (weekdaysSel || allDay)) return "Reunião com Meet só em compromisso que não repete e tem horário.";
+    if (meet && !existing?.meeting && !meetingHost) return "Escolha o tipo de reunião.";
     if (!weekdaysSel) {
       for (const u of usersSel) {
         const hit = liveConflict(u, date, from, to);
@@ -254,7 +278,35 @@ export function AgendaScreen({ onOpenLead }) {
       saas: saasId, user: usersSel[0], users: usersSel, kind, allDay, fromHour: from, toHour: to,
       title: kind === "event" ? text.trim() : "",
       reason: kind === "block" ? text.trim() : "",
+      customer: linked, customerName: linked ? (customerOf(linked)?.name || existing?.customerName || "") : "",
     };
+    // Reunião vinculada: cria, remarca ou cancela ANTES de gravar o item, pra
+    // um erro do servidor (horário ocupado, sem permissão) não deixar o
+    // compromisso dizendo que tem reunião quando não tem.
+    const had = existing?.meeting?.id ? existing.meeting : null;
+    let meetNote = "";
+    try {
+      if (had && (!meet || had.customer !== linked)) {
+        await api.cancelRecordMeeting(meetSeg(had.host), had.record, had.id);
+        base.meeting = null;
+        meetNote = " A reunião foi cancelada e o cliente recebe o aviso.";
+      }
+      if (meet && had && had.customer === linked) {
+        if (existing.date !== date || Number(existing.fromHour) !== from) {
+          await api.rescheduleRecordMeeting(meetSeg(had.host), had.record, had.id, meetAt(date, from));
+          meetNote = " A reunião foi remarcada e o convite acompanha.";
+        }
+      } else if (meet) {
+        const n = bizNow();
+        if (meetAt(date, from) <= `${ymd(n)}T${pad(n.getHours())}:${pad(n.getMinutes())}`) return "A reunião precisa ser num horário que ainda não passou.";
+        const r = await api.customerMeeting(linked, { at: meetAt(date, from), responsible: usersSel[0], host: meetingHost });
+        if (!r?.meeting?.id) throw new Error("o servidor não confirmou a reunião");
+        base.meeting = { customer: linked, host: r.host?.collection || "", record: r.host?.id || "", id: r.meeting?.id || "", label: r.host?.label || "Reunião", url: r.callUrl || r.meeting?.meetUrl || "" };
+        meetNote = r.meetError ? ` Reunião marcada sem sala do Meet: ${r.meetError}` : " Reunião marcada e convite enviado pro cliente.";
+      }
+    } catch (e) {
+      return e?.message ? `Reunião: ${e.message}` : "Não foi possível marcar a reunião com o cliente.";
+    }
     const writes = [];
     if (existing) {
       writes.push(updateBlock(existing.id, weekdaysSel
@@ -276,7 +328,7 @@ export function AgendaScreen({ onOpenLead }) {
         ? `${saved} item(ns) salvo(s), ${failed.length} falharam. Feche e confira a agenda antes de criar os dias restantes.`
         : "Não foi possível salvar. Seus dados continuam aqui; tente novamente." };
     }
-    flash(existing ? "Compromisso atualizado." : "Item criado na agenda.");
+    flash((existing ? "Compromisso atualizado." : "Item criado na agenda.") + meetNote);
     return null;
   }
 
@@ -368,8 +420,13 @@ export function AgendaScreen({ onOpenLead }) {
     const before = b;
     setBlocks((prev) => prev.map((x) => (x.id === b.id ? { ...x, ...patch } : x)));
     try {
+      // Reunião vinculada acompanha o novo horário (convite atualizado).
+      const m = b.meeting?.id ? b.meeting : null;
+      if (m && patch.date && (patch.date !== b.date || patch.fromHour !== Number(b.fromHour))) {
+        await api.rescheduleRecordMeeting(meetSeg(m.host), m.record, m.id, meetAt(patch.date, patch.fromHour));
+      }
       await api.update("agenda_blocks", b.id, patch);
-      flash("Compromisso movido.");
+      flash(m ? "Compromisso movido. A reunião acompanha e o cliente recebe o convite atualizado." : "Compromisso movido.");
     } catch {
       setBlocks((prev) => prev.map((x) => (x.id === b.id ? before : x)));
       flash("Não foi possível mover. O item voltou pro horário anterior.");
@@ -486,6 +543,7 @@ export function AgendaScreen({ onOpenLead }) {
         <AgendaItemModal
           init={editor}
           people={people}
+          customers={customers}
           defaultUser={defaultUser}
           onSave={saveItem}
           conflictOf={liveConflict}
@@ -527,7 +585,7 @@ export function formDateFor(init, now = bizNow()) {
   return ymd(d);
 }
 
-export function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose, conflictOf }) {
+export function AgendaItemModal({ init, people, customers = [], defaultUser, onSave, onDelete, onClose, conflictOf }) {
   const b = init.block;
   const [kind, setKind] = useS(b ? (b.kind === "event" ? "event" : "block") : "event");
   const [text, setText] = useS(b ? (b.title || b.reason || "") : "");
@@ -548,11 +606,32 @@ export function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, o
   // Recorrência: "once" | "weekly" (dia da data) | "weekdays" | "daily" | "custom".
   const [recur, setRecur] = useS(b ? (b.recur === "weekly" ? "weekly" : "once") : "once");
   const [customWds, setCustomWds] = useS(() => (b?.recur === "weekly" ? [Number(b.weekday)] : [1, 3, 5]));
+  // Vínculo com cliente e reunião (só compromisso). `mtype` = tipo de reunião
+  // (onde ela mora no cliente), carregado quando "com reunião" é escolhido.
+  const [cust, setCust] = useS(b?.customer || "");
+  const [withMeet, setWithMeet] = useS(!!b?.meeting?.id);
+  const [mtypes, setMtypes] = useS(null);
+  const [mtype, setMtype] = useS("");
+  const custObj = cust ? (customers.find((c) => c.id === cust) || customerOf(cust)) : null;
+  const meetKept = !!(b?.meeting?.id && b.meeting.customer === cust); // reunião já marcada pra este cliente
+  useE(() => {
+    if (!cust || !withMeet || meetKept) return undefined;
+    let alive = true;
+    setMtypes(null);
+    const c = custObj || { id: cust };
+    Promise.all([api.customerOnboardings(cust).catch(() => null), api.customerFollowups(cust).catch(() => null)]).then(([o, f]) => {
+      if (!alive) return;
+      const list = meetingTypeOptions({ customer: c, onboardings: o?.onboardings || [], followups: f?.followups || [] });
+      setMtypes(list);
+      setMtype(list[0]?.value || "");
+    });
+    return () => { alive = false; };
+  }, [cust, withMeet, meetKept]); // eslint-disable-line react-hooks/exhaustive-deps
   const [err, setErr] = useS("");
   const [busy, setBusy] = useS(false);
   const pending = React.useRef(false);
   const [partial, setPartial] = useS(false);
-  const formState = JSON.stringify({ kind, text, sel, date, from, dur, allDay, recur, customWds });
+  const formState = JSON.stringify({ kind, text, sel, date, from, dur, allDay, recur, customWds, cust, withMeet });
   const initialState = React.useRef(formState);
   const close = () => {
     if (pending.current) return;
@@ -560,7 +639,9 @@ export function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, o
     onClose();
   };
   const remove = async () => {
-    if (pending.current || !window.confirm(b.recur === "weekly" ? "Excluir este item de todas as semanas?" : "Excluir este item da agenda?")) return;
+    if (pending.current || !window.confirm(b.recur === "weekly" ? "Excluir este item de todas as semanas?"
+      : b.meeting?.id ? "Excluir este compromisso? A reunião com o cliente também é cancelada e ele recebe o aviso do Google."
+      : "Excluir este item da agenda?")) return;
     pending.current = true; setBusy(true); setErr("");
     try { if (await onDelete(b)) onClose(); }
     catch { setErr("Não foi possível excluir. O item continua na agenda; tente novamente."); }
@@ -590,7 +671,8 @@ export function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, o
       : recur === "daily" ? [0, 1, 2, 3, 4, 5, 6]
       : [...customWds].sort();
     try {
-      const e = await onSave({ kind, text, usersSel: sel, date, from, to, weekdaysSel, allDay }, b || null);
+      const host = (mtypes || []).find((t) => t.value === mtype)?.host || null;
+      const e = await onSave({ kind, text, usersSel: sel, date, from, to, weekdaysSel, allDay, customer: cust, withMeeting: withMeet, meetingHost: host }, b || null);
       if (e) { setErr(typeof e === "string" ? e : e.message); setPartial(!!e.partial); } else onClose();
     } catch { setErr("Não foi possível salvar. Seus dados continuam aqui; tente novamente."); }
     finally { pending.current = false; setBusy(false); }
@@ -614,6 +696,43 @@ export function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, o
             placeholder={kind === "event" ? "reunião com fornecedor, dentista…" : "almoço, folga, compromisso externo…"}
             style={{ ...field, width: "100%" }} />
         </div>
+
+        {kind === "event" && (
+          <div className="agenda-customer">
+            <span className="kicker" style={label}>Cliente (opcional)</span>
+            <SelectPopover label="Cliente" value={cust} searchable placeholder="sem cliente"
+              onChange={(v) => { setCust(v); if (!v) setWithMeet(false); }}
+              options={[{ value: "", label: "sem cliente" },
+                ...customers.map((c) => ({ value: c.id, label: c.name || c.id, hint: c.company && c.company !== c.name ? c.company : "" })),
+                ...(cust && !customers.some((c) => c.id === cust) ? [{ value: cust, label: b?.customerName || cust }] : [])]} />
+            {cust && (<>
+              <Segmented value={withMeet ? "meet" : "plain"} onChange={(v) => setWithMeet(v === "meet")}
+                options={[{ value: "plain", label: "Só vincular" }, { value: "meet", label: "Com reunião" }]} />
+              {withMeet && (meetKept ? (
+                <div className="agenda-customer-note">
+                  {b.meeting.label || "Reunião"} marcada{b.meeting.url ? <> · <a href={b.meeting.url} target="_blank" rel="noopener noreferrer">sala do Meet ↗</a></> : " sem sala do Meet"}.
+                  {" "}Mudar a data ou a hora remarca a reunião e o convite acompanha.
+                </div>
+              ) : (<>
+                <div>
+                  <span className="kicker" style={label}>Tipo de reunião</span>
+                  {mtypes
+                    ? <SelectPopover label="Tipo de reunião" value={mtype} onChange={setMtype}
+                        options={mtypes.map((t) => ({ value: t.value, label: t.label, hint: t.hint, group: t.group }))} />
+                    : <span className="mono dim" style={{ fontSize: 12 }}>carregando…</span>}
+                </div>
+                <div className="agenda-customer-note">
+                  Cria a sala do Meet neste horário (organizada por {sel[0] ? displayName(sel[0]) : "a primeira pessoa"}), manda o convite pro e-mail do cliente e registra no histórico dele, com resumo da IA depois.
+                  {(recur !== "once" || allDay) && <strong> Só funciona em compromisso que não repete e com horário.</strong>}
+                </div>
+              </>))}
+              <div className="agenda-customer-links">
+                <button type="button" onClick={() => { onClose(); openCustomer(cust); }}>abrir cliente →</button>
+                {custObj?.leadId && <button type="button" onClick={() => { onClose(); openLeadById(custObj.leadId); }}>abrir negócio →</button>}
+              </div>
+            </>)}
+          </div>
+        )}
 
         {/* Pessoas: chips com a cor de cada um (a agenda de todas as
             selecionadas fica ocupada). Era um campo que abria lista com

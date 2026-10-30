@@ -88,3 +88,12 @@
 .agenda-recurrence > div:first-of-type {display:grid!important;grid-template-columns:1fr 1fr;gap:3px!important;border-radius:20px!important;}
 .agenda-recurrence > div:first-of-type > button {white-space:nowrap;}
 @media(max-width:700px){.agenda-toolbar > div:first-child > button {min-height:44px;}}
+
+/* Compromisso vinculado a cliente (30/10/2026): cliente, "só vincular" ou "com
+   reunião" (Meet + convite) e os atalhos pro cliente e pro negócio. */
+.agenda-customer {display:flex;flex-direction:column;gap:10px;}
+.agenda-customer-note {font-size:12px;line-height:1.5;color:var(--fg-3);}
+.agenda-customer-note a {color:var(--accent);}
+.agenda-customer-note strong {color:var(--warn);font-weight:600;}
+.agenda-customer-links {display:flex;gap:14px;flex-wrap:wrap;}
+.agenda-customer-links button {padding:0;border:0;background:none;font-size:12px;font-weight:600;color:var(--accent);cursor:pointer;}
