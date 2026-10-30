@@ -12,8 +12,7 @@ import { stageKind } from "../lib/funnel.js";
 import { isNoShowStage } from "../lib/scripts.js";
 import { followupDueDay, followupBadge, localDayStart } from "../lib/followup.js";
 import { bizWall, bizNow } from "../lib/format.js";
-import { api } from "../lib/api.js";
-import { openCustomer, openOnboarding } from "../lib/open-record.js";
+import { openCustomer } from "../lib/open-record.js";
 
 // A GRADE da agenda. Morava em screens/pipeline.jsx desde que a aba Agenda era
 // do pipeline; a aba saiu de lá (VIEWS = kanban | list) e o código ficou, com
@@ -151,17 +150,10 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, move, per
   const sel = Array.isArray(personIds) ? personIds : [];
   const only = sel.length ? new Set(sel) : null;
   const person = sel.length === 1 ? sel[0] : null;
-  // A integração tem card próprio (Lever CRM, Fase 1B): o evento de integração
-  // abre a integração do cliente quando ela existe; reunião avulsa com o
-  // cliente e consulta sem lead de origem abrem o card do cliente.
-  const [onbByLead, setOnbByLead] = useStP(() => new Map());
-  React.useEffect(() => {
-    let alive = true;
-    api.openOnboardings()
-      .then((r) => alive && setOnbByLead(new Map((r.onboardings || []).filter((o) => o.lead).map((o) => [o.lead, o.id]))))
-      .catch(() => { /* sem a lista, o clique abre o lead como antes */ });
-    return () => { alive = false; };
-  }, [leads]);
+  // Integração do lead abre o card do NEGÓCIO (30/10/2026): é lá que se
+  // remarca, reenvia o convite e entra na sala. Abrir o card de "Implantação
+  // inicial" (onboarding) obrigava mais um clique até o negócio. Reunião
+  // avulsa com o cliente e consulta sem lead de origem abrem o card do cliente.
   const openEvent = (l, kind, meeting) => {
     if (kind === "consulta") {
       if (l._leadRef) onOpenLead?.(l._leadRef);
@@ -169,7 +161,6 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, move, per
       return;
     }
     if (kind === "integração" && meeting && l.customerId) { openCustomer(l.customerId); return; }
-    if (kind === "integração" && onbByLead.get(l.id)) { openOnboarding(onbByLead.get(l.id)); return; }
     onOpenLead?.(l);
   };
   const [pickerOpen, setPickerOpen] = useStP(false);
