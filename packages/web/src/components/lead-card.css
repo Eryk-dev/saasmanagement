@@ -103,3 +103,37 @@
 .lead-stage-hint { margin: 8px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--fg-4); }
 .lead-stage-other { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-1); }
 .lead-stage-other .kicker { margin: 0; }
+
+/* Compromisso no Próximo passo (30/10/2026): call de venda e integração no
+   mesmo bloco (MeetingControls em screens/deal.jsx). Ações à vista em pílulas,
+   remarcar/desmarcar como texto, o resto em "mais opções". */
+.lead-meet { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.lead-meet-meta { font-size: 12px; color: var(--fg-3); overflow-wrap: anywhere; }
+.lead-meet-warn { padding: 6px 10px; border-radius: var(--r-2); background: var(--neg-soft, var(--warn-soft)); color: var(--neg); font-size: 11.5px; }
+.lead-meet-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.lead-meet-btn { display: inline-flex; align-items: center; justify-content: center; height: 32px; padding: 0 13px; border: 1px solid var(--line-1); border-radius: 999px; background: var(--bg-1); color: var(--fg-2); font-size: 12px; font-weight: 600; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.lead-meet-btn:hover { border-color: var(--line-strong, var(--line-2)); color: var(--fg-1); }
+.lead-meet-btn:disabled { opacity: .55; cursor: default; }
+.lead-meet-btn.is-primary { border-color: var(--btn-bg); background: var(--btn-bg); color: var(--btn-fg); }
+.lead-meet-btn.is-wa { border-color: var(--wa-brand-deep); color: var(--wa-brand-deep); }
+.lead-meet-links { display: inline-flex; gap: 12px; margin-left: auto; padding-left: 4px; }
+.lead-meet-links button, .lead-meet-cancel { padding: 0; border: 0; background: none; font-size: 11.5px; font-weight: 500; color: var(--fg-3); text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 3px; cursor: pointer; }
+.lead-meet-links button:hover, .lead-meet-cancel:hover { color: var(--accent); }
+.lead-meet-edit { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.lead-meet-label { font-size: 11px; font-weight: 600; color: var(--fg-3); }
+.lead-meet-edit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.lead-meet-edit-row > button.mono { height: 30px !important; }
+.lead-meet-note { font-size: 11px; line-height: 1.45; color: var(--fg-4); }
+.lead-meet-input, .lead-meet-field input { width: 100%; height: 30px; padding: 0 9px; border: 1px solid var(--line-1); border-radius: var(--r-2); background: var(--bg-1); color: var(--fg-1); font-size: 12px; }
+.lead-meet-field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--fg-3); }
+.lead-meet-more > summary, .lead-meet-side > summary { display: flex; align-items: center; gap: 8px; list-style: none; cursor: pointer; font-size: 11.5px; color: var(--fg-3); }
+.lead-meet-more > summary::-webkit-details-marker, .lead-meet-side > summary::-webkit-details-marker { display: none; }
+.lead-meet-more > summary::after, .lead-meet-side > summary::after { content: "⌄"; color: var(--fg-4); }
+.lead-meet-more[open] > summary::after, .lead-meet-side[open] > summary::after { transform: rotate(180deg); }
+.lead-meet-more-body { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 10px; }
+.lead-meet-more-body > .lead-meet-field { align-self: stretch; }
+.lead-meet-side { padding-top: 12px; border-top: 1px solid var(--line-1); }
+.lead-meet-side > summary { font-size: 12.5px; font-weight: 600; color: var(--fg-2); }
+.lead-meet-side > summary small { margin-left: auto; font-size: 11.5px; font-weight: 400; color: var(--fg-3); }
+.lead-meet-side > summary::after { margin-left: 0; }
+.lead-meet-side[open] > .lead-meet { margin-top: 10px; }

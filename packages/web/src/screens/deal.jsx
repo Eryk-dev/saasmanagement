@@ -12,15 +12,17 @@ import { waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
 import { meetingInviteText } from "../lib/wa-copy.js";
 import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind, isLossKind, phaseOf } from "../lib/funnel.js";
 import { SelectPopover } from "../components/select-popover.jsx";
-import { DateTimeField } from "../components/datetime-field.jsx";
+import { DateTimeField, formatDateTime } from "../components/datetime-field.jsx";
+import { brtMs } from "../lib/format.js";
 import { Checkbox } from "../components/form-controls.jsx";
 import { displayName, usersByRole, currentUser } from "../lib/users.js";
 import { CallCopilot } from "../components/call-copilot.jsx";
 import { api } from "../lib/api.js";
 import { useAttribution } from "../lib/pains.js";
 import { sourceLabel } from "../lib/sources.js";
-import { resolveScript, scriptTokens, scriptChecklist } from "../lib/scripts.js";
-import { CallSummaryCard, IntegrationBriefCard, callBusyKeys, callSlotKeys, integBusyKeys, destinationsFor, withoutWonStep, parseMoneyInput } from "./today.jsx";
+import { resolveScript, scriptTokens, scriptChecklist, isNoShowStage } from "../lib/scripts.js";
+import { CallSummaryCard, IntegrationBriefCard, callBusyKeys, callSlotKeys, integBusyKeys, destinationsFor, withoutWonStep, parseMoneyInput, secondCallPatch } from "./today.jsx";
+import { summaryReason } from "../components/customer-meeting.jsx";
 import { CustomProposalModal } from "../components/custom-proposal.jsx";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
 import { LeadSendActions, useLeadProposalActions } from "../components/lead-send-actions.jsx";
@@ -76,7 +78,7 @@ const localToIso = (v) => {
 // cockpit, no lugar do datetime-local do navegador) escolhe um rascunho e só
 // confirma depois que a API respondeu. O botão sempre visível deixa claro que
 // escolher a data não basta: é preciso salvar o horário.
-function DateTimeEditor({ value, onSave, validate, style, label = "Data e hora" }) {
+function DateTimeEditor({ value, onSave, validate, style, label = "Data e hora", saveLabel = "salvar horário" }) {
   const [status, setStatus] = React.useState(""); // "dirty" | "saving" | "saved"
   const stored = String(value || "");
   const [draft, setDraft] = React.useState(stored);
@@ -108,7 +110,7 @@ function DateTimeEditor({ value, onSave, validate, style, label = "Data e hora" 
     <button type="button" onClick={save} disabled={status !== "dirty"}
       className="mono" title="Salvar a nova data e hora"
       style={{ height: 26, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: status === "dirty" ? "var(--accent)" : "var(--bg-2)", color: status === "dirty" ? "var(--accent-fg)" : status === "saved" ? "var(--pos)" : "var(--fg-4)", fontSize: 10.5, fontWeight: 700, cursor: status === "dirty" ? "pointer" : "default" }}>
-      {status === "saving" ? "salvando…" : status === "saved" ? "salvo ✓" : "salvar horário"}
+      {status === "saving" ? "salvando…" : status === "saved" ? "salvo ✓" : saveLabel}
     </button>
   </>);
 }
@@ -124,6 +126,103 @@ function PendingCheck({ label, onDone }) {
         try { await onDone(); setState("done"); }
         catch (e) { setState(""); window.alert(e.message || "Não consegui concluir."); }
       }} />
+  );
+}
+// Compromisso marcado com o cliente, no Próximo passo (30/10/2026). A call de
+// venda e a integração usam o MESMO bloco, com o nome do compromisso escrito:
+// antes as duas apareciam juntas (a call de venda já feita em cima da
+// integração, sob o título genérico "Agenda e detalhes da call"), o convite
+// ficava escondido em "Logística da call" e não havia "remarcar" nem
+// "reenviar convite". Aqui: quando e com quem; entrar, reenviar e copiar o
+// convite; remarcar e desmarcar. O resto (briefing, convidados, copiloto) vai
+// em "mais opções". O servidor move o evento do Google junto com o horário
+// novo (autoCallMeet/autoIntegrationMeet em google/routes.google.js).
+function MeetingControls({ kind, lead, wa, busyMsg = "", conflict, onSaveAt, onClear, onCreateMeet, onSummarize, more = null }) {
+  const integ = kind === "integracao";
+  const name = integ ? "integração" : "call";
+  const at = dtLocal(integ ? lead.integrationAt : lead.callAt);
+  const url = integ ? lead.integrationCallUrl : lead.callUrl;
+  const ms = brtMs(at);
+  const started = Number.isFinite(ms) && ms <= Date.now();
+  const over = Number.isFinite(ms) && ms + 60 * 60_000 < Date.now(); // passou a hora da reunião
+  const googleOn = !!window.SEED?.CONFIG?.google?.connected;
+  const aiOn = !!window.SEED?.CONFIG?.ai?.configured;
+  const invite = url && !over ? meetingInviteText(lead, kind) : "";
+  const [editing, setEditing] = React.useState(!at);
+  const [busy, setBusy] = React.useState("");
+  React.useEffect(() => { if (!at) setEditing(true); }, [at]);
+  async function run(key, fn) { setBusy(key); try { await fn(); } finally { setBusy(""); } }
+  async function copyInvite() {
+    try { await navigator.clipboard.writeText(invite); window.toast?.("Convite copiado", "pos"); }
+    catch { window.prompt(`Convite da ${name}:`, invite); }
+  }
+  const who = integ ? (lead.integrator || lead.closer) : lead.closer;
+  const confirmed = integ ? lead.integrationConfirmed : lead.callConfirmed;
+  const state = !at ? "" : over ? "já aconteceu" : started ? "acontecendo agora" : confirmed ? "confirmada" : "aguardando confirmação";
+  const fresh = !at || over; // marcar do zero (nenhuma ou a anterior já foi)
+  return (
+    <div className="lead-meet">
+      {at && (
+        <div className="lead-meet-meta">
+          {[formatDateTime(at), who && `com ${displayName(who)}`, state].filter(Boolean).join(" · ")}
+        </div>
+      )}
+      {busyMsg && !over && <div className="lead-meet-warn" role="alert">{busyMsg}</div>}
+      {at && !editing && (
+        <div className="lead-meet-actions">
+          {url && !over && <a className="lead-meet-btn is-primary" href={url} target="_blank" rel="noopener noreferrer" title={url}>Entrar na sala ↗</a>}
+          {invite && wa && (
+            <a className="lead-meet-btn is-wa" href={`${wa}?text=${encodeURIComponent(invite)}`} target="_blank" rel="noopener noreferrer"
+              title="Abre o WhatsApp com dia, hora e link da sala">Reenviar convite ↗</a>
+          )}
+          {invite && <button type="button" className="lead-meet-btn" onClick={copyInvite} title="Copiar dia, hora e link da sala">Copiar convite</button>}
+          {!url && !over && (googleOn
+            ? <button type="button" className="lead-meet-btn is-primary" disabled={busy === "meet"} onClick={() => run("meet", onCreateMeet)}>{busy === "meet" ? "Criando sala…" : "Criar sala do Meet"}</button>
+            : <span className="lead-meet-note">sem sala do Meet · conecte o Google em Ajustes</span>)}
+          {started && aiOn && onSummarize && String(url || "").includes("meet.google.com") && (
+            <button type="button" className="lead-meet-btn" disabled={busy === "sum"} onClick={() => run("sum", onSummarize)}
+              title={`Buscar a transcrição no Google e gerar o resumo da ${name}`}>
+              {busy === "sum" ? "resumindo…" : `✨ Resumir ${name}`}
+            </button>
+          )}
+          <span className="lead-meet-links">
+            <button type="button" onClick={() => setEditing(true)}>{over ? `marcar nova ${name}` : "remarcar"}</button>
+            {!over && (
+              <button type="button" onClick={() => {
+                const msg = integ
+                  ? "Desmarcar a integração? Ela sai da Agenda e o cliente recebe o cancelamento do convite do Google."
+                  : "Desmarcar a call de venda? Ela sai da Agenda.";
+                if (window.confirm(msg)) onClear();
+              }}>desmarcar</button>
+            )}
+          </span>
+        </div>
+      )}
+      {editing && (
+        <div className="lead-meet-edit">
+          <span className="lead-meet-label">{fresh ? `Marcar ${at ? `nova ${name}` : name}` : "Novo horário"}</span>
+          <span className="lead-meet-edit-row">
+            <DateTimeEditor value={fresh ? "" : at} future label={integ ? "Integração" : "Call de venda"}
+              saveLabel={fresh ? "marcar" : "remarcar"}
+              validate={(raw) => (raw && conflict?.(raw) ? (busyMsg || "Esse horário já está ocupado") : "")}
+              onSave={async (raw) => { const ok = await onSaveAt(raw, { fresh }); if (ok) setEditing(false); return ok; }}
+              style={{ height: 30, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, fontFamily: "var(--mono)" }} />
+            {at && <button type="button" className="lead-meet-cancel" onClick={() => setEditing(false)}>cancelar</button>}
+          </span>
+          {googleOn && (
+            <span className="lead-meet-note">
+              {fresh ? "A sala do Meet é criada sozinha e o convite vai pro e-mail do cliente." : "O evento do Google muda junto e o cliente recebe o convite atualizado."}
+            </span>
+          )}
+        </div>
+      )}
+      {more && (
+        <details className="lead-meet-more">
+          <summary>mais opções</summary>
+          <div className="lead-meet-more-body">{more}</div>
+        </details>
+      )}
+    </div>
   );
 }
 
@@ -226,18 +325,12 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
   const [editResumo, setEditResumo] = React.useState(false); // lápis do Resumo → edita inline
   const [showTimeline, setShowTimeline] = React.useState(false);
   const [showComposer, setShowComposer] = React.useState(false);
-  // Próximo passo nasce ABERTO (12/09): recolhido, escondia justamente o que
-  // se vem fazer no card. O que recolhe agora é só "outra data" e a logística.
-  const [showGps, setShowGps] = React.useState(true);
-  const [showFar, setShowFar] = React.useState(false); // "outra data": +15d a +60d e o editor livre
-  const [showCall, setShowCall] = React.useState(false); // "Detalhes da call" (vídeo/convidados) recolhido por padrão
   const [customProp, setCustomProp] = React.useState(false); // modal da proposta personalizada
   const [payLink, setPayLink] = React.useState(false); // modal do link de pagamento (MP) do lead
   // Decks alternativos do produto (opção C · slides, Starter, Mentoria): o card
   // só oferecia o padrão, e a escolha de apresentação vivia só no roteiro do
   // Meu dia — que não serve pra quem trabalha pelo pipeline. Hook aqui em cima,
   // antes do `if (!lead) return null` lá embaixo.
-  const [showEntrega, setShowEntrega] = React.useState(false); // "Entrega" (briefing/vídeo integração) recolhido
   const [showFrom, setShowFrom] = React.useState(false); // atribuição do anúncio recolhida
   const [pendingMove, setPendingMove] = React.useState(null); // { toStage, gate }
   const [customerAnchor, setCustomerAnchor] = React.useState(null); // nome do cliente clicado → cartão do cliente
@@ -567,28 +660,146 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
             )}
           </ClientSummaryCard>
   );
+  // Ações das salas do Meet (call de venda e integração), usadas pelo bloco
+  // MeetingControls. Recarrega o lead depois de mexer no horário: a sala e o
+  // convite nascem/mudam no servidor DEPOIS do PATCH responder.
+  function reloadLead() {
+    return api.get("leads", lead.id).then((fresh) => { if (fresh?.id) { dirty.current = true; setLead((prev) => ({ ...prev, ...fresh })); } }).catch(() => {});
+  }
+  async function saveCallAt(raw) {
+    // Call anterior que já aconteceu vai pro histórico com a sala dela; a nova
+    // ganha sala própria (mesma régua da 2ª reunião do Meu dia).
+    const saved = await persistSchedule({ callAt: raw, ...secondCallPatch(lead) });
+    if (!saved) return false;
+    window.toast?.(lead.callAt ? "Call remarcada" : "Call marcada", "pos");
+    reloadLead();
+    return true;
+  }
+  // Integração passa pela rota do Remarcar de Minhas atividades: confere a
+  // agenda do integrador, solta a sala da que já aconteceu e move o convite.
+  async function saveIntegrationAt(raw, force = false) {
+    try {
+      const r = await api.integrationMeeting(lead.id, { at: raw, force });
+      dirty.current = true;
+      if (r?.lead) setLead((prev) => ({ ...prev, ...r.lead }));
+      if (r?.meetError) window.toast?.(`Integração marcada, sem sala do Meet: ${r.meetError}`, "warn");
+      else window.toast?.(lead.integrationAt ? "Integração remarcada · convite atualizado" : "Integração marcada", "pos");
+      refetchTimeline();
+      return true;
+    } catch (e) {
+      if (e.status === 409 && e.body?.reason === "previous_without_summary" && !force) {
+        const ok = window.confirm(`A integração anterior ainda não tem resumo (${summaryReason(e.body.previous)}).\n\nSe remarcar agora, ela não será mais resumida automaticamente. Remarcar mesmo assim?`);
+        return ok ? saveIntegrationAt(raw, true) : false;
+      }
+      window.toast?.(e.message || "Não foi possível marcar a integração", "neg");
+      return false;
+    }
+  }
+  async function createMeetFor(kind) {
+    const integ = kind === "integracao";
+    try {
+      const r = await api.createMeet(lead.id, integ ? { kind: "integracao" } : undefined);
+      dirty.current = true;
+      setLead((prev) => ({ ...prev, ...(integ ? { integrationCallUrl: r.callUrl, integrationMeetEventId: r.eventId } : { callUrl: r.callUrl, meetEventId: r.eventId }) }));
+      const cfg = r.meetConfig || {};
+      const faltou = [!cfg.open && "entrada sem aprovação", !cfg.recording && "gravação automática", !cfg.transcription && "transcrição automática"].filter(Boolean);
+      const motivo = cfg.errors ? ` Motivo do Google: ${Object.values(cfg.errors)[0]}` : "";
+      // O calendário configurado no servidor pode não ser visível pela conta
+      // conectada (404): a sala nasce mesmo assim, no calendário dela.
+      if (r.fellBackFrom) window.alert(`Sala criada ✓ mas o calendário "${r.fellBackFrom}" não está acessível pela conta Google conectada, então o evento nasceu na agenda dela. Ajustes → Integrações mostra qual calendário está configurado.`);
+      else if (r.meetConfig && faltou.length) window.alert(`Sala criada ✓ Mas não deu pra ativar: ${faltou.join(", ")}.${motivo}`);
+      else window.toast?.("Sala do Meet criada", "pos");
+    } catch (e) { window.alert(e.message || "Falha ao criar a sala do Meet."); }
+  }
+  async function summarizeFor(kind) {
+    const integ = kind === "integracao";
+    const nome = integ ? "integração" : "call";
+    const url = integ ? lead.integrationCallUrl : lead.callUrl;
+    try {
+      let r = await api.callSummary(lead.id, false, integ ? "integracao" : undefined);
+      if (!r.ok && r.reason === "already_done" && window.confirm(`Essa ${nome} já tem resumo. Gerar de novo?`)) {
+        r = await api.callSummary(lead.id, true, integ ? "integracao" : undefined);
+      }
+      if (r.ok) {
+        refetchTimeline();
+        const f = r.summary?.followup;
+        window.alert(integ
+          ? `Resumo da integração pronto ✓ Cliente: ${r.summary?.sentimento || "?"}.`
+          : `Resumo pronto ✓ Temperatura: ${r.summary?.temperatura || "?"}.${f?.quando ? " Próximo toque sugerido já foi agendado no GPS." : ""}`);
+      } else if (r.reason === "call_in_progress" || r.reason === "transcript_not_ready") {
+        // Quase sempre é a sala que ficou ABERTA (o Google só gera a
+        // transcrição quando o último sai). Encerrar pela API não rola (o Meet
+        // nasce do Calendar e a Meet API nega), então abrimos a sala.
+        if (window.confirm(`A transcrição ainda não está no Google.${r.detail ? `\n\nMotivo: ${r.detail}` : ""}\n\nQuase sempre é a sala do Meet que ficou ABERTA (o Google só gera a transcrição quando o último participante sai).\n\nAbrir o Meet pra encerrar? Entre e clique em "Encerrar a chamada para todos" (ou saia, se estiver sozinho). Em alguns minutos a transcrição sai e o cockpit resume.`)) {
+          window.open(url, "_blank", "noopener");
+        }
+      } else if (r.reason === "not_connected") {
+        window.alert("Google não conectado. Ajustes → Integrações → Conectar Google.");
+      } else if (r.reason) window.alert(`Não deu: ${r.reason}`);
+    } catch (e) { window.alert(e.message || `Falha ao resumir a ${nome}.`); }
+  }
+  async function makeBrief() {
+    try {
+      let r = await api.integrationBrief(lead.id);
+      if (!r.ok && r.reason === "already_done" && window.confirm("Esse lead já tem briefing. Gerar de novo?")) r = await api.integrationBrief(lead.id, true);
+      if (r.ok) {
+        refetchTimeline();
+        window.alert(r.source === "resumo"
+          ? "Briefing pronto ✓ (sem transcrição da call: saiu do resumo que a IA já tinha extraído, então confira antes de usar)"
+          : "Briefing pronto ✓ (lido da transcrição da call de venda)");
+      } else if (r.reason === "no_source") {
+        window.alert("Sem fonte pra montar o briefing: essa venda não tem transcrição do Meet nem resumo de call. Gere o resumo da call primeiro ou registre o contexto na timeline.");
+      } else if (r.reason) window.alert(`Não deu: ${r.reason}`);
+    } catch (e) { window.alert(e.message || "Falha ao montar o briefing."); }
+  }
+
+  // Qual compromisso o card mostra. Integração: só ela (a call de venda já
+  // ficou pra trás e confundia). Etapa de call: a call. Outras etapas de
+  // pré-venda/venda com call marcada (proposta, no-show): a call recolhida
+  // embaixo, pra remarcar ou resumir sem disputar com o próximo toque.
+  const meetingStep = isOpen && (kind === "call" || kind === "integracao");
+  const sideCall = isOpen && !meetingStep && ["sdr", "closer"].includes(phaseOf(kind)) && !!lead.callAt;
+  const callMs = brtMs(dtLocal(lead.callAt));
+  const sideCallOpen = sideCall && (isNoShowStage(lead.stage) || callMs > Date.now());
+  const googleOn = !!window.SEED?.CONFIG?.google?.connected;
+  const aiOn = !!window.SEED?.CONFIG?.ai?.configured;
+  const callControls = (
+    <MeetingControls key={`call-${lead.id}`} kind="call" lead={lead} wa={wa}
+      busyMsg={callBusyMsg} conflict={callConflict}
+      onSaveAt={saveCallAt} onClear={() => patch({ callAt: "" })}
+      onCreateMeet={() => createMeetFor("call")} onSummarize={() => summarizeFor("call")}
+      more={(googleOn || aiOn) ? (<>
+        {googleOn && (
+          <label className="lead-meet-field">
+            <span>Convidados extras</span>
+            <input type="text" placeholder="e-mails separados por vírgula (além do lead)" defaultValue={lead.meetGuests ?? ""}
+              onBlur={(e) => e.target.value !== (lead.meetGuests || "") && patch({ meetGuests: e.target.value })}
+              title="Entram como convidados do evento no Google Calendar quando a sala é criada (o e-mail do lead já vai automático)" />
+          </label>
+        )}
+        {/* Copiloto: ouve a call pelo navegador e orienta em tempo real. */}
+        {aiOn && <CallCopilot lead={lead} />}
+      </>) : null} />
+  );
   const scheduleCard = (
-        <div style={{ ...box, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ ...box, display: "flex", flexDirection: "column", gap: 12 }}>
           <div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-              <span className="kicker" style={{ flexShrink: 0 }}>Próximo passo</span>
-              <button onClick={() => setShowGps((v) => !v)} className="mono"
-                title={showGps ? "Recolher os editores" : "Abrir os editores de toque e etapa"}
-                style={{ marginLeft: "auto", background: "none", border: 0, padding: 0, fontSize: 10.5, color: "var(--fg-4)", cursor: "pointer", flexShrink: 0 }}>
-                {showGps ? "▴ recolher" : "▾ editar"}
-              </button>
-            </div>
+            <span className="kicker">Próximo passo</span>
             <div className="lead-panel-step">
-              {!isOpen ? `Lead finalizado${lead.lostReason ? ` · ${lossReasonLabel(saasCfg, lead.lostReason)}` : ""}` : lead.nextActionNote || primaryStep.label}
+              {!isOpen ? `Lead finalizado${lead.lostReason ? ` · ${lossReasonLabel(saasCfg, lead.lostReason)}` : ""}`
+                : kind === "call" ? "Call de venda"
+                : kind === "integracao" ? "Integração"
+                : lead.nextActionNote || primaryStep.label}
             </div>
             {isOpen && <div className="lead-panel-deadline" style={{ color: next?.tone || "var(--fg-3)" }}>
               {next && next.key !== "none" ? next.text.replace(/^[◆●]\s*/, "") : `Sem horário · ${primaryStep.verb}`}
             </div>}
+            {meetingStep && lead.nextActionNote && <div className="lead-meet-note" style={{ marginTop: 4 }}>{lead.nextActionNote}</div>}
           </div>
           {/* Follow-up em 4 contatos: o próximo passo é o DIA do contato da vez
               (sem horário, não ocupa a agenda). O registro do contato mora na
               atividade (Minhas atividades); aqui só o dia muda. */}
-          {showGps && isOpen && kind === "followup" && (
+          {isOpen && kind === "followup" && (
             <div style={{ display: "grid", gap: 6 }}>
               <span className="mono dim" style={{ fontSize: 10.5 }}>
                 {followupBadge(lead)} · dia do próximo contato (sem horário)
@@ -597,190 +808,57 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
                 onChange={(day) => day && patch({ followupAt: day })} />}
             </div>
           )}
-          {showGps && isOpen && (<>
-          {kind !== "followup" && (
-          <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-            <div style={{ display: "flex", gap: 5, flex: 1, flexWrap: "wrap", alignItems: "center" }}>
-              {/* Atalhos curtos tocam a semana; os longos (15 a 60 dias) são pra
-                  quem pediu pra voltar depois, que hoje virava data digitada na
-                  mão. Todos caem às 9h, começo do dia de trabalho. */}
-              {/* QUATRO atalhos visíveis (a semana) — os oito numa linha eram a
-                  maior aglomeração de controle do app. O resgate longo (15 a 60
-                  dias) e a data livre ficam em "outra data". Todos caem às 9h. */}
-              {[["hoje +1h", () => { const t = new Date(); t.setHours(t.getHours() + 1, 0, 0, 0); return t; }, true],
-                ["amanhã 9h", () => { const t = new Date(); t.setDate(t.getDate() + 1); t.setHours(9, 0, 0, 0); return t; }, false],
-                ["+2d", emDias(2), false],
-                ["+1sem", emDias(7), false]].map(([label, mk]) => (
-                <button key={label} onClick={() => patch({ nextActionAt: mk().toISOString() })}
-                  style={presetBtn}>
-                  {label}
-                </button>
-              ))}
-              <button onClick={() => setShowFar((v) => !v)} className="mono"
-                style={{ ...presetBtn, color: "var(--accent)", borderColor: "var(--accent-line)" }}>
-                {showFar ? "outra data ▴" : "outra data ▾"}
-              </button>
-              {lead.nextActionAt && (
-                <button onClick={() => patch({ nextActionAt: "", nextActionNote: "" })} className="mono dim" style={{ fontSize: 11 }} title="Limpar próximo toque">limpar</button>
-              )}
-              {showFar && (
-                <span style={{ display: "inline-flex", gap: 5, flexBasis: "100%", flexWrap: "wrap", alignItems: "center", marginTop: 2 }}>
-                  {[["+15d", emDias(15)], ["+30d", emDias(30)], ["+45d", emDias(45)], ["+60d", emDias(60)]].map(([label, mk]) => (
-                    <button key={label} onClick={() => patch({ nextActionAt: mk().toISOString() })} style={presetBtn}>{label}</button>
-                  ))}
-                  <DateTimeEditor value={isoToLocal(lead.nextActionAt)}
-                    onSave={async (raw) => {
-                      const saved = await persistSchedule({ nextActionAt: localToIso(raw) });
-                      return !!saved;
-                    }}
-                    style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
-                </span>
-              )}
-              <input type="text" placeholder="o que fazer nesse toque? (ex.: cobrar proposta)" defaultValue={lead.nextActionNote ?? ""}
+          {/* Próximo toque (etapas sem reunião): uma data e o que fazer. Os
+              atalhos "hoje +1h / amanhã 9h / +2d / +1sem" saíram (30/10/2026):
+              o calendário já resolve qualquer dia em dois cliques. */}
+          {isOpen && !meetingStep && kind !== "followup" && (
+            <div className="lead-meet-edit">
+              <span className="lead-meet-edit-row">
+                <DateTimeEditor value={isoToLocal(lead.nextActionAt)} label="Próximo toque" saveLabel="salvar"
+                  onSave={async (raw) => !!(await persistSchedule({ nextActionAt: localToIso(raw) }))}
+                  style={{ height: 30, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, fontFamily: "var(--mono)" }} />
+                {lead.nextActionAt && (
+                  <button type="button" className="lead-meet-cancel" onClick={() => patch({ nextActionAt: "", nextActionNote: "" })} title="Limpar próximo toque">limpar</button>
+                )}
+              </span>
+              <input type="text" aria-label="O que fazer no próximo toque" placeholder="o que fazer nesse toque? (ex.: cobrar proposta)" defaultValue={lead.nextActionNote ?? ""}
                 onBlur={(e) => e.target.value !== (lead.nextActionNote || "") && patch({ nextActionNote: e.target.value })}
-                style={{ flexBasis: "100%", height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5 }} />
-            </div>
-          </div>
-          )}
-          <LeadDisclosure title="Agenda e detalhes da call" open={kind === "call"}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <span className="mono dim" style={rowLabel}>Call agendada</span>
-            <DateTimeEditor value={dtLocal(lead.callAt)}
-              validate={(raw) => raw && callConflict(raw) ? (callBusyMsg || "Esse horário já está ocupado") : ""}
-              onSave={async (raw) => {
-                const saved = await persistSchedule({ callAt: raw });
-                return !!saved;
-              }}
-              style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: `1px solid ${callBusyMsg ? "var(--neg)" : "var(--line-1)"}`, background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
-            {lead.callAt && (
-              <button onClick={() => patch({ callAt: "" })} className="mono dim" style={{ fontSize: 11 }} title="Limpar call">limpar</button>
-            )}
-            <span className="mono dim" style={{ fontSize: 10, color: callBusyMsg ? "var(--neg)" : undefined }}>
-              {callBusyMsg || "aparece na Agenda"}
-            </span>
-          </div>
-          {/* Logística da call: link do vídeo + convidados, recolhidos — é o
-              "com o quê", não o "quando". O bloco da ENTREGA (briefing/vídeo da
-              integração) segue com recolhível próprio de propósito: ele só
-              existe em kind "integracao", então os dois nunca aparecem juntos e
-              fundir num toggle só trocaria o rótulo. */}
-          <button onClick={() => setShowCall((v) => !v)}
-            className="kicker" style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
-            Logística da call
-            <span style={{ marginLeft: "auto", fontSize: 10, flexShrink: 0, textTransform: "none", letterSpacing: 0 }}>{showCall ? "▴ recolher" : "▾ vídeo · convidados"}</span>
-          </button>
-          {showCall && (<>
-          {/* Link de videochamada: evento com Meet na agenda (Google), salvo no
-              lead e mandado pro Whats com 1 clique. */}
-          <div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0, flexWrap: "wrap" }}>
-            <span className="mono dim" style={rowLabel}>Videochamada</span>
-            {lead.callUrl ? (
-              <>
-                <a href={lead.callUrl} target="_blank" rel="noopener noreferrer" className="mono"
-                  style={{ fontSize: 11, color: "var(--accent)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}
-                  title={lead.callUrl}>
-                  {lead.callUrl.replace("https://", "")}
-                </a>
-                <button className="mono dim" style={{ fontSize: 11, flexShrink: 0 }} title="Copiar o convite (dia, hora e link)"
-                  onClick={() => { const t = meetingInviteText(lead, "call"); try { navigator.clipboard.writeText(t); } catch { window.prompt("Convite da call:", t); } }}>
-                  copiar
-                </button>
-                {wa && (
-                  <a className="mono" style={{ fontSize: 11, color: "var(--wa-brand-deep)", textDecoration: "none", flexShrink: 0 }}
-                    href={`${wa}?text=${encodeURIComponent(meetingInviteText(lead, "call"))}`}
-                    target="_blank" rel="noopener noreferrer" title="Enviar o link pro lead no WhatsApp">
-                    mandar no Whats ↗
-                  </a>
-                )}
-                {lead.callUrl.includes("meet.google.com") && window.SEED?.CONFIG?.ai?.configured && (
-                  <button className="mono" style={{ fontSize: 11, flexShrink: 0, color: "var(--accent)" }}
-                    title="Buscar a transcrição da call no Google e gerar o resumo estratégico (dores, objeções, follow-up)"
-                    onClick={async (ev) => {
-                      const btn = ev.currentTarget;
-                      btn.disabled = true; btn.textContent = "resumindo…";
-                      try {
-                        let r = await api.callSummary(lead.id);
-                        if (!r.ok && r.reason === "already_done" && window.confirm("Essa call já tem resumo. Gerar de novo?")) {
-                          r = await api.callSummary(lead.id, true);
-                        }
-                        if (r.ok) {
-                          refetchTimeline?.();
-                          const f = r.summary?.followup;
-                          window.alert(`Resumo pronto ✓ Temperatura: ${r.summary?.temperatura || "?"}.${f?.quando ? " Próximo toque sugerido já foi agendado no GPS." : ""}`);
-                        } else if (r.reason === "call_in_progress" || r.reason === "transcript_not_ready") {
-                          // Quase sempre é a sala que ficou ABERTA (o Google só
-                          // gera a transcrição quando o último sai). Encerrar
-                          // pela API não rola: o Meet nasce do Google Calendar e
-                          // a Meet API nega (403) — quem encerra é um humano na
-                          // sala. Então abrimos o Meet pra o SDR encerrar/sair.
-                          if (window.confirm(`A transcrição ainda não está no Google.${r.detail ? `\n\nMotivo: ${r.detail}` : ""}\n\nQuase sempre é a sala do Meet que ficou ABERTA (o Google só gera a transcrição quando o último participante sai).\n\nAbrir o Meet pra encerrar? Entre e clique em "Encerrar a chamada para todos" (ou saia, se estiver sozinho). Em alguns minutos a transcrição sai e o cockpit resume.`)) {
-                            window.open(lead.callUrl, "_blank", "noopener");
-                          }
-                        } else if (r.reason === "not_connected") {
-                          window.alert("Google não conectado. Ajustes → Integrações → Conectar Google.");
-                        } else if (r.reason) {
-                          window.alert(`Não deu: ${r.reason}`);
-                        }
-                      } catch (e) { window.alert(e.message || "Falha ao resumir a call."); }
-                      finally { btn.disabled = false; btn.textContent = "✨ resumir call"; }
-                    }}>
-                    ✨ resumir call
-                  </button>
-                )}
-                <button className="mono dim" style={{ fontSize: 11, flexShrink: 0 }}
-                  title="Criar outro evento com Meet na agenda"
-                  onClick={async () => {
-                    if (!window.SEED?.CONFIG?.google?.connected) { window.alert("Conecte o Google em Ajustes pra criar o Meet da call."); return; }
-                    try {
-                      const r = await api.createMeet(lead.id);
-                      dirty.current = true;
-                      setLead((prev) => ({ ...prev, callUrl: r.callUrl, meetEventId: r.eventId }));
-                    } catch (e) { window.alert(e.message || "Falha ao criar o Meet."); }
-                  }}>
-                  ↻
-                </button>
-              </>
-            ) : window.SEED?.CONFIG?.google?.connected ? (
-              <button
-                onClick={async () => {
-                  try {
-                    const r = await api.createMeet(lead.id);
-                    dirty.current = true;
-                    setLead((prev) => ({ ...prev, callUrl: r.callUrl, meetEventId: r.eventId }));
-                    const cfg = r.meetConfig || {};
-                    const faltou = [!cfg.open && "entrada sem aprovação", !cfg.recording && "gravação automática", !cfg.transcription && "transcrição automática"].filter(Boolean);
-                    const motivo = cfg.errors ? ` Motivo do Google: ${Object.values(cfg.errors)[0]}` : "";
-                    // O calendário configurado no servidor pode não ser visível pela conta
-                    // conectada (404): a call é criada mesmo assim, no calendário dela.
-                    if (r.fellBackFrom) {
-                      window.alert(`Meet criado ✓ mas o calendário "${r.fellBackFrom}" não está acessível pela conta Google conectada, então o evento nasceu na agenda dela. Ajustes → Integrações mostra qual calendário está configurado.`);
-                    } else if (faltou.length) window.alert(`Meet criado ✓ Mas não deu pra ativar: ${faltou.join(", ")}.${motivo}`);
-                  } catch (e) { window.alert(e.message || "Falha ao criar o Meet."); }
-                }}
-                title="Evento com Meet na agenda: convida o lead (se tiver e-mail) e os convidados extras; sala aberta com gravação e transcrição automáticas quando o plano permite"
-                style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 11.5, fontWeight: 600 }}>
-                🎥 criar Meet na agenda
-              </button>
-            ) : (
-              <span className="mono dim" style={{ fontSize: 11 }}>conecte o Google em Ajustes pra criar o Meet da call</span>
-            )}
-          </div>
-          {window.SEED?.CONFIG?.google?.connected && (
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <span className="mono dim" style={rowLabel}>Convidados extras</span>
-              <input type="text" placeholder="emails separados por vírgula (além do lead)"
-                defaultValue={lead.meetGuests ?? ""}
-                onBlur={(e) => e.target.value !== (lead.meetGuests || "") && patch({ meetGuests: e.target.value })}
-                title="Entram como convidados do evento no Google Calendar quando o Meet é criado (o e-mail do lead já vai automático)"
-                style={{ flex: 1, height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, fontFamily: "var(--mono)" }} />
+                className="lead-meet-input" />
             </div>
           )}
-          {/* Copiloto: ouve a call pelo navegador e orienta em tempo real
-              (transcrição + roteiro se marcando + resposta pra objeção). */}
-          {window.SEED?.CONFIG?.ai?.configured && <CallCopilot lead={lead} />}
-          </>)}
-          </LeadDisclosure>
-          {(kind === "proposta" || kind === "followup") && (
+          {isOpen && kind === "call" && callControls}
+          {isOpen && kind === "integracao" && (
+            <MeetingControls key={`integ-${lead.id}`} kind="integracao" lead={lead} wa={wa}
+              busyMsg={integBusyMsg} conflict={integConflict}
+              onSaveAt={(raw) => saveIntegrationAt(raw)} onClear={() => patch({ integrationAt: "" })}
+              onCreateMeet={() => createMeetFor("integracao")} onSummarize={() => summarizeFor("integracao")}
+              more={aiOn ? (
+                // Briefing de passagem: o cockpit gera sozinho quando o card
+                // entra aqui; este botão é o "gera agora" / "refaz".
+                <button type="button" className="lead-meet-btn" onClick={(ev) => { const b = ev.currentTarget; b.disabled = true; makeBrief().finally(() => { b.disabled = false; }); }}
+                  title="Lê a transcrição da call de venda e monta o briefing pro integrador (contexto, o que foi prometido, o que confirmar e o passo a passo)">
+                  {lead.integrationBriefAt ? "✨ Refazer briefing" : "✨ Gerar briefing"}
+                </button>
+              ) : null} />
+          )}
+          {/* Compromissos do CLIENTE: o que ele ficou de fazer na integração,
+              com prazo. Visível porque é a razão mais comum de ela estar parada. */}
+          {isOpen && kind === "integracao" && lead.clientPending?.open > 0 && (
+            <div>
+              <div className="mono dim" style={{ fontSize: 10.5, marginBottom: 4 }}>
+                aguardando o cliente ({lead.clientPending.open}
+                {lead.clientPending.overdue ? ` · ${lead.clientPending.overdue} atrasado${lead.clientPending.overdue === 1 ? "" : "s"}` : ""})
+              </div>
+              {(lead.clientPending.items || []).map((it) => (
+                <div key={it.task} style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: "3px 0", fontSize: 12 }}>
+                  <PendingCheck label={`Concluir: ${it.item}`} onDone={async () => { await api.taskComplete(it.task); refetchTimeline?.(); }} />
+                  <span style={{ flex: 1, minWidth: 0 }}>{it.item}</span>
+                  <span className="mono dim" style={{ fontSize: 10.5, flexShrink: 0 }}>{it.dueDate ? it.dueDate.slice(8, 10) + "/" + it.dueDate.slice(5, 7) : ""}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {isOpen && (kind === "proposta" || kind === "followup") && (
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <span className="mono dim" style={rowLabel}>Proposta</span>
               <input type="text" inputMode="decimal" autoComplete="off" aria-label="Valor da proposta (R$)" placeholder="Valor (R$)" defaultValue={lead.proposalValue ?? ""}
@@ -791,149 +869,24 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
                 style={{ flex: 1, height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5 }} />
             </div>
           )}
-          {kind === "integracao" && (
-            <>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <span className="mono dim" style={rowLabel}>Integração</span>
-                {/* MESMO editor da call (Leo, 25/08): o input controlado salvava
-                    a cada tecla e o valor não grudava — data digitada sumia sem
-                    chegar na Agenda. Aqui o horário só vai pro servidor no
-                    "salvar horário", com confirmação de verdade. */}
-                <DateTimeEditor value={dtLocal(lead.integrationAt)}
-                  validate={(raw) => raw && integConflict(raw) ? (integBusyMsg || "Esse horário já está ocupado") : ""}
-                  onSave={async (raw) => !!(await persistSchedule({ integrationAt: raw }))}
-                  style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: `1px solid ${integBusyMsg ? "var(--neg)" : "var(--line-1)"}`, background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
-                {lead.integrationAt && (
-                  <button onClick={() => patch({ integrationAt: "" })} className="mono dim" style={{ fontSize: 11 }} title="Limpar integração">limpar</button>
-                )}
-                <span className="mono dim" style={{ fontSize: 10, color: integBusyMsg ? "var(--neg)" : undefined }}>
-                  {integBusyMsg || "aparece na Agenda"}
-                </span>
-              </div>
-              {/* O que o cliente tem contratado e até quando (some se o lead ainda não virou cliente). */}
-              <LeadActiveProducts lead={lead} />
-              {/* Entrega: briefing pro integrador + vídeo/resumo da integração,
-                  recolhidos — a DATA fica em cima, sempre visível. */}
-              <button onClick={() => setShowEntrega((v) => !v)}
-                className="kicker" style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
-                Entrega
-                <span style={{ marginLeft: "auto", fontSize: 10, flexShrink: 0, textTransform: "none", letterSpacing: 0 }}>{showEntrega ? "▴ recolher" : "▾ briefing · vídeo"}</span>
-              </button>
-              {/* Compromissos do CLIENTE: o que ele ficou de fazer na call de
-                  integração, com prazo. Fica FORA do recolhível porque é a
-                  razão mais comum de a integração estar parada. */}
-              {lead.clientPending?.open > 0 && (
-                <div style={{ marginTop: 6, marginBottom: 2 }}>
-                  <div className="mono dim" style={{ fontSize: 10.5, marginBottom: 4 }}>
-                    aguardando o cliente ({lead.clientPending.open}
-                    {lead.clientPending.overdue ? ` · ${lead.clientPending.overdue} atrasado${lead.clientPending.overdue === 1 ? "" : "s"}` : ""})
-                  </div>
-                  {(lead.clientPending.items || []).map((it) => (
-                    <div key={it.task} style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: "3px 0", fontSize: 12 }}>
-                      <PendingCheck label={`Concluir: ${it.item}`} onDone={async () => { await api.taskComplete(it.task); refetchTimeline?.(); }} />
-                      <span style={{ flex: 1, minWidth: 0 }}>{it.item}</span>
-                      <span className="mono dim" style={{ fontSize: 10.5, flexShrink: 0 }}>{it.dueDate ? it.dueDate.slice(8, 10) + "/" + it.dueDate.slice(5, 7) : ""}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {showEntrega && (<>
-              {/* Briefing de passagem: o cockpit gera sozinho quando o card
-                  entra aqui (e re-tenta enquanto a transcrição da venda não
-                  fica pronta). Este botão é o "gera agora" / "refaz". */}
-              {window.SEED?.CONFIG?.ai?.configured && (
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <span className="mono dim" style={rowLabel}>Briefing</span>
-                  <button className="mono" style={{ fontSize: 11, color: "var(--accent)" }}
-                    title="Lê a transcrição da call de venda e monta o briefing pro integrador (contexto, o que foi prometido, o que confirmar e o passo a passo)"
-                    onClick={async (ev) => {
-                      const btn = ev.currentTarget; const was = btn.textContent;
-                      btn.disabled = true; btn.textContent = "montando…";
-                      try {
-                        let r = await api.integrationBrief(lead.id);
-                        if (!r.ok && r.reason === "already_done" && window.confirm("Esse lead já tem briefing. Gerar de novo?")) r = await api.integrationBrief(lead.id, true);
-                        if (r.ok) {
-                          refetchTimeline?.();
-                          window.alert(r.source === "resumo"
-                            ? "Briefing pronto ✓ (sem transcrição da call: saiu do resumo que a IA já tinha extraído, então confira antes de usar)"
-                            : "Briefing pronto ✓ (lido da transcrição da call de venda)");
-                        } else if (r.reason === "no_source") {
-                          window.alert("Sem fonte pra montar o briefing: essa venda não tem transcrição do Meet nem resumo de call. Gere o resumo da call primeiro (botão ✨ na linha do vídeo) ou registre o contexto na timeline.");
-                        } else if (r.reason) window.alert(`Não deu: ${r.reason}`);
-                      } catch (e) { window.alert(e.message || "Falha ao montar o briefing."); }
-                      finally { btn.disabled = false; btn.textContent = was; }
-                    }}>{lead.integrationBriefAt ? "✨ refazer briefing" : "✨ gerar briefing"}</button>
-                </div>
-              )}
-              {/* Call de vídeo da integração: Meet PRÓPRIO (não o da venda) no
-                  horário da integração; depois vira resumo de onboarding. */}
-              <div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0, flexWrap: "wrap" }}>
-                <span className="mono dim" style={rowLabel}>Vídeo integração</span>
-                {lead.integrationCallUrl ? (
-                  <>
-                    <a href={lead.integrationCallUrl} target="_blank" rel="noopener noreferrer" className="mono"
-                      style={{ fontSize: 11, color: "var(--accent)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }} title={lead.integrationCallUrl}>
-                      {lead.integrationCallUrl.replace("https://", "")}
-                    </a>
-                    <button className="mono dim" style={{ fontSize: 11, flexShrink: 0 }} title="Copiar o convite (dia, hora e link)"
-                      onClick={() => { const t = meetingInviteText(lead, "integracao"); try { navigator.clipboard.writeText(t); } catch { window.prompt("Convite da integração:", t); } }}>copiar</button>
-                    {wa && (
-                      <a className="mono" style={{ fontSize: 11, color: "var(--wa-brand-deep)", textDecoration: "none", flexShrink: 0 }}
-                        href={`${wa}?text=${encodeURIComponent(meetingInviteText(lead, "integracao"))}`}
-                        target="_blank" rel="noopener noreferrer" title="Enviar o link pro cliente no WhatsApp">mandar no Whats ↗</a>
-                    )}
-                    {lead.integrationCallUrl.includes("meet.google.com") && window.SEED?.CONFIG?.ai?.configured && (
-                      <button className="mono" style={{ fontSize: 11, flexShrink: 0, color: "var(--accent)" }}
-                        title="Buscar a transcrição da integração no Google e gerar o resumo de onboarding"
-                        onClick={async (ev) => {
-                          const btn = ev.currentTarget; btn.disabled = true; btn.textContent = "resumindo…";
-                          try {
-                            let r = await api.callSummary(lead.id, false, "integracao");
-                            if (!r.ok && r.reason === "already_done" && window.confirm("Essa integração já tem resumo. Gerar de novo?")) r = await api.callSummary(lead.id, true, "integracao");
-                            if (r.ok) { refetchTimeline?.(); window.alert(`Resumo da integração pronto ✓ Cliente: ${r.summary?.sentimento || "?"}.`); }
-                            // Sala aberta / sem transcrição: encerrar via API não
-                            // rola (Meet do Calendar → 403), então abrimos o Meet
-                            // pra o integrador encerrar/sair — aí o Google gera a
-                            // transcrição e o poller resume.
-                            else if (r.reason === "call_in_progress" || r.reason === "transcript_not_ready") {
-                              if (window.confirm(`A transcrição ainda não está no Google.${r.detail ? `\n\nMotivo: ${r.detail}` : ""}\n\nQuase sempre é a sala do Meet que ficou ABERTA (o Google só gera a transcrição quando o último participante sai).\n\nAbrir o Meet pra encerrar? Entre e clique em "Encerrar a chamada para todos" (ou saia, se estiver sozinho). Em alguns minutos a transcrição sai e o cockpit resume.`)) {
-                                window.open(lead.integrationCallUrl, "_blank", "noopener");
-                              }
-                            }
-                            else if (r.reason) window.alert(`Não deu: ${r.reason}`);
-                          } catch (e) { window.alert(e.message || "Falha ao resumir a integração."); }
-                          finally { btn.disabled = false; btn.textContent = "✨ resumir integração"; }
-                        }}>✨ resumir integração</button>
-                    )}
-                  </>
-                ) : (
-                  window.SEED?.CONFIG?.google?.connected && (
-                    <button
-                      onClick={async () => {
-                        if (!lead.integrationAt) { window.alert("Marque a data e hora da integração primeiro (campo acima)."); return; }
-                        try {
-                          const r = await api.createMeet(lead.id, { kind: "integracao" });
-                          dirty.current = true;
-                          setLead((prev) => ({ ...prev, integrationCallUrl: r.callUrl, integrationMeetEventId: r.eventId }));
-                        } catch (e) { window.alert(e.message || "Falha ao criar o Meet da integração."); }
-                      }}
-                      title="Cria um Meet na agenda no horário da integração, com gravação e transcrição automáticas (resumo de onboarding depois)"
-                      style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 11.5, fontWeight: 600 }}>
-                      🎥 criar Meet da integração
-                    </button>
-                  )
-                )}
-              </div>
-              </>)}
-            </>
+          {/* Call de venda fora da etapa de call: recolhida, com o nome dela. */}
+          {sideCall && (
+            <details className="lead-meet-side" open={sideCallOpen || undefined}>
+              <summary>
+                <span>Call de venda</span>
+                <small>{formatDateTime(dtLocal(lead.callAt))}{callMs < Date.now() ? " · já aconteceu" : ""}</small>
+              </summary>
+              {callControls}
+            </details>
           )}
-          </>)}
+          {/* O que o cliente tem contratado e até quando (some se ainda não é cliente). */}
+          {isOpen && kind === "integracao" && <LeadActiveProducts lead={lead} />}
           {/* Lead FINALIZADO (ganho/perdido/desqualificado): as únicas ações que
               fazem sentido são reclassificar ou REABRIR. Um clique manda o card
               de volta pra etapa escolhida pelos mesmos gates do board (call pede
               hora, ganho pede valor e pagamento) e o servidor limpa o motivo da
               perda sozinho no revival. */}
-          {showGps && !isOpen && (
+          {!isOpen && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <div className="dim" style={{ fontSize: 11.5, lineHeight: 1.45 }}>
                 {kind === "ganho"
