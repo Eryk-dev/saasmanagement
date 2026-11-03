@@ -1,0 +1,89 @@
+/* Carteira (03/11/2026): mesma superfície da tela Clientes — cartões brancos de
+   raio 24, controles em cápsula e status como ponto de 6px + palavra. */
+.carteira-page { flex:1; min-height:0; min-width:0; overflow-y:auto; display:flex; flex-direction:column; gap:12px; margin:0 -4px; padding:0 4px 24px; letter-spacing:-.006em; }
+.carteira-header { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:8px 10px 2px; }
+.carteira-header .page-title { margin:0; }
+.carteira-load { padding:24px; border-radius:24px; background:var(--bg-1); color:var(--fg-3); font-size:13px; }
+.carteira-load button { color:var(--accent); margin-left:10px; font-weight:600; }
+
+.carteira-dot { display:inline-block; width:6px; height:6px; border-radius:999px; flex-shrink:0; background:var(--fg-4); }
+.carteira-dot[data-tone=pos] { background:var(--pos); }
+.carteira-dot[data-tone=neg] { background:var(--neg); }
+.carteira-dot[data-tone=warn] { background:var(--warn); }
+.carteira-dot[data-tone=info] { background:var(--info); }
+
+.carteira-card-wrap { min-width:0; background:var(--bg-1); border-radius:24px; box-shadow:var(--shadow-card); overflow:hidden; }
+.carteira-filters { display:flex; align-items:center; gap:10px; padding:12px 16px; flex-wrap:wrap; border-bottom:1px solid var(--line-1); }
+.carteira-owner { width:190px; flex-shrink:0; }
+.carteira-search { display:inline-flex; align-items:center; gap:8px; height:32px; padding:0 14px; border-radius:999px; background:var(--bg-2); color:var(--fg-3); margin-left:auto; min-width:180px; }
+.carteira-search input { flex:1; width:130px; min-width:0; border:0; background:none; outline:none; font:12.5px var(--sans); color:var(--fg-1); }
+
+.carteira-table { overflow-x:auto; }
+.carteira-head, .carteira-row { display:grid; align-items:center; padding:0 16px; min-width:884px; }
+.carteira-head { padding-top:10px; padding-bottom:10px; border-bottom:1px solid var(--line-1); }
+.carteira-head .kicker { font-weight:600; letter-spacing:.12em; }
+.carteira-row { padding-top:11px; padding-bottom:11px; border-bottom:1px solid var(--line-1); cursor:pointer; transition:background 150ms ease; }
+.carteira-row:hover { background:var(--bg-inset); }
+.carteira-row:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.carteira-row[data-churn] { opacity:.6; }
+.carteira-empty { padding:26px 16px; text-align:center; font-size:12.5px; color:var(--fg-4); }
+
+.carteira-cell { display:flex; flex-direction:column; gap:3px; min-width:0; }
+.carteira-cell-main { display:block; font-size:12.5px; font-weight:600; color:var(--fg-1); min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.carteira-cell-main .carteira-dot, .carteira-card-line .carteira-dot { margin-right:7px; vertical-align:2px; }
+.carteira-cell-sub { font-size:11.5px; color:var(--fg-3); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.carteira-name { font-size:13.5px; font-weight:650; color:var(--fg-1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+
+.carteira-products { display:flex; gap:4px; flex-wrap:wrap; margin-top:2px; }
+.carteira-product { display:inline-flex; align-items:center; height:18px; padding:0 7px; border-radius:999px; font-size:10.5px; font-weight:600; background:var(--bg-2); color:var(--fg-2); white-space:nowrap; }
+.carteira-product[data-off] { background:var(--warn-soft); color:var(--warn); }
+
+.carteira-health-num { font-family:var(--display); font-size:18px; font-weight:700; line-height:1; color:var(--fg-3); }
+.carteira-health-num[data-tone=pos] { color:var(--pos); }
+.carteira-health-num[data-tone=warn] { color:var(--warn); }
+.carteira-health-num[data-tone=neg] { color:var(--neg); }
+.carteira-health-parts { display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:3px; width:72px; margin-top:4px; }
+.carteira-health-parts span { height:5px; border-radius:999px; background:var(--bg-3); }
+.carteira-health-parts span[data-tone=pos] { background:var(--pos); }
+.carteira-health-parts span[data-tone=warn] { background:var(--warn); }
+.carteira-health-parts span[data-tone=neg] { background:var(--neg); }
+
+.carteira-step { display:flex; flex-direction:column; gap:3px; min-width:0; text-align:left; padding:6px 10px; margin:-6px -10px; border-radius:12px; background:transparent; cursor:pointer; }
+.carteira-step:hover { background:var(--bg-1); box-shadow:var(--shadow-card); }
+.carteira-step:focus-visible { outline:2px solid var(--accent); outline-offset:0; }
+
+/* Régua de marcos: barrinhas de 4px, uma por marco, na cor do estado. */
+.carteira-regua { display:flex; flex-direction:column; gap:4px; margin-top:7px; min-width:0; }
+.carteira-regua-bar { display:flex; gap:2px; width:100%; max-width:132px; }
+.carteira-regua-bar i { flex:1; height:4px; border-radius:999px; background:var(--bg-3); }
+.carteira-regua-bar i[data-s=done] { background:var(--pos); }
+.carteira-regua-bar i[data-s=late] { background:var(--neg); }
+.carteira-regua-bar i[data-s=soon] { background:var(--warn); }
+.carteira-regua-text { font-size:11px; color:var(--fg-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.carteira-regua-text[data-late] { color:var(--neg); }
+
+.carteira-board { display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:10px; padding:12px; align-items:start; background:var(--bg-inset); }
+.carteira-col { min-width:0; display:flex; flex-direction:column; gap:6px; }
+.carteira-col header { display:flex; align-items:center; gap:7px; padding:6px 6px 4px; font-size:13px; }
+.carteira-col header .tnum { color:var(--fg-4); font-size:12px; }
+.carteira-col-mrr { margin-left:auto; color:var(--fg-3)!important; }
+.carteira-col-list { display:flex; flex-direction:column; gap:6px; }
+.carteira-col-empty { font-size:11.5px; color:var(--fg-4); padding:4px 6px; }
+.carteira-card { display:flex; flex-direction:column; gap:4px; text-align:left; padding:10px 12px; border-radius:16px; background:var(--bg-1); box-shadow:var(--shadow-card); cursor:pointer; min-width:0; }
+.carteira-card:hover { box-shadow:var(--shadow-pop); }
+.carteira-card:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.carteira-card-top { display:flex; align-items:center; gap:8px; min-width:0; }
+.carteira-card-top .carteira-health-num { margin-left:auto; font-size:15px; }
+.carteira-card-line { display:block; font-size:11.5px; color:var(--fg-2); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* Celular: cada cliente vira um bloco empilhado (nome em cima, os status em
+   duas colunas), sem rolagem lateral. */
+@media (max-width:700px) {
+  .carteira-head { display:none; }
+  .carteira-row { min-width:0; grid-template-columns:1fr 1fr!important; row-gap:10px; }
+  .carteira-client { grid-column:1 / -1; }
+  .carteira-search { margin-left:0; flex:1; }
+  .carteira-owner { width:100%; }
+  .carteira-step { margin:0; padding:0; }
+}
+@media (prefers-reduced-motion:reduce) { .carteira-page * { transition:none!important; } }

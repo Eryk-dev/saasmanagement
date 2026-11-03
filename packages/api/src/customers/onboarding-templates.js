@@ -4,6 +4,10 @@
 // `app_config/onboarding_templates_<saas>` (PUT só com etiqueta admin). Um
 // modelo pode valer só para alguns planos (`planCodes`): o do plano do
 // cliente vence o genérico do tipo.
+//
+// Cada item pode apontar para um passo de um guia (`guide: { id, step }`,
+// guides/guides.js) e ter uma explicação curta (`help`); a integração criada
+// pelo modelo leva os dois, e o card abre o guia naquele passo (03/11/2026).
 
 export const templatesId = (saas) => `onboarding_templates_${saas}`;
 
@@ -55,10 +59,32 @@ export function templateFor(templates, { kind, planCode = "" }) {
 
 const s = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
+// Vínculo do item com um passo de guia: ids no formato dos guias, senão some.
+export function cleanGuideLink(g) {
+  const id = s(g?.id, 60);
+  if (!/^gd_[a-z0-9]+$/i.test(id)) return null;
+  const step = s(g?.step, 40);
+  return { id, step: /^[a-z0-9_-]{2,40}$/i.test(step) ? step : "" };
+}
+
+export async function saveTemplates(repo, saas, list) {
+  const templates = cleanTemplates(list);
+  const id = templatesId(saas);
+  const saved = (await repo.get("app_config", id)) ? await repo.update("app_config", id, { templates }) : await repo.create("app_config", { id, templates });
+  return saved.templates;
+}
+
 export function cleanTemplates(list) {
   if (!Array.isArray(list) || list.length > 40) throw Object.assign(new Error("Envie até 40 modelos."), { statusCode: 400 });
   return list.map((t, i) => {
-    const items = (Array.isArray(t?.items) ? t.items : []).map((it) => ({ title: s(it?.title, 200), side: it?.side === "cliente" ? "cliente" : "lever" })).filter((it) => it.title);
+    const items = (Array.isArray(t?.items) ? t.items : []).map((it) => {
+      const out = { title: s(it?.title, 200), side: it?.side === "cliente" ? "cliente" : "lever" };
+      const guide = cleanGuideLink(it?.guide);
+      if (guide) out.guide = guide;
+      const help = s(it?.help, 300);
+      if (help) out.help = help;
+      return out;
+    }).filter((it) => it.title);
     if (!s(t?.kind, 40) || !items.length) throw Object.assign(new Error(`Modelo ${i + 1} sem tipo ou sem itens.`), { statusCode: 400 });
     return { id: s(t.id, 60) || `${t.kind}_${i}`, kind: s(t.kind, 40), name: s(t.name, 80) || s(t.kind, 40), planCodes: (Array.isArray(t.planCodes) ? t.planCodes : []).map((c) => s(c, 60)).filter(Boolean), items };
   });

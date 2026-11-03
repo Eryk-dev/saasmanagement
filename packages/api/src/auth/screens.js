@@ -22,6 +22,7 @@ export const SCREEN_IDS = [
   "plans", // gestão do catálogo de planos (grupo Comercial; a tela é de admin)
   "tickets", "quick_replies", "support_settings", // grupo Suporte: fila, respostas rápidas e configurações de SLA/atendentes
   "releases", // versões no ar de cada app + novidades de produto (só admin; a rota também exige a etiqueta)
+  "guides", // guias internos com prints (grupo CS e suporte); editar exige a etiqueta admin ou Editor de guias
 ];
 
 export const sanitizeScreens = (x) =>
@@ -96,6 +97,9 @@ const ROUTE_SCREENS = [
   ["/api/funnel/", ["pipeline", "analise"]],  // análise do pipeline (Pipeline + tela Análise)
   ["/api/leads", ["pipeline", "today"]],    // inclui /api/leads/:id/proposal (ação do closer)
   ["/api/activities", ["pipeline", "today"]],
+  // Modelos de checklist da integração: também da tela Guias (os itens apontam
+  // para os passos dos guias). Antes da regra geral de /api/customers.
+  ["/api/customers/onboarding-templates", ["customers", "guides"]],
   ["/api/customers", ["customers"]],
   ["/api/subscriptions", ["customers"]], // inclui /change e /mp/link
   ["/api/invoices", ["customers"]],      // inclui /pay e /mp/link
@@ -118,6 +122,8 @@ const ROUTE_SCREENS = [
   // billing da base, então segue o guard de Clientes. Aplicar de verdade ainda
   // pede etiqueta admin dentro da rota (leverads-access.js).
   ["/api/leverads-access", ["customers"]],
+  // Liberação do LeverPrice pelo status pago (billing/leverprice-access.js).
+  ["/api/leverprice-access", ["customers"]],
   ["/api/crm-events", ["customers"]], // caixa de entrada dos eventos dos produtos (events/)
   ["/api/meetings", ["pipeline", "calls", "desempenho"]], // placar das calls de venda (crm/meetings.js)
   ["/api/bundles", ["plans", "pipeline", "customers"]], // pacotes: o closer lê e aplica, o admin cria (billing/bundles.js)
@@ -179,6 +185,9 @@ const ROUTE_SCREENS = [
   // Suporte: além da tela, o PRODUTO do ticket passa pelo escopo de
   // support-scope.js dentro das próprias rotas (routes.tickets.js).
   ["/api/tickets", ["tickets"]],
+  // Guias: a tela própria e o card da Integração (Clientes, Pipeline, Atividades
+  // e Análise de Integração abrem o guia do item do checklist).
+  ["/api/guides", ["guides", "customers", "pipeline", "today", "integrations"]],
   // Respostas rápidas: a página e o chat do ticket (quem só atende também usa e cria as pessoais).
   ["/api/support/quick-replies", ["quick_replies", "tickets"]],
   ["/api/support/", ["support_settings"]],

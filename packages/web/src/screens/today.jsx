@@ -33,6 +33,7 @@ import { followupContacts, followupDueDay, followupNextContact, followupStepOf, 
 import { FollowupContactBlock, DayPicker, defaultFollowupDay } from "../components/followup-contact.jsx";
 import { summaryReason } from "../components/customer-meeting.jsx";
 import { BookingLinkActions, sentAgo } from "../components/booking-link.jsx";
+import { openRecord } from "../lib/open-record.js";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
 // "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
 // "Amanhã" e "Próximos dias" (o que já está agendado, à vista), e "Sem data".
@@ -157,7 +158,7 @@ const TIER_ORDER = { S: 6, A: 5, B: 4, C: 3, D: 2, E: 1, sem: 0 };
 // Ordem de atendimento dentro de cada dia (Leo, jul/2026): confirmar call (o
 // mais time-sensitive) e horário marcado primeiro; novos e no-show (leads
 // quentes) na sequência; depois retomadas, follow-ups, nutrição e sem agenda.
-const GROUP_ORDER = ["confirm", "appt", "novo", "noshow", "qual", "closer", "nutri", "loose"];
+const GROUP_ORDER = ["confirm", "appt", "novo", "noshow", "qual", "closer", "cs", "nutri", "loose"];
 
 // Orçamento da fila compacta: horário, identidade/ação e abrir roteiro.
 export const QUEUE_GRID = "72px minmax(0,1fr) 121px";
@@ -176,9 +177,11 @@ const GROUP_META = {
   noshow: ["Furou a call", "retomar no mesmo dia"],
   qual: ["Retomadas", "toque agendado que venceu"],
   closer: ["Follow-up", "contato do dia · sem horário"],
+  cs: ["Clientes", "acompanhamento de CS com prazo"],
   nutri: ["Nutrição", "fora do funil ativo"],
   loose: ["Sem data", "ninguém marcou o próximo toque · não entram na contagem do dia"],
 };
+const CS_FOLLOWUP_LABEL = { check_in: "Check-in", qbr: "QBR", renovacao: "Renovação", risco: "Conversa de risco" };
 
 // O VERBO da ação (o trabalho), que estava escondido em 12,5px --fg-3 dentro da
 // coluna do nome enquanto a ETAPA ocupava uma coluna de 118px em chip. Usado
@@ -270,7 +273,7 @@ function blockOccurrences(b, startToday, days) {
   return out;
 }
 
-function buildQueue(leads, consultas, saasCfg, person, blocks = (typeof window !== "undefined" && window.SEED?.AGENDA_BLOCKS) || []) {
+function buildQueue(leads, consultas, saasCfg, person, blocks = (typeof window !== "undefined" && window.SEED?.AGENDA_BLOCKS) || [], csFollowups = (typeof window !== "undefined" && window.SEED?.CS_FOLLOWUPS) || []) {
   const workable = new Set(workableStages(saasCfg));
   const open = new Set(openStages(saasCfg));
   const nowMs = Date.now();
@@ -484,6 +487,26 @@ function buildQueue(leads, consultas, saasCfg, person, blocks = (typeof window !
       else if (t <= endTomorrow.getTime()) g.amanha.push(item);
       else g.proximos.push(item);
     }
+  }
+
+  // Acompanhamentos de CS abertos (check-in, QBR, renovação, conversa de risco)
+  // na fila do dono (03/11/2026): o que tem prazo com cliente tem que estar nas
+  // atividades. O prazo é por DIA, como o follow-up; vencido cai em Hoje e
+  // conta como atrasado. Sem prazo fica só na Carteira. Abrir leva ao
+  // acompanhamento (o mesmo drawer de qualquer tela).
+  for (const f of (csFollowups || [])) {
+    if (!f?.dueAt) continue;
+    if (saasCfg && f.saas && f.saas !== saasCfg.id) continue;
+    if (person && f.owner !== person) continue;
+    const t = new Date(f.dueAt).getTime();
+    if (!Number.isFinite(t)) continue;
+    const item = {
+      csFollowup: f, kind: "acompanhamento", who: f.owner || "", due: { t, type: "acompanhamento" }, done: false,
+      stage: f.title || CS_FOLLOWUP_LABEL[f.kind] || "Acompanhamento", group: "cs", title: f.customerName || "cliente",
+    };
+    if (t <= endToday.getTime()) g.hoje.push(item);
+    else if (t <= endTomorrow.getTime()) g.amanha.push(item);
+    else g.proximos.push(item);
   }
 
   // Ordem dentro do bloco: prioridade do processo; no empate, novos por chegada
@@ -849,7 +872,7 @@ Se remarcar agora, ela não será mais resumida automaticamente. Remarcar mesmo 
   // Compromisso da Agenda não tem roteiro: abrir leva pra tela Agenda (é lá
   // que ele se edita). Navegação por hash, igual à moldura (app.jsx).
   const openAgenda = () => { try { window.location.hash = "#agenda"; } catch { /* ignore */ } };
-  const openRow = (item) => (item.block ? openAgenda() : item.consulta ? openConsulta(item) : setScriptItem(item));
+  const openRow = (item) => (item.block ? openAgenda() : item.consulta ? openConsulta(item) : item.csFollowup ? openRecord("followup", item.csFollowup.id) : setScriptItem(item));
 
   const users = useM(() => allUsers().filter((u) => !u.saas || u.saas === saasCfg?.id), [saasCfg?.id]);
   const firstPending = q.hoje.find((i) => !i.done);
@@ -866,7 +889,7 @@ Se remarcar agora, ela não será mais resumida automaticamente. Remarcar mesmo 
     return Object.fromEntries(users.map((u) => [u.id, buildQueue(pool, consultas, saasCfg, u.id).hoje.filter((i) => !i.done).length]));
   }, [leads, consultas, saasCfg, users]);
   // O primeiro pendente fica em Agora; os demais e as feitas têm áreas próprias.
-  const queueRows = q.hoje.filter(item => !item.done && (item.consulta || item.block || item !== firstPending));
+  const queueRows = q.hoje.filter(item => !item.done && (item.consulta || item.block || item.csFollowup || item !== firstPending));
   const lateItems = pendingToday.filter((i) => isLateItem(i, now));
   const lateCount = lateItems.length;
   const lateFollowups = lateItems.filter((i) => i.due.type === "followup").length;
@@ -879,8 +902,8 @@ Se remarcar agora, ela não será mais resumida automaticamente. Remarcar mesmo 
     const t = busca.trim().toLowerCase();
     if (!t) return rows;
     return rows.filter((i) => {
-      const nome = i.block ? (i.title || "") : i.consulta ? (i.consulta.clientName || "") : (i.l?.name || "");
-      const empresa = i.block ? "" : i.consulta ? (i.consulta.childName || "") : (i.l?.company || "");
+      const nome = i.block || i.csFollowup ? (i.title || "") : i.consulta ? (i.consulta.clientName || "") : (i.l?.name || "");
+      const empresa = i.block || i.csFollowup ? "" : i.consulta ? (i.consulta.childName || "") : (i.l?.company || "");
       return `${nome} ${empresa}`.toLowerCase().includes(t);
     });
   };
@@ -942,7 +965,7 @@ Se remarcar agora, ela não será mais resumida automaticamente. Remarcar mesmo 
                   igual às outras: a tela prometia "hoje em ordem de execução"
                   e não dizia qual é o próximo. Ele SAI da lista abaixo (a
                   contagem desconta), pra não existir em dois lugares. */}
-              {firstPending && !firstPending.consulta && !firstPending.block && (
+              {firstPending && !firstPending.consulta && !firstPending.block && !firstPending.csFollowup && (
                 <AgoraBlock item={firstPending} saasCfg={saasCfg} onScript={() => setScriptItem(firstPending)}
                   onClaim={() => claim(firstPending)} onWhatsapp={onOpenWhatsapp} />
               )}
@@ -1003,7 +1026,7 @@ Se remarcar agora, ela não será mais resumida automaticamente. Remarcar mesmo 
                   return (
                     <React.Fragment key={key}>
                       <QueueRow item={item} block="hoje" featured={false} selected={!!scriptItem && rowKey(scriptItem) === key}
-                        onScript={() => setScriptItem(item)} onClaim={() => claim(item)} onWhatsapp={onOpenWhatsapp} onOpen={() => item.block ? openAgenda() : item.consulta ? openConsulta(item) : onOpenLead?.(item.l)} />
+                        onScript={() => setScriptItem(item)} onClaim={() => claim(item)} onWhatsapp={onOpenWhatsapp} onOpen={() => item.block || item.consulta || item.csFollowup ? openRow(item) : onOpenLead?.(item.l)} />
                     </React.Fragment>
                   );
                 })}
@@ -1145,6 +1168,32 @@ function CompromissoRow({ item, block, featured, ordem, onOpen }) {
   );
 }
 
+// Linha de acompanhamento de CS na fila (03/11/2026): prazo do dia, o tipo
+// (check-in, QBR, renovação, conversa de risco), o cliente e os próximos
+// passos combinados. Abrir leva ao acompanhamento, onde se registra o
+// sentimento e se conclui. Não participa do fluxo de roteiro/toque dos leads.
+function CsFollowupRow({ item, block, onOpen }) {
+  const f = item.csFollowup;
+  const t = item.due.t;
+  const late = isLateItem(item);
+  const dias = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(t).setHours(0, 0, 0, 0)) / DAY);
+  const when = block === "amanha" ? { pill: "amanhã", note: "no dia", tone: "mut" }
+    : block === "proximos" ? { pill: ddmmOf(t), note: "no dia", tone: "mut" }
+    : late ? { pill: ddmmOf(t), note: `atrasado ${dias} d`, tone: "neg" }
+    : { pill: "hoje", note: "no dia", soft: true };
+  // Mesma cápsula da linha de lead (today-queue-row), pra fila ler como uma só.
+  return (
+    <div className={`today-queue-row${late ? " is-late" : ""}`} title={late ? "Acompanhamento atrasado: o prazo já passou" : undefined}>
+      <TimeCell pill={when.pill} note={when.note} tone={when.tone} soft={when.soft} />
+      <button onClick={onOpen} className="today-queue-lead">
+        <span><strong>{item.title}</strong><small>{item.stage} · cliente</small></span>
+        <span className="today-queue-action">{f.nextSteps ? `próximo passo: ${f.nextSteps}` : "acompanhamento de CS · registre como foi ao concluir"}</span>
+      </button>
+      <button className="today-open-script" onClick={onOpen}>Abrir atividade →</button>
+    </div>
+  );
+}
+
 // EM ANDAMENTO (07/10/2026): passar da hora não é atrasar — a call das 9h às
 // 9h01 está acontecendo, não vencida. Cada item tem uma janela depois do
 // horário em que ainda está sendo cumprido no prazo: o compromisso dura o que
@@ -1176,20 +1225,20 @@ export function isLateItem(item, now = Date.now()) {
   if (item.confirmKind === "integracao") return false;
   // Compromisso da Agenda não atrasa: terminou, encerrou (vira feito na fila).
   if (item.due.type === "compromisso") return false;
-  if (item.due.type === "followup") return item.due.t < new Date(now).setHours(0, 0, 0, 0);
+  if (item.due.type === "followup" || item.due.type === "acompanhamento") return item.due.t < new Date(now).setHours(0, 0, 0, 0);
   return now >= runEndOf(item);
 }
 
 // Passou da hora e a janela ainda está aberta: âmbar, sem cobrar atraso.
 export function isRunningItem(item, now = Date.now()) {
-  if (!item?.due || item.done || item.due.type === "followup") return false;
+  if (!item?.due || item.done || item.due.type === "followup" || item.due.type === "acompanhamento") return false;
   // Confirmação da integração: aberta até a integração (buildQueue a tira da fila).
   if (item.confirmKind === "integracao") return item.due.t <= now;
   return item.due.t <= now && now < runEndOf(item);
 }
 
 // Chave estável da linha: a confirmação de call tem uma por janela do mesmo lead.
-const rowKey = (item) => (item.block ? `b-${item.block.id}-${item.due?.t}` : item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id);
+const rowKey = (item) => (item.block ? `b-${item.block.id}-${item.due?.t}` : item.csFollowup ? `f-${item.csFollowup.id}` : item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id);
 
 // Uma linha da fila: sequência, quando, etapa (coluna do funil), ação a fazer,
 // lead com a qualificação compilada e as ações. Clique no corpo abre o ROTEIRO
@@ -1197,6 +1246,7 @@ const rowKey = (item) => (item.block ? `b-${item.block.id}-${item.due?.t}` : ite
 function QueueRow({ item, block, featured, ordem, selected = false, onScript, onClaim, onWhatsapp, onOpen }) {
   const { l, consulta, kind, due, stage, who, group } = item;
   if (item.block) return <CompromissoRow item={item} block={block} featured={featured} ordem={ordem} onOpen={onOpen} />;
+  if (item.csFollowup) return <CsFollowupRow item={item} block={block} featured={featured} ordem={ordem} onOpen={onOpen} />;
   if (consulta) return <ConsultaRow item={item} block={block} featured={featured} ordem={ordem} onOpen={onOpen} />;
   const now = Date.now();
 
@@ -1293,7 +1343,7 @@ function ScheduleLane({ label, rows, amanha, onOpen }) {
   const [showAll, setShowAll] = useS(false);
   const timeOf = (item) => {
     if (!item.due) return "sem data";
-    if (item.due.type === "followup") return amanha ? "dia todo" : new Date(item.due.t).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+    if (item.due.type === "followup" || item.due.type === "acompanhamento") return amanha ? "dia todo" : new Date(item.due.t).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
     return amanha
       ? new Date(item.due.t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
       : new Date(item.due.t).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -1311,8 +1361,8 @@ function ScheduleLane({ label, rows, amanha, onOpen }) {
           <button key={rowKey(item)} onClick={() => onOpen(item)} style={{ width: "100%", display: "flex", gap: 10, alignItems: "baseline", padding: "10px 0", borderTop: "1px solid var(--line-faint)", textAlign: "left" }}>
             <span className="tnum" style={{ fontSize: 12.5, color: "var(--fg-4)", flexShrink: 0 }}>{timeOf(item)}</span>
             <span style={{ minWidth: 0 }}>
-              <span style={{ display: "block", fontSize: 13.5, fontWeight: 600 }}>{item.block ? item.title : item.consulta ? (item.consulta.clientName || "cliente") : item.l.name}</span>
-              <span style={{ display: "block", fontSize: 12, color: "var(--fg-3)" }}>{item.block ? `compromisso da Agenda${item.due?.allDay ? " · dia todo" : ""}` : item.consulta ? `Consulta ${item.consulta.n || "?"}/${item.consulta.packageTotal || 8} · UniqueKids` : `${ACTION_LABELS[item.kind] || "contato"}${item.l.company ? ` · ${item.l.company}` : ""}`}</span>
+              <span style={{ display: "block", fontSize: 13.5, fontWeight: 600 }}>{item.block || item.csFollowup ? item.title : item.consulta ? (item.consulta.clientName || "cliente") : item.l.name}</span>
+              <span style={{ display: "block", fontSize: 12, color: "var(--fg-3)" }}>{item.block ? `compromisso da Agenda${item.due?.allDay ? " · dia todo" : ""}` : item.csFollowup ? `${item.stage} · cliente` : item.consulta ? `Consulta ${item.consulta.n || "?"}/${item.consulta.packageTotal || 8} · UniqueKids` : `${ACTION_LABELS[item.kind] || "contato"}${item.l.company ? ` · ${item.l.company}` : ""}`}</span>
             </span>
           </button>
         ))}
@@ -3189,4 +3239,4 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   );
 }
 
-export { TodayScreen, ScriptPanel, buildQueue, ACTION_LABELS, GROUP_META, GROUP_ORDER };
+export { TodayScreen, ScriptPanel, buildQueue, ACTION_LABELS, GROUP_META, GROUP_ORDER, CsFollowupRow };

@@ -69,7 +69,11 @@ Para reproduzir Visão geral com dados fixos e testes no navegador, usar
 outros fusos) e `npm run test:review:agenda-lead-phone -w packages/web`
 (telefone no card); para Inbox,
 `npm run test:review:whatsapp -w packages/web`; para Tickets,
-`npm run test:review:tickets -w packages/web`; para Respostas rápidas,
+`npm run test:review:tickets -w packages/web`; para Carteira (e o
+acompanhamento de CS na fila de Atividades),
+`npm run test:review:carteira -w packages/web`; para Guias (e o "como fazer"
+no checklist da integração), `npm run test:review:guides -w packages/web`; para
+Respostas rápidas,
 `npm run test:review:quick-replies -w packages/web`; para Configurações de SLA,
 `npm run test:review:sla -w packages/web`; para Redes sociais,
 `npm run test:review:social -w packages/web`; para Publicidade,
@@ -219,6 +223,8 @@ Os caminhos abaixo são relativos a `packages/`.
 | Agenda, Google e consultas | `api/src/google/routes.google.js`, `calls/routes.consultations.js`; telas `agenda.jsx`, `agenda-grid.jsx`, `consultas.jsx`. |
 | Treinamentos | `api/src/training/` (`routes.flashcards.js`, `fsrs.js`); telas `training.jsx`, `training.css`, `training-focus.jsx`; testes `api/test/routes.flashcards.test.js`. |
 | Tarefas | `api/src/tasks/routes.tasks.js`; `web/src/screens/tasks/` (quadro, lista, calendário, drawer, filtros e estado). |
+| Carteira (status do cliente) | `api/src/customers/customer-status.js` (`GET /api/customers/status`), `lifecycle.js`, `health.js`, `cs-followups.js`; telas `screens/carteira.jsx` e a fila de `today.jsx` (`CS_FOLLOWUPS` do bootstrap); testes `customer-status`, smoke `carteira-*` e `test:review:carteira`. |
+| Guias (base de conhecimento) | `api/src/guides/` (`guides.js`, `guide-starter.js`, `guide-pack.js` + `pack/`, `routes.guides.js`) e o vínculo `item.guide` em `customers/onboarding-templates.js`/`onboardings.js`; telas `screens/guides.jsx`, `components/guide-viewer.jsx` e o checklist de `components/onboarding-card.jsx`; testes `guides.test.js`/`guide-pack.test.js`, smoke `guias`/`guia-passo` e `test:review:guides`. |
 | Suporte (tickets) | `api/src/support/` (`tickets-core.js`, `tickets-sla.js`, `routes.tickets.js`, `quick-replies.js`, `ticket-sla-runner.js`, `routes.support-portal.js`, `support-page.js`, `customer-history.js`) e `auth/support-scope.js`; histórico de suporte por empresa em `GET /api/tickets/by-customer/:customerId` (tickets de todos os cadastros da mesma org — `orgId`, `leveradsOrgId` ou `leverpriceOrgId` — nos produtos do escopo do atendente, com resumo; 404 fora do escopo), que a aba **Clientes** da tela Tickets (`screens/tickets/customers-view.jsx`, ao lado de Kanban e Lista) abre por cliente: a aba agrupa os tickets do produto ativo vinculados a cliente e o modal `CustomerSupportHistory` (`components/customer-tickets.jsx`, estilos em `components/customer-history.css`) mostra a empresa inteira; espelho com o Linear em `support/linear.js`, `ticket-linear.js`, `ticket-linear-runner.js` e a rota `/api/webhooks/linear` (`marketing/routes.webhooks.js`); Hermes (agente de correção no Linear) em `support/ticket-hermes.js`, `hermes-actions.js`, `routes.hermes.js` e `shared/hermes-phase.js`; `web/src/screens/tickets/`, `support-settings.jsx`, `quick-replies.jsx`, `lib/tickets.js`, `components/customer-tickets.jsx`; testes `routes.tickets`, `routes.quick-replies`, `tickets-sla`, `ticket-sla-runner`, `routes.support-portal`, `ticket-linear`, `ticket-hermes`, `customer-support-history`. |
 | Conteúdo e redes sociais | `api/src/blog/` (`routes.blog.js`, `routes.blog-public.js`) e `marketing/routes.social.js`; telas `blog.jsx` e `social.jsx`. |
 | Componentes e visual | `web/src/tokens.css`, `atoms.jsx`, `components/viz.jsx`, `components/lead-blocks.jsx`, `lib/ui.js`. |
@@ -1822,9 +1828,9 @@ Fase 3 do plano do Lever CRM.
 - **Carteira:** o cliente ganha `csStage` (saudavel, atencao, em_risco,
   renovacao, churn; vazio enquanto está em integração), calculado no
   `refreshLifecycle` a partir do estágio de vida, do `health` e de
-  acompanhamento de renovação aberto. A mudança vai para a timeline. A aba
-  "Carteira CS" em Clientes mostra os clientes em colunas
-  (`components/cs-portfolio.jsx`).
+  acompanhamento de renovação aberto. A mudança vai para a timeline. Desde
+  03/11/2026 a carteira é a tela própria **Carteira** (ver abaixo); a aba
+  "Carteira CS" de Clientes saiu.
 - **Acompanhamento** (`cs_followups`): check_in, qbr, renovacao ou risco, com
   dono, prazo, sentimento, notas, próximos passos e reuniões.
   - Rotas: `GET|POST /api/customers/:id/followups` e
@@ -1840,6 +1846,116 @@ Fase 3 do plano do Lever CRM.
   - Um modelo pode valer só para alguns planos (`planCodes`).
   - A integração aberta sem itens nasce com o modelo. O espelho do card do
     lead não ganha modelo e conclui sem o portão do checklist.
+
+**Carteira: o status do cliente num lugar só (03/11/2026).** Tela `#carteira`
+no grupo do menu "CS e suporte" (chave `suporte`), com a permissão de Clientes
+(alias `carteira → customers` em `canSeeScreen`, `web/src/lib/users.js`; a API
+é `/api/customers`, sem id de tela novo no servidor).
+
+- `GET /api/customers/status?saas=` (`customers/customer-status.js`, rota em
+  `routes.revenue.js`) devolve uma linha por cliente: `lifecycle`, `csStage`,
+  `health` e `healthParts` (os gravados pelos sweeps), `payment` (status pela
+  mesma `financialStatusOf` do sweep, vencido = fatura `overdue`, próxima e
+  último pagamento), `subscription` (a que pede atenção primeiro, com
+  `renewInDays`), `products` (`dealProductsOf` + se já tem conta no sistema),
+  integração aberta, próximo acompanhamento, tickets abertos e último NPS. Uma
+  leitura por coleção, filtrada por produto; churn (`isChurnedCustomer`) sai do
+  MRR. Só leitura. Teste: `customer-status.test.js`.
+- Web: `screens/carteira.jsx` + `carteira.css`. Lista (grade
+  `CARTEIRA_GRID`, orçamento 884px conferido no smoke) e Quadro (colunas da
+  carteira com o MRR), filtro de estágio (`BarraFiltros`, com inadimplentes,
+  renovam em 30 dias e churn no "mais"), dono da conta e busca; aviso do topo
+  para inadimplência ou acompanhamento vencido; barra do MRR por estágio. A
+  linha abre o card do cliente ali mesmo, sem ir para Clientes:
+  `CustomerCard` (exportado de `screens/customers.jsx`, carregado sob demanda)
+  é o mesmo `CustomerPeek`, que busca assinaturas, planos, faturas e o recebido
+  do produto e faz as contas de dinheiro com as funções que a tela Clientes
+  também usa (`fechadoDoCliente`, `trazidoDoCliente`, `statusPagamentoDe`…, no
+  topo do módulo). O próximo passo abre o acompanhamento, a integração ou os
+  tickets.
+- **Régua de marcos vira acompanhamento (03/11/2026):** o marco que chega a
+  hora (`customers/customer-milestones.js`, job `customerMilestones`) cria um
+  acompanhamento de CS com `milestone` (chave) e `title` (nome do marco), dono
+  da conta, prazo do marco e o roteiro em `notes`, em vez da tarefa do quadro.
+  Revisão de mês 3 nasce QBR, renovação nasce `renovacao` (e adota a renovação
+  já aberta pelo alerta de 30 dias, sem duplicar), o resto `check_in`.
+  Acompanhamento feito marca `customer.milestonesDone`; reaberto desmarca
+  (`cs-followups.js`); marco feito na ficha conclui o acompanhamento
+  (`completeMilestoneTasks`, chamado pelo PATCH de customers). Tarefas de marco
+  criadas antes continuam com o espelho antigo e impedem o acompanhamento do
+  mesmo marco. Todo lugar que mostra acompanhamento usa `title` antes do tipo.
+  O status da Carteira traz `milestones` (feitos, total, atrasados, um estado
+  por marco e o próximo); a lista e o quadro mostram a barrinha por marco, "N de
+  M marcos" e o próximo marco quando ele ainda não é o próximo passo, e o
+  "mais" tem o filtro "Marco atrasado". Testes: `customer-milestones.test.js`,
+  `customer-status.test.js`.
+- **Acompanhamento na fila de Atividades:** o bootstrap manda
+  `CS_FOLLOWUPS` (abertos, só para quem tem Clientes) e `buildQueue` os põe na
+  fila do dono (grupo `cs`), com prazo por dia como o follow-up: vencido cai em
+  Hoje como atrasado, sem prazo fica só na Carteira. O contador do menu usa a
+  mesma lista. Linha: `CsFollowupRow` em `today.jsx`; smoke
+  `acompanhamento-cs-na-fila`.
+
+**Guias: base de conhecimento interna (03/11/2026).** Domínio `guides/` e tela
+`#guides` no grupo "CS e suporte". Um guia (`guides`) é de um produto do
+cockpit, tem público (integrador, cs, suporte), sistema opcional (LeverAds,
+LeverPrice), status (rascunho, publicado), `rev` e passos `{ id, title, body,
+tip, images: [{ id, caption }] }` (até 40 passos, 6 prints por passo). O texto
+do passo é o markdown simples dos tickets (`LinearMarkdown`, sem innerHTML).
+
+- Prints em `guide_assets` (base64, PNG/JPG/WEBP/GIF até 5 MB), servidos só com
+  sessão em `GET /api/guides/assets/:id`; o SPA baixa com a credencial e mostra
+  em blob (`api.guideAssetUrl`, cache por sessão). As duas coleções são
+  PRIVATE no CRUD genérico e `guide_assets` é SILENT.
+- Ler: a tela Guias ou quem abre o card da Integração (Clientes, Pipeline,
+  Atividades, Análise de Integração), na API (`auth/screens.js`) e no menu
+  (`SCREEN_ANY` em `web/src/lib/users.js`). Escrever (guias e modelos de
+  checklist): etiqueta admin ou **Editor de guias** (`guias`, `ROLE_TAGS`).
+  Rascunho só aparece para quem edita. Salvar com `rev` velho devolve 409.
+- `POST /api/guides/starter` cria uma vez por produto o rascunho "Implantação ·
+  call de integração" (`guide-starter.js`, montado do roteiro `integracao` de
+  `lib/scripts.js` e do checklist "Implantação inicial") e liga os itens desse
+  modelo aos passos (`STARTER_LINKS`), só os que ainda não têm guia.
+- **Pacote de guias da Lever (03/11/2026):** os guias escritos no código em
+  `guides/pack/` (um arquivo por guia, `key` + `version`; prints em
+  `pack/prints/{cockpit,leverads,leverprice}`, ~25 MB) e instalados por produto
+  do cockpit pelo botão da tela Guias (`GET`/`POST /api/guides/pack`,
+  `guide-pack.js`): cria o que falta, atualiza versão nova que ninguém editou
+  (`rev === packRev`) e não sobrescreve o que foi editado no Cockpit. Os prints
+  viram `guide_assets` com id do conteúdo (`ga_pack_…`); o guia, `gd_pk…`.
+  Hoje: 2 comuns (call de integração, link de cadastro), 12 do LeverAds e 8 do
+  LeverPrice. A instalação liga o checklist "Implantação inicial" aos passos
+  do guia da call (`PACK_CHECKLIST_LINKS`), inclusive itens que apontavam para
+  o rascunho do `starter`, que o guia da call substitui (a tela esconde o
+  botão do rascunho quando há pacote).
+- **Trilha de leitura:** `order` no guia (1–999; 0 = sem posição, vai pro fim
+  por título). A lista (`compareGuides`) e a tela agrupam por sistema (comuns,
+  LeverAds, LeverPrice) e numeram nessa ordem; o pacote grava a posição pela
+  ordem de `pack/index.js` dentro de cada sistema (`packOrder`), e guia já
+  instalado sem posição recebe a dele sem virar edição. A tela filtra por
+  sistema (mostra os comuns e ele) e o leitor oferece "próximo guia" no último
+  passo; o editor tem "posição na trilha". Testes: `guide-pack.test.js` e
+  `test:review:guides`.
+- **Checklist da integração:** item do modelo e da integração aceita
+  `guide: { id, step }` e `help` (`cleanGuideLink`, `cleanTemplates`,
+  `cleanItems`); a integração nascida do modelo leva os dois. No card da
+  Integração o item mostra a explicação e "como fazer →", que abre o leitor no
+  passo. A aba "Modelos de checklist" da tela Guias edita os modelos
+  (`PUT /api/customers/onboarding-templates/:saas`, agora admin ou Editor de
+  guias; a rota também atende quem tem a tela Guias).
+- **Modo integração (03/11/2026):** botão "▶ Modo integração" no checklist do
+  card da Integração (desligado com o card sujo). `GET
+  /api/customers/onboardings/:id/kit` (`customers/onboarding-kit.js`) junta a
+  integração, o contrato (plano, produtos e se já tem conta), contatos, o
+  formulário de integração respondido (snapshot formatado por `formSections`;
+  o de nota fiscal não entra), o resumo da venda (atividade `integration_brief`
+  do lead, sem valor da venda), `lead.clientPending`, os guias do checklist
+  (rascunho só para quem edita) e `missing` (formulário, conta no sistema,
+  pendência do cliente, integrador). A tela (`components/onboarding-run.jsx`)
+  tem três colunas: checklist como roteiro, o item com o passo do guia
+  (`GuideStep`) e o painel do cliente; "Feito e seguir" faz o PATCH dos itens e
+  passa para o próximo em aberto, e o card relê a integração ao fechar.
+  Testes: `onboarding-kit.test.js` e o fluxo em `test:review:guides`.
 
 **Cards por tipo de registro (20/10/2026).** Fase 1B do plano do Lever CRM,
 na web. **Regra:** Negócio, Cliente e Integração têm um card cada, o mesmo de

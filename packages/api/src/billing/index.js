@@ -5,6 +5,8 @@ import { registerBillingRoutes } from "./routes.billing.js";
 import { registerBundleRoutes } from "./routes.bundles.js";
 import { registerLeveradsAccessRoutes, startLeveradsAccessSync } from "./leverads-access.js";
 import { startBilling } from "./billing-runner.js";
+import { registerLeverpriceAccessRoutes } from "./routes.leverprice-access.js";
+import { startLeverpriceAccess } from "./leverprice-access.js";
 
 export function register(app, repo, ctx) {
   // Billing (fase 5): mudança de plano c/ pró-rata, baixa de fatura, tick do motor.
@@ -14,6 +16,8 @@ export function register(app, repo, ctx) {
   // LeverAds: liga/corta o paywall das orgs do produto conforme o billing daqui
   // (tick manual + report do dry-run; o poller sobe no start deste domínio).
   registerLeveradsAccessRoutes(app, repo, { ...(ctx.opts.leveradsAccess || {}) });
+  // LeverPrice: libera a org quando a venda está paga (03/11/2026; só libera).
+  registerLeverpriceAccessRoutes(app, repo, { ...(ctx.opts.leverpriceAccess || {}) });
 }
 
 export function start(repo, { log, jobOn }) {
@@ -24,4 +28,7 @@ export function start(repo, { log, jobOn }) {
   // billing daqui. No-op sem LEVERADS_SERVICE_KEY (ou ADMIN_EMAIL/PASSWORD); dry-run por padrão
   // (LEVERADS_ACCESS_APPLY=1 pra valer). Só toca orgs com de-para explícito.
   if (jobOn("leveradsAccessSync")) startLeveradsAccessSync(repo, { log });
+  // LeverPrice: libera a org de quem pagou depois do cadastro (10 min). No-op
+  // sem LEVERPRICE_SERVICE_KEY; dry-run sem LEVERPRICE_ACCESS_APPLY=1.
+  if (jobOn("leverpriceAccess")) startLeverpriceAccess(repo, { log });
 }

@@ -51,7 +51,7 @@ export function meetingTypeOptions({ customer, onboardings = [], followups = [] 
     });
   }
   for (const f of followups.filter((x) => x.status === "aberto")) {
-    const name = FOLLOWUP[f.kind] || "Acompanhamento";
+    const name = f.title || FOLLOWUP[f.kind] || "Acompanhamento";
     out.push({
       value: `cs_followups:${f.id}`, host: { collection: "cs_followups", id: f.id }, responsible: f.owner || customer.owner || "",
       group: "Acompanhamento de CS aberto", label: `${name} (aberto)`,

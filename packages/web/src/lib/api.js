@@ -115,6 +115,10 @@ export function eventsUrl() {
   return `${BASE}/api/events?key=${encodeURIComponent(currentToken())}`;
 }
 
+// Prints dos guias: a rota exige sessão (a tag <img> não manda o header), então
+// baixa uma vez com a credencial e guarda a URL de blob por id durante a sessão.
+const guideAssetUrls = new Map();
+
 export const api = {
   integrationFormQuestions: (kind) => req("GET", `/api/integration-forms/questions?kind=${encodeURIComponent(kind)}`),
   bootstrap: () => req("GET", "/api/bootstrap"),
@@ -377,6 +381,8 @@ export const api = {
   createOnboarding: (customerId, body) => req("POST", `/api/customers/${customerId}/onboardings`, body),
   onboarding: (id) => req("GET", `/api/customers/onboardings/${id}`),
   updateOnboarding: (id, patch) => req("PATCH", `/api/customers/onboardings/${id}`, patch),
+  // Modo integração: cliente, formulário, resumo da venda, pendências e guias do checklist.
+  onboardingKit: (id) => req("GET", `/api/customers/onboardings/${encodeURIComponent(id)}/kit`),
   openOnboardings: () => req("GET", "/api/customers/onboardings?open=1"),
   // Reunião com Meet próprio num registro do cliente (host = "onboardings" | "followups").
   // Versões da proposta do lead, com o estado de cada uma.
@@ -414,6 +420,39 @@ export const api = {
   openFollowups: () => req("GET", "/api/customers/followups?open=1"),
   // Receita da carteira: movimentos de MRR, renovações 7/15/30/60 e aging.
   customerRevenue: ({ from = "", to = "", saas = "" } = {}) => req("GET", `/api/customers/revenue?from=${from}&to=${to}&saas=${encodeURIComponent(saas)}`),
+  // Carteira: uma linha por cliente com ciclo, saúde, pagamento, assinatura, produtos e próximo passo.
+  customerStatus: (saas) => req("GET", `/api/customers/status?saas=${encodeURIComponent(saas || "")}`),
+  // Guias (base de conhecimento interna com prints) e os modelos de checklist
+  // da integração, cujos itens apontam para os passos dos guias.
+  guides: (saas) => req("GET", `/api/guides?saas=${encodeURIComponent(saas || "")}`),
+  guide: (id) => req("GET", `/api/guides/${encodeURIComponent(id)}`),
+  createGuide: (body) => req("POST", "/api/guides", body),
+  updateGuide: (id, patch) => req("PATCH", `/api/guides/${encodeURIComponent(id)}`, patch),
+  deleteGuide: (id) => req("DELETE", `/api/guides/${encodeURIComponent(id)}`),
+  guideStarter: (saas) => req("POST", "/api/guides/starter", { saas }),
+  // Pacote de guias da Lever (escritos no código): o que falta e instalar.
+  guidePack: (saas) => req("GET", `/api/guides/pack?saas=${encodeURIComponent(saas || "")}`),
+  installGuidePack: (saas) => req("POST", "/api/guides/pack", { saas }),
+  guideAsset: (saas, file, onProgress) => {
+    const fd = new FormData();
+    fd.append("file", file, file.name || "print.png");
+    return upload(`/api/guides/assets?saas=${encodeURIComponent(saas)}`, fd, onProgress);
+  },
+  guideAssetUrl: (id) => {
+    if (!guideAssetUrls.has(id)) {
+      const p = (async () => {
+        const auth = authHeaders(await freshToken());
+        const res = await fetch(`${BASE}/api/guides/assets/${encodeURIComponent(id)}`, { headers: auth });
+        if (!res.ok) throw new Error(res.status === 404 ? "print não encontrado" : proxyMessage(res.status));
+        return URL.createObjectURL(await res.blob());
+      })();
+      p.catch(() => guideAssetUrls.delete(id));
+      guideAssetUrls.set(id, p);
+    }
+    return guideAssetUrls.get(id);
+  },
+  onboardingTemplates: (saas) => req("GET", `/api/customers/onboarding-templates/${encodeURIComponent(saas)}`),
+  saveOnboardingTemplates: (saas, templates) => req("PUT", `/api/customers/onboarding-templates/${encodeURIComponent(saas)}`, { templates }),
   // Briefing de passagem pro integrador (lê a transcrição da call de VENDA).
   integrationBrief: (leadId, force = false) => req("POST", `/api/leads/${leadId}/integration-brief`, { force }),
   // Insight de pitch: analisa os resumos das calls do produto e sugere uma

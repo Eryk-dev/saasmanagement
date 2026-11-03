@@ -60,6 +60,8 @@ const EloAppScreen = lazyScreen(() => import("./screens/eloapp.jsx"), "EloAppScr
 const LandingPagesScreen = lazyScreen(() => import("./screens/landingpages.jsx"), "LandingPagesScreen");
 const TasksScreen = lazyScreen(() => import("./screens/tasks/index.jsx"), "TasksScreen");
 const TicketsScreen = lazyScreen(() => import("./screens/tickets/index.jsx"), "TicketsScreen");
+const CarteiraScreen = lazyScreen(() => import("./screens/carteira.jsx"), "CarteiraScreen");
+const GuidesScreen = lazyScreen(() => import("./screens/guides.jsx"), "GuidesScreen");
 const SupportSettingsScreen = lazyScreen(() => import("./screens/support-settings.jsx"), "SupportSettingsScreen");
 const QuickRepliesScreen = lazyScreen(() => import("./screens/quick-replies.jsx"), "QuickRepliesScreen");
 const PlansScreen = lazyScreen(() => import("./screens/plans.jsx"), "PlansScreen");
@@ -280,9 +282,11 @@ function App({ onInitialReady, initialLoading = false } = {}) {
     agenda:      ["Comercial", "Agenda"],
     whatsapp:    ["Comercial", "Inbox"],
     consultas:   ["Comercial", "Consultas"],
-    tickets:     ["Suporte", "Tickets"],
-    quick_replies: ["Suporte", "Respostas rápidas"],
-    support_settings: ["Suporte", "Configurações de SLA"],
+    carteira:    ["CS e suporte", "Carteira"],
+    guides:      ["CS e suporte", "Guias"],
+    tickets:     ["CS e suporte", "Tickets"],
+    quick_replies: ["CS e suporte", "Respostas rápidas"],
+    support_settings: ["CS e suporte", "Configurações de SLA"],
     social:      ["Marketing", "Redes sociais"],
     metrics:     ["Marketing", "Publicidade"],
     landingpages: ["Marketing", "Landing pages"],
@@ -391,6 +395,8 @@ function App({ onInitialReady, initialLoading = false } = {}) {
           {scr === "training"    && <TrainingScreen />}
           {scr === "subscriptions" && <CustomersScreen initialTab="billing" />}
           {scr === "tasks"       && <TasksScreen />}
+          {scr === "carteira"    && <CarteiraScreen />}
+          {scr === "guides"      && <GuidesScreen />}
           {scr === "tickets"     && <TicketsScreen />}
           {scr === "quick_replies" && <QuickRepliesScreen />}
           {scr === "support_settings" && <SupportSettingsScreen />}

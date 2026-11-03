@@ -153,10 +153,12 @@ export function registerBootstrapRoutes(app, repo, { googleClient, mpClient, asa
     // O que o CONFIG precisa do banco/integrações vai numa leva só: eram cinco
     // awaits em série no meio do objeto (templates, 3× app_config do Google,
     // saúde do WhatsApp), cada um uma ida ao pooler do Supabase.
-    const [proposalTemplates, googleConnected, googleAccount, gmailReady, waHealth, catalogPlans, followupContacts, emailProvider] = await Promise.all([
+    const [proposalTemplates, googleConnected, googleAccount, gmailReady, waHealth, catalogPlans, followupContacts, emailProvider, csFollowups] = await Promise.all([
       repo.list("proposal_templates"), googleClient.connected(), googleClient.account(), googleClient.gmailReady(), reconcileAccountAlert(repo, whatsappClient).catch(() => null), plansOf(repo),
       loadFollowupContacts(repo), mailerClient ? mailerClient.provider().catch(() => "") : "",
+      can("customers") ? repo.listWhere("cs_followups", { status: "aberto" }).catch(() => []) : [],
     ]);
+    const customerName = new Map(customers.map((c) => [c.id, c.name || ""]));
     return {
       SAAS: saas,
       COUNTERS: contadores,
@@ -182,6 +184,13 @@ export function registerBootstrapRoutes(app, repo, { googleClient, mpClient, asa
         .map((c) => ({ user: c.owner, at: c.at, minutes: Number(c.durationMin) > 0 ? Number(c.durationMin) : 60 })),
 
       NPS: can("customers") ? nps : [],
+      // Acompanhamentos de CS abertos (check-in, QBR, renovação, risco): entram
+      // na fila de Atividades do dono e no contador do menu, com a mesma lista.
+      // Só quem tem a tela Clientes (é o guard das rotas deles).
+      CS_FOLLOWUPS: csFollowups.map((f) => ({
+        id: f.id, customer: f.customer, customerName: customerName.get(f.customer) || "", saas: f.saas || "",
+        kind: f.kind || "check_in", title: f.title || "", milestone: f.milestone || "", owner: f.owner || "", dueAt: f.dueAt || "", nextSteps: String(f.nextSteps || "").slice(0, 200),
+      })),
       LEADERBOARD_MONTH: can("overview") ? lbMonth : [],
       LEADERBOARD_ALL: can("overview") ? lbAll : [],
       GOALS: can("overview") ? goals : [],

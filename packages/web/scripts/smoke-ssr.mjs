@@ -130,6 +130,21 @@ try {
     hist: fakeHist, ano: 2026, setAno() {}, growth: "25", setGrowth() {}, aplicar() {}, inp: {},
   };
 
+  // Carteira: uma linha com todos os status preenchidos (o que o
+  // GET /api/customers/status devolve), pra pegar erro de render nas células.
+  const carteiraNow = Date.parse("2026-11-03T12:00:00Z");
+  const carteiraRow = {
+    id: "c1", name: "Loja Azul", owner: "", saas: "leverads", mrr: 1000, churned: false,
+    lifecycle: "risco", csStage: "em_risco", health: 42, healthAt: "2026-11-03T00:00:00Z",
+    healthParts: { pagamento: 0, nps: 12, suporte: 20, resultado: 10 },
+    payment: { status: "inadimplente", overdueCount: 1, overdueAmount: 300, overdueDays: 12, nextDue: null, lastPaidAt: "" },
+    subscription: { id: "s1", status: "past_due", cycle: "monthly", periodEnd: "2026-11-12T00:00:00Z", renewInDays: 9, live: 1, total: 1 },
+    products: [{ id: "leverads", account: true }, { id: "leverprice", account: false }],
+    onboarding: null, followup: { id: "f1", kind: "renovacao", owner: "", dueAt: "2026-11-01T12:00:00Z", late: true, open: 1 },
+    milestones: { done: 2, total: 6, late: 1, next: { key: "revisao_m3", label: "Revisão de resultado", dueAt: "2026-10-28T12:00:00Z", status: "late" },
+      steps: [["onboarding", "done"], ["checkin_m1", "done"], ["revisao_m3", "late"], ["depoimento", "next"], ["upsell_m6", "next"], ["renovacao", "next"]].map(([key, status]) => ({ key, label: key, status })) },
+    tickets: { open: 1, urgent: 0 }, nps: { score: 8, at: "2026-10-10" },
+  };
   const cases = [
     ["inbox", "/src/screens/whatsapp.jsx", "WhatsappInboxScreen", {}, "Inbox"],
     ["inbox-mensagens", "/src/components/wa-thread.jsx", "WaBubbles", { variant: "inbox", messages: [{ id: "wa-test", direction: "out", author: "sdr-bot", text: "Mensagem do robô", at: nowIso, status: "read" }] }, "Mensagem do robô"],
@@ -179,6 +194,11 @@ try {
     ["desempenho", "/src/screens/desempenho.jsx", "DesempenhoScreen", {}, "Análise de Desempenho"],
     ["tasks", "/src/screens/tasks/index.jsx", "TasksScreen", {}, "Tarefas"],
     ["tickets", "/src/screens/tickets/index.jsx", "TicketsScreen", {}, "Tickets"],
+    ["carteira", "/src/screens/carteira.jsx", "CarteiraScreen", {}, "Carteira"],
+    ["guias", "/src/screens/guides.jsx", "GuidesScreen", {}, "Carregando os guias"],
+    ["guia-passo", "/src/components/guide-viewer.jsx", "GuideStep", { step: { id: "a", title: "Conectar as contas", body: "Clique em **Conectar**.\n- conta 1\n> fala do roteiro", tip: "confira o selo verde", images: [] }, index: 1, total: 4 }, "confira o selo verde"],
+    ["carteira-linha", "/src/screens/carteira.jsx", "CarteiraRow", { row: carteiraRow, now: carteiraNow, onOpen() {} }, "2 de 6 marcos"],
+    ["carteira-quadro", "/src/screens/carteira.jsx", "CarteiraBoard", { rows: [carteiraRow], now: carteiraNow, onOpen() {} }, "Renovação"],
     ["support-settings", "/src/screens/support-settings.jsx", "SupportSettingsScreen", {}, "Configurações de SLA"],
     ["quick-replies", "/src/screens/quick-replies.jsx", "QuickRepliesScreen", {}, "Respostas rápidas"],
     ["releases", "/src/screens/releases.jsx", "ReleasesScreen", {}, "Versões e novidades"],
@@ -689,6 +709,36 @@ try {
     console.log("✓ call-cumprida-sai-da-fila");
   } catch (err) {
     console.error(`✗ call-cumprida-sai-da-fila: ${err.message}`);
+    failed++;
+  }
+
+  // Acompanhamento de CS na fila (03/11/2026): só do dono e do produto, por
+  // DIA (vencido cai em Hoje como atrasado), sem prazo fica fora; a linha
+  // renderiza com o cliente e o próximo passo.
+  try {
+    const { buildQueue, isLateItem, CsFollowupRow } = await server.ssrLoadModule("/src/screens/today.jsx");
+    const eq = (name, got, want) => { if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`${name}: ${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`); };
+    const cfg = { id: "leverads", funnel: [{ stage: "Novo lead", kind: "novo" }] };
+    const ontem = new Date(Date.now() - 86400000).toISOString();
+    const em5 = new Date(Date.now() + 5 * 86400000).toISOString();
+    const fus = [
+      { id: "f1", saas: "leverads", owner: "bia", kind: "renovacao", dueAt: ontem, customerName: "Loja Azul", nextSteps: "mandar a proposta de renovação" },
+      { id: "f2", saas: "leverads", owner: "bia", kind: "check_in", dueAt: em5, customerName: "Loja Verde" },
+      { id: "f3", saas: "leverads", owner: "leo", kind: "qbr", dueAt: ontem },
+      { id: "f4", saas: "leverads", owner: "bia", kind: "risco", dueAt: "" },
+      { id: "f5", saas: "leverprice", owner: "bia", kind: "risco", dueAt: ontem },
+    ];
+    const q = buildQueue([], [], cfg, "bia", [], fus);
+    const ids = (rows) => rows.map((i) => i.csFollowup?.id);
+    eq("vencido do dono cai em hoje", ids(q.hoje), ["f1"]);
+    eq("prazo futuro vai pros próximos dias", ids(q.proximos), ["f2"]);
+    eq("vencido ontem é atrasado", isLateItem(q.hoje[0]), true);
+    eq("fila do time inteiro vê os dois donos", ids(buildQueue([], [], cfg, "", [], fus).hoje).sort(), ["f1", "f3"]);
+    const html = renderToString(wrap(React.createElement(CsFollowupRow, { item: q.hoje[0], block: "hoje", onOpen() {} })));
+    if (!html.includes("Loja Azul") || !html.includes("Renovação") || !html.includes("mandar a proposta") || !html.includes("is-late")) throw new Error("linha sem cliente, tipo, próximo passo ou marca de atraso");
+    console.log("✓ acompanhamento-cs-na-fila");
+  } catch (err) {
+    console.error(`✗ acompanhamento-cs-na-fila: ${err.message}`);
     failed++;
   }
 
@@ -1302,6 +1352,31 @@ try {
     console.log(`✓ clientes-tabela (${soma}px de ${TABLE_GRID_BUDGET})`);
   } catch (err) {
     console.error(`✗ clientes-tabela: ${err.message}`);
+    failed++;
+  }
+
+  // Carteira: seis colunas com piso; o CSS trava a largura mínima da linha no
+  // mesmo orçamento (abaixo dele a tabela rola dentro do card).
+  try {
+    const { CARTEIRA_GRID, CARTEIRA_GRID_GAP, CARTEIRA_GRID_BUDGET, stageOf } = await server.ssrLoadModule("/src/screens/carteira.jsx");
+    const cols = CARTEIRA_GRID.trim().split(/\s+(?![^(]*\))/);
+    if (cols.length !== 6) throw new Error(`esperava 6 colunas, achei ${cols.length}`);
+    const soma = cols.reduce((a, c) => {
+      const mm = c.match(/^minmax\((\d+)px/);
+      if (!mm) throw new Error(`coluna sem piso em px: ${c}`);
+      return a + Number(mm[1]);
+    }, 0) + CARTEIRA_GRID_GAP * (cols.length - 1);
+    if (soma > CARTEIRA_GRID_BUDGET) throw new Error(`pisos + gaps = ${soma}px, acima do orçamento ${CARTEIRA_GRID_BUDGET}px`);
+    const css = await (await import("node:fs/promises")).readFile(join(root, "src/screens/carteira.css"), "utf8");
+    if (!css.includes(`min-width:${CARTEIRA_GRID_BUDGET}px`)) throw new Error("carteira.css não trava a linha no orçamento da grade");
+    // Estágio: churn manda; sem coluna calculada, a integração aberta vale.
+    const st = (r) => stageOf({ csStage: "", lifecycle: "", ...r });
+    for (const [r, want] of [[{ churned: true, csStage: "saudavel" }, "churn"], [{ lifecycle: "integracao" }, "integracao"], [{ csStage: "renovacao" }, "renovacao"], [{ lifecycle: "risco" }, "em_risco"], [{}, "saudavel"]]) {
+      if (st(r) !== want) throw new Error(`stageOf(${JSON.stringify(r)}) = ${st(r)}, esperava ${want}`);
+    }
+    console.log(`✓ carteira-tabela (${soma}px de ${CARTEIRA_GRID_BUDGET})`);
+  } catch (err) {
+    console.error(`✗ carteira-tabela: ${err.message}`);
     failed++;
   }
 

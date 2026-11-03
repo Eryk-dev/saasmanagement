@@ -90,8 +90,10 @@ export function FollowupDrawer({ id, onClose }) {
       <div className="customer-peek">
         <header className="customer-peek-head">
           <div>
-            <div className="customer-peek-title"><h2>{draft ? kindLabel(draft.kind) : "Acompanhamento"}</h2></div>
+            <div className="customer-peek-title"><h2>{draft ? draft.title || kindLabel(draft.kind) : "Acompanhamento"}</h2></div>
             <p>{customer ? <button type="button" className="customer-peek-link" onClick={() => { onClose(); openCustomer(customer.id); }}>{customer.name} →</button> : ""}</p>
+            {/* Marco da régua (03/11/2026): concluir aqui marca o marco na ficha do cliente. */}
+            {draft?.milestone && <p style={{ marginTop: 2 }} title="Concluir este acompanhamento marca o marco na régua do cliente">marco da régua de pós-venda</p>}
           </div>
           <button aria-label="Fechar acompanhamento" onClick={close} disabled={busy}>✕</button>
         </header>

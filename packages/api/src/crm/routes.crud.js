@@ -80,7 +80,9 @@ const PRIVATE = new Set(["users", "icp_versions", "integration_secrets", "produc
   "leverads_orgs",
   // Eventos dos produtos e timeline imutável: escritos só pelo servidor
   // (events/), lidos pelas rotas próprias.
-  "crm_events", "timeline_events", "workspaces", "onboardings", "cs_followups", "saved_views", "meetings", "bundles", "deal_orders", "teams"]);
+  "crm_events", "timeline_events", "workspaces", "onboardings", "cs_followups", "saved_views", "meetings", "bundles", "deal_orders", "teams",
+  // Guias: rascunho só para quem edita e escrita só com a etiqueta (guides/).
+  "guides", "guide_assets"]);
 
 const isExposed = (c) => COLLECTION_NAMES.includes(c) && !PRIVATE.has(c);
 

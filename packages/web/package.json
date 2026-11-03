@@ -19,6 +19,8 @@
     "test:review:offers": "node scripts/review/offers.mjs",
     "test:review:contracts": "node scripts/review/contracts.mjs",
     "test:review:tickets": "node scripts/review/tickets.mjs",
+    "test:review:carteira": "node scripts/review/carteira.mjs",
+    "test:review:guides": "node scripts/review/guides.mjs",
     "test:review:whatsapp": "node scripts/review/whatsapp.mjs",
     "test:review:agenda": "node scripts/review/agenda.mjs",
     "test:review:agenda-drag": "node scripts/review/agenda-drag.mjs",

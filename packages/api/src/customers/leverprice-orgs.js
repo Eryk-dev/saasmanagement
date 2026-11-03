@@ -19,6 +19,7 @@
 
 import crypto from "node:crypto";
 import { isChurnedCustomer } from "../billing/churn.js";
+import { releaseLeverpriceFor } from "../billing/leverprice-access.js";
 import { customerEmails } from "./leverads-orgs.js";
 import { signupProductsOf } from "../shared/signup-products.js";
 
@@ -68,7 +69,7 @@ export function planLeverpriceLink({ orgId, invite, email, customers, leads = []
 
 // Aviso do cadastro do LeverPrice: grava o vínculo quando não há dúvida. Loga
 // o resultado sem o e-mail.
-export async function handleLeverpriceOrgCreated(repo, { orgId, coreOrgId = null, invite = null, email = "", name = "", now = () => new Date(), log } = {}) {
+export async function handleLeverpriceOrgCreated(repo, { orgId, coreOrgId = null, invite = null, email = "", name = "", now = () => new Date(), log, release = null } = {}) {
   const id = norm(orgId);
   const customers = await repo.list("customers");
   const leads = await repo.list("leads").catch(() => []);
@@ -84,5 +85,8 @@ export async function handleLeverpriceOrgCreated(repo, { orgId, coreOrgId = null
   if (orgName) link.orgName = orgName;
   await repo.update("customers", plan.customerId, { leverpriceOrgId: id, leverpriceOrgLink: link });
   log?.info?.({ org: id, customer: plan.customerId, via: plan.via }, "leverprice-orgs: conta nova vinculada no cadastro");
-  return { linked: true, customer: plan.customerId, via: plan.via };
+  // Venda já paga: libera o LeverPrice na hora (billing/leverprice-access.js).
+  // Nunca quebra o vínculo; sem chave ou em dry-run só relata.
+  const access = await releaseLeverpriceFor(repo, plan.customerId, { ...(release || {}), log });
+  return { linked: true, customer: plan.customerId, via: plan.via, released: (access?.released || []).length > 0 };
 }

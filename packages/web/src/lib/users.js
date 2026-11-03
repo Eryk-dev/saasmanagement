@@ -210,7 +210,17 @@ const UNIVERSAL_SCREENS = new Set(["offers"]);
 
 export const isUniversalScreen = (id) => UNIVERSAL_SCREENS.has(id);
 
-export function canSeeScreen(id) {
+// Telas que são outra leitura da mesma base e seguem a permissão dela: a
+// Carteira lê /api/customers, então quem tem Clientes vê a Carteira.
+const SCREEN_ALIAS = { carteira: "customers" };
+// Guias: quem abre o card da Integração (Clientes, Pipeline, Atividades,
+// Análise de Integração) também lê os guias; é a mesma regra da API
+// (auth/screens.js, /api/guides).
+const SCREEN_ANY = { guides: ["customers", "pipeline", "today", "integrations"] };
+
+export function canSeeScreen(screen) {
+  if (SCREEN_ANY[screen]?.some((s) => canSeeScreen(s))) return true;
+  const id = SCREEN_ALIAS[screen] || screen;
   if (UNIVERSAL_SCREENS.has(id)) return true;
   const a = allowedScreens();
   if (!a) return true;

@@ -1,0 +1,52 @@
+/* Leitor de guia (03/11/2026): modal largo de duas colunas, como o detalhe do
+   ticket. Passos em lista à esquerda; abaixo de 820px viram uma linha rolável. */
+.guide-viewer-head { display:flex; align-items:flex-start; gap:10px; padding:18px 20px 14px; border-bottom:1px solid var(--line-1); flex-shrink:0; }
+.guide-viewer-head > div { flex:1; }
+.guide-viewer-head h2 { margin:0; font-family:var(--display); font-size:19px; font-weight:700; letter-spacing:-.01em; }
+.guide-viewer-head p { margin:3px 0 0; font-size:12.5px; color:var(--fg-3); }
+.guide-close { width:32px; height:32px; border-radius:999px; color:var(--fg-3); flex-shrink:0; }
+.guide-close:hover { background:var(--bg-2); }
+.guide-btn { height:30px; padding:0 14px; border-radius:999px; border:1px solid var(--line-1); background:var(--bg-1); color:var(--fg-2); font-size:12.5px; font-weight:600; cursor:pointer; flex-shrink:0; }
+.guide-btn:disabled { opacity:.45; cursor:default; }
+.guide-btn-primary { background:var(--btn-bg); color:var(--btn-fg); border-color:var(--btn-bg); }
+.guide-link-btn { align-self:flex-start; color:var(--fg-3); font-size:11.5px; font-weight:600; }
+.guide-link-btn:hover { color:var(--fg-1); }
+.guide-viewer-wait { padding:24px; font-size:13px; color:var(--fg-3); }
+.guide-viewer-wait button { margin-left:10px; color:var(--accent); font-weight:600; }
+.guide-viewer-body { flex:1; min-height:0; display:grid; grid-template-columns:270px minmax(0,1fr); }
+.guide-viewer-nav { overflow-y:auto; padding:14px 12px; background:var(--bg-inset); border-right:1px solid var(--line-1); }
+.guide-viewer-summary { margin:0 6px 12px; font-size:12px; line-height:1.45; color:var(--fg-3); }
+.guide-viewer-nav ol { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:2px; }
+.guide-viewer-nav button { width:100%; display:flex; gap:9px; align-items:baseline; text-align:left; padding:8px 10px; border-radius:12px; font-size:12.5px; color:var(--fg-2); line-height:1.35; }
+.guide-viewer-nav button span { color:var(--fg-4); font-size:11.5px; min-width:14px; }
+.guide-viewer-nav button:hover { background:var(--bg-2); }
+.guide-viewer-nav button[aria-current] { background:var(--accent-soft); color:var(--accent); font-weight:650; }
+.guide-viewer-nav button[aria-current] span { color:var(--accent); }
+.guide-viewer-main { min-width:0; overflow-y:auto; display:flex; flex-direction:column; }
+.guide-next-guide { max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.guide-viewer-foot { position:sticky; bottom:0; margin-top:auto; display:flex; justify-content:space-between; gap:10px; padding:12px 24px 16px; border-top:1px solid var(--line-1); background:var(--bg-1); }
+
+.guide-step { padding:20px 24px; }
+.guide-step-kicker { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-4); }
+.guide-step h3 { margin:4px 0 10px; font-family:var(--display); font-size:17px; font-weight:700; letter-spacing:-.01em; }
+.guide-step-body { font-size:13.5px; line-height:1.55; color:var(--fg-1); }
+.guide-step-body blockquote { margin:10px 0; padding:8px 12px; border-left:3px solid var(--accent-line); background:var(--bg-inset); border-radius:0 10px 10px 0; color:var(--fg-2); }
+.guide-figures { display:flex; flex-direction:column; gap:14px; margin-top:14px; }
+.guide-figure { margin:0; }
+.guide-figure-img { display:block; width:100%; padding:0; border:1px solid var(--line-1); border-radius:14px; overflow:hidden; background:var(--bg-inset); cursor:zoom-in; }
+.guide-figure-img img { display:block; width:100%; height:auto; }
+.guide-figure-wait { padding:30px; border-radius:14px; background:var(--bg-inset); font-size:12.5px; color:var(--fg-3); text-align:center; }
+.guide-figure figcaption { margin-top:6px; font-size:12px; color:var(--fg-3); }
+.guide-tip { display:flex; gap:10px; margin:16px 0 0; padding:10px 12px; border-radius:12px; background:var(--warn-soft); color:var(--fg-1); font-size:12.5px; line-height:1.45; }
+.guide-tip b { color:var(--warn); font-size:10px; letter-spacing:.08em; text-transform:uppercase; padding-top:2px; flex-shrink:0; }
+
+@media (max-width:820px) {
+  .guide-viewer-body { grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr); }
+  .guide-viewer-nav { border-right:0; border-bottom:1px solid var(--line-1); padding:8px; }
+  .guide-viewer-summary { display:none; }
+  .guide-viewer-nav ol { flex-direction:row; overflow-x:auto; }
+  .guide-viewer-nav li { flex-shrink:0; max-width:220px; }
+  .guide-viewer-nav button { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .guide-step { padding:16px; }
+  .guide-viewer-foot { padding:10px 16px 14px; }
+}

@@ -2,19 +2,28 @@
 // navegador (packages/web/src/lib/milestones.js): a ficha desenhava a linha do
 // tempo e o "concluir" gravava `customer.milestonesDone`. Ninguém era avisado, o
 // marco vencia em silêncio e o pós-venda dependia de alguém abrir a ficha certa
-// no dia certo. Aqui cada marco que chega a hora vira TAREFA do dono da conta,
-// que é a fila de trabalho do farmer.
+// no dia certo. Aqui cada marco que chega a hora vira trabalho do dono da conta.
+//
+// Desde 03/11/2026 (desenho de CS do Lever CRM) o marco vira ACOMPANHAMENTO de CS
+// (cs-followups.js), não mais tarefa do quadro: é o que aparece na fila de
+// Atividades, na Carteira e no card do cliente, com prazo, sentimento e
+// próximos passos. Revisão de mês 3 nasce como QBR, renovação como renovação
+// (e a renovação que o alerta de 30 dias já abriu é adotada, não duplicada);
+// os demais, como check-in com o nome do marco.
 //
 // As duas pontas ficam em sincronia nos dois sentidos:
-//   tarefa concluída  → grava customer.milestonesDone[key]  (hook de tasks-core)
-//   marco concluído na ficha → conclui a tarefa aberta      (PATCH em crm/routes.crud.js)
+//   acompanhamento feito → grava customer.milestonesDone[key] (cs-followups.js)
+//   marco concluído na ficha → conclui o acompanhamento aberto (PATCH em crm/routes.crud.js)
+// As tarefas de marco criadas antes de 03/11 seguem valendo com o mesmo
+// espelho (hooks de tasks-core) e impedem que o marco ganhe acompanhamento.
 //
 // O template é uma CÓPIA deliberada do módulo do web (mesmo par de espelhos do
 // comp-plan.js): o SPA não importa do servidor e vice-versa. O teste
 // customer-milestones.test.js importa os dois e compara, então divergência
 // quebra o CI em vez de aparecer como marco fantasma na tela.
 
-import { createTask, completeTask, registerTaskHook } from "../tasks/tasks-core.js";
+import { completeTask, registerTaskHook } from "../tasks/tasks-core.js";
+import { createFollowup, updateFollowup, FOLLOWUPS } from "./cs-followups.js";
 import { isChurnedCustomer } from "../billing/churn.js";
 import { influencedByOrg } from "./leverads-results.js";
 
@@ -101,6 +110,12 @@ const TITULO = {
   depoimento: (nome) => `Pedir depoimento a ${nome}`,
 };
 
+// Tipo do acompanhamento por marco: a revisão de resultado é a QBR; a renovação
+// é renovação (põe o cliente na coluna "renovação" da carteira); o resto é
+// check-in, com o nome do marco no título.
+const FOLLOWUP_KIND = { revisao_m3: "qbr", renovacao: "renovacao" };
+export const followupKindFor = (key) => FOLLOWUP_KIND[key] || "check_in";
+
 export function taskCopyFor(milestone, customer, { now = Date.now() } = {}) {
   const nome = customer.name || customer.company || "cliente";
   const title = milestone.key === "renovacao"
@@ -120,7 +135,7 @@ export function taskCopyFor(milestone, customer, { now = Date.now() } = {}) {
     `Marco da régua de pós-venda: ${milestone.label}${milestone.hint ? ` (${milestone.hint})` : ""}.`,
     `Cliente desde ${fmtDia(customer.startedAt)} · ${tenureLabel(customer, now)}.`,
     "",
-    "Ao concluir esta tarefa o marco fica marcado na ficha do cliente.",
+    "Ao concluir este acompanhamento o marco fica marcado na ficha do cliente.",
   ].join("\n");
   return { title, description };
 }
@@ -208,20 +223,23 @@ export function startCustomerMilestones(repo, {
         // resultado no painel: o texto do pedido cita o número, e sem número o
         // pedido não existe.
         if (m.gate === "proof" && !(await hasProof(c))) continue;
-        const existing = await repo.listWhere("tasks", { customerId: c.id, milestoneKey: m.key }, { fields: [] }).catch(() => []);
-        if (existing.length) continue;
-        const { title, description } = taskCopyFor(m, customer, { now: ms });
-        const task = await createTask(repo, {
-          saas: c.saas || "",
-          title,
-          description,
-          labels: ["pos-venda", "marco"],
-          dueDate: dia(m.dueAt),
-          customerId: c.id,
-          milestoneKey: m.key,
-          ...(c.owner ? { assignees: [c.owner] } : {}),
-        }, { by: "system" });
-        await repo.update("customers", c.id, { milestoneTasks: { ...(c.milestoneTasks || {}), [m.key]: task.id } });
+        // Tarefa de marco de antes de 03/11 continua sendo o trabalho do marco.
+        const legacy = await repo.listWhere("tasks", { customerId: c.id, milestoneKey: m.key }, { fields: [] }).catch(() => []);
+        if (legacy.length) continue;
+        const mine = await repo.listWhere(FOLLOWUPS, { customer: c.id }).catch(() => []);
+        if (mine.some((f) => f.milestone === m.key)) continue;
+        const kind = followupKindFor(m.key);
+        // Renovação aberta pelo alerta (30 dias) ou à mão: o marco adota.
+        const adopt = kind === "renovacao" && mine.find((f) => f.kind === "renovacao" && f.status === "aberto" && !f.milestone);
+        if (adopt) {
+          await repo.update(FOLLOWUPS, adopt.id, { milestone: m.key, title: adopt.title || m.label });
+          continue;
+        }
+        const { description } = taskCopyFor(m, customer, { now: ms });
+        await createFollowup(repo, {
+          customer: c.id, kind, title: m.label, milestone: m.key,
+          dueAt: m.dueAt, owner: c.owner || "", notes: description, source: "marco",
+        }, { by: "system", now: at });
         created++;
       }
     }
@@ -242,10 +260,17 @@ export function startCustomerMilestones(repo, {
   return { tick, run, stop: () => { clearInterval(timer); clearTimeout(first); offDone(); offReopen(); } };
 }
 
-// Marco concluído pela FICHA → conclui a tarefa aberta daquele marco. Chamado
-// pelo PATCH de customers; best-effort, nunca quebra o PATCH.
+// Marco concluído pela FICHA → conclui o acompanhamento (ou a tarefa antiga)
+// aberto daquele marco. Chamado pelo PATCH de customers; best-effort, nunca
+// quebra o PATCH.
 export async function completeMilestoneTasks(repo, customer, keys, { by = "api" } = {}) {
   let n = 0;
+  const followups = await repo.listWhere(FOLLOWUPS, { customer: customer.id }).catch(() => []);
+  for (const f of followups) {
+    if (f.status !== "aberto" || !keys.includes(f.milestone)) continue;
+    await updateFollowup(repo, f.id, { status: "feito" }, { by });
+    n++;
+  }
   for (const key of keys) {
     const found = await repo.listWhere("tasks", { customerId: customer.id, milestoneKey: key }).catch(() => []);
     for (const t of found) {

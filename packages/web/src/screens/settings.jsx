@@ -545,6 +545,7 @@ const ROLE_OPTS = [
   ["admin", "Admin", "dono da operação: não é vaga do funil e, por padrão, não é cobrado no treinamento (a coluna Treino decide)"],
   ["support", "Suporte", "atendente de tickets: os produtos que atende ficam em Suporte → Configurações de SLA"],
   ["icp", "Editor de ICP", "altera a régua de nota e o ICP do produto (Configurações → ICP & nota); muda métricas, agenda do sênior e cadência"],
+  ["guias", "Editor de guias", "cria e publica os guias com prints (CS e suporte → Guias) e edita os modelos de checklist da integração"],
 ];
 
 // Senha inicial do usuário novo: 10 caracteres com letra maiúscula, minúscula,

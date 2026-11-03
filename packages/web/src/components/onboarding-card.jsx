@@ -23,6 +23,8 @@ import { meetingInviteText } from "../lib/wa-copy.js";
 import { waLink } from "../lib/ui.js";
 import { openCustomer, openLeadById } from "../lib/open-record.js";
 import { toast } from "../atoms.jsx";
+import { GuideViewer } from "./guide-viewer.jsx";
+import { OnboardingRun } from "./onboarding-run.jsx";
 // O desenho de gaveta do card do cliente: estes blocos também abrem fora da
 // tela de Clientes (card do Negócio, card da Integração).
 import "../screens/customers.css";
@@ -95,6 +97,16 @@ export function OnboardingDrawer({ id, onClose }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [newItem, setNewItem] = useState({ title: "", side: "lever" });
+  // Guia do item do checklist (03/11/2026): "como fazer →" abre o passo certo.
+  const [guideOpen, setGuideOpen] = useState(null);
+  // Modo integração (03/11/2026): a call conduzida pelo checklist + guias + dados do cliente.
+  const [running, setRunning] = useState(false);
+  async function afterRun(changed) {
+    setRunning(false);
+    if (!changed) return;
+    const fresh = await api.onboarding(id).catch(() => null);
+    if (fresh) { setO(fresh); setDraft(fresh); }
+  }
   const [showInvite, setShowInvite] = useState(false);
 
   useEffect(() => {
@@ -162,7 +174,7 @@ export function OnboardingDrawer({ id, onClose }) {
   const leadAtMs = draft?.kind === "implantacao" && lead?.integrationAt ? brtMs(lead.integrationAt) : NaN;
   const leadInteg = Number.isFinite(leadAtMs) ? { lead, at: leadAtMs, upcoming: leadAtMs > Date.now() } : null;
 
-  return createPortal(
+  return createPortal(<>
     <Drawer onClose={close} fechavel={!busy} label="Integração" largura={460} style={{ background: "transparent", padding: 0 }}
       painelStyle={{ position: "fixed", right: 26, top: 90, bottom: 26, height: "auto", maxWidth: "calc(100vw - 28px)", overflow: "hidden" }}>
       <div className="customer-peek">
@@ -207,6 +219,12 @@ export function OnboardingDrawer({ id, onClose }) {
           <RecordMeetings host="onboardings" record={draft} onChanged={reloadMeetings} collapsed={!!leadInteg?.upcoming} />
           <section>
             <div className="customer-peek-kicker"><span>checklist</span><b>{items.length - pending} de {items.length}</b></div>
+            {draft.stage !== "concluida" && draft.stage !== "cancelada" && items.length > 0 && (
+              <button type="button" className="onboarding-run-open" disabled={!!dirty || busy} onClick={() => setRunning(true)}
+                title={dirty ? "Salve as mudanças do card antes de abrir o modo integração" : "Roteiro passo a passo da call, com os guias e os dados do cliente"}>
+                <span>▶ Modo integração</span><small>{dirty ? "salve o card antes" : "o roteiro da call com os guias e o que saber do cliente"}</small>
+              </button>
+            )}
             {/* Sem a classe customer-peek-checks: ela é da régua de marcos e estica os spans do Checkbox. */}
             <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 10 }}>
               {items.map((it, i) => <div key={it.id || `novo-${i}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 4px" }}>
@@ -214,6 +232,10 @@ export function OnboardingDrawer({ id, onClose }) {
                   <Checkbox checked={!!it.doneAt} onChange={(v) => set({ items: items.map((x, j) => (j === i ? { ...x, doneAt: v ? new Date().toISOString() : "" } : x)) })}>
                     <span style={{ fontSize: 12.5, color: it.doneAt ? "var(--fg-4)" : "var(--fg-2)", textDecoration: it.doneAt ? "line-through" : "none" }}>{it.title}</span>
                   </Checkbox>
+                  {(it.help || it.guide?.id) && <span style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap", margin: "2px 0 0 24px", fontSize: 11.5, color: "var(--fg-3)" }}>
+                    {it.help && <span>{it.help}</span>}
+                    {it.guide?.id && <button type="button" className="customer-peek-link" style={{ fontSize: 11.5 }} onClick={() => setGuideOpen(it.guide)}>como fazer →</button>}
+                  </span>}
                 </span>
                 <span className="mono dim" style={{ fontSize: 11 }}>{it.side === "cliente" ? "cliente" : "Lever"}</span>
                 <button type="button" aria-label={`Tirar ${it.title}`} title="Tirar do checklist" onClick={() => set({ items: items.filter((_, j) => j !== i) })} style={{ color: "var(--fg-4)" }}>✕</button>
@@ -241,7 +263,10 @@ export function OnboardingDrawer({ id, onClose }) {
           {draft && <button type="button" disabled={busy} onClick={close}>Fechar</button>}
         </footer>
       </div>
-    </Drawer>, document.body);
+    </Drawer>
+    {guideOpen && <GuideViewer guideId={guideOpen.id} stepId={guideOpen.step} onClose={() => setGuideOpen(null)} />}
+    {running && <OnboardingRun id={id} onClose={afterRun} />}
+  </>, document.body);
 }
 
 

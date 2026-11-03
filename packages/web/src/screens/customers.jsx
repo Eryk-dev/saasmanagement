@@ -40,7 +40,6 @@ import { FreeAccountsTab, CustomerOrgLink } from "../components/leverads-account
 
 import { CustomerContacts, CustomerDeals, CustomerNow, CustomerStateChips } from "../components/customer-crm.jsx";
 import { RecordTimeline } from "../components/record-timeline.jsx";
-import { CsPortfolioTab } from "../components/cs-portfolio.jsx";
 import { OPEN_CUSTOMER_KEY, onOpenRecord } from "../lib/open-record.js";
 
 // Cinco colunas da referência, com rolagem interna quando os pisos não cabem.
@@ -80,6 +79,53 @@ const fmtDay = (d) => (d ? d.toLocaleDateString("pt-BR", { day: "2-digit", month
 // atrás do "ver mais".
 const ACOES_FECHADAS = 6;
 
+// ── Contas de dinheiro do cliente (03/11/2026) ─────────────────────────────
+// As MESMAS da tabela e do card: saíram de dentro da tela para o card também
+// abrir em outras telas (CustomerCard, mais abaixo). `lead` é o lead da venda.
+// As regras e o porquê de cada uma estão nos comentários do CustomersScreen.
+const pagamentoDoCliente = (c, lead) => c.paymentMethod || lead?.paymentMethod || "";
+const recebeParceladoDe = (c, lead) => !paymentUpfront(pagamentoDoCliente(c, lead));
+const fechadoDoCliente = (c, lead) => accruedAmountOf(lead, { endAt: c.endedAt }) || Number(c.arr) || 0;
+const SEM_UPSELL = { paid: 0, total: 0, n: 0 };
+function upsellPorCliente(invoices) {
+  const by = new Map();
+  for (const i of invoices) {
+    if (i.kind !== "upsell") continue;
+    const cur = by.get(i.customer) || { paid: 0, total: 0, n: 0 };
+    const amt = Number(i.amount) || 0;
+    cur.total = Math.round((cur.total + amt) * 100) / 100;
+    if (i.status === "paid") cur.paid = Math.round((cur.paid + amt) * 100) / 100;
+    cur.n += 1;
+    by.set(i.customer, cur);
+  }
+  return by;
+}
+const trazidoDoCliente = (c, lead, received, upsell = SEM_UPSELL) =>
+  (recebeParceladoDe(c, lead) ? Number(received[c.id]) || 0 : fechadoDoCliente(c, lead) + upsell.paid);
+function statusPagamentoDe(c, lead, received, upsell = SEM_UPSELL) {
+  const money = window.fmt.money;
+  const cash = Number(received[c.id]) || 0;
+  const total = fechadoDoCliente(c, lead) + upsell.total; // contrato + upsells registrados
+  const pm = pagamentoDoCliente(c, lead);
+  const auto = total > 0 && cash >= total * 0.98 ? "paid" : cash > 0 ? "partial" : paymentUpfront(pm) ? "unpaid" : "partial";
+  const manual = PAY_STATUS[c.paymentStatus] ? c.paymentStatus : "";
+  const key = manual || auto;
+  return {
+    ...PAY_STATUS[key], key, auto, manual: !!manual,
+    hint: manual
+      ? "marcado na mão — clique pra mudar"
+      : cash > 0
+        ? `${money(cash)} recebido de ${money(total)} (MP + baixas de fatura) — clique pra marcar na mão`
+        : "nenhum pagamento registrado — clique pra marcar",
+  };
+}
+function ultimoContatoDe(c, lead) {
+  const at = lead?.lastActivityAt || c.lastContactAt;
+  if (!at) return "—";
+  const days = Math.max(0, Math.floor((Date.now() - new Date(at).getTime()) / 86400000));
+  return days === 0 ? "hoje" : days === 1 ? "há 1 dia" : `há ${days} dias`;
+}
+
 // Botão das linhas de "Próximas ações" (concluir marco, cobrar, dar baixa).
 const ACAO_BTN = { height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", flexShrink: 0, display: "inline-flex", alignItems: "center", textDecoration: "none", whiteSpace: "nowrap" };
 
@@ -88,7 +134,7 @@ function CustomersScreen({ initialTab }) {
   const { version, openForm, refresh } = useData();
   const [product] = useActiveSaas();
   // Aba persiste entre navegações (rota #subscriptions força billing via prop).
-  const [tab, setTabState] = useState(() => { if (initialTab) return initialTab; try { return localStorage.getItem("cockpit_customers_tab") || "base"; } catch { return "base"; } }); // base | indicacoes | billing
+  const [tab, setTabState] = useState(() => { if (initialTab) return initialTab; try { const t = localStorage.getItem("cockpit_customers_tab") || "base"; return t === "carteira" ? "base" : t; } catch { return "base"; } }); // base | indicacoes | billing (a Carteira virou tela própria em 03/11/2026)
   const setTab = (t) => { setTabState(t); try { localStorage.setItem("cockpit_customers_tab", t); } catch { /* ignore */ } };
   const [subs, setSubs] = useState([]);
   const [plans, setPlans] = useState([]);
@@ -264,14 +310,14 @@ function CustomersScreen({ initialTab }) {
   // fechamento soma outra mensalidade no total — churn (endedAt) para o
   // relógio. É a mesma régua do status de pagamento, então a 2ª mensalidade
   // não paga aparece como Parcial sozinha.
-  const fechadoOf = (c) => accruedAmountOf(leadById.get(c.leadId), { endAt: c.endedAt }) || Number(c.arr) || 0;
+  const fechadoOf = (c) => fechadoDoCliente(c, leadById.get(c.leadId));
 
   // Meio de pagamento do cliente (cadastro manda, o lead é o fallback) e a
   // régua do DINHEIRO: quem recebe ao longo do contrato (boleto faturado, PIX
   // parcelado, assinatura recorrente) contra quem recebeu tudo no fechamento
   // (à vista, cartão 12x, que a adquirente antecipa).
-  const pagamentoDe = (c) => c.paymentMethod || leadById.get(c.leadId)?.paymentMethod || "";
-  const recebeParcelado = (c) => !paymentUpfront(pagamentoDe(c));
+  const pagamentoDe = (c) => pagamentoDoCliente(c, leadById.get(c.leadId));
+  const recebeParcelado = (c) => recebeParceladoDe(c, leadById.get(c.leadId));
 
   // PRÓXIMA COBRANÇA do cliente (o subtítulo da coluna Pagamento, Leo 12/09):
   // quem recebe ao longo do contrato (boleto faturado, PIX parcelado,
@@ -334,21 +380,9 @@ function CustomersScreen({ initialTab }) {
   // cliente trouxe. Faturado/recorrente já vem no `received` (a fatura de
   // upsell baixada é recebimento real); à vista soma o upsell PAGO por cima do
   // contrato. O Status pgto. compara com contrato + upsell contratado.
-  const upsellByCustomer = React.useMemo(() => {
-    const by = new Map();
-    for (const i of invoices) {
-      if (i.kind !== "upsell") continue;
-      const cur = by.get(i.customer) || { paid: 0, total: 0, n: 0 };
-      const amt = Number(i.amount) || 0;
-      cur.total = Math.round((cur.total + amt) * 100) / 100;
-      if (i.status === "paid") cur.paid = Math.round((cur.paid + amt) * 100) / 100;
-      cur.n += 1;
-      by.set(i.customer, cur);
-    }
-    return by;
-  }, [invoices]);
-  const upsellOf = (c) => upsellByCustomer.get(c.id) || { paid: 0, total: 0, n: 0 };
-  const trazidoOf = (c) => (recebeParcelado(c) ? Number(received[c.id]) || 0 : fechadoOf(c) + upsellOf(c).paid);
+  const upsellByCustomer = React.useMemo(() => upsellPorCliente(invoices), [invoices]);
+  const upsellOf = (c) => upsellByCustomer.get(c.id) || SEM_UPSELL;
+  const trazidoOf = (c) => trazidoDoCliente(c, leadById.get(c.leadId), received, upsellOf(c));
 
   // Estado do pagamento (coluna Status pgto.): a marcação MANUAL no cliente
   // manda (paymentStatus — muita venda entra por PIX/cartão fora do rastreio do
@@ -358,22 +392,7 @@ function CustomersScreen({ initialTab }) {
   // de pagamento dá o padrão: faturado/recorrente/parcelado é Parcial por
   // natureza; à vista/cartão 12x fica Não pago até alguém confirmar — fechar no
   // cartão NÃO é receber (caso Marianna, 13/08).
-  const payStatus = (c) => {
-    const cash = Number(received[c.id]) || 0;
-    const total = fechadoOf(c) + upsellOf(c).total; // contrato + upsells registrados
-    const pm = c.paymentMethod || leadById.get(c.leadId)?.paymentMethod;
-    const auto = total > 0 && cash >= total * 0.98 ? "paid" : cash > 0 ? "partial" : paymentUpfront(pm) ? "unpaid" : "partial";
-    const manual = PAY_STATUS[c.paymentStatus] ? c.paymentStatus : "";
-    const key = manual || auto;
-    return {
-      ...PAY_STATUS[key], key, auto, manual: !!manual,
-      hint: manual
-        ? "marcado na mão — clique pra mudar"
-        : cash > 0
-          ? `${money(cash)} recebido de ${money(total)} (MP + baixas de fatura) — clique pra marcar na mão`
-          : "nenhum pagamento registrado — clique pra marcar",
-    };
-  };
+  const payStatus = (c) => statusPagamentoDe(c, leadById.get(c.leadId), received, upsellOf(c));
 
   // Nível (categoria A/B/C/…) do cliente = grade do lead que virou cliente
   // (mesma régua da Publicidade/Forms). Sem lead qualificado → "sem nível".
@@ -482,13 +501,7 @@ function CustomersScreen({ initialTab }) {
         ? searchedCustomers.filter((c) => !isChurned(c) && !c.owner)
         : searchedCustomers;
   const shownCustomers = showAll ? filteredCustomers : filteredCustomers.slice(0, 50);
-  const lastContact = (c) => {
-    const lead = (LEADS || []).find((l) => l.id === c.leadId);
-    const at = lead?.lastActivityAt || c.lastContactAt;
-    if (!at) return "—";
-    const days = Math.max(0, Math.floor((Date.now() - new Date(at).getTime()) / 86400000));
-    return days === 0 ? "hoje" : days === 1 ? "há 1 dia" : `há ${days} dias`;
-  };
+  const lastContact = (c) => ultimoContatoDe(c, (LEADS || []).find((l) => l.id === c.leadId));
 
   // O marco de renovação depende do ciclo do contrato: injeta o ciclo da
   // assinatura ativa no cliente antes de calcular a régua.
@@ -606,7 +619,7 @@ function CustomersScreen({ initialTab }) {
       <header className="customers-header">
         <h1 className="page-title">Clientes</h1>
         <div className="customers-header-actions">
-          <div className="customers-tabs" aria-label="Visualização">{[["base","Clientes"],["carteira","Carteira CS"],...(isLeverads?[["gratuitas","Gratuitas"]]:[]),["indicacoes","Indicações"],["cases","Cases"],["billing","Cobranças"]].map(([id,label])=><button key={id} aria-pressed={tab===id} onClick={()=>setTab(id)}>{label}</button>)}</div>
+          <div className="customers-tabs" aria-label="Visualização">{[["base","Clientes"],...(isLeverads?[["gratuitas","Gratuitas"]]:[]),["indicacoes","Indicações"],["cases","Cases"],["billing","Cobranças"]].map(([id,label])=><button key={id} aria-pressed={tab===id} onClick={()=>setTab(id)}>{label}</button>)}</div>
           <button className="customers-create" onClick={()=>openForm("customers",{saas:product.id})}>Cadastrar cliente</button>
         </div>
       </header>
@@ -614,7 +627,6 @@ function CustomersScreen({ initialTab }) {
       {tab === "billing" && <SubscriptionsScreen key={product.id} compact saasId={product.id} />}
 
       {tab === "cases" && <CasesTab key={product.id} product={product} customers={customers} />}
-      {tab === "carteira" && <CsPortfolioTab customers={customers} onOpen={(id) => { setTab("base"); setSel(id); }} />}
 
       {tab === "gratuitas" && isLeverads && (
         <FreeAccountsTab key={product.id} customers={customers} leads={LEADS} onOpenCustomer={(id) => { setTab("base"); setSel(id); }} />
@@ -877,6 +889,84 @@ function CustomersScreen({ initialTab }) {
       )}
     </div>
   );
+}
+
+// O card do cliente fora da tela Clientes (03/11/2026, Carteira): o MESMO
+// CustomerPeek, por cima da tela onde se está. Carrega o que a tela Clientes
+// carregaria (assinaturas, planos, faturas e o recebido do produto) e faz as
+// mesmas contas de dinheiro; editar, cobrar, marcos e indicação usam os
+// mesmos caminhos. Enquanto carrega, o card não abre (sem número pela metade).
+export function CustomerCard({ customerId, onClose }) {
+  const { version, openForm, refresh } = useData();
+  const [, setTick] = useState(0);
+  const customer = (window.SEED?.CUSTOMERS || []).find((c) => c.id === customerId) || null;
+  const saas = customer?.saas || "";
+  const product = (window.SEED?.SAAS || []).find((p) => p.id === saas) || null;
+  const lead = customer?.leadId ? (window.SEED?.LEADS || []).find((l) => l.id === customer.leadId) || null : null;
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [attempt, setAttempt] = useState(0);
+  const [leverOrg, setLeverOrg] = useState(null);
+  const [leverId, setLeverId] = useState(null);
+  useEffect(() => {
+    if (!saas) return undefined;
+    let alive = true;
+    setError(null);
+    const q = { saas };
+    Promise.all([api.list("subscriptions", q), api.list("plans", q), api.list("invoices", q), api.billingReceived(saas)])
+      .then(([ss, pp, ii, rr]) => alive && setData({
+        subs: (ss || []).filter((r) => r.saas === saas && r.customer === customerId),
+        plans: (pp || []).filter((r) => r.saas === saas),
+        invoices: (ii || []).filter((r) => r.saas === saas && r.customer === customerId),
+        received: rr || {},
+      }))
+      .catch((e) => alive && setError(e));
+    return () => { alive = false; };
+  }, [saas, customerId, version, attempt]);
+  useEffect(() => {
+    if (!customer) return undefined;
+    let alive = true;
+    if (saas === "leverads" && customer.leveradsOrgId) {
+      fetchLeveradsOrgs().then((rows) => alive && setLeverOrg(rows.find((o) => String(o.id) === String(customer.leveradsOrgId)) || null)).catch(() => {});
+    }
+    const orgId = customerOrgId(customer);
+    if (orgId) fetchLeverIdOrgs([orgId], api.leveridOrgs).then((r) => alive && setLeverId(r.orgs?.[orgId] || null)).catch(() => {});
+    return () => { alive = false; };
+  }, [customerId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!customer || !product) return null;
+  if (error) {
+    return createPortal(<Modal onClose={onClose} label="Cliente" largura={420}>
+      <div role="alert" style={{ padding: 20, fontSize: 13 }}>
+        Não foi possível carregar as cobranças de {customer.name}.{" "}
+        <button style={{ color: "var(--accent)", fontWeight: 600 }} onClick={() => setAttempt((n) => n + 1)}>Tentar novamente</button>
+      </div>
+    </Modal>, document.body);
+  }
+  if (!data) return null;
+  const planLabel = (s) => data.plans.find((p) => p.id === s.plan)?.name || CYCLE_LABEL[s.cycle] || s.cycle || "plano";
+  const main = data.subs.find((s) => s.status === "active" || s.status === "past_due") || data.subs[0] || null;
+  const upsell = upsellPorCliente(data.invoices).get(customer.id) || SEM_UPSELL;
+  const financial = {
+    contracted: fechadoDoCliente(customer, lead) + upsell.total,
+    received: trazidoDoCliente(customer, lead, data.received, upsell),
+    plan: (customer.plan || (main ? planLabel(main) : "")) + ((customer.products || []).length > 1 ? ` +${customer.products.length - 1}` : ""),
+    status: statusPagamentoDe(customer, lead, data.received, upsell),
+  };
+  // Mesmo otimismo da tela Clientes: grava no objeto do SEED e no servidor.
+  const patch = (c, p) => {
+    Object.assign(c, p);
+    setTick((n) => n + 1);
+    const planEdit = ["planCode", "planCycle", "planCustom"].some((k) => k in p);
+    api.update("customers", c.id, p).then((saved) => { if (planEdit && saved) { Object.assign(c, saved); setTick((n) => n + 1); } })
+      .catch((e) => { window.toast?.(e.message || "Não foi possível salvar o cliente.", "neg"); refresh(); });
+  };
+  const complete = (c, key) => patch(c, { milestonesDone: { ...(c.milestonesDone || {}), [key]: new Date().toISOString() } });
+  const newReferral = (c) => openForm("leads", { saas: c.saas, referredByCustomer: c.id, source: "Indicação" });
+  return <CustomerPeek key={customer.id} financial={financial} customer={customer} lead={lead} product={product}
+    subs={data.subs} invoices={data.invoices} plans={data.plans} planLabel={planLabel}
+    lastContact={(c) => ultimoContatoDe(c, lead)} leverOrg={leverOrg} leverId={leverId}
+    onComplete={complete} onPatch={patch} onClose={onClose} onNewReferral={newReferral} />;
 }
 
 // Caixa padrão das seções do popup (mesma linguagem do drawer do pipeline).

@@ -91,8 +91,12 @@ const NAV = [
   { id: "contracts",  label: "Contratos",      icon: "▧",  group: "comercial", notSaas: "elo" }, // biblioteca de modelos de contrato (resgatar → preencher → assinar)
   { id: "intform",    label: "Formulário de Integração", icon: "☑", group: "comercial", notSaas: "elo" }, // questionário que o cliente fechado responde antes da call de integração
 
-  // Suporte (14/09/2026): fila de tickets com SLA por prioridade + as regras do
-  // relógio e quem atende cada produto. Vale pra todo produto (Elo inclusive).
+  // CS e suporte (14/09/2026; Carteira em 03/11/2026): o status de cada cliente
+  // num lugar só, a fila de tickets com SLA por prioridade e as regras do
+  // relógio. A Carteira usa a permissão de Clientes (alias em lib/users.js).
+  { id: "carteira",         label: "Carteira",             icon: "◎", group: "suporte", notSaas: "elo" },
+  // Guias (03/11/2026): passo a passo com prints da integração, CS e suporte.
+  { id: "guides",           label: "Guias",                icon: "▤", group: "suporte" },
   { id: "tickets",          label: "Tickets",              icon: "✉", group: "suporte" },
   { id: "quick_replies",    label: "Respostas rápidas",    icon: "⚡", group: "suporte" },
   { id: "support_settings", label: "Configurações de SLA", icon: "◷", group: "suporte" },
@@ -140,6 +144,8 @@ const ICONS = {
   plans: <NavSvg><rect x="3.5" y="4" width="17" height="5" rx="1.6" /><rect x="3.5" y="11" width="17" height="5" rx="1.6" /><path d="M3.5 19.5h11" /></NavSvg>,
   contracts: <NavSvg><path d="M13.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z" /><path d="M13.5 3v5.5H19" /><path d="M8.6 17.4c.9-1.6 1.8-1.6 2.6 0 .8 1.4 1.6 1.4 2.4 0 .5-.9 1-.9 1.8 0" /></NavSvg>,
   agenda: <NavSvg><rect x="3.4" y="4.6" width="17.2" height="16.4" rx="2" /><path d="M3.4 9.6h17.2" /><path d="M8.2 2.6v4M15.8 2.6v4" /></NavSvg>,
+  carteira: <NavSvg><path d="M3.5 8.2a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v10.3a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" /><path d="M8.6 6.2V5a1.6 1.6 0 0 1 1.6-1.6h3.6A1.6 1.6 0 0 1 15.4 5v1.2" /><path d="M3.5 12.6h17" /><path d="M10.6 12.6v1.6h2.8v-1.6" /></NavSvg>,
+  guides: <NavSvg><path d="M4 4.5h6.5a2 2 0 0 1 2 2V20a2 2 0 0 0-2-2H4z" /><path d="M20 4.5h-6.5a2 2 0 0 0-2 2V20a2 2 0 0 1 2-2H20z" /><path d="M7 9h2.5M7 12.5h2.5M14.5 9H17" /></NavSvg>,
   tickets: <NavSvg><path d="M3.5 7.5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v2.2a2.3 2.3 0 0 0 0 4.6v2.2a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-2.2a2.3 2.3 0 0 0 0-4.6z" /><path d="M9 9.5h6M9 14.5h4" /></NavSvg>,
   quick_replies: <NavSvg><path d="M4.5 5.5h15a1.5 1.5 0 0 1 1.5 1.5v8.5a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 3.5V17H4.5A1.5 1.5 0 0 1 3 15.5V7a1.5 1.5 0 0 1 1.5-1.5z" /><path d="M12.8 8.2l-2.4 3.4h3.2l-2.4 3.4" /></NavSvg>,
   support_settings: <NavSvg><circle cx="12" cy="13" r="7.6" /><path d="M12 9.2V13l2.6 1.6" /><path d="M9.6 2.8h4.8M12 2.8v2.6" /></NavSvg>,
@@ -179,7 +185,7 @@ const GROUP_ICONS = {
 const GROUP_LABELS = {
   main: null,
   comercial: "comercial",
-  suporte: "suporte",
+  suporte: "CS e suporte",
   marketing: "marketing",
   analises: "análises",
   geral: "geral",

@@ -67,6 +67,11 @@ window.SEED = {
   LEADS: LEADS_FAKE, CUSTOMERS: CLIENTES_FAKE, PORTFOLIO: {}, ATTENTION: [], PEOPLE: {},
   NPS: [], LEADERBOARD_MONTH: [], LEADERBOARD_ALL: [], GOALS: [],
   AGENDA_BLOCKS: [], CONSULTATION_SLOTS: [],
+  // Acompanhamentos de CS abertos (fila de Atividades e Carteira, 03/11/2026).
+  CS_FOLLOWUPS: [
+    { id: "fu_prev_1", customer: "c3", customerName: "Braga Ferramentas", saas: "leverads", kind: "risco", owner: "leo", dueAt: new Date(Date.now() - 2 * 86400000).toISOString(), nextSteps: "ligar pro Otávio e combinar a fatura em atraso" },
+    { id: "fu_prev_2", customer: "c7", customerName: "Casa Bela Utilidades", saas: "leverads", kind: "check_in", title: "Check-in de mês 1", milestone: "checkin_m1", owner: "leo", dueAt: new Date().toISOString(), nextSteps: "" },
+  ],
   CONFIG: { ai: { configured: marketingPreview }, meta: { configured: false }, mp: { configured: false }, proposals: { nativeSaas: [] } },
   ME: { id: "leo", name: "Leonardo", roles: ["sdr", "admin"] },
   COUNTERS: { leverads: { tasks: 3, tasksLate: 1, inbox: 2, tickets: 3, ticketsBreached: 1 } },

@@ -16,7 +16,7 @@ import { kindOf } from "../crm/stages.js";
 import { requiresIntegration } from "../billing/plan-catalog.js";
 import { appendTimeline } from "../events/timeline.js";
 import { refreshLifecycle } from "./lifecycle.js";
-import { templateFor, templatesOf } from "./onboarding-templates.js";
+import { cleanGuideLink, templateFor, templatesOf } from "./onboarding-templates.js";
 
 export const ONBOARDINGS = "onboardings";
 export const ONBOARDING_STAGES = ["aguardando_kickoff", "kickoff", "configuracao", "treinamento", "go_live", "concluida", "cancelada"];
@@ -43,7 +43,12 @@ export function cleanItems(list) {
     const title = s(i?.title, 200);
     if (!title) throw fail(400, "Item do checklist sem título.");
     const side = SIDES.has(i?.side) ? i.side : "lever";
-    return { id: s(i?.id, 60) || "it_" + randomUUID().slice(0, 8), title, side, owner: s(i?.owner, 60), dueAt: isoOrEmpty(i?.dueAt), doneAt: isoOrEmpty(i?.doneAt) };
+    const guide = cleanGuideLink(i?.guide);
+    const help = s(i?.help, 300);
+    return {
+      id: s(i?.id, 60) || "it_" + randomUUID().slice(0, 8), title, side, owner: s(i?.owner, 60), dueAt: isoOrEmpty(i?.dueAt), doneAt: isoOrEmpty(i?.doneAt),
+      ...(guide ? { guide } : {}), ...(help ? { help } : {}),
+    };
   });
 }
 

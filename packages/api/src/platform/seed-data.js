@@ -118,6 +118,8 @@ export const COLLECTIONS = {
   training_states: [],   // estado FSRS por usuário×produto (agendamento individual dos cards)
   training_reviews: [],  // log append-only de cada revisão (rating) — dashboard + otimização FSRS
   training_assets: [],   // imagens dos flashcards (base64, servidas em /public/training/:id)
+  guides: [],            // guias internos (passo a passo com prints) do operador de integração, CS e suporte (guides/guides.js); PRIVATE
+  guide_assets: [],      // prints dos guias (base64, servidos com sessão em /api/guides/assets/:id); PRIVATE
   training_exams: [],    // provas de checkpoint (a cada N cards graduados) com nota por pessoa
   training_fun: [],      // log do modo 4fun (estudo livre além da cota) — fora do FSRS e da cobrança
   copilot_sessions: [],  // copiloto da call: transcrição ao vivo + cues por lead (1 doc por lead, áudio nunca persiste)

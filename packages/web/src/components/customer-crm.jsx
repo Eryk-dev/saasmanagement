@@ -140,7 +140,7 @@ export function CustomerNow({ customer, lead, onLeave, onScheduleMeeting }) {
     {empty && <p className="customer-peek-note">Nada aberto agora. Use "+ novo" para abrir integração, acompanhamento, reunião ou negócio.</p>}
     {onboardings.map((o) => <Row key={o.id} label={`Integração · ${KIND[o.kind] || o.kind}`} onClick={() => go(() => openOnboarding(o.id))}
       sub={o.integrator ? displayName(o.integrator) : "sem integrador"}>{STAGE[o.stage] || o.stage} · {o.progress ?? 0}%</Row>)}
-    {followups.map((f) => <Row key={f.id} label={FOLLOWUP[f.kind] || f.kind} onClick={() => go(() => openRecord("followup", f.id))}
+    {followups.map((f) => <Row key={f.id} label={f.title || FOLLOWUP[f.kind] || f.kind} onClick={() => go(() => openRecord("followup", f.id))}
       sub={f.owner ? displayName(f.owner) : "sem dono"}>{f.dueAt ? `até ${day(f.dueAt)}` : "sem prazo"}</Row>)}
     {next && <Row label="Próxima reunião" sub={next.host.label}>
       {when(next.at)}{next.meetUrl ? <> · <a className="customer-peek-link" href={next.meetUrl} target="_blank" rel="noopener noreferrer">Meet ↗</a></> : null}

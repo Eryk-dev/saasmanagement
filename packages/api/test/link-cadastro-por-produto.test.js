@@ -139,7 +139,7 @@ test("handleLeverpriceOrgCreated: grava org, via e core_org_id; não toca a org 
   const log = { info: (obj, msg) => logs.push({ obj, msg }) };
   const r = await handleLeverpriceOrgCreated(repo, { orgId: ORG.toUpperCase(), coreOrgId: CORE, invite: TOKEN, email: "x@y.test", name: "Loja SA",
     now: () => new Date("2026-10-28T15:00:00Z"), log });
-  assert.deepEqual(r, { linked: true, customer: c.id, via: "convite" });
+  assert.deepEqual(r, { linked: true, customer: c.id, via: "convite", released: false });
   const saved = await repo.get("customers", c.id);
   assert.equal(saved.leverpriceOrgId, ORG);
   assert.deepEqual(saved.leverpriceOrgLink, { via: "convite", at: "2026-10-28T15:00:00.000Z", coreOrgId: CORE, orgName: "Loja SA" });

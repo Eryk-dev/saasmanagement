@@ -54,7 +54,8 @@ export function register(app, repo, ctx) {
   registerOnboardingRoutes(app, repo);
   // Acompanhamento de CS (check-in, QBR, renovação, risco), Fase 3.
   registerFollowupRoutes(app, repo);
-  // Receita da carteira (MRR, renovações, aging), health e alertas, Fase 3.
+  // Receita da carteira (MRR, renovações, aging), status consolidado por
+  // cliente (Carteira), health e alertas, Fase 3.
   registerRevenueRoutes(app, repo);
 }
 

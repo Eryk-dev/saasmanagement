@@ -3,6 +3,11 @@
 // passos e reunião com Meet próprio (calls/record-meetings.js). É também onde
 // cai a "reunião com o cliente" marcada pela ficha quando não há integração
 // aberta: a reunião deixou de morar no lead da venda.
+//
+// Desde 03/11/2026 a régua de marcos do cliente (customer-milestones.js) também
+// nasce aqui: o marco que chega a hora vira acompanhamento com `milestone` (a
+// chave do marco) e `title` (o nome dele). Concluir o acompanhamento marca o
+// marco na ficha (`customer.milestonesDone`); reabrir desmarca.
 
 import { randomUUID } from "node:crypto";
 import { appendTimeline } from "../events/timeline.js";
@@ -35,6 +40,7 @@ export async function createFollowup(repo, body, { by = "", now = new Date() } =
   const f = await repo.create(FOLLOWUPS, {
     id: "fu_" + randomUUID(), customer: customer.id, saas: customer.saas || "", kind,
     status: "aberto", owner: s(body?.owner, 60) || customer.owner || "", dueAt: iso(body?.dueAt),
+    title: s(body?.title, 120), milestone: s(body?.milestone, 60),
     doneAt: "", sentiment: "", notes: s(body?.notes, 2000), nextSteps: s(body?.nextSteps, 2000),
     source: s(body?.source, 40) || "manual", meetings: [], createdAt: now.toISOString(), createdBy: by,
   });
@@ -76,8 +82,22 @@ export async function updateFollowup(repo, id, body, { by = "", now = new Date()
       customer: cur.customer, lead: "", data: { followup: id, kind: saved.kind, sentiment: saved.sentiment, nextSteps: saved.nextSteps },
     });
   }
+  if (closing && cur.milestone) await syncMilestone(repo, cur, status === "feito", now);
   if (closing) await refreshCustomer(repo, cur.customer, now);
   return saved;
+}
+
+// Acompanhamento que veio de um marco da régua: feito marca o marco na ficha,
+// reaberto ou cancelado desmarca (só o que ele mesmo marcou não importa: a
+// ficha guarda a data, e o marco feito por outro caminho já tem a sua).
+async function syncMilestone(repo, followup, done, now) {
+  const c = await repo.get("customers", followup.customer);
+  if (!c) return;
+  const marks = { ...(c.milestonesDone || {}) };
+  if (done === Boolean(marks[followup.milestone])) return;
+  if (done) marks[followup.milestone] = now.toISOString();
+  else delete marks[followup.milestone];
+  await repo.update("customers", c.id, { milestonesDone: marks });
 }
 
 export const followupsOf = (repo, customerId) => repo.listWhere(FOLLOWUPS, { customer: customerId });
@@ -86,7 +106,7 @@ export const followupsOf = (repo, customerId) => repo.listWhere(FOLLOWUPS, { cus
 // convite e na timeline ("Check-in LeverAds · Cliente").
 export const FOLLOWUP_LABEL = { check_in: "Check-in", qbr: "QBR", renovacao: "Renovação", risco: "Conversa de risco" };
 const ONBOARDING_DONE = new Set(["concluida", "cancelada"]);
-const hostLabel = (collection, rec) => (collection === "onboardings" ? "Integração" : FOLLOWUP_LABEL[rec.kind] || "Acompanhamento");
+const hostLabel = (collection, rec) => (collection === "onboardings" ? "Integração" : rec.title || FOLLOWUP_LABEL[rec.kind] || "Acompanhamento");
 
 // Onde mora a "reunião com o cliente" marcada pela ficha. Nunca no lead da
 // venda. `host` é a escolha da ficha (22/10/2026: a tela não dizia que tipo de

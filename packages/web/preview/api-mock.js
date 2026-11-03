@@ -105,7 +105,7 @@ const integracaoPreview = {
   kickoffAt: "2026-09-15T13:00:00.000Z", plannedGoLiveAt: "2026-09-29T13:00:00.000Z", notes: "Conta OEM liberada; falta conectar a segunda conta do ML.",
   items: [
     { id: "i1", title: "Kickoff com o cliente", side: "lever", dueAt: "", doneAt: "2026-09-15T14:00:00.000Z" },
-    { id: "i2", title: "Conectar as contas do Mercado Livre", side: "cliente", dueAt: "2026-09-19", doneAt: "" },
+    { id: "i2", title: "Conectar as contas do Mercado Livre", side: "cliente", dueAt: "2026-09-19", doneAt: "", help: "o cliente entra com o login dele; a gente só mostra onde clicar", guide: { id: "gd_prev_impl", step: "conectar-contas" } },
     { id: "i3", title: "Primeira cópia de anúncios", side: "lever", dueAt: "2026-09-22", doneAt: "" },
     { id: "i4", title: "Treinamento da equipe do cliente", side: "lever", dueAt: "2026-09-26", doneAt: "" },
   ],
@@ -116,10 +116,137 @@ const acompanhamentoPreview = {
   id: "fu_prev_1", customer: "c2", kind: "check_in", status: "aberto", owner: "leo", dueAt: "2026-09-24T15:00:00.000Z",
   sentiment: "", notes: "", nextSteps: "", meetings: [],
 };
+// Carteira na prévia (03/11/2026): o status consolidado de cada cliente de
+// exemplo, cobrindo os estágios, pagamentos e próximos passos da tela.
+const STATUS_PREVIEW = {
+  c1: { regua: [2, 1, 20], owner: "leo", lifecycle: "ativo", csStage: "atencao", health: 64, healthParts: { pagamento: 40, nps: 12, suporte: 2, resultado: 10 }, pay: "adimplente", next: { amount: 7200, dueDate: emDias(12) }, sub: ["active", "quarterly", 12], products: [["leverads", true]], tickets: { open: 2, urgent: 1 }, nps: 8 },
+  c2: { regua: [0, 0, 3], owner: "lucas", lifecycle: "integracao", csStage: "", health: 78, healthParts: { pagamento: 40, nps: 10, suporte: 20, resultado: 8 }, pay: "adimplente", sub: ["active", "annual", 200], products: [["leverads", true], ["leverprice", false]], onboarding: { id: "ob_prev_1", stage: "configuracao", kind: "novo_produto", progress: 25, plannedGoLiveAt: emDias(6) } },
+  c3: { regua: [1, 1, 40], owner: "leo", lifecycle: "risco", csStage: "em_risco", health: 30, healthParts: { pagamento: 0, nps: 0, suporte: 20, resultado: 10 }, pay: "inadimplente", overdue: [1, 2850, 18], sub: ["past_due", "annual", 140], products: [["leverads", true]], followup: { id: "fu_prev_1", kind: "risco", owner: "leo", dueAt: emDias(-2), late: true, open: 1 }, nps: 4 },
+  c4: { regua: [5, 0, 14], owner: "tiago", lifecycle: "ativo", csStage: "renovacao", health: 72, healthParts: { pagamento: 40, nps: 12, suporte: 12, resultado: 8 }, pay: "adimplente", sub: ["active", "annual", 21], products: [["leverads", true], ["leverprice", true]], followup: { id: "fu_prev_1", kind: "renovacao", title: "Contato de renovação", milestone: "renovacao", owner: "tiago", dueAt: emDias(14), late: false, open: 1 } },
+  c5: { regua: [6, 0, 0], owner: "leo", lifecycle: "ativo", csStage: "saudavel", health: 94, healthParts: { pagamento: 40, nps: 20, suporte: 20, resultado: 14 }, pay: "adimplente", next: { amount: 3400, dueDate: emDias(4) }, sub: ["active", "annual", 300], products: [["leverads", true]], nps: 10 },
+  c6: { regua: [4, 0, 40], owner: "", lifecycle: "ativo", csStage: "saudavel", health: 86, healthParts: { pagamento: 40, nps: 10, suporte: 20, resultado: 16 }, pay: "adimplente", sub: ["active", "semiannual", 33], products: [["leverads", true]] },
+  c7: { regua: [1, 0, 0], owner: "lucas", lifecycle: "ativo", csStage: "atencao", health: 58, healthParts: { pagamento: 25, nps: 10, suporte: 20, resultado: 3 }, pay: "aguardando_pagamento", next: { amount: 450, dueDate: emDias(1) }, sub: ["active", "monthly", 9], products: [["leverads", false]], followup: { id: "fu_prev_1", kind: "check_in", title: "Check-in de mês 1", milestone: "checkin_m1", owner: "lucas", dueAt: emDias(0), late: false, open: 1 } },
+  c8: { owner: "leo", lifecycle: "churn", csStage: "churn", health: 0, pay: "", sub: ["canceled", "monthly", null], products: [["leverads", true]] },
+};
+// Régua de marcos de exemplo: `done` feitos, `late` atrasados e o próximo em `next` dias.
+const MARCOS_PREVIEW = [["onboarding", "Onboarding"], ["checkin_m1", "Check-in de mês 1"], ["revisao_m3", "Revisão de resultado"], ["depoimento", "Pedir depoimento e autorizar case"], ["upsell_m6", "Conversa de upsell"], ["renovacao", "Contato de renovação"]];
+function reguaPreview([done, late, next]) {
+  const steps = MARCOS_PREVIEW.map(([key, label], i) => ({ key, label, status: i < done ? "done" : i < done + late ? "late" : i === done + late && next <= 7 ? "soon" : "next" }));
+  const first = steps.find((x) => x.status !== "done");
+  return {
+    done, total: steps.length, late, steps,
+    next: first ? { key: first.key, label: first.label, status: first.status, dueAt: first.status === "late" ? emDias(-6) : emDias(next) } : null,
+  };
+}
+function customerStatusPreview(saas) {
+  const rows = CLIENTES_FAKE.filter((c) => !saas || c.saas === saas).map((c) => {
+    const x = STATUS_PREVIEW[c.id] || {};
+    const [status, cycle, days] = x.sub || [];
+    return {
+      id: c.id, name: c.name, owner: x.owner || "", saas: c.saas, startedAt: c.startedAt, endedAt: c.endedAt || "", churned: !!c.endedAt,
+      plan: c.plan, mrr: c.endedAt ? 0 : Math.round(c.arr / 12), lifecycle: x.lifecycle || "", csStage: x.csStage || "",
+      health: x.health || 0, healthParts: x.healthParts || null, healthAt: x.health ? emDias(0, 6) : "",
+      payment: { status: x.pay || "", overdueCount: x.overdue?.[0] || 0, overdueAmount: x.overdue?.[1] || 0, overdueDays: x.overdue?.[2] || 0, nextDue: x.next || null, lastPaidAt: emDias(-20) },
+      subscription: status ? { id: `s_${c.id}`, status, cycle, periodEnd: days == null ? emDias(-12) : emDias(days), renewInDays: days, live: status === "canceled" ? 0 : 1, total: 1 } : null,
+      products: (x.products || []).map(([id, account]) => ({ id, account })),
+      onboarding: x.onboarding || null, followup: x.followup || null, milestones: x.regua ? reguaPreview(x.regua) : null,
+      tickets: x.tickets || { open: 0, urgent: 0 }, nps: x.nps != null ? { score: x.nps, at: emDias(-30) } : null,
+    };
+  });
+  return { generatedAt: new Date().toISOString(), rows };
+}
+// Guias na prévia (03/11/2026): um publicado com prints gerados e um rascunho.
+const printPreview = (titulo, cor) => "data:image/svg+xml;utf8," + encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700"><rect width="1200" height="700" fill="#eef1f3"/><rect x="0" y="0" width="1200" height="64" fill="${cor}"/><text x="32" y="42" font-family="sans-serif" font-size="26" fill="#fff">${titulo}</text><rect x="32" y="110" width="520" height="40" rx="10" fill="#fff"/><rect x="32" y="170" width="1136" height="420" rx="16" fill="#fff"/><rect x="900" y="620" width="268" height="48" rx="24" fill="${cor}"/></svg>`);
+const PRINTS_PREVIEW = { ga_prev_1: printPreview("Contas conectadas", "#0F766E"), ga_prev_2: printPreview("Escolher a conta-mãe", "#0C1D2B"), ga_prev_3: printPreview("Clonagem em andamento", "#175CD3") };
+const GUIAS_PREVIEW = [
+  {
+    id: "gd_prev_impl", saas: "leverads", starter: "implantacao", title: "Implantação · call de integração", audience: "integrador", product: "leverads", status: "publicado", rev: 3,
+    summary: "O passo a passo da integração de um cliente recém-fechado: o que conferir antes, como conduzir a call e como fechar.",
+    updatedAt: emDias(-2), updatedBy: "leo",
+    steps: [
+      { id: "antes-da-call", title: "Antes da call: conferir o que o cliente respondeu", body: "Abra o card da integração e confira:\n- **Formulário de integração**: contas, conta principal, ERP e rotas.\n- **Resumo da venda**: o que foi prometido.", tip: "Se o formulário não foi respondido, mande o link de novo antes de marcar a call.", images: [] },
+      { id: "conectar-contas", title: "Conectar as contas e definir a conta-mãe", body: "Conecte cada conta do marketplace e marque a principal como conta-mãe.\n\n> Essa vira a conta-mãe. O que você publicar nela replica pras outras.", tip: "", images: [{ id: "ga_prev_1", caption: "As contas conectadas aparecem com o selo verde" }, { id: "ga_prev_2", caption: "Marque a conta-mãe aqui" }] },
+      { id: "primeira-clonagem", title: "Primeira clonagem na tela", body: "Rode a primeira leva com o cliente olhando.", tip: "", images: [{ id: "ga_prev_3", caption: "Acompanhe a clonagem por aqui" }] },
+    ],
+  },
+  // Trilhas (03/11/2026): guias do pacote com a posição de leitura.
+  ...[
+    ["gd_prev_call", "", 1, "Call de integração: do convite ao encerramento", 3],
+    ["gd_prev_link", "", 2, "Link de cadastro e criação da conta", 2],
+    ["gd_prev_ads1", "leverads", 1, "LeverAds · Primeiro acesso: do cadastro à primeira cópia", 4],
+    ["gd_prev_ads2", "leverads", 2, "LeverAds · Contas: conectar, reconectar e configurar as contas", 3],
+    ["gd_prev_ads3", "leverads", 3, "LeverAds · Copiar: replicar anúncios entre contas", 2],
+    ["gd_prev_lp1", "leverprice", 1, "LeverPrice · Primeiro acesso: da conta criada à primeira tela", 3],
+    ["gd_prev_lp2", "leverprice", 2, "LeverPrice · Produtos: custos, imposto e margens por SKU", 2],
+  ].map(([id, product, order, title, n]) => ({
+    id, saas: "leverads", pack: id, title, product, order, audience: "integrador", status: "publicado", rev: 1,
+    summary: `O passo a passo de ${title.replace(/^Lever\w+ · /, "").toLowerCase()}.`, updatedAt: emDias(-1), updatedBy: "api",
+    steps: Array.from({ length: n }, (_, i) => ({ id: `p${i + 1}`, title: `Passo ${i + 1} de ${title.split(":")[0]}`, body: "Texto do passo.", tip: "", images: [] })),
+  })),
+  { id: "gd_prev_cob", saas: "leverads", title: "Ticket de cobrança: o que responder", audience: "suporte", product: "", status: "rascunho", rev: 1, summary: "Quando o cliente abre ticket sobre cobrança ou fatura.", updatedAt: emDias(-9), updatedBy: "tiago", steps: [{ id: "st_1", title: "Conferir a fatura na ficha do cliente", body: "Abra o cliente e veja Cobranças.", tip: "", images: [] }] },
+];
+const TEMPLATES_PREVIEW = [
+  { id: "implantacao", kind: "implantacao", name: "Implantação inicial", items: [
+    { title: "Formulário de integração respondido", side: "cliente", guide: { id: "gd_prev_impl", step: "antes-da-call" } },
+    { title: "Contas conectadas e configuração feita", side: "lever", guide: { id: "gd_prev_impl", step: "conectar-contas" }, help: "conta-mãe definida com o cliente" },
+    { title: "Go-live confirmado com o cliente", side: "lever" },
+  ] },
+  { id: "treinamento", kind: "treinamento", name: "Treinamento", items: [{ title: "Treinamento realizado", side: "lever" }] },
+];
+// ?guia: a integração de exemplo vira implantação com a call marcada hoje às
+// 17h e a sala do Meet (prints dos guias da Lever, 03/11/2026).
+const modoGuia = typeof location !== "undefined" && new URLSearchParams(location.search).has("guia");
+const leadGuia = (() => { const d = new Date(); d.setHours(17, 0, 0, 0); return {
+  id: "ld_guia", saas: "leverads", name: "Rodrigo Galante", company: "Galante Comércio", phone: "5541999990002", stage: "Integração",
+  integrator: "lucas", closer: "tiago", integrationAt: d.toISOString(), integrationCallUrl: "https://meet.google.com/abc-defg-hij", customerId: "c2",
+}; })();
+const integracaoAtual = () => (modoGuia ? { ...integracaoPreview, kind: "implantacao", lead: "ld_guia", stage: "aguardando_kickoff" } : integracaoPreview);
 const RESPOSTAS = {
-  get: (col, id) => (window.SEED?.[String(col).toUpperCase()] || []).find((r) => r.id === id) || null,
+  customerStatus: (saas) => customerStatusPreview(saas),
+  guides: (saas) => ({ guides: GUIAS_PREVIEW.filter((g) => !saas || g.saas === saas), canEdit: !new URLSearchParams(location.search).has("leitor") }),
+  guide: (id) => GUIAS_PREVIEW.find((g) => g.id === id) || null,
+  createGuide: (b) => { const g = { ...b, id: "gd_prev_" + Date.now().toString(36), rev: 1, updatedAt: new Date().toISOString(), updatedBy: "leo" }; GUIAS_PREVIEW.push(g); return g; },
+  updateGuide: (id, p) => { const g = GUIAS_PREVIEW.find((x) => x.id === id); Object.assign(g, p, { rev: (g.rev || 1) + 1, updatedAt: new Date().toISOString() }); return g; },
+  deleteGuide: (id) => { const i = GUIAS_PREVIEW.findIndex((x) => x.id === id); if (i >= 0) GUIAS_PREVIEW.splice(i, 1); return { ok: true }; },
+  guideStarter: () => ({ guide: GUIAS_PREVIEW[0], created: false, linked: 0 }),
+  guidePack: () => ({ guides: [{ key: "call-integracao", title: "Call de integração: do convite ao encerramento", version: 1, state: "faltando", guide: "" }, { key: "link-cadastro", title: "Link de cadastro e criação da conta", version: 1, state: "atual", guide: "gd_x" }] }),
+  installGuidePack: () => ({ installed: ["call-integracao"], updated: [], current: ["link-cadastro"], edited: [] }),
+  guideAsset: () => { const id = "ga_prev_" + Date.now().toString(36); PRINTS_PREVIEW[id] = printPreview("Print novo", "#A16207"); return { id }; },
+  guideAssetUrl: (id) => PRINTS_PREVIEW[id] || printPreview("print", "#98A5AF"),
+  onboardingTemplates: () => ({ templates: TEMPLATES_PREVIEW }),
+  saveOnboardingTemplates: (saas, templates) => ({ templates }),
+  get: (col, id) => (modoGuia && id === "ld_guia" ? leadGuia : (window.SEED?.[String(col).toUpperCase()] || []).find((r) => r.id === id) || null),
   customerOnboardings: (id) => ({ onboardings: id === "c2" ? [integracaoPreview] : [] }),
-  onboarding: () => integracaoPreview,
+  onboarding: () => integracaoAtual(),
+  // Modo integração (03/11/2026): o kit da integração de exemplo e o PATCH dos itens.
+  updateOnboarding: (id, patch) => {
+    Object.assign(integracaoPreview, patch);
+    const items = integracaoPreview.items || [];
+    integracaoPreview.progress = items.length ? Math.round((items.filter((i) => i.doneAt).length / items.length) * 100) : 0;
+    return { ...integracaoPreview };
+  },
+  onboardingKit: () => ({
+    onboarding: { ...integracaoAtual() },
+    customer: {
+      id: "c2", name: "Galante Comércio", plan: "Enterprise anual", owner: "lucas",
+      products: [{ id: "leverads", account: true }, { id: "leverprice", account: false }],
+      contacts: [{ name: "Rodrigo Galante", role: "decisor", phone: "(41) 99999-0002", email: "rodrigo@galante.example.invalid", primary: true }],
+    },
+    deal: { id: "v2", closer: "tiago", dealProduct: "full", integrationAt: modoGuia ? leadGuia.integrationAt : emDias(0, 15), integrationCallUrl: "https://meet.google.com/abc-defg-hij" },
+    form: { id: "tok_prev", status: "respondido", respondedAt: emDias(-3), sections: [
+      { title: "Contas", items: [{ label: "Contas no marketplace", rows: ["Marketplace: Mercado Livre · Apelido: GALANTE · Papel: principal", "Marketplace: Mercado Livre · Apelido: GALANTE2 · Papel: espelho"] }, { label: "Conta principal", value: "GALANTE" }] },
+      { title: "Estoque", items: [{ label: "ERP", value: "Bling" }, { label: "Sincroniza estoque", value: "✓ Sim" }] },
+      { title: "O que não pode sair", items: [{ label: "Bloqueios", value: "Não clonar a linha de pneus" }] },
+    ] },
+    brief: { resumo: "Distribuidora de autopeças com duas contas no ML; quer replicar o catálogo da principal.", entregas: ["Conta-mãe GALANTE replicando para GALANTE2", "Regra de preço +8% na conta espelho"], atencao: [{ ponto: "Linha de pneus fora", porque: "contrato de exclusividade com outro fornecedor" }] },
+    clientPending: { open: 1, overdue: 0, items: [{ item: "Mandar o acesso da conta GALANTE2", dueDate: emDias(1).slice(0, 10) }] },
+    guides: { gd_prev_impl: GUIAS_PREVIEW[0] },
+    missing: [
+      { key: "conta:leverprice", tone: "warn", text: "O cliente ainda não tem conta no LeverPrice: mande o link de cadastro pelo card." },
+      { key: "pendencias", tone: "warn", text: "1 pendência do cliente em aberto." },
+    ],
+  }),
   customerFollowups: (id) => ({ followups: id === "c2" ? [acompanhamentoPreview] : [] }),
   followup: () => acompanhamentoPreview,
   customerRecordMeetings: (id) => ({ meetings: id === "c2" ? integracaoPreview.meetings.map((m) => ({ ...m, host: { collection: "onboardings", id: integracaoPreview.id, label: "Integração · Produto novo" } })) : [] }),
