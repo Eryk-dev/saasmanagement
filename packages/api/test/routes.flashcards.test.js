@@ -424,6 +424,23 @@ test("admin: sem baralho obrigatório e fora da cobrança da equipe", async () =
   assert.deepEqual(semTag.decks.map((d) => d.role), ["geral_negocio", "geral_marketplace", "geral_vendas", "sdr", "closer", "integrator", "social"]);
 });
 
+// Coluna Treino da Equipe (03/11/2026): a decisão gravada em user.trainingRequired
+// passa por cima da regra da vaga — liga o admin no quadro, tira quem tem vaga.
+// O estudo não muda: a fila continua a da vaga da pessoa.
+test("treino obrigatório à mão: entra/sai do quadro da equipe sem mexer na fila", async () => {
+  const { app, repo } = await buildApp();
+  await repo.update("users", "jon", { trainingRequired: true });   // dono cobrado
+  await repo.update("users", "ana", { trainingRequired: false });  // SDR dispensada
+  const team = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/team" })).json();
+  const ids = team.users.map((u) => u.id);
+  assert.ok(ids.includes("jon"), "admin ligado à mão entra no quadro");
+  assert.ok(!ids.includes("ana"), "vaga desligada à mão sai do quadro");
+  assert.ok(ids.includes("bob"), "quem segue no padrão continua");
+  // a fila de estudo de cada um não muda com a cobrança
+  const ana = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("ana") })).json();
+  assert.deepEqual(ana.decks.map((d) => d.role), ["geral_negocio", "geral_marketplace", "geral_vendas", "sdr"]);
+});
+
 // A base oficial é conteúdo que o time DECORA: invariantes que nenhuma edição
 // futura pode quebrar sem alguém perceber (ids únicos pro FSRS, limites do
 // sanitize, e a regra de copy da casa: nada de travessão).

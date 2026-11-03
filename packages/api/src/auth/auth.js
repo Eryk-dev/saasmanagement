@@ -15,6 +15,7 @@ import { sanitizeBookingUrl, bookingPreview, bookingPageHtml, bookingMissingHtml
 import { publicBase } from "../platform/request.js";
 import { recordBookingClick } from "../google/booking-sync.js";
 import { sanitizeWorkHours } from "../shared/work-hours.js";
+import { trainingRequired } from "./roles.js";
 
 const SESSION_TTL_MS = 7 * 24 * 3600 * 1000;
 
@@ -99,6 +100,11 @@ const publicUser = (u) => ({
   bookingUrl: u.bookingUrl || "",
   // Horário de atendimento (shared/work-hours.js): [] = agenda aberta 7h-21h.
   workHours: sanitizeWorkHours(u.workHours),
+  // Treinamento obrigatório (roles.js): o valor EFETIVO (gravado ou a regra
+  // padrão da vaga) — é o que o portão, o quadro e o lembrete usam; e se foi
+  // ligado/desligado à mão na Equipe ou ainda segue a regra automática.
+  trainingRequired: trainingRequired(u),
+  trainingRequiredAuto: typeof u.trainingRequired !== "boolean",
 });
 
 // Usuário do cockpit ligado a uma conta da identidade (claim `sub` do JWT).
@@ -446,7 +452,7 @@ export function registerAuthRoutes(app, repo, { identity = makeIdentityAdmin() }
   app.patch("/api/auth/users/:id", async (req, reply) => {
     const user = await repo.get("users", req.params.id);
     if (!user) return reply.code(404).send({ error: "Not found" });
-    const { name, roles, password, saas, screens, compLevel, supportSaas, authUserId, workHours } = req.body || {};
+    const { name, roles, password, saas, screens, compLevel, supportSaas, authUserId, workHours, trainingRequired: trainReq } = req.body || {};
     const patch = {};
     // Liga (ou desliga, com "") a conta da identidade central. Uma conta só
     // pode estar ligada a um usuário do cockpit.
@@ -461,6 +467,9 @@ export function registerAuthRoutes(app, repo, { identity = makeIdentityAdmin() }
     // Horário de atendimento: as grades de call/integração e o SDR automático
     // só oferecem horário dentro dele. [] volta pra agenda aberta.
     if (workHours !== undefined) patch.workHours = sanitizeWorkHours(workHours);
+    // Treinamento obrigatório (coluna Treino da Equipe): true/false grava a
+    // decisão da gestão por cima da regra da vaga; null volta pra automático.
+    if (trainReq !== undefined) patch.trainingRequired = typeof trainReq === "boolean" ? trainReq : null;
     // Nível do plano de remuneração (1 jr · 2 pl · 3 sn): régua das metas de
     // contratos/receita do card da pessoa na Visão geral (comp-plan.js).
     if (compLevel !== undefined) {

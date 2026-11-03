@@ -1,29 +1,28 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { currentUser, isAdminUser } from "../lib/users.js";
+import { currentUser, isTrainingRequired } from "../lib/users.js";
 import { PrimaryButton } from "../atoms.jsx";
 
 // ── Portão do treino diário ──────────────────────────────────────────────────
-// Quem tem vaga operacional (etiqueta sdr/closer/integrator/social) só começa a
-// trabalhar depois de zerar a fila do dia: qualquer tela fora dos Treinamentos
-// fica atrás deste overlay enquanto houver card pendente. A cada revisão o SSE
-// atualiza a contagem; zerou, o cockpit libera sozinho. Falha da API nunca
-// tranca a tela (fail-open).
-// ADMIN NUNCA É TRAVADO, mesmo tendo vaga: Leo e Jonathan fecham venda e o Eryk
-// integra, mas o treinamento é opcional pra quem toca o negócio. Sem esta
-// exceção o portão prendia justamente quem precisa entrar no cockpit pra
-// trabalhar.
+// Quem tem treinamento obrigatório só começa a trabalhar depois de zerar a fila
+// do dia: qualquer tela fora dos Treinamentos fica atrás deste overlay enquanto
+// houver card pendente. A cada revisão o SSE atualiza a contagem; zerou, o
+// cockpit libera sozinho. Falha da API nunca tranca a tela (fail-open).
+// Quem é cobrado vem da coluna Treino em Configurações → Equipe
+// (isTrainingRequired, espelho de roles.js da API). Sem decisão explícita vale
+// a regra antiga: vaga operacional (sdr/closer/integrator/social) é cobrada e
+// ADMIN NÃO É TRAVADO, mesmo tendo vaga: Leo e Jonathan fecham venda e o Eryk
+// integra, e o portão prenderia justamente quem precisa entrar pra trabalhar.
+// A gestão pode virar qualquer um dos dois pela coluna.
 // Mora em módulo próprio (e não em screens/training.jsx) porque o app monta o
 // portão em TODA tela: dentro do training.jsx ele arrastava os 110 KB do
 // baralho pro shell, e a tela de Treinamentos passou a carregar sob demanda.
-const GATE_ROLES = ["sdr", "closer", "integrator", "social"];
-
 export function TrainingGate({ saasId, active }) {
   const { version } = useData();
   const [pending, setPending] = React.useState(null); // null = sem dado (não trava)
   const me = currentUser();
-  const gated = !!me && !isAdminUser(me) && (me.roles || []).some((r) => GATE_ROLES.includes(r));
+  const gated = !!me && isTrainingRequired(me);
   React.useEffect(() => {
     if (!saasId || !gated) { setPending(null); return; }
     // Na própria tela de treino o portão não aparece e a tela já pede /queue:
