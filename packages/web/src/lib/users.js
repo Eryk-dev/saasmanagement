@@ -147,6 +147,21 @@ export function isAdminUser(user = currentUser()) {
   return ((fresh || user)?.roles || []).includes("admin");
 }
 
+// Treinamento obrigatório da pessoa (espelho de roles.js da API): o servidor já
+// manda o valor EFETIVO em `trainingRequired` (coluna Treino da Equipe, ou a
+// regra padrão: tem vaga e não é admin). Lê o registro FRESCO do bootstrap, como
+// isAdminUser — ligar/desligar na Equipe vale no próximo refresh, sem re-login.
+// Sem o campo (usuário antigo no localStorage, sem bootstrap) cai na regra
+// padrão, pra nunca travar alguém por falta de dado.
+const TRAINING_ROLES = ["sdr", "closer", "integrator", "social"];
+export function isTrainingRequired(user = currentUser()) {
+  const u = (user?.id ? userById(user.id) : null) || user;
+  if (!u) return false;
+  if (typeof u.trainingRequired === "boolean") return u.trainingRequired;
+  const roles = u.roles || [];
+  return !roles.includes("admin") && roles.some((r) => TRAINING_ROLES.includes(r));
+}
+
 // Pode editar a régua de nota/ICP? Etiqueta admin ou Editor de ICP (`icp`) —
 // o mesmo canEditIcp da API (auth/screens.js); sem usuário = acesso por key.
 export function canEditIcpUser(user = currentUser()) {

@@ -434,3 +434,42 @@ test("sessão em cache: 2ª requisição não vai ao banco; escrita no repo e ex
   assert.equal(await sessionUser(repo, "x".repeat(40)), null);
   assert.equal(gets, 2);
 });
+
+// Treinamento obrigatório (Configurações → Equipe, coluna Treino): a decisão da
+// gestão vai por cima da regra da vaga; null volta pro automático.
+test("treino obrigatório: padrão pela vaga, a gestão liga/desliga à mão e null volta ao padrão", async () => {
+  const repo = makeMemRepo();
+  await seedTestAdmins(repo);
+  const app = buildApp(repo);
+  const { token } = (await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "eryk", password: "1234" } })).json();
+  await repo.create("users", { id: "bia", name: "Bia", roles: ["closer"] });
+  await repo.create("users", { id: "dono", name: "Dono", roles: ["admin", "closer"] });
+  await repo.create("users", { id: "nova", name: "Nova", roles: [] });
+  const patch = (id, trainingRequired) => app.inject({
+    method: "PATCH", url: `/api/auth/users/${id}`,
+    headers: { authorization: `Bearer ${token}` }, payload: { trainingRequired },
+  });
+  const list = async () => Object.fromEntries((await app.inject({ method: "GET", url: "/api/auth/users", headers: { authorization: `Bearer ${token}` } })).json().map((u) => [u.id, u]));
+
+  // padrão: vaga é cobrada; admin e cadastro sem vaga não
+  let us = await list();
+  assert.deepEqual([us.bia.trainingRequired, us.bia.trainingRequiredAuto], [true, true]);
+  assert.deepEqual([us.dono.trainingRequired, us.dono.trainingRequiredAuto], [false, true]);
+  assert.deepEqual([us.nova.trainingRequired, us.nova.trainingRequiredAuto], [false, true]);
+
+  // a gestão desliga a closer e liga o dono e a novata
+  assert.equal((await patch("bia", false)).json().trainingRequired, false);
+  await patch("dono", true);
+  await patch("nova", true);
+  us = await list();
+  assert.deepEqual([us.bia.trainingRequired, us.bia.trainingRequiredAuto], [false, false]);
+  assert.deepEqual([us.dono.trainingRequired, us.dono.trainingRequiredAuto], [true, false]);
+  assert.deepEqual([us.nova.trainingRequired, us.nova.trainingRequiredAuto], [true, false]);
+
+  // null (ou lixo) volta ao padrão da vaga
+  await patch("bia", null);
+  await patch("dono", "sim");
+  us = await list();
+  assert.deepEqual([us.bia.trainingRequired, us.bia.trainingRequiredAuto], [true, true]);
+  assert.deepEqual([us.dono.trainingRequired, us.dono.trainingRequiredAuto], [false, true]);
+});

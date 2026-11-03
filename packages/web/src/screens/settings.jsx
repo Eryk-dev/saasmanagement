@@ -542,7 +542,7 @@ const ROLE_OPTS = [
   ["closer", "Closer", "conduz call/proposta/follow-up"],
   ["integrator", "Integração", "faz o setup pós-venda"],
   ["social", "Mídia social", "cuida das redes sociais e do conteúdo"],
-  ["admin", "Admin", "dono da operação: não é vaga do funil e não é cobrado no treinamento"],
+  ["admin", "Admin", "dono da operação: não é vaga do funil e, por padrão, não é cobrado no treinamento (a coluna Treino decide)"],
   ["support", "Suporte", "atendente de tickets: os produtos que atende ficam em Suporte → Configurações de SLA"],
   ["icp", "Editor de ICP", "altera a régua de nota e o ICP do produto (Configurações → ICP & nota); muda métricas, agenda do sênior e cadência"],
 ];
@@ -596,6 +596,13 @@ function TeamSettings() {
   const setUserLevel=(u,compLevel)=>patchUser(u,{compLevel});
   const setUserScreens=(u,screens)=>patchUser(u,{screens});
   const setUserSupportSaas=(u,supportSaas)=>patchUser(u,{supportSaas});
+  // Treinamento obrigatório (03/11/2026): a caixinha grava a decisão da gestão
+  // por cima da regra da vaga (roles.js da API); "voltar ao padrão" manda null
+  // e a linha recalcula a regra na hora, sem esperar o reload.
+  const TRAINING_ROLES=["sdr","closer","integrator","social"];
+  const trainingDefault=(u)=>!(u.roles || []).includes("admin") && (u.roles || []).some((r)=>TRAINING_ROLES.includes(r));
+  const setTrainingRequired=(u,on)=>patchUser(u,{trainingRequired:on,trainingRequiredAuto:false});
+  const resetTrainingRequired=(u)=>patchUser(u,{trainingRequired:null,trainingRequiredAuto:true});
   const renameUser=(u,name)=>{const clean=String(name || "").trim();if(clean && clean!==u.name)return patchUser(u,{name:clean});};
   // Horário de atendimento: além da lista da tela, atualiza o SEED.USERS — é
   // de lá que as grades de call/integração leem (busyView em today.jsx), e o
@@ -704,10 +711,11 @@ function TeamSettings() {
       {/* .tbl-x: no mobile a grade (colunas fixas ~900px) rola dentro do card
           em vez de estourar a página — mesmo padrão do Funil abaixo. */}
       <div className="tbl-x" style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
-       <div style={{ minWidth: 1068 + ROLE_OPTS.length * 92 }}>
-        <div className="kicker" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 130px 112px`, gap: 8, padding: "10px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
+       <div style={{ minWidth: 1140 + ROLE_OPTS.length * 92 }}>
+        <div className="kicker" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 72px 96px 140px 120px 130px 112px`, gap: 8, padding: "10px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
           <span>Usuário</span>
           {ROLE_OPTS.map(([k, l, hint]) => <span key={k} title={hint} style={{ textAlign: "center" }}>{l}</span>)}
+          <span title="Treinamento obrigatório: marcado = a pessoa é cobrada (portão do treino diário, quadro da Equipe nos Treinamentos e lembrete do Discord). Padrão: quem tem vaga (SDR, Closer, Integração, Mídia social) e não é Admin. Desmarcado = estuda se quiser" style={{ textAlign: "center" }}>Treino</span>
           <span title="Nível de carreira (júnior · pleno · sênior): define as metas de contratos e receita de SDR e closer, pelo plano de Remuneração">Nível</span>
           <span title="Vazio = aparece nos pickers de todos os produtos; preenchido = só no workspace daquele produto">Produto</span>
           <span title="Quais telas o usuário vê (menu + rotas da API). Nenhuma marcada = todas">Telas</span>
@@ -716,7 +724,7 @@ function TeamSettings() {
         </div>
         {users === null && !error && <div className="mono dim" style={{ padding: "12px 14px", fontSize: 12 }}>carregando…</div>}
         {Array.isArray(users) && users.map((u) => (
-          <div key={u.id} style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 130px 112px`, gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
+          <div key={u.id} style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 72px 96px 140px 120px 130px 112px`, gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
             <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 500, minWidth: 0 }}>
               <Avatar id={u.id} name={u.name} size={22} />
               <input aria-label={`Nome de ${u.name}`} defaultValue={u.name || u.id} key={u.name}
@@ -738,6 +746,10 @@ function TeamSettings() {
                 <input aria-label={`${k} · ${u.name}`} type="checkbox" checked={(u.roles || []).includes(k)} onChange={() => toggleRole(u, k)} style={{ accentColor: "var(--accent)", width: 15, height: 15, cursor: "pointer" }} />
               </span>
             ))}
+            <span style={{ textAlign: "center" }} title={(u.trainingRequiredAuto ? "padrão da vaga" : "definido à mão") + (u.trainingRequired ? " · cobrado no treinamento" : " · estuda se quiser")}>
+              <input aria-label={`Treinamento obrigatório · ${u.name}`} type="checkbox" checked={u.trainingRequired ?? trainingDefault(u)} onChange={(e) => setTrainingRequired(u, e.target.checked)}
+                style={{ accentColor: u.trainingRequiredAuto ? "var(--fg-4)" : "var(--accent)", width: 15, height: 15, cursor: "pointer" }} />
+            </span>
             <select aria-label={`Nível de ${u.name}`} value={u.compLevel || 1} onChange={(e) => setUserLevel(u, Number(e.target.value))}
               title="Nível de carreira: define as metas de contratos e receita de SDR e closer pelo plano de Remuneração"
               style={{ ...inputStyle, height: 26, fontSize: 12 }}>
@@ -756,6 +768,7 @@ function TeamSettings() {
                 style={{ height: 26, padding: "0 7px", borderRadius: 999, border: "1px solid " + (u.authUserId ? "var(--accent)" : "var(--line-1)"), background: "var(--bg-1)", color: u.authUserId ? "var(--accent)" : "var(--fg-4)", fontSize: 11, cursor: "pointer", whiteSpace: "nowrap" }}>{u.authUserId ? "LeverId ✓" : "LeverId"}</button>
               <MoreMenu size={28} label={`Ações de ${u.name || u.id}`} items={[
                 { label: "Horário de atendimento", onClick: () => setHoursOf(u) },
+                ...(u.trainingRequiredAuto ? [] : [{ label: "Treino: voltar ao padrão da vaga", onClick: () => resetTrainingRequired(u) }]),
                 { label: "Alterar senha", onClick: () => { setCreated(null); setInvite(null); setLever(null); setReset({ user: u, password: genPassword() }); } },
                 { label: "Remover do time", tone: "neg", onClick: () => removeUser(u) },
               ]} />
@@ -828,7 +841,7 @@ function TeamSettings() {
             <button type="button" className="mono dim" style={{ fontSize: 11, cursor: "pointer" }} title="Fechar (a senha some da tela)" onClick={() => setCreated(null)}>✕</button>
           </span>
         )}
-        {!reset && !lever && canManage && <span className="mono dim" style={{ fontSize: 11 }}>papéis salvam ao clicar · cada um troca a própria senha em Meu perfil · o ⋯ da linha tem horário de atendimento, senha e remover</span>}
+        {!reset && !lever && canManage && <span className="mono dim" style={{ fontSize: 11 }}>papéis e Treino salvam ao clicar · cada um troca a própria senha em Meu perfil · o ⋯ da linha tem horário de atendimento, senha e remover</span>}
       </div>
       {hoursOf && (
         <WorkHoursModal user={hoursOf} busy={saving === hoursOf.id} onClose={() => setHoursOf(null)}

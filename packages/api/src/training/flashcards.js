@@ -4,7 +4,7 @@
 
 import { LEVERADS_DECKS } from "./flashcard-decks.leverads.js";
 import { CARD_STATE, dayEnd, dayKey } from "./fsrs.js";
-import { isAdmin } from "../auth/roles.js";
+import { isAdmin, trainingRequired } from "../auth/roles.js";
 
 // Cartão: { id, role, front (pergunta/gatilho), back (resposta/técnica) }.
 export const ROLE_LABELS = {
@@ -103,9 +103,11 @@ export async function teamSnapshot(repo, saas, cardsBase, now = new Date(), { on
   ]);
   const users = usersAll
     .filter((u) => !u.saas || u.saas === saas) // respeita o escopo de produto do usuário
-    // Admin fica FORA do quadro de cobrança: treinamento é opcional pra quem
-    // toca o negócio, então listar ele como "atrasado" seria ruído.
-    .filter((u) => (onlyUser ? u.id === onlyUser : !isAdmin(u)))
+    // Só quem tem treinamento obrigatório entra no quadro de cobrança
+    // (roles.js: a coluna Treino da Equipe manda; sem ela, vaga e não admin).
+    // Admin fica fora por padrão: treinamento é opcional pra quem toca o
+    // negócio, então listar ele como "atrasado" seria ruído.
+    .filter((u) => (onlyUser ? u.id === onlyUser : trainingRequired(u)))
     .map((u) => ({ id: u.id, name: u.name, roles: Array.isArray(u.roles) ? u.roles : [] }));
   const reviews = reviewsAll.filter((r) => r.saas === saas);
   const exams = examsAll.filter((e) => e.saas === saas);
