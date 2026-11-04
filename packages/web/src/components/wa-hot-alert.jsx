@@ -1,7 +1,7 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { currentUser, userById, isAdminUser } from "../lib/users.js";
+import { currentUser, userById, isSdrUser } from "../lib/users.js";
 
 // Pop-up de lead quente do WhatsApp (fluxo de permissão de ligação): quando o
 // lead responde com o fluxo aberto, o alerta salta em QUALQUER tela pro SDR
@@ -61,18 +61,19 @@ export function WaHotAlert({ onOpenThread, onOpenLeadWhatsapp, onOpenLeadCard })
   const fails = React.useRef(0);           // 403 (tela restrita) desliga o componente
   const box = React.useRef(null);
 
-  // Dono (admin) não recebe pop-up de atendimento: responder lead quente na
-  // hora é trabalho de quem está na operação (SDR/CS), não de quem gere.
-  const admin = isAdminUser(currentUser());
+  // Só o SDR recebe pop-up de atendimento: responder lead quente na hora é
+  // trabalho de quem qualifica, não de quem gere (admin) nem de quem fecha
+  // (closer). Ricardo, closer, era interrompido pelos avisos (Leo, 04/11/2026).
+  const sdr = isSdrUser(currentUser());
 
   React.useEffect(() => {
-    if (admin || fails.current >= 2) return;
+    if (!sdr || fails.current >= 2) return;
     let alive = true;
     api.waAlerts()
       .then((r) => { if (!alive) return; fails.current = 0; setAlerts(r.alerts || []); })
       .catch(() => { fails.current += 1; });
     return () => { alive = false; };
-  }, [version, admin]);
+  }, [version, sdr]);
 
   // Escopo por produto do usuário (Ana só vê UniqueKids); sem usuário casado,
   // mostra tudo — alerta perdido é pior que alerta a mais.
@@ -105,7 +106,7 @@ export function WaHotAlert({ onOpenThread, onOpenLeadWhatsapp, onOpenLeadCard })
     return () => clearTimeout(t);
   }, [cur?.id]);
 
-  if (admin || !cur) return null;
+  if (!sdr || !cur) return null;
 
   const saasName = (window.SEED?.SAAS || []).find((s) => s.id === cur.saas)?.name || cur.saas || "";
   const isLead = kindOf(cur) === "lead";
