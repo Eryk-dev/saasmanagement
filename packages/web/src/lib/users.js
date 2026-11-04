@@ -147,6 +147,17 @@ export function isAdminUser(user = currentUser()) {
   return ((fresh || user)?.roles || []).includes("admin");
 }
 
+// Quem está na OPERAÇÃO de atendimento (etiqueta "sdr" em Ajustes → Equipe):
+// é pra essa pessoa que o pop-up de lead quente/lead novo do Inbox salta.
+// Closer, integração, mídia social e admin não recebem (Leo, 04/11/2026: o
+// Ricardo, closer, estava sendo interrompido pelos avisos de atendimento).
+// Lê o registro FRESCO do bootstrap, como isAdminUser.
+export function isSdrUser(user = currentUser()) {
+  const fresh = user?.id ? userById(user.id) : null;
+  const roles = (fresh || user)?.roles || [];
+  return roles.includes("sdr") && !roles.includes("admin");
+}
+
 // Treinamento obrigatório da pessoa (espelho de roles.js da API): o servidor já
 // manda o valor EFETIVO em `trainingRequired` (coluna Treino da Equipe, ou a
 // regra padrão: tem vaga e não é admin). Lê o registro FRESCO do bootstrap, como
