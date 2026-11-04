@@ -1667,6 +1667,18 @@ Lever CRM.
     ignora negócio extra; antes ela carimbava `wonAt` nele a cada deploy.
   - Puxado de volta da região de venda, ele perde só o `wonAt`, nunca o
     vínculo (`lead-flow.js`).
+- **Cancelar a venda (04/11/2026):** ir pra Perdido/Desqualificado não desfaz
+  a venda (churn), então card vendido que caía na perda por engano seguia
+  contando (caso Marlininilson). `POST /api/leads/:id/cancel-sale`
+  (`crm/sale-cancel.js`) cancela de propósito: negócio novo passa pelo
+  `revertWonLead` e perde `customerId`/`wonAt`; negócio extra perde só o
+  `wonAt`. Com `stage` (+ `lostReason`/`lostNote`) move junto; card na região
+  de venda exige `stage`; cobrança real do MP dá 409 antes de mexer em nada.
+  No gate de perda (`MoveLeadModal`), card com venda (`hasSaleRecord`) escolhe
+  "Cancelar a venda" ou "Manter (churn)"; na ficha, card perdido que ainda
+  conta como venda mostra o aviso com "cancelar venda". O confirm de "DESFAZ o
+  fechamento" da ficha não aparece mais indo pra perda. Teste:
+  `routes.sale-cancel.test.js`.
 - **Distribuição de leads:** com `product.leadDistribution = "round_robin"`,
   o `autoLeadOwner` passa a vez entre os SDRs presentes (pula `awayUntil` no
   futuro e inativos; estado em `app_config/lead_rr_<saas>`). Sem a opção,

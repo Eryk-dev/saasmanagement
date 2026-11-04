@@ -1,7 +1,7 @@
 import React from "react";
 import { PrimaryButton } from "../atoms.jsx";
 import { Modal } from "./overlay.jsx";
-import { stageKind, phaseOf, isLossKind, isWonKind, lossReasonsOf } from "../lib/funnel.js";
+import { stageKind, phaseOf, isLossKind, isWonKind, lossReasonsOf, hasSaleRecord } from "../lib/funnel.js";
 import { usersByRole, currentUser, displayName } from "../lib/users.js";
 import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, CONSULT_PACKAGES, CLOSED_PLAN_MONTHS, dealProductsOf, paymentUpfront, paymentRecurring, paymentCustom, paymentPickerValue, paymentPatchOf, isTrialProduct, isTrialPlan, TRIAL_PLAN, TRIAL_DAYS } from "../lib/payments.js";
 import { DealProductField, isOneOffProduct, PopoverWithCustom, PaymentMethodPicker } from "./lead-blocks.jsx";
@@ -69,6 +69,13 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   const [closer, setCloser] = React.useState(lead.closer || closers[0]?.id || "");
   const [reason, setReason] = React.useState("");
   const [note, setNote] = React.useState("");
+  // Card com VENDA indo pra perda: a perda sozinha mantém a venda (o cliente
+  // comprou e saiu = churn). Se a venda não aconteceu (marcou errado, desistiu
+  // antes de pagar), ela precisa ser cancelada, senão segue contando nas
+  // vendas, no placar e em Clientes (caso Marlininilson, 04/11/2026). A
+  // escolha é obrigatória: nenhum dos dois caminhos acontece sem querer.
+  const askSale = isLost && hasSaleRecord(lead);
+  const [saleFate, setSaleFate] = React.useState("");
   const [callAt, setCallAt] = React.useState("");
   const [amount, setAmount] = React.useState(Number(lead.amount) > 0 ? String(lead.amount) : "");
   const [payment, setPayment] = React.useState(paymentPickerValue(lead));
@@ -176,7 +183,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   );
   // A call é OBRIGATÓRIA pra entrar na etapa (regra do servidor), tanto no gate
   // de call quanto no handoff que já cai numa etapa de call.
-  const ready = isLost ? !!reason
+  const ready = isLost ? (!!reason && (!askSale || !!saleFate))
     : isWonGate ? ((isTrial || (amountNum > 0 && !!payment)) && (!askProduct || !!dealProduct) && (!askInteg || !!integrator))
       : isOffer ? (!!followDay && (!askOffer || (!!offer && (offer === "nenhuma" || !offerProducts.length || !!offerProduct))))
         : askCall ? (!!closer && !!callAt)
@@ -190,9 +197,13 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
     if (isWonGate && askInteg && schedMode === "horario" && integAt && integAt !== lead.integrationAt && bookingLinkPending(lead, integrator)
       && !window.confirm(`O link de convite foi enviado ${sentAgo(lead.integrationLinkSentAt)} e o cliente ainda não marcou. Se ele marcar pelo link também, a integração fica em dobro (quem integra é avisado). Marcar ${slotFmt(integAt)} mesmo assim?`)) return;
     const patch = { stage: toStage };
+    const cancelSale = askSale && saleFate === "cancel";
     if (isLost) {
       patch.lostReason = reason;
       if (note.trim()) patch.lostNote = note.trim();
+      // Espelho local do cancelamento (a tela some com a venda na hora); quem
+      // grava é o POST /cancel-sale, que só lê stage e o motivo.
+      if (cancelSale) Object.assign(patch, lead.dealType && lead.dealType !== "nova_venda" ? { wonAt: "" } : { customerId: "", wonAt: "" });
     } else if (isWonGate) {
       // Teste grátis vale R$ 0 — o valor digitado antes (se houver) não conta.
       patch.amount = isTrial ? 0 : amountNum;
@@ -215,6 +226,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
       if (callAt) patch.callAt = callAt;
     }
     onConfirm(patch, {
+      cancelSale,
       // Nota do handoff vira um toque na timeline (contexto pro closer).
       activity: !isLost && !isWonGate && !isOffer && note.trim()
         ? { saas: lead.saas, lead: lead.id, type: "note", text: `Handoff → closer: ${note.trim()}`, author: currentUser()?.id || "", meta: { reschedule: false } }
@@ -395,6 +407,24 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
             <div style={{ height: 10 }} />
             <label className="kicker" style={label}>Detalhe (opcional)</label>
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="ex.: fechou com o concorrente X" style={{ ...field, height: "auto", padding: "8px 10px", resize: "vertical" }} />
+            {askSale && (
+              <>
+                <div style={{ height: 14 }} />
+                <label className="kicker" style={label}>Este negócio conta como venda. E a venda? *</label>
+                <Choice label="O que fazer com a venda" size="sm" value={saleFate} onChange={setSaleFate}
+                  options={[
+                    { value: "cancel", label: "Cancelar a venda" },
+                    { value: "keep", label: "Manter (churn)" },
+                  ]} />
+                <div className="mono" style={{ fontSize: 10.5, color: saleFate === "cancel" ? "var(--neg)" : "var(--fg-3)", marginTop: 6, lineHeight: 1.45 }}>
+                  {saleFate === "cancel"
+                    ? "a venda não aconteceu: sai das vendas, do placar e da meta, e o cliente, a assinatura e as faturas criados no fechamento são apagados (cobrança real do Mercado Pago bloqueia)"
+                    : saleFate === "keep"
+                      ? "o cliente comprou e saiu depois: a venda continua contando. Registre a saída em Clientes → churn"
+                      : "cancele se a venda não aconteceu (marcado por engano, desistiu antes de pagar); mantenha se o cliente comprou e saiu depois"}
+                </div>
+              </>
+            )}
           </>
         ) : (
           <>
@@ -425,12 +455,15 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
 // Texto do aviso quando o movimento não salva. Horário de integração recusado
 // pela conferência da API (ocupado no cockpit ou na agenda do Google de quem
 // integra) diz o motivo; o resto é falha genérica de rede/servidor.
+const READABLE_MOVE_ERRORS = new Set(["integration_slot_taken", "sale_has_real_billing", "no_sale", "stage_required", "stage_sold"]);
 export function moveErrorText(err) {
-  return err?.body?.code === "integration_slot_taken" && err.message ? err.message : "O movimento do card não foi salvo · tente de novo";
+  return READABLE_MOVE_ERRORS.has(err?.body?.code) && err.message ? err.message : "O movimento do card não foi salvo · tente de novo";
 }
 
 // Executa um movimento gateado: PATCH do lead + activity extra (nota de handoff).
 export async function applyGatedMove(patch, extra, leadId) {
-  await api.update("leads", leadId, patch);
+  // Perda com a venda cancelada: move e cancela num pedido só no servidor.
+  if (extra?.cancelSale) await api.cancelLeadSale(leadId, { stage: patch.stage, lostReason: patch.lostReason || "", lostNote: patch.lostNote || "" });
+  else await api.update("leads", leadId, patch);
   if (extra?.activity) { try { await api.logActivity(extra.activity); } catch { /* best-effort */ } }
 }

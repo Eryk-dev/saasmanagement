@@ -946,6 +946,9 @@ export const api = {
   // Desfaz um fechamento errado: remove cliente/assinatura/faturas automáticas
   // e devolve o card pro funil (409 se houver dinheiro real do Mercado Pago).
   customerRevertWin: (id) => req("POST", `/api/customers/${id}/revert-win`),
+  // Cancela a VENDA de um negócio (perda sozinha mantém a venda, é churn):
+  // { stage, lostReason, lostNote } move junto; sem stage, só cancela.
+  cancelLeadSale: (id, body = {}) => req("POST", `/api/leads/${id}/cancel-sale`, body),
   // Churn: registra a SAÍDA do cliente (endedAt + motivo; cancela as
   // assinaturas em aberto, espelhando no MP) e o desfazer da marcação.
   customerChurn: (id, body = {}) => req("POST", `/api/customers/${id}/churn`, body),

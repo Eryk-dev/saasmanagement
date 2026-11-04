@@ -9,6 +9,7 @@ import { registerCrudRoutes } from "./routes.crud.js";
 import { registerFunnelRoutes } from "./routes.funnel.js";
 import { registerViewRoutes } from "./routes.views.js";
 import { registerMeetingRoutes } from "./routes.meetings.js";
+import { registerSaleCancelRoutes } from "./routes.sale-cancel.js";
 import { startMeetingsSweep } from "./meetings.js";
 import { registerIcpRoutes } from "./routes.icp.js";
 import { startCadencia } from "./cadencia-runner.js";
@@ -24,6 +25,8 @@ export function register(app, repo, ctx) {
   registerViewRoutes(app, repo);
   // Calls de venda como registro (espelho dos campos de call do lead).
   registerMeetingRoutes(app, repo);
+  // Cancelar a venda de um negócio (sai das vendas; perda sozinha não desfaz).
+  registerSaleCancelRoutes(app, repo);
   // CRUD genérico sobre as coleções (/api/:collection).
   registerCrudRoutes(app, repo, {
     discordClient: ctx.discord, googleUser: ctx.googleUser, metaCapiClient: ctx.metaCapi, briefer: ctx.briefer,

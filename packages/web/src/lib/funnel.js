@@ -94,6 +94,13 @@ export const isWonLead = (saasCfg, lead) => {
   return sold || isWonStage(saasCfg, lead?.stage) || isPostSaleStage(saasCfg, lead?.stage);
 };
 export const wonAtOf = (lead) => lead?.wonAt || lead?.stageSince || "";
+// O registro de venda que o lead carrega, sem olhar a etapa (espelho do
+// hasSaleRecord da API, crm/sale-cancel.js). Card perdido com esse registro
+// segue contando como venda até alguém cancelar.
+export const hasSaleRecord = (lead) => {
+  const extraDeal = lead?.dealType && lead.dealType !== "nova_venda";
+  return extraDeal ? !!lead?.wonAt : !!(lead?.customerId || lead?.wonAt);
+};
 
 // Lead que conta nas métricas — espelho COMPLETO do isRealLead do metrics-core
 // (api): fora os internos (teste) e as saídas laterais do form (ex.: quem ainda

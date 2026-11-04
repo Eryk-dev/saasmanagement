@@ -10,7 +10,7 @@ import { moveGate, MoveLeadModal, applyGatedMove, moveErrorText } from "../compo
 import { clientSummary, leadBox, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks } from "../components/lead-blocks.jsx";
 import { waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
 import { meetingInviteText } from "../lib/wa-copy.js";
-import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind, isLossKind, phaseOf } from "../lib/funnel.js";
+import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind, isLossKind, phaseOf, hasSaleRecord } from "../lib/funnel.js";
 import { SelectPopover } from "../components/select-popover.jsx";
 import { DateTimeField, formatDateTime } from "../components/datetime-field.jsx";
 import { brtMs } from "../lib/format.js";
@@ -474,14 +474,34 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
     // Espelho do applyStageMove: sair da região de venda (Ganho/Integração/CS)
     // pra uma etapa aberta DESFAZ o fechamento no servidor — o cliente e a
     // assinatura criados na venda somem da base. É irreversível demais pra
-    // acontecer num clique distraído no select, então confirma antes.
-    if (SOLD_KINDS.has(kind) && !SOLD_KINDS.has(stageKind(saasCfg, stage)) && (lead.customerId || lead.wonAt)
+    // acontecer num clique distraído no select, então confirma antes. Indo pra
+    // PERDA não desfaz sozinho: o gate pergunta se cancela ou mantém a venda.
+    if (SOLD_KINDS.has(kind) && !SOLD_KINDS.has(stageKind(saasCfg, stage)) && !isLossKind(stageKind(saasCfg, stage)) && (lead.customerId || lead.wonAt)
       && !window.confirm(`Tirar este lead de "${lead.stage}" DESFAZ o fechamento: o cliente e a assinatura criados na venda saem da base (cobrança real no Mercado Pago fica). Continuar?`)) return;
     const gate = moveGate(saasCfg, lead, stage);
     if (gate) { setPendingMove({ toStage: stage, gate }); return; }
     dirty.current = true;
     setLead((prev) => ({ ...prev, stage, stageSince: new Date().toISOString(), stageAttempts: 0 }));
     api.update("leads", lead.id, { stage }).catch((err) => { console.warn("lead move not persisted:", err.message); window.toast && window.toast(moveErrorText(err), "neg"); });
+  }
+  // Card PERDIDO que ainda conta como venda (foi pra perda escolhendo "manter",
+  // ou antes de existir a pergunta no gate): cancela a venda sem mexer na etapa.
+  const [cancelingSale, setCancelingSale] = React.useState(false);
+  async function cancelSale() {
+    if (cancelingSale) return;
+    if (!window.confirm(`Cancelar a venda de ${lead.name || "este negócio"}?
+
+Ele sai das vendas, do placar e da meta, e o cliente, a assinatura e as faturas criados no fechamento são apagados. Use só se a venda não aconteceu; cliente que comprou e saiu é churn.`)) return;
+    setCancelingSale(true);
+    try {
+      const r = await api.cancelLeadSale(lead.id);
+      dirty.current = true;
+      setLead((prev) => ({ ...prev, ...(r?.lead || {}) }));
+      refetchTimeline();
+      window.toast && window.toast("Venda cancelada: o negócio saiu das vendas");
+    } catch (err) {
+      window.toast && window.toast(err?.message || "Não deu pra cancelar a venda", "neg");
+    } finally { setCancelingSale(false); }
   }
   function close() {
     if (dirty.current) refresh();
@@ -888,9 +908,23 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
               perda sozinho no revival. */}
           {!isOpen && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {isLossKind(kind) && hasSaleRecord(lead) && (
+                <div role="status" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "9px 10px", borderRadius: "var(--r-2)", background: "var(--warn-soft)", border: "1px solid var(--line-1)" }}>
+                  <div style={{ flex: "1 1 200px", minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600 }}>Este negócio ainda conta como venda</div>
+                    <div style={{ fontSize: 11, color: "var(--fg-3)", marginTop: 1, lineHeight: 1.45 }}>
+                      Está em “{lead.stage}”, mas a venda{lead.wonAt ? ` de ${new Date(lead.wonAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}` : ""} segue nas vendas e no placar. Se ela não aconteceu, cancele; se o cliente comprou e saiu, é churn e fica.
+                    </div>
+                  </div>
+                  <button onClick={cancelSale} disabled={cancelingSale}
+                    style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid color-mix(in srgb, var(--neg) 40%, transparent)", background: "var(--bg-1)", color: "var(--neg)", fontSize: 12, fontWeight: 600 }}>
+                    {cancelingSale ? "cancelando…" : "cancelar venda"}
+                  </button>
+                </div>
+              )}
               <div className="dim" style={{ fontSize: 11.5, lineHeight: 1.45 }}>
                 {kind === "ganho"
-                  ? "Tirar do Ganho desfaz o fechamento (o cliente e a assinatura criados na venda saem da base). Pra registrar churn, use a etapa de perda."
+                  ? "Tirar do Ganho pro funil desfaz o fechamento (o cliente e a assinatura criados na venda saem da base). Indo pra perda, você escolhe entre cancelar a venda ou mantê-la (churn)."
                   : `Reabrir devolve o card pro funil${lead.lostReason ? ` (o motivo “${lossReasonLabel(saasCfg, lead.lostReason)}” é apagado)` : ""} e o próximo toque volta a ser cobrado na fila do Meu dia.`}
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>

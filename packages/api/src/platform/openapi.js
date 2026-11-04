@@ -515,6 +515,27 @@ export const openapi = {
       },
       delete: { tags: ["Leads"], summary: "Apaga um lead", security: [{ ApiKeyAuth: [] }], responses: { 200: { description: "OK" } } },
     },
+    "/api/leads/{id}/cancel-sale": {
+      parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+      post: {
+        tags: ["Leads"],
+        summary: "Cancela a venda do negócio (sai das vendas)",
+        description:
+          "Mover pra Perdido/Desqualificado NÃO desfaz a venda (churn). Para tirar o negócio das vendas: negócio novo " +
+          "remove o cliente/assinatura/faturas automáticas nascidos do fechamento e limpa `customerId`/`wonAt`; negócio " +
+          "extra limpa só `wonAt`. Card na região de venda exige `stage` (etapa fora dela, com `lostReason`/`lostNote` se for perda). " +
+          "409 `sale_has_real_billing` quando há cobrança real do Mercado Pago; 409 `no_sale` quando não há venda.",
+        security: [{ ApiKeyAuth: [] }],
+        requestBody: { content: { "application/json": { schema: { type: "object", properties: {
+          stage: { type: "string" }, lostReason: { type: "string" }, lostNote: { type: "string" }, note: { type: "string" },
+        } } } } },
+        responses: {
+          200: { description: "`{ ok, lead, customerRemoved }`" },
+          400: { description: "Etapa ausente ou inválida", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          409: { description: "Sem venda ou com cobrança real do MP", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+        },
+      },
+    },
     "/api/leads/{id}/proposal": {
       parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
       post: {
