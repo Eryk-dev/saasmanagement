@@ -73,6 +73,8 @@ const PRIVATE = new Set(["users", "icp_versions", "integration_secrets", "produc
   // Suporte: isolamento por produto (support-scope.js) só pelas rotas
   // dedicadas de routes.tickets.js — o CRUD genérico seria porta dos fundos.
   "tickets", "ticket_events", "ticket_assets", "ticket_settings", "quick_replies", "linear_outbox",
+  // Grupos de WhatsApp: telefones dos clientes; só pelas rotas de whatsapp-groups.
+  "whatsapp_groups",
   // Histórico de plano: append-only, escrito só pelo servidor (plan-history.js).
   "plan_changes",
   // Espelho das orgs do LeverAds: escrito só pelo servidor, lido pelas rotas

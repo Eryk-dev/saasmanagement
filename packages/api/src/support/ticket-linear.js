@@ -28,6 +28,7 @@ import {
   recordTicketEvents, ticketTitle,
 } from "./tickets-core.js";
 import { normalizeHermesSettings, applyHermesIssue, applyHermesComment, isCockpitSigned, isHermesAuthor, parseHermesComment } from "./ticket-hermes.js";
+import { groupOfDescription } from "./whatsapp-groups.js";
 
 export const OUTBOX = "linear_outbox";
 export const MIRROR_MESSAGE_MODES = ["all", "public", "none"];
@@ -757,7 +758,7 @@ const canalDaIssue = (issue, labels) => {
 //   3. o nome do grupo na linha "**Cliente:**" da descrição, sem o produto.
 // Responsável: o da issue, pelo mesmo de-para de pessoas do espelho
 // (userIdForLinear).
-export function ticketFromIssue(issue, { saas, customers = [], users = [], people = [], overrides = {} } = {}) {
+export function ticketFromIssue(issue, { saas, customers = [], users = [], people = [], overrides = {}, groups = [] } = {}) {
   const doProduto = customers.filter((c) => (c.saas || "") === saas);
   const unico = (lista) => (lista.length === 1 ? lista[0] : null);
   const org = orgDaDescricao(issue.description, saas);
@@ -768,7 +769,13 @@ export function ticketFromIssue(issue, { saas, customers = [], users = [], peopl
   const doGrupo = clienteDaDescricao(issue.description);
   const kGrupo = chaveDoGrupo(doGrupo);
   const porGrupo = kGrupo ? doProduto.filter((c) => nomeChave(c.name) === kGrupo) : [];
-  const customer = unico(porOrg) || unico(porTitulo) || unico(porGrupo);
+  // Grupo de WhatsApp registrado pelo Hermes (whatsapp-groups.js), ligado ao
+  // cliente pelo telefone ou à mão: pelo jid do card ou, em card antigo, pelo
+  // nome exato do grupo.
+  const jid = groupOfDescription(issue.description);
+  const grupo = jid ? groups.find((g) => g.id === jid) : unico(doGrupo ? groups.filter((g) => g.name === doGrupo) : []);
+  const porLink = grupo?.customerId ? doProduto.filter((c) => c.id === grupo.customerId) : [];
+  const customer = unico(porOrg) || unico(porLink) || unico(porTitulo) || unico(porGrupo);
   const nome = tituloValido || doGrupo;
   const ambiguo = !customer && [porOrg, porTitulo, porGrupo].some((l) => l.length > 1);
   const uid = userIdForLinear(issueAssignee(issue), { users, people, overrides });
@@ -779,7 +786,7 @@ export function ticketFromIssue(issue, { saas, customers = [], users = [], peopl
   // a Conversa é só o atendimento. O relato da issue mora na aba Linear, lido
   // de lá (e o vínculo adotado nunca sobe descrição, então nada se perde).
   return {
-    nome, customer, ambiguo, assignee,
+    nome, customer, ambiguo, assignee, group: grupo?.id || jid,
     input: {
       saas, subject: str(issue.title, 250) || String(issue.identifier || "Issue do Linear"), description: "",
       priority: PRIORITY_FROM_LINEAR[Number(issue.priority)] || "normal",
@@ -799,11 +806,12 @@ export async function importLinearIssue(repo, issue, { saas, now = nowIso(), log
   if (!issue?.id || !saas || isCockpitIssue(issue) || issue.trashed || issue.archivedAt) return null;
   return withTaskLock(`linear-issue:${issue.id}`, async () => {
     if (await findTicketByIssue(repo, issue.id)) return null;
-    const [customers, users, settings] = await Promise.all([
+    const [customers, users, settings, groups] = await Promise.all([
       repo.list("customers").catch(() => []), repo.list("users").catch(() => []), loadSettings(repo, saas),
+      repo.list("whatsapp_groups").catch(() => []),
     ]);
     const people = issueAssignee(issue) ? await linearPeople(linear).catch(() => []) : [];
-    const plan = ticketFromIssue(issue, { saas, customers, users, people, overrides: settings.linear?.people || {} });
+    const plan = ticketFromIssue(issue, { saas, customers, users, people, overrides: settings.linear?.people || {}, groups });
     await ensureCategory(repo, saas, plan.input.category, { now });
     // Responsável fora do escopo do produto não derruba a entrada: o ticket
     // nasce sem responsável e o CS atribui.
@@ -812,6 +820,9 @@ export async function importLinearIssue(repo, issue, { saas, now = nowIso(), log
       return createTicket(repo, { ...plan.input, assignee: "" }, { by: ACTOR_LINEAR, now });
     });
     await linkTicketToIssue(repo, ticket.id, issue, { by: ACTOR_LINEAR, now });
+    // O grupo fica no ticket: quando ele for ligado a um cliente depois, o
+    // ticket aberto sem cliente é preenchido (fillGroupTickets).
+    if (plan.group) await withTaskLock(`ticket:${ticket.id}`, () => repo.update("tickets", ticket.id, { whatsappGroup: plan.group }, { silent: true }));
     await applyLinearIssue(repo, issue, { now, people });
     const seen = (issue.comments?.nodes || []).map((c) => c.id);
     if (seen.length) await stampLinear(repo, ticket.id, { seenComments: capIds(seen) });

@@ -835,6 +835,23 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   Progress/In Review) tira o ticket do **Novo** para Em atendimento — o
   `stateBack` não cobre isso porque os dois são o mesmo kind. Os scripts
   `2026-09-23-*-importados-linear.mjs` acertaram os tickets de antes disso.
+  **Grupos de WhatsApp (04/11/2026, `support/whatsapp-groups.js`):** só 36%
+  dos cards do Hermes tinham a org (o vínculo de empresa é manual e por
+  produto) e o nome do grupo quase nunca bate com o do cliente. O Hermes
+  (`cockpit_groups.py`, de hora em hora) manda em `POST
+  /public/hermes/whatsapp-groups` (`X-Cockpit-Service-Key` =
+  `HERMES_SERVICE_KEY`) cada grupo que lê, com os telefones dos clientes nele
+  (a equipe fica de fora). A coleção `whatsapp_groups` (PRIVATE) liga o grupo
+  ao cliente cujo telefone (cadastro, contatos ou lead) está no grupo, só com
+  par único (`linkedBy: "telefone"`); `PATCH /api/support/whatsapp-groups/:jid`
+  escolhe à mão (`"manual"`, vale até voltar com `customerId: ""`) e `GET`
+  lista sem os telefones. O card traz `**Grupo:** \`<jid>\``; o
+  `ticketFromIssue` usa, depois da org, o cliente do grupo (pelo jid ou, em
+  card antigo, pelo nome exato do grupo) e o ticket guarda `whatsappGroup`.
+  Ligar um grupo preenche os tickets do Linear ainda sem cliente
+  (`fillGroupTickets`). Isso só escolhe o cliente do ticket: o vínculo de
+  empresa do Hermes, que dá acesso aos dados da conta, não muda. Medição de
+  04/11: 139 de 167 grupos ligam por telefone. Testes em `whatsapp-groups`.
   (8) **responsável espelhado nos dois sentidos (24/09/2026, `syncAssignee`,
   ligado por padrão):** de-para de pessoas em `linearIdForUser` /
   `userIdForLinear` — ajuste manual em `linear.people` (`{ usuário: idLinear |

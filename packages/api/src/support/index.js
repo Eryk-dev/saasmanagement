@@ -3,6 +3,7 @@
 import { registerTicketRoutes } from "./routes.tickets.js";
 import { registerSupportPortalRoutes } from "./routes.support-portal.js";
 import { registerHermesRoutes } from "./routes.hermes.js";
+import { registerWhatsappGroupRoutes } from "./routes.whatsapp-groups.js";
 import { startTicketSla } from "./ticket-sla-runner.js";
 import { startLinearSync } from "./ticket-linear-runner.js";
 
@@ -14,6 +15,9 @@ export function register(app, repo, ctx) {
   // Hermes (agente de correção no Linear): fase do card e ações do guia no
   // próprio ticket (routes.hermes.js).
   registerHermesRoutes(app, repo, opts.linear ? { linear: opts.linear } : {});
+  // Grupos de WhatsApp dos clientes: registro do Hermes e vínculo com o
+  // cliente pelo telefone ou à mão (routes.whatsapp-groups.js).
+  registerWhatsappGroupRoutes(app, repo);
   // Portal público do cliente: /s/:token (chamado) e /s/new/:saas (abrir).
   registerSupportPortalRoutes(app, repo, opts.supportPortal);
 }

@@ -69,6 +69,7 @@ export const COLLECTIONS = {
   tickets: [],         // ticket de suporte: status, prioridade, conversa (reply/note), SLA, token do portal
   ticket_events: [],   // atividade de cada ticket — GET /api/tickets/:id/activity
   ticket_assets: [],   // anexo do ticket (base64, preso ao ticket; servido com escopo ou pelo token do portal)
+  whatsapp_groups: [], // grupos de WhatsApp dos clientes, registrados pelo Hermes e ligados ao cliente (support/whatsapp-groups.js); PRIVATE
   quick_replies: [],   // respostas rápidas do chat do ticket: da equipe (por produto) ou pessoais (owner) — quick-replies.js
   ticket_settings: [], // um doc por produto (id = saas): políticas de SLA, expediente, categorias, portal, espelho do Linear
   linear_outbox: [],   // fila do espelho com o Linear: 1 linha por ticket sujo, drenada por ticket-linear-runner.js

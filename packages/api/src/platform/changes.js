@@ -40,7 +40,7 @@ const SILENT = new Set([
 //   notifications  caixa de entrada (o sino refaz o fetch)
 //   tasks/task_boards  a tela de Tarefas e o Meu dia refazem o fetch sozinhos
 //   tickets/ticket_events/ticket_settings/quick_replies  telas do Suporte (fetch próprio)
-export const QUIET = new Set(["activities", "task_events", "notifications", "tasks", "task_boards", "tickets", "ticket_events", "ticket_settings", "quick_replies"]);
+export const QUIET = new Set(["activities", "task_events", "notifications", "tasks", "task_boards", "tickets", "ticket_events", "ticket_settings", "quick_replies", "whatsapp_groups"]);
 
 let rev = 0;
 const listeners = new Set();

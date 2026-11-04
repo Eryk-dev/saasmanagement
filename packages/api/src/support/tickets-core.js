@@ -240,7 +240,7 @@ export function composeTicket(input, { by = ACTOR_API, now = nowIso() } = {}) {
 }
 
 const MANAGED = new Set(["id", "number", "saas", "channel", "messages", "attachments", "sla", "portalToken", "createdAt", "createdBy",
-  "updatedAt", "updatedBy", "closedAt", "version", "lastMessageAt", "lastCustomerAt", "lastAgentAt", "linear", "linearIssueId", "hermes"]);
+  "updatedAt", "updatedBy", "closedAt", "version", "lastMessageAt", "lastCustomerAt", "lastAgentAt", "linear", "linearIssueId", "hermes", "whatsappGroup"]);
 
 export function sanitizeTicketPatch(body, cur) {
   const src = isObj(body) ? body : {};
