@@ -1924,6 +1924,35 @@ no grupo do menu "CS e suporte" (chave `suporte`), com a permissão de Clientes
   Hoje como atrasado, sem prazo fica só na Carteira. O contador do menu usa a
   mesma lista. Linha: `CsFollowupRow` em `today.jsx`; smoke
   `acompanhamento-cs-na-fila`.
+- **Resultados por produto (05/11/2026):** `GET /api/customers/:id/results`
+  ganha `products`, um item por produto com resultado (LeverAds, LeverPrice;
+  Mentoria fora) que a venda cita (`dealProductsOf`) ou que tem org vinculada
+  (`leveradsOrgId`, na falta `orgId`; `leverpriceOrgId`), com `status`
+  `ok | sem_vinculo | indisponivel`, `hero`, `metrics`, `recent` (30 × 30) e
+  `monthly` (séries e linhas por mês civil de São Paulo, zeradas). As
+  definições ficam na API (`customers/result-products.js`); os campos antigos
+  da rota não mudam. LeverAds: total, pedidos, horas e custo do `orgSnapshot`
+  pela régua do card do deck (`panelMetricNumber` em `proposals/cases.js`), e
+  mês a mês de `platform_orders` (`orgMonthly`, cache por org de 3 h; `since`
+  é o 1º pedido na tabela, que não tem backfill). Resultado é o influenciado
+  (`gmv_clone`); o faturamento da loja é só contexto. LeverPrice: rota de
+  serviço do produto `GET /api/service/cockpit/orgs/:id/results`
+  (`customers/leverprice-results.js`, `X-Cockpit-Service-Key` =
+  `LEVERPRICE_SERVICE_KEY`, timeout 5 s, cache por org de 1 h que mantém o
+  último bom); hero é o vendido com preço do LeverPrice e a 1ª métrica o rebate
+  recuperado. Produtos em paralelo: a falha de um não derruba o outro. Teste:
+  `customer-results-products.test.js`.
+- **Visão Resultados (05/11/2026):** terceira visão da Carteira (Lista,
+  Quadro, Resultados), com seletor de cliente e o link "resultados ›" na linha
+  da lista. `components/customer-results.jsx` desenha só o que vem em
+  `products`: o card no molde do slide 06 do deck, os 30 × 30 e o mês a mês
+  (`MonthBars`: um eixo por gráfico; o faturamento da loja em cinza contém a
+  parte da Lever; séries `extra`, como o rebate, em gráfico próprio; hover e
+  "ver tabela"). Apresentar = tela cheia do palco (`--k` aumenta tudo); Salvar
+  PDF = impressão só do palco (`body.cres-printing`). Sem dado vira "—", nunca
+  R$ 0. O card da lista tem `flex-shrink:0`: com `overflow:hidden` ele
+  encolhia na coluna flex e cortava as linhas sem rolagem. Prévia:
+  `customerResultsPreview`; revisão `test:review:carteira-resultados`.
 
 **Guias: base de conhecimento interna (03/11/2026).** Domínio `guides/` e tela
 `#guides` no grupo "CS e suporte". Um guia (`guides`) é de um produto do

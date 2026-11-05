@@ -155,6 +155,69 @@ function customerStatusPreview(saas) {
   });
   return { generatedAt: new Date().toISOString(), rows };
 }
+// Resultados por produto na prévia (Carteira → Resultados, 05/11/2026): a
+// forma de GET /api/customers/:id/results → products, com números inventados.
+function customerResultsPreview(id) {
+  const x = STATUS_PREVIEW[id] || {};
+  const seed = [...String(id)].reduce((n, ch) => n + ch.charCodeAt(0), 0);
+  const now = new Date();
+  const meses = Array.from({ length: 12 }, (_, i) => { const d = new Date(now.getFullYear(), now.getMonth() - 11 + i, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; });
+  const curva = (i, base) => Math.round(base * (0.35 + i / 14) * (1 + ((seed * (i + 3)) % 17) / 40));
+  const asOf = now.toISOString();
+  const products = (x.products || []).filter(([pid]) => pid !== "mentoria").map(([pid, account]) => {
+    if (!account) return { id: pid, label: pid === "leverprice" ? "LeverPrice" : "LeverAds", status: "sem_vinculo", reason: pid === "leverprice" ? "Sem org do LeverPrice no cadastro: mande o link de cadastro pelo card do cliente." : "Sem org da LeverAds no cadastro: vincule em Editar cliente.", asOf: null };
+    if (pid === "leverads") {
+      const rows = meses.map((month, i) => { const store = curva(i, 180000); const lever = Math.round(store * (0.08 + i * 0.012)); return { month, storeGmv: store, leverGmv: lever, leverOrders: Math.round(lever / 210) }; });
+      const lever = rows.reduce((n, r) => n + r.leverGmv, 0);
+      const listings = 8200 + seed * 7;
+      return {
+        id: "leverads", label: "LeverAds", status: "ok", reason: "", asOf, since: `${meses[0]}-08`,
+        hero: { key: "gmvTotal", label: "vendido pelos anúncios da Lever", value: lever * 1.15, format: "money", period: "desde o início" },
+        metrics: [
+          { key: "ordersTotal", label: "pedidos gerados", value: Math.round(lever * 1.15 / 210), format: "int" },
+          { key: "hoursSaved", label: "de cadastro manual poupadas", value: listings * 10 / 60, format: "hours", period: "desde o início" },
+          { key: "costAvoided", label: "de custo fixo evitado", value: listings * 10 / 60 * 3000 / 220, format: "money" },
+        ],
+        recent: { days: 30, items: [
+          { key: "leverGmv", label: "vendido pelos anúncios da Lever", format: "money", current: rows[11].leverGmv, previous: rows[10].leverGmv },
+          { key: "leverOrders", label: "pedidos pelos anúncios da Lever", format: "int", current: rows[11].leverOrders, previous: rows[10].leverOrders },
+          { key: "storeGmv", label: "faturamento da loja", format: "money", current: rows[11].storeGmv, previous: rows[10].storeGmv },
+          { key: "leverShare", label: "participação da Lever no faturamento", format: "pct", current: rows[11].leverGmv / rows[11].storeGmv * 100, previous: rows[10].leverGmv / rows[10].storeGmv * 100 },
+        ] },
+        monthly: { series: [
+          { key: "storeGmv", label: "Faturamento da loja", format: "money", role: "context" },
+          { key: "leverGmv", label: "Vendido pelos anúncios da Lever", format: "money", role: "main" },
+          { key: "leverOrders", label: "Pedidos pelos anúncios da Lever", format: "int", role: "extra" },
+        ], rows },
+        note: "Só o que foi vendido por anúncios criados pela Lever, nunca o faturamento inteiro da loja. Horas e custo pela régua do deck: 10 minutos por anúncio, ao custo de R$ 3.000 em 220 horas.",
+      };
+    }
+    const rows = meses.map((month, i) => { const sales = i < 3 ? 0 : curva(i, 90000); return { month, sales, rebate: Math.round(sales * 0.031), orders: Math.round(sales / 160), promotions: i < 3 ? 0 : 20 + ((seed + i) % 30) }; });
+    const sum = (k) => rows.reduce((n, r) => n + r[k], 0);
+    return {
+      id: "leverprice", label: "LeverPrice", status: "ok", reason: "", asOf, since: `${meses[3]}-02`,
+      hero: { key: "sales", label: "vendido com preço do LeverPrice", value: sum("sales"), format: "money", period: "nos últimos 12 meses" },
+      metrics: [
+        { key: "rebate", label: "de rebate recuperado", value: sum("rebate"), format: "money" },
+        { key: "orders", label: "pedidos", value: sum("orders"), format: "int" },
+        { key: "automaticPromotions", label: "promoções em que o robô entrou", value: rows[11].promotions, format: "int", period: "últimos 30 dias" },
+      ],
+      recent: { days: 30, items: [
+        { key: "sales", label: "vendido com preço do LeverPrice", format: "money", current: rows[11].sales, previous: rows[10].sales },
+        { key: "rebate", label: "rebate recuperado", format: "money", current: rows[11].rebate, previous: rows[10].rebate },
+        { key: "orders", label: "pedidos", format: "int", current: rows[11].orders, previous: rows[10].orders },
+        { key: "automaticPriceChanges", label: "mudanças de preço automáticas", format: "int", current: 340 + seed % 90, previous: null },
+      ] },
+      monthly: { series: [
+        { key: "sales", label: "Vendido com preço do LeverPrice", format: "money", role: "main" },
+        { key: "rebate", label: "Rebate recuperado", format: "money", role: "extra" },
+        { key: "orders", label: "Pedidos", format: "int", role: "extra" },
+      ], rows },
+      note: "Vendas atribuídas ao preço que o robô aplicou e rebate confirmado pelo Mercado Livre.",
+    };
+  });
+  return { hasOrg: true, snapshot: null, reports: [], blocker: "", preview: "", products };
+}
 // Guias na prévia (03/11/2026): um publicado com prints gerados e um rascunho.
 const printPreview = (titulo, cor) => "data:image/svg+xml;utf8," + encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700"><rect width="1200" height="700" fill="#eef1f3"/><rect x="0" y="0" width="1200" height="64" fill="${cor}"/><text x="32" y="42" font-family="sans-serif" font-size="26" fill="#fff">${titulo}</text><rect x="32" y="110" width="520" height="40" rx="10" fill="#fff"/><rect x="32" y="170" width="1136" height="420" rx="16" fill="#fff"/><rect x="900" y="620" width="268" height="48" rx="24" fill="${cor}"/></svg>`);
@@ -204,6 +267,7 @@ const leadGuia = (() => { const d = new Date(); d.setHours(17, 0, 0, 0); return 
 const integracaoAtual = () => (modoGuia ? { ...integracaoPreview, kind: "implantacao", lead: "ld_guia", stage: "aguardando_kickoff" } : integracaoPreview);
 const RESPOSTAS = {
   customerStatus: (saas) => customerStatusPreview(saas),
+  customerResults: (id) => customerResultsPreview(id),
   guides: (saas) => ({ guides: GUIAS_PREVIEW.filter((g) => !saas || g.saas === saas), canEdit: !new URLSearchParams(location.search).has("leitor") }),
   guide: (id) => GUIAS_PREVIEW.find((g) => g.id === id) || null,
   createGuide: (b) => { const g = { ...b, id: "gd_prev_" + Date.now().toString(36), rev: 1, updatedAt: new Date().toISOString(), updatedBy: "leo" }; GUIAS_PREVIEW.push(g); return g; },

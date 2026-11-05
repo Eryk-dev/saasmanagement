@@ -349,10 +349,145 @@ export async function influencedByOrg(orgIds = [], { query = levercopyQuery, now
   return orgCache.map;
 }
 
+// ── Mês a mês de UM cliente (visão Resultados da Carteira, 05/11/2026) ──────
+// O total desde o início continua vindo do orgSnapshot (org_revenue_generated,
+// o mesmo número do card do deck). Aqui é a EVOLUÇÃO: por mês civil de São
+// Paulo, o faturamento da loja (contexto) ao lado do que os anúncios da Lever
+// venderam (o resultado), e os últimos 30 dias contra os 30 anteriores.
+//
+// Mesma regra da casa: o resultado é o INFLUENCIADO (`gmv_clone`); o `gmv` da
+// loja só aparece como contexto, nunca como resultado da Lever.
+//
+// `platform_orders` não tem backfill (nasce no webhook), então `since` (o 1º
+// pedido da org na tabela) é o início da cobertura: mês antes dele é "sem
+// dado", não "zero venda". Uma consulta por org, sempre presa ao índice
+// (org_id, date_created desc): a janela é o maior entre os N meses e os 60
+// dias do comparativo, e os 30 × 30 saem da MESMA varredura (filtros por linha
+// agrupados por mês, somados aqui).
+const MONTHLY_SQL = `
+with s as (
+  select min(x.date_created) as first
+    from public.platform_orders x
+   where x.org_id = $1::uuid),
+m as (
+  select to_char(date_trunc('month', x.date_created at time zone 'America/Sao_Paulo'), 'YYYY-MM') as month,
+         coalesce(sum(x.gmv), 0)::float8                         as store_gmv,
+         coalesce(sum(x.gmv_clone), 0)::float8                   as lever_gmv,
+         count(*) filter (where x.gmv > 0)::int                  as orders,
+         count(*) filter (where x.gmv_clone > 0)::int            as lever_orders,
+         coalesce(sum(x.gmv) filter (where x.date_created >= now() - interval '30 days'), 0)::float8       as c_store_gmv,
+         coalesce(sum(x.gmv_clone) filter (where x.date_created >= now() - interval '30 days'), 0)::float8 as c_lever_gmv,
+         count(*) filter (where x.gmv > 0 and x.date_created >= now() - interval '30 days')::int           as c_orders,
+         count(*) filter (where x.gmv_clone > 0 and x.date_created >= now() - interval '30 days')::int     as c_lever_orders,
+         coalesce(sum(x.gmv) filter (where x.date_created < now() - interval '30 days'
+                                       and x.date_created >= now() - interval '60 days'), 0)::float8       as p_store_gmv,
+         coalesce(sum(x.gmv_clone) filter (where x.date_created < now() - interval '30 days'
+                                             and x.date_created >= now() - interval '60 days'), 0)::float8 as p_lever_gmv,
+         count(*) filter (where x.gmv > 0 and x.date_created < now() - interval '30 days'
+                                          and x.date_created >= now() - interval '60 days')::int           as p_orders,
+         count(*) filter (where x.gmv_clone > 0 and x.date_created < now() - interval '30 days'
+                                                and x.date_created >= now() - interval '60 days')::int     as p_lever_orders
+    from public.platform_orders x
+   where x.org_id = $1::uuid
+     and x.date_created >= least(
+           (date_trunc('month', now() at time zone 'America/Sao_Paulo') - make_interval(months => $2::int - 1))
+             at time zone 'America/Sao_Paulo',
+           now() - interval '60 days')
+   group by 1)
+select to_char(s.first at time zone 'America/Sao_Paulo', 'YYYY-MM-DD') as since, m.*
+  from s left join m on true`;
+
+export const MONTHLY_TTL_MS = 3 * 3_600_000;
+const MONTHLY_MAX_ORGS = 500;   // teto do cache em memória (uma entrada por org × janela)
+const SP_MONTH = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit" });
+
+// Os últimos N meses civis de São Paulo, do mais antigo ao atual ("2026-06").
+export function lastMonthsSP(n, at = Date.now()) {
+  const [y, m] = SP_MONTH.format(new Date(at)).split("-").map(Number);
+  const out = [];
+  for (let i = Math.max(1, n) - 1; i >= 0; i--) {
+    const d = new Date(Date.UTC(y, m - 1 - i, 1));
+    out.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`);
+  }
+  return out;
+}
+
+const zeroWindow = () => ({ storeGmv: 0, leverGmv: 0, orders: 0, leverOrders: 0 });
+
+// Linhas do banco → { since, months: [...] zerados, last30, prev30 }.
+export function monthlyFromRows(rows = [], { months = 12, at = Date.now() } = {}) {
+  const byMonth = new Map();
+  const last30 = zeroWindow(), prev30 = zeroWindow();
+  let since = null;
+  for (const r of rows || []) {
+    if (!since && /^\d{4}-\d{2}-\d{2}$/.test(r?.since || "")) since = r.since;
+    if (!r?.month) continue;
+    byMonth.set(String(r.month), {
+      storeGmv: Number(r.store_gmv) || 0, leverGmv: Number(r.lever_gmv) || 0,
+      orders: Number(r.orders) || 0, leverOrders: Number(r.lever_orders) || 0,
+    });
+    last30.storeGmv += Number(r.c_store_gmv) || 0;
+    last30.leverGmv += Number(r.c_lever_gmv) || 0;
+    last30.orders += Number(r.c_orders) || 0;
+    last30.leverOrders += Number(r.c_lever_orders) || 0;
+    prev30.storeGmv += Number(r.p_store_gmv) || 0;
+    prev30.leverGmv += Number(r.p_lever_gmv) || 0;
+    prev30.orders += Number(r.p_orders) || 0;
+    prev30.leverOrders += Number(r.p_lever_orders) || 0;
+  }
+  return {
+    since,
+    months: lastMonthsSP(months, at).map((month) => ({ month, ...(byMonth.get(month) || zeroWindow()) })),
+    last30, prev30,
+  };
+}
+
+let monthlyCache = new Map();      // `${org}:${months}` → { data, at }
+const monthlyInFlight = new Map();
+
+// Devolve { orgId, asOf, since, months, last30, prev30 } ou null (sem org
+// válida, ou banco fora e nada em cache). Cache por org de 3 h: fresco devolve
+// direto; vencido devolve o que tem e recalcula por fora; frio espera a
+// consulta uma vez (é a tela de UM cliente). Falha mantém o último bom.
+export async function orgMonthly(orgId, {
+  months = 12, query = levercopyQuery, now = Date.now, ttlMs = MONTHLY_TTL_MS,
+} = {}) {
+  const org = String(orgId || "").trim().toLowerCase();
+  if (!UUID_RE.test(org)) return null;
+  const n = Math.min(Math.max(Math.trunc(Number(months)) || 12, 1), 24);
+  const key = `${org}:${n}`;
+  const hit = monthlyCache.get(key);
+  if (hit && now() - hit.at <= ttlMs) return hit.data;
+  const run = () => {
+    if (monthlyInFlight.has(key)) return monthlyInFlight.get(key);
+    const p = (async () => {
+      try {
+        const rows = await query(MONTHLY_SQL, [org, n]);
+        const at = now();
+        const data = { orgId: org, asOf: new Date(at).toISOString(), ...monthlyFromRows(rows, { months: n, at }) };
+        if (!monthlyCache.has(key) && monthlyCache.size >= MONTHLY_MAX_ORGS) {
+          monthlyCache.delete(monthlyCache.keys().next().value);
+        }
+        monthlyCache.set(key, { data, at });
+        return data;
+      } catch (e) {
+        console.warn("[leverads-results] orgMonthly falhou:", e.message);
+        return monthlyCache.get(key)?.data || null;
+      } finally { monthlyInFlight.delete(key); }
+    })();
+    monthlyInFlight.set(key, p);
+    return p;
+  };
+  if (hit) { run(); return hit.data; }   // vencido: devolve o que tem
+  return run();                            // frio: espera
+}
+
 // Só pros testes: zera o estado de módulo entre casos.
 export function _resetResultsCache() {
   cache = { tokens: null, summary: null, at: 0 };
   inFlight = null;
   orgCache = { map: new Map(), at: 0, keys: "" };
   orgInFlight = null;
+  monthlyCache = new Map();
+  monthlyInFlight.clear();
 }

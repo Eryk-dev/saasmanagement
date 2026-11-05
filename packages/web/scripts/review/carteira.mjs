@@ -16,6 +16,13 @@ try {
   const p = await h.open(1440);
   const rows = p.locator('.carteira-row');
   await rows.first().waitFor();
+  // Janela baixa: a lista não pode ser cortada; a página rola até o último cliente.
+  await p.setViewportSize({width: 1440, height: 560});
+  assert.ok(await p.locator('.carteira-card-wrap').evaluate((el) => el.scrollHeight <= el.clientHeight + 1), 'o card da lista não pode cortar as linhas');
+  await rows.last().scrollIntoViewIfNeeded();
+  assert.ok(await rows.last().isVisible());
+  assert.ok(await p.locator('.carteira-page').evaluate((el) => el.scrollTop > 0), 'quem rola é a página');
+  await p.setViewportSize({width: 1440, height: 1000});
   // Ativos por padrão (o churn fica no "mais"), em ordem de atenção: em risco primeiro.
   assert.equal(await rows.count(), 7);
   assert.match(await rows.first().textContent(), /Braga Ferramentas/);

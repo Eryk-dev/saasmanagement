@@ -20,6 +20,7 @@
     "test:review:contracts": "node scripts/review/contracts.mjs",
     "test:review:tickets": "node scripts/review/tickets.mjs",
     "test:review:carteira": "node scripts/review/carteira.mjs",
+    "test:review:carteira-resultados": "node scripts/review/carteira-resultados.mjs",
     "test:review:guides": "node scripts/review/guides.mjs",
     "test:review:whatsapp": "node scripts/review/whatsapp.mjs",
     "test:review:agenda": "node scripts/review/agenda.mjs",

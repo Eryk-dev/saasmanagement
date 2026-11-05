@@ -1,30 +1,47 @@
 // Resultados do cliente na ficha: o número vivo (o mesmo que vai no relatório
 // mensal) e o envio manual. O bloco existe pra quem cuida da conta abrir a ficha
 // na call e ter a evidência de serviço na mão, sem depender do relatório do mês.
+// `products` é a visão Resultados da Carteira: um item por produto (LeverAds,
+// LeverPrice), montado em result-products.js.
 
-import { orgSnapshot } from "./leverads-results.js";
+import { orgSnapshot, orgMonthly } from "./leverads-results.js";
+import { leverpriceResults } from "./leverprice-results.js";
+import { customerResultProducts, leveradsOrgOf } from "./result-products.js";
 import { sendCustomerReport, reportBlocker, reportWhatsApp } from "./customer-reports.js";
 
-export function registerCustomerResultsRoutes(app, repo, { mailer = null, whatsapp = null, snapshot = orgSnapshot } = {}) {
-  // Retrato vivo + os últimos relatórios enviados.
+export function registerCustomerResultsRoutes(app, repo, {
+  mailer = null, whatsapp = null, snapshot = orgSnapshot, monthly = orgMonthly, leverprice = leverpriceResults,
+} = {}) {
+  // Retrato vivo + os últimos relatórios enviados + os resultados por produto.
   app.get("/api/customers/:id/results", async (req, reply) => {
     const customer = await repo.get("customers", req.params.id);
     if (!customer) return reply.code(404).send({ error: "Cliente não encontrado." });
-    const reports = (await repo.list("customer_reports").catch(() => []))
+    // Uma leitura do retrato do LeverAds para os dois usos (o bloco antigo e o
+    // produto), e os produtos em paralelo com os relatórios.
+    const adsOrg = leveradsOrgOf(customer);
+    const snapMap = adsOrg ? Promise.resolve().then(() => snapshot([adsOrg])).catch(() => new Map()) : null;
+    const [reportsAll, products] = await Promise.all([
+      repo.list("customer_reports").catch(() => []),
+      repo.listWhere("plans", customer.saas ? { saas: customer.saas } : {}).catch(() => [])
+        .then((plans) => customerResultProducts(customer, { plans, snapMap, snapshot, monthly, leverprice }))
+        .catch(() => []),
+    ]);
+    const reports = reportsAll
       .filter((r) => r.customer === customer.id)
       .sort((a, b) => String(b.periodEnd || "").localeCompare(String(a.periodEnd || "")))
       .slice(0, 6);
     if (!customer.leveradsOrgId) {
-      return { hasOrg: false, snapshot: null, reports, blocker: "sem org da LeverAds no cadastro" };
+      return { hasOrg: false, snapshot: null, reports, blocker: "sem org da LeverAds no cadastro", products };
     }
-    const map = await snapshot([customer.leveradsOrgId]);
-    const snap = map.get(String(customer.leveradsOrgId)) || null;
+    const map = (await snapMap) || new Map();
+    const snap = map.get(String(customer.leveradsOrgId)) || map.get(adsOrg) || null;
     return {
       hasOrg: true,
       snapshot: snap,
       reports,
       blocker: reportBlocker(customer, { lastAt: reports[0]?.periodEnd || "" }),
       preview: snap ? reportWhatsApp(customer, snap) : "",
+      products,
     };
   });
 

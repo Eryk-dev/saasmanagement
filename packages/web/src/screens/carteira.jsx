@@ -13,6 +13,10 @@
 // recalculado na leitura. O clique na linha abre o card do cliente aqui mesmo
 // (CustomerCard, o mesmo de Clientes, sem sair da tela); o próximo passo abre
 // o acompanhamento ou a integração.
+//
+// A visão Resultados (05/11/2026) escolhe um cliente e mostra o que cada
+// produto fez por ele, no formato do slide de cases do deck
+// (components/customer-results.jsx, GET /api/customers/:id/results).
 
 import React from "react";
 import "./carteira.css";
@@ -28,6 +32,7 @@ import { SelectPopover } from "../components/select-popover.jsx";
 const { useState, useEffect, useMemo, Suspense } = React;
 // O card do cliente mora no módulo de Clientes: só carrega quando abre.
 const CustomerCard = React.lazy(() => import("./customers.jsx").then((m) => ({ default: m.CustomerCard })));
+const CustomerResults = React.lazy(() => import("../components/customer-results.jsx"));
 const DAY = 86_400_000;
 
 // Estágios da carteira, na ordem em que pedem atenção. "integracao" é o
@@ -192,7 +197,10 @@ function Products({ list }) {
   </span>;
 }
 
-function Row({ row, now, onOpen }) {
+// Cliente com produto que tem resultado medido (LeverAds ou LeverPrice).
+export const hasResults = (row) => (row.products || []).some((p) => p.id === "leverads" || p.id === "leverprice");
+
+function Row({ row, now, onOpen, onResults }) {
   const st = STAGE[stageOf(row)];
   const pay = PAYMENT[row.payment?.status || ""] || PAYMENT[""];
   const sub = subscriptionCell(row.subscription, now);
@@ -204,12 +212,19 @@ function Row({ row, now, onOpen }) {
   return <div className="carteira-row" role="button" tabIndex={0} aria-label={`Abrir cliente: ${row.name}`} data-churn={row.churned || undefined}
     onClick={open} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); open(); } }}
     style={{ gridTemplateColumns: CARTEIRA_GRID, gap: CARTEIRA_GRID_GAP }}>
-    <div className="carteira-cell carteira-client">
-      <span className="carteira-name">{row.name || "sem nome"}</span>
-      <span className="carteira-cell-sub">
-        {[row.mrr ? `${money(row.mrr)}/mês` : "", row.owner ? displayName(row.owner) : "sem dono"].filter(Boolean).join(" · ")}
-      </span>
-      <Products list={row.products} />
+    <div className="carteira-client">
+      <div className="carteira-cell carteira-client-main">
+        <span className="carteira-name">{row.name || "sem nome"}</span>
+        <span className="carteira-cell-sub">
+          {[row.mrr ? `${money(row.mrr)}/mês` : "", row.owner ? displayName(row.owner) : "sem dono"].filter(Boolean).join(" · ")}
+        </span>
+        <Products list={row.products} />
+      </div>
+      {/* Centralizado na altura da célula do cliente, à direita. */}
+      {onResults && hasResults(row) && <button type="button" className="carteira-results-btn" title="ver o que cada produto fez por este cliente"
+        aria-label={`Ver resultados: ${row.name}`} onClick={(e) => { e.stopPropagation(); onResults(row.id); }}>
+        resultados <span aria-hidden="true">›</span>
+      </button>}
     </div>
     <Cell tone={st.tone} label={st.label} sub={lifeSub} title={st.title} />
     <HealthCell row={row} />
@@ -275,6 +290,9 @@ export function CarteiraScreen() {
   const [owner, setOwnerState] = useState(() => stored("cockpit_carteira_dono", "todos"));
   const [q, setQ] = useState("");
   const [openId, setOpenId] = useState(null); // cliente com o card aberto
+  const [resultId, setResultIdState] = useState(() => stored("cockpit_carteira_resultado", ""));
+  const setResultId = (v) => { setResultIdState(v); store("cockpit_carteira_resultado", v); };
+  const verResultados = (id) => { setResultId(id); setView("resultados"); document.querySelector(".carteira-page")?.scrollTo?.(0, 0); };
   const setView = (v) => { setViewState(v); store("cockpit_carteira_view", v); };
   const setOwner = (v) => { setOwnerState(v); store("cockpit_carteira_dono", v); };
   const now = Date.now();
@@ -331,20 +349,39 @@ export function CarteiraScreen() {
   ];
   const boardStages = stage === "churn" ? [STAGE.churn] : STAGES.filter((s) => s.id !== "churn");
 
+  // Resultados: clientes do dono escolhido (ativos primeiro, churn no fim), por nome.
+  const resultOptions = mine.slice()
+    .sort((a, b) => (stageOf(a) === "churn") - (stageOf(b) === "churn") || String(a.name || "").localeCompare(String(b.name || ""), "pt-BR"))
+    .map((r) => ({
+      value: r.id, label: r.name || "sem nome",
+      hint: [(r.products || []).filter((p) => p.id !== "mentoria").map((p) => PRODUCT[p.id] || p.id).join(" · "), stageOf(r) === "churn" ? "churn" : ""].filter(Boolean).join(" · "),
+    }));
+  const resultValue = resultOptions.some((o) => o.value === resultId) ? resultId
+    : (mine.find((r) => stageOf(r) !== "churn" && (r.products || []).some((p) => p.account)) || mine[0])?.id || "";
+  const resultRow = rows.find((r) => r.id === resultValue);
+
   return <div className="carteira-page">
     <header className="carteira-header">
       <div style={{ minWidth: 0 }}>
         <h1 className="page-title">Carteira</h1>
-        <div className="page-sub">cada cliente numa linha: estágio, saúde, pagamento, assinatura, produtos e o próximo passo</div>
+        <div className="page-sub">{view === "resultados" ? "o que cada produto fez pelo cliente, no formato do slide de cases do deck" : "cada cliente numa linha: estágio, saúde, pagamento, assinatura, produtos e o próximo passo"}</div>
       </div>
-      <Segmented value={view} onChange={setView} options={[{ value: "lista", label: "Lista" }, { value: "quadro", label: "Quadro" }]} />
+      <Segmented value={view} onChange={setView} options={[{ value: "lista", label: "Lista" }, { value: "quadro", label: "Quadro" }, { value: "resultados", label: "Resultados" }]} />
     </header>
 
     {data.key !== saas || (!data.loaded && !data.error)
       ? <div className="carteira-load" role="status">Carregando a carteira…</div>
       : data.error && !data.loaded
         ? <div className="carteira-load" role="alert">Não foi possível carregar a carteira. <button onClick={() => setAttempt((n) => n + 1)}>Tentar novamente</button></div>
-        : <>
+        : view === "resultados"
+          ? <Suspense fallback={<div className="carteira-load" role="status">Carregando os resultados…</div>}>
+              <CustomerResults customerId={resultValue} customerName={resultRow?.name || ""}
+                toolbar={<>
+                  <div className="carteira-result-pick"><SelectPopover label="Cliente" value={resultValue} options={resultOptions} onChange={setResultId} size="sm" searchable placeholder="Escolha um cliente" /></div>
+                  <div className="carteira-owner"><SelectPopover label="Dono da conta" value={ownerValue} options={ownerOptions} onChange={setOwner} size="sm" /></div>
+                </>} />
+            </Suspense>
+          : <>
           {overdue.length > 0
             ? <AvisoTopo tom="neg" titulo={`${plural(overdue.length, "cliente inadimplente", "clientes inadimplentes")} · ${moneyFull(overdueAmount)} vencidos`}
                 nota={late.length ? `e ${plural(late.length, "acompanhamento vencido", "acompanhamentos vencidos")}` : "cobre antes que vire churn"}
@@ -376,7 +413,7 @@ export function CarteiraScreen() {
                   <div className="carteira-head" style={{ gridTemplateColumns: CARTEIRA_GRID, gap: CARTEIRA_GRID_GAP }}>
                     {["Cliente", "Estágio", "Saúde", "Pagamento", "Assinatura", "Próximo passo"].map((h) => <span key={h} className="kicker">{h}</span>)}
                   </div>
-                  {shown.map((r) => <Row key={r.id} row={r} now={now} onOpen={setOpenId} />)}
+                  {shown.map((r) => <Row key={r.id} row={r} now={now} onOpen={setOpenId} onResults={verResultados} />)}
                   {!shown.length && <div className="carteira-empty">{rows.length ? "nenhum cliente com esses filtros" : "nenhum cliente neste produto ainda"}</div>}
                 </div>}
           </section>

@@ -66,18 +66,26 @@ export const shortBR = (n) => {
 export const caseKey = (s) => String(s || "")
   .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
-// Retrato do painel (orgSnapshot) → o valor de cada medida, já formatado.
-// Medida sem base (zero) devolve "", e aí o valor salvo continua valendo: deck
-// com número de ontem é melhor que deck com "R$ 0".
-export function panelMetricValue(key, snap = {}) {
+// Retrato do painel (orgSnapshot) → o NÚMERO de cada medida, pela régua acima.
+// É a mesma conta do card do deck e da visão Resultados da Carteira
+// (customers/result-products.js): uma função só, senão as duas divergem no dia
+// em que a régua mudar. Chave desconhecida devolve undefined.
+export function panelMetricNumber(key, snap = {}) {
   const horas = (Number(snap.listings) || 0) * PANEL_MINUTES_PER_LISTING / 60;
-  const num = {
+  return {
     gmvTotal: Number(snap.gmvTotal) || 0,
     ordersTotal: Number(snap.ordersTotal) || 0,
     hoursSaved: horas,
     costAvoided: horas * PANEL_SALARY / PANEL_MONTH_HOURS,
     influenced30: Number(snap.gmv30d) || 0,
   }[key];
+}
+
+// O mesmo valor, já formatado pro slide. Medida sem base (zero) devolve "", e
+// aí o valor salvo continua valendo: deck com número de ontem é melhor que deck
+// com "R$ 0".
+export function panelMetricValue(key, snap = {}) {
+  const num = panelMetricNumber(key, snap);
   if (!(num > 0)) return "";
   if (key === "ordersTotal") return nfBR(num);
   if (key === "hoursSaved") return `${shortBR(num)} h`;
