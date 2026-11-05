@@ -111,11 +111,14 @@ export function greetName(raw) {
   const flat = norm(first);
   if (flat.length < 3) return "";              // "Jr", "M" — não dá pra saudar
   if (BIZ_WORDS.test(flat)) return "";         // "PECAS", "Loja", "Gostaria"
-  // Sigla: caixa alta curta é nome de empresa ("GMS", "RT"), não de gente.
+  // Sigla: caixa alta curta SEM vogal é nome de empresa ("GMS", "RT"), não
+  // de gente; "JOSE" gritado é nome (05/11: virou "Oi tudo bem!" no template).
   // Caixa alta LONGA ("PEDRO", "JOSNIEL") é nome gritado — só normaliza.
-  if (first === first.toUpperCase() && first.length <= 4) return "";
+  if (first === first.toUpperCase() && first.length <= 4 && !/[aeiou]/.test(flat)) return "";
+  if (first === first.toUpperCase() && first.length <= 3) return "";
   // Aglutinação do form ("Gostariademaisi", "Alcindotzwicins"): palavra única
-  // longa demais pra ser primeiro nome de gente.
+  // longa demais pra ser primeiro nome de gente ("Ribeiroafonso" também cai;
+  // "Marlininilson" é a vítima conhecida: fica sem nome).
   if (flat.length > 12) return "";
   return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
 }
@@ -494,14 +497,17 @@ export function reminderText(key, { nome, quando, link, oem = false, script = ""
       ? `${bomDia} Nossa conversa é ${quando}, nosso especialista já separou o horário. O link pra entrar é este: ${link}. ${DEVICE_TIP} Me confirma por aqui que está tudo certo?`
       : `${bomDia} Nossa conversa é ${quando}, nosso especialista já separou o horário. ${DEVICE_TIP} Me manda um ok por aqui que eu já te passo o link de acesso, pode ser?`;
   }
-  // SEM perguntar por onde a pessoa entra (Leo, 17/09): a pergunta "celular ou
-  // computador?" saiu; fica só a recomendação de ter um computador por perto
-  // (na tela grande o lead acompanha e entende melhor a demonstração) e o
-  // pedido de confirmação, que é o que alimenta o alerta de ligação (2b).
+  // O DE 2H É CURTO E DIFERENTE DA MANHÃ (Leo, 05/11): até então era o mesmo
+  // corpo com outra saudação, e quem não respondeu de manhã recebia a mesma
+  // mensagem de novo 2h antes (Junior, Max, Flavio, Gustavo…). A recomendação
+  // do computador já foi na manhã; aqui só horário, link e o pedido de
+  // positiva (que é o que alimenta o alerta de ligação, 2b). Lead que já
+  // confirmou nem recebe este (seção 2, "confirmado").
   if (key === "2h") {
+    const voc = nome ? `${nome}, nossa` : "Nossa";
     return link
-      ? `${oi} Nossa conversa é ${quando}, nosso especialista já separou o horário. O link pra entrar é este: ${link}. ${DEVICE_TIP} Me confirma por aqui que está tudo certo?`
-      : `${oi} Nossa conversa é ${quando}, nosso especialista já separou o horário. ${DEVICE_TIP} Me manda um ok por aqui que eu já te passo o link de acesso, pode ser?`;
+      ? `${voc} conversa é ${quando}. O link pra entrar é este: ${link}. Consegue me confirmar por aqui?`
+      : `${voc} conversa é ${quando}. Me manda um ok por aqui que eu já te passo o link de acesso, pode ser?`;
   }
   return link
     ? `${nome ? nome + ", nossa" : "Nossa"} conversa começa em 10 minutos! Link pra entrar: ${link}`
@@ -1186,6 +1192,15 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
             log0["2h"] = "manha";
             await repo.update("leads", lead.id, { confirmLog: { ...log0 } });
           }
+          // POSITIVA JÁ DADA (Leo, 05/11, Kassio e mais 4 na semana): o lead
+          // confirmou (à manhã ou na marcação) e o link já foi na positiva
+          // (seção 2c); o de 2h pedindo "me confirma" de novo é o robô
+          // esquecendo o que o lead acabou de dizer. Fica carimbado; o de
+          // 10min segue (R-112: sempre com o link).
+          if (!log0["2h"] && (lead.callConfirmed || log0.confirmed) && nowMs >= callMs - 2 * HOUR) {
+            log0["2h"] = "confirmado";
+            await repo.update("leads", lead.id, { confirmLog: { ...log0 } });
+          }
           const due = REMINDERS.find((r) => {
             const fireAt = fireAtOf(r);
             return nowMs >= fireAt && nowMs <= fireAt + r.graceMs && !log0[r.key];
@@ -1283,20 +1298,34 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
               due.key === "2h" && callUrl ? cfg.templates.reminderLinkOem : "",
               due.key === "10min" && callUrl ? cfg.templates.reminder10minOem : "",
             ] : [];
-            const tplLembrete = [...oemTpls, callUrl ? cfg.templates.reminderLink : "", callUrl ? "sdr_lembrete_link" : "", cfg.templates.reminder, "sdr_lembrete_call"].filter(Boolean).find((n) => names.has(n));
-            if (tplLembrete) {
-              const params = [cfg.templates.reminderManhaOemImg, cfg.templates.reminderManhaOem, cfg.templates.reminderManhaPrice].includes(tplLembrete) ? [nome, quando]
-                : tplLembrete === cfg.templates.reminderLinkOem ? [nome, quando, callUrl]
-                  : tplLembrete === cfg.templates.reminder10minOem ? [nome, callUrl]
-                    : [cfg.templates.reminderLink, "sdr_lembrete_link"].includes(tplLembrete) ? [nome || "tudo bem", quando, callUrl] : [nome || "tudo bem", quando];
-              await sendTemplate({ phone: to, name: tplLembrete, params, phoneId, saas: product.id, leadId: lead.id, headerImageId: tplLembrete === cfg.templates.reminderManhaOemImg ? oemMediaId : "" });
-            } else {
+            // 10 MIN DO LEAD GENÉRICO com link: o template de 10 min do
+            // roteiro (só horário e link, sem produto) vai na frente do de
+            // confirmação — senão manhã, 2h e 10min saíam com o MESMO corpo
+            // (Kassio 04/11: "Me confirma por aqui" às 8h01 e às 8h50).
+            const tenMin = due.key === "10min" && callUrl ? cfg.templates.reminder10minOem : "";
+            const tplLembrete = [...oemTpls, tenMin, callUrl ? cfg.templates.reminderLink : "", callUrl ? "sdr_lembrete_link" : "", cfg.templates.reminder, "sdr_lembrete_call"].filter(Boolean).find((n) => names.has(n));
+            if (!tplLembrete) {
               await raiseAlert(repo, thread || { id: digits(phone), phone: digits(phone), name: lead.name || "", leadId: lead.id, saas: product.id }, {
                 text: `Lembrete ${due.key} da call não entregue (janela fechada, sem template aprovado) · confirmar na mão`,
               });
+              return "alerta";
             }
+            // TEMPLATE JÁ ENVIADO PRA ESTE HORÁRIO (Leo, 05/11): o corpo é
+            // congelado na Meta, então o mesmo template duas vezes é a mesma
+            // mensagem duas vezes (17 leads em 2 semanas). O passo fica
+            // carimbado; o silêncio do lead vira o alerta de ligação (2b).
+            const sentTpls = Array.isArray(log0.templates) ? log0.templates : [];
+            if (sentTpls.includes(tplLembrete)) return "repetido";
+            const params = [cfg.templates.reminderManhaOemImg, cfg.templates.reminderManhaOem, cfg.templates.reminderManhaPrice].includes(tplLembrete) ? [nome, quando]
+              : tplLembrete === cfg.templates.reminderLinkOem ? [nome, quando, callUrl]
+                : tplLembrete === cfg.templates.reminder10minOem ? [nome || "tudo bem", callUrl]
+                  : [cfg.templates.reminderLink, "sdr_lembrete_link"].includes(tplLembrete) ? [nome || "tudo bem", quando, callUrl] : [nome || "tudo bem", quando];
+            await sendTemplate({ phone: to, name: tplLembrete, params, phoneId, saas: product.id, leadId: lead.id, headerImageId: tplLembrete === cfg.templates.reminderManhaOemImg ? oemMediaId : "" });
+            log0.templates = [...sentTpls, tplLembrete];
+            return tplLembrete;
           };
           try {
+            let via = "texto";
             if (windowOpen) {
               try {
                 if (oemManha) {
@@ -1313,10 +1342,14 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
                 }
               } catch (err) {
                 if (!outsideWindow(err)) throw err; // nosso registro dizia aberta, a Meta discorda
-                await viaTemplate();
+                via = await viaTemplate();
               }
             } else {
-              await viaTemplate();
+              via = await viaTemplate();
+            }
+            if (via === "repetido") {
+              await repo.update("leads", lead.id, { confirmLog: { ...log0, [due.key]: "template-repetido" } });
+              continue;
             }
             sends++; stats.reminders++;
             await repo.update("leads", lead.id, { confirmLog: { ...log0, [due.key]: nowIso } });

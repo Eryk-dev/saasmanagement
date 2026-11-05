@@ -114,7 +114,7 @@ test("lembrete sai normalmente quando a última fala humana é antiga #R-104", a
   const wa = makeWa();
   await runnerOf(repo, wa).tick();
   assert.equal(wa.sent.length, 1);
-  assert.match(wa.sent[0].text, /Nossa conversa é/);
+  assert.match(wa.sent[0].text, /nossa conversa é/i);
 });
 
 // ── A4 · véspera não confirma o que acabou de ser combinado ─────────────────
@@ -177,7 +177,7 @@ test("lembrete de 2h cria a sala que falta; 10min sem link levanta alerta pro ti
   };
   await runnerOf(repo, wa, { autoCallMeet }).tick();
   assert.deepEqual(meets, ["L1"]);
-  assert.match(wa.sent[0].text, /Nossa conversa é/);
+  assert.match(wa.sent[0].text, /nossa conversa é/i);
 
   // Agora o passo de 10min, com a sala já criada: o link vai no texto. O lead
   // confirmou (senão o alerta de ligação da 2b entraria por cima do "sem link").

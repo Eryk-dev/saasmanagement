@@ -229,7 +229,9 @@ test("manhã do dia: call das 14h recebe 'Bom dia' às 8h com o link e a positiv
   nowRef.t = new Date("2026-08-20T15:05:00Z"); // 12h05 BRT: 2h antes
   await r.tick();
   assert.equal(wa.sent.length, 2);
-  assert.match(wa.sent[1].text, /^Oi Rafael! Nossa conversa é hoje às 14h/);
+  // Copy CURTA e diferente da manhã (Leo, 05/11): horário, link e a positiva.
+  assert.equal(wa.sent[1].text, "Rafael, nossa conversa é hoje às 14h. O link pra entrar é este: https://meet.google.com/abc-defg. Consegue me confirmar por aqui?");
+  assert.notEqual(wa.sent[1].text.replace(/^\S+ /, ""), wa.sent[0].text.replace(/^\S+ /, ""), "2h nunca repete o corpo da manhã");
   // Marcação feita HOJE depois das 8h: a manhã pula (o 2h cobre).
   const repo2 = await world({
     leads: [{ id: "L2", name: "Novo", phone: "41988880000", stage: "Call agendada", callAt: "2026-08-20T16:00", closer: "pl", callSetAt: ISO("2026-08-20T11:20:00Z"), createdAt: ISO("2026-08-10T10:00:00Z") }],
@@ -250,15 +252,89 @@ test("lembrete atrasado além da tolerância não sai (robô quebrado não manda
   assert.equal(wa.sent.length, 0);
 });
 
-test("call já confirmada cala a manhã (mas os lembretes do dia seguem) #R-110", async () => {
+test("call já confirmada cala a manhã e o de 2h; o de 10min segue com o link #R-110 #R-112", async () => {
   const nowRef = { t: new Date("2026-08-20T11:35:00Z") }; // 8h35 BRT do dia da call
   const repo = await world({
-    leads: [{ id: "L1", name: "R", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-20T14:00", callConfirmed: true, createdAt: ISO("2026-08-10T10:00:00Z") }],
+    leads: [{ id: "L1", name: "R", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-20T14:00", callConfirmed: true, callUrl: "https://meet.google.com/abc-defg", createdAt: ISO("2026-08-10T10:00:00Z") }],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads" }],
+    messages: [{ id: "in1", thread: "5541999990000", leadId: "L1", saas: "leverads", direction: "in", text: "confirmado", at: ISO("2026-08-20T11:00:00Z") }],
   });
   const wa = makeWa();
-  await runner(repo, wa, nowRef).tick();
+  const r = runner(repo, wa, nowRef);
+  await r.tick();
   assert.equal(wa.sent.length, 0);
   assert.equal((await repo.get("leads", "L1")).confirmLog.manha, "skip", "carimba como resolvido sem mandar");
+  nowRef.t = new Date("2026-08-20T15:05:00Z"); // 12h05 BRT: ponto do 2h
+  await r.tick();
+  assert.equal(wa.sent.length, 0, "2h não pede confirmação a quem já confirmou (Leo, 05/11)");
+  assert.equal((await repo.get("leads", "L1")).confirmLog["2h"], "confirmado");
+  nowRef.t = new Date("2026-08-20T16:52:00Z"); // 13h52: 10 min antes
+  await r.tick();
+  assert.equal(wa.sent.length, 1);
+  assert.match(wa.sent[0].text, /começa em 10 minutos! Link pra entrar: https:\/\/meet\.google\.com\/abc-defg/);
+});
+
+// Kassio (05/11): manhã às 8h01, "Certo" às 9h23 (positiva → link às 9h24),
+// e às 13h00 o de 2h ainda mandou "Me confirma por aqui que está tudo certo?".
+test("manhã saiu, o lead confirmou e recebeu o link: o de 2h não sai; o 10min leva o link #R-110 #R-112 #R-113", async () => {
+  const nowRef = { t: new Date("2026-08-20T11:05:00Z") }; // 8h05 BRT, call às 15h
+  const repo = await world({
+    leads: [{ id: "L1", name: "Rafael", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-20T15:00", closer: "pl", callSetAt: ISO("2026-08-18T18:00:00Z"), callUrl: "https://meet.google.com/abc-defg", createdAt: ISO("2026-08-10T10:00:00Z") }],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads", name: "Rafael" }],
+    messages: [{ id: "in1", thread: "5541999990000", leadId: "L1", saas: "leverads", direction: "in", text: "Fechado", at: ISO("2026-08-19T18:00:00Z") }],
+  });
+  const wa = makeWa();
+  const r = runner(repo, wa, nowRef);
+  await r.tick();
+  assert.equal(wa.sent.length, 1);
+  assert.match(wa.sent[0].text, /^Bom dia Rafael! Nossa conversa é hoje às 15h/);
+  // 9h23: "Certo" é positiva (handleSdrInbound carimba); o poller manda o link (2c).
+  nowRef.t = new Date("2026-08-20T12:23:00Z");
+  await repo.create("wa_messages", { id: "in2", thread: "5541999990000", leadId: "L1", saas: "leverads", direction: "in", text: "Certo", at: ISO("2026-08-20T12:23:00Z") });
+  assert.equal(await handleSdrInbound(repo, { message: { from: "5541999990000", text: "Certo" }, now: nowRef.t }), "confirmed");
+  await r.tick();
+  assert.equal(wa.sent.length, 2);
+  assert.match(wa.sent[1].text, /^Perfeito Rafael, o link pra entrar é este: https:\/\/meet\.google\.com\/abc-defg\. Te espero hoje às 15h!$/);
+  // 13h05: ponto do 2h — nada.
+  nowRef.t = new Date("2026-08-20T16:05:00Z");
+  await r.tick();
+  assert.equal(wa.sent.length, 2, "quem confirmou não recebe o pedido de confirmação de novo");
+  assert.equal((await repo.get("leads", "L1")).confirmLog["2h"], "confirmado");
+  // 14h52: o de 10 min sai com o link.
+  nowRef.t = new Date("2026-08-20T17:52:00Z");
+  await r.tick();
+  assert.equal(wa.sent.length, 3);
+  assert.match(wa.sent[2].text, /^Rafael, nossa conversa começa em 10 minutos! Link pra entrar: https:\/\/meet\.google\.com\/abc-defg$/);
+});
+
+// Kassio (04/11): janela fechada, lead genérico com link: manhã às 8h01 e o
+// 10min às 8h50 saíram com o MESMO template (sdr_lembrete_link2).
+test("janela fechada, genérico com link: nenhum template sai duas vezes pro mesmo horário; 10min usa o template de 10 min #R-110 #R-114", async () => {
+  const mk = async (approved) => {
+    const nowRef = { t: new Date("2026-08-20T11:05:00Z") }; // 8h05 BRT, call às 9h (o 2h já colaria na manhã)
+    const repo = await world({
+      leads: [{ id: "L1", name: "Rafael", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-20T09:00", closer: "pl", callSetAt: ISO("2026-08-18T18:00:00Z"), callUrl: "https://meet.google.com/abc-defg", createdAt: ISO("2026-08-10T10:00:00Z") }],
+    });
+    const wa = makeWa({ approved });
+    const r = runner(repo, wa, nowRef);
+    await r.tick();
+    assert.equal(wa.sent.length, 1);
+    assert.equal(wa.sent[0].name, "sdr_lembrete_link2");
+    assert.deepEqual((await repo.get("leads", "L1")).confirmLog.templates, ["sdr_lembrete_link2"]);
+    nowRef.t = new Date("2026-08-20T11:52:00Z"); // 8h52: janela do 10min
+    await r.tick();
+    return { wa, lead: await repo.get("leads", "L1") };
+  };
+  // Só o template de confirmação aprovado: o 10min NÃO repete o corpo da manhã.
+  const a = await mk(["sdr_lembrete_link2"]);
+  assert.equal(a.wa.sent.length, 1);
+  assert.equal(a.lead.confirmLog["10min"], "template-repetido");
+  // Com o template de 10 min aprovado: sai ele, com nome e link.
+  const b = await mk(["sdr_lembrete_link2", "sdr_lembrete_10min_oem"]);
+  assert.equal(b.wa.sent.length, 2);
+  assert.equal(b.wa.sent[1].name, "sdr_lembrete_10min_oem");
+  assert.deepEqual(b.wa.sent[1].params, ["Rafael", "https://meet.google.com/abc-defg"]);
+  assert.deepEqual(b.lead.confirmLog.templates, ["sdr_lembrete_link2", "sdr_lembrete_10min_oem"]);
 });
 
 test("passo já feito pelo humano no Meu dia (confirmLog) cala o robô naquele passo #R-104", async () => {

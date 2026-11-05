@@ -137,12 +137,14 @@ export const STATE_DESC = {
   oferta_feita: "você já ofereceu horários e ele ainda não escolheu",
   call_marcada: "existe conversa marcada com o especialista",
   janela_da_call: "a conversa marcada está começando agora (o lead pode estar entrando na sala)",
-  pos_call: "o horário marcado já passou e o card ainda não andou",
+  pos_call: "o horário marcado já passou e a conversa NÃO aconteceu (o card ainda não andou): pra você é como se não houvesse conversa marcada. NUNCA diga que segue marcada nem cite esse horário como combinado; reconheça em uma frase que não rolou e, se ele quiser remarcar (ou reenviou o formulário, ou disse que o horário passou), oferecer=true",
   remarcacao_pendente: "a conversa foi desmarcada e você perguntou se ele quer remarcar: aguarde o sim, sem agenda",
   remarcacao_oferecida: "ele disse sim à remarcação e já recebeu a agenda atual: aguarde a escolha",
   handoff: "gente do time assumiu a conversa",
 };
-const NO_AGENDA_STATES = new Set(["remarcacao_pendente", "handoff", "janela_da_call", "pos_call"]);
+// Em pos_call a agenda VAI (R-117, 05/11): sem ela a IA dizia "vamos
+// remarcar" / "pode ser sim" e não tinha horário pra oferecer (Rinaldo, Rita).
+const NO_AGENDA_STATES = new Set(["remarcacao_pendente", "handoff", "janela_da_call"]);
 const yn = (v) => (v ? "sim" : "não");
 
 // Turno do usuário no prompt v2: fatos + estado + regras do estado + agenda com ids + conversa.
@@ -174,7 +176,11 @@ export function buildUserV2({ sdrName = "", nowLabel = "", lead = {}, digest = "
     `LEAD: ${lead.name || "?"}${lead.company ? ` (${lead.company})` : ""}${grade ? ` · nota ${grade}` : ""}${stage ? ` · etapa: ${stage}` : ""}`,
     digest ? `Diagnóstico preenchido por ele: ${digest}` : "",
     foco,
-    callAt ? `CONVERSA JÁ MARCADA pra: ${callAt} (hora de Brasília)` : "Sem conversa marcada ainda.",
+    callAt
+      ? (facts.callPassed
+        ? `A conversa que estava marcada pra ${callAt} (hora de Brasília) JÁ PASSOU e não aconteceu: trate como SEM conversa marcada; pra remarcar use a lista de horários abaixo.`
+        : `CONVERSA JÁ MARCADA pra: ${callAt} (hora de Brasília)`)
+      : "Sem conversa marcada ainda.",
     lead.email ? `E-mail no cadastro: ${lead.email}` : "Sem e-mail no cadastro (se o agendamento engatar, peça o e-mail pra mandar o convite).",
     greet,
     "",
@@ -184,6 +190,9 @@ export function buildUserV2({ sdrName = "", nowLabel = "", lead = {}, digest = "
       : "",
     facts.pendingQuestion
       ? `PERGUNTA PENDENTE: você perguntou "${String(facts.pendingQuestion).slice(0, 140)}" e ele respondeu só com saudação/ack ("tudo bem e vc?", "que bom"). Responda o que ele trouxe em uma frase curta e REFAÇA essa pergunta com outras palavras, na mesma resposta (oferecer=false). Nunca termine só no ack.`
+      : "",
+    facts.returning
+      ? `O LEAD REENVIOU O FORMULÁRIO e vocês JÁ conversaram antes (ele voltou): NÃO repita a apresentação do produto nem a descoberta do zero. Reconheça em uma frase que ele voltou${callAt && !facts.callPassed ? " e lembre que a conversa já está marcada (oferecer=false)" : " e convide direto pra demonstração (oferecer=true)"}.`
       : "",
     facts.confused
       ? `O LEAD NÃO ENTENDEU a pergunta ou o termo anterior ("nem sei o que é isso", "???"): explique em UMA frase simples (${script === "oem" ? "código OEM é o código original da peça; com ele o Lever OEM monta o anúncio inteiro" : script === "price" ? "o Lever Price mantém o preço pelo custo, margem e imposto que você cadastra" : "clonagem é espelhar os anúncios de uma conta nas outras"}) e faça uma pergunta DIFERENTE da anterior, mais simples. Nunca repita a mesma pergunta.`

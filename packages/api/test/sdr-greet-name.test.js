@@ -12,6 +12,10 @@ test("greetName: nome grudado do form separa na troca de caixa e fica com o prim
   assert.equal(greetName("PEDRO"), "Pedro");
   assert.equal(greetName("GMS"), "");
   assert.equal(greetName("Ribeiroafonso"), ""); // grudado SEM troca de caixa: longo demais, cai no fallback sem nome
+  // 05/11: "JOSE" gritado virou "Oi tudo bem!" no template — caixa alta curta
+  // só é sigla quando não tem vogal ("GMS", "RT").
+  assert.equal(greetName("JOSE"), "Jose");
+  assert.equal(greetName("RT"), "");
 });
 
 test("greetName: caixa alta grudada em caixa baixa ('HELANOtelris') separa e saúda 'Helano'; formNameIn/leadGreetName preferem o nome do form ao perfil-empresa do WhatsApp", async () => {
