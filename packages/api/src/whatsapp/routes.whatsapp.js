@@ -227,6 +227,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
                 // "respondeu o lembrete: 🎤 áudio" em 2 semanas), destacado pra
                 // não segurar a resposta do webhook; o cérebro reaproveita o
                 // texto gravado na mensagem.
+                let sdrVerdict = null;
                 if (mediaOf(m)?.kind === "audio") {
                   (async () => {
                     const storedMsg = await repo.get("wa_messages", m.id).catch(() => null);
@@ -235,18 +236,24 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
                     await handleSdrInbound(repo, { message: { from: m.from, text: text || bodyOf(m) } });
                   })().catch((err) => req.log?.warn?.({ err: err.message }, "sdr inbound (áudio) falhou"));
                 } else {
-                  try { await handleSdrInbound(repo, { message: { from: m.from, text: bodyOf(m) } }); }
+                  try { sdrVerdict = await handleSdrInbound(repo, { message: { from: m.from, text: bodyOf(m) } }); }
                   catch (err) { req.log?.warn?.({ err: err.message }, "sdr inbound falhou"); }
                 }
                 // Fase 2 (conversa com IA): o cérebro roda DESTACADO — a
                 // resposta da Meta não espera a IA pensar. O próprio brain tem
                 // todos os gates (chave conversation, humano na conversa,
                 // teto diário) e nunca lança.
+                // MENSAGEM JÁ CONSUMIDA pela régua da call (R-113; Kassio
+                // 05/11): a positiva ao lembrete ("Certo") e o "já estou na
+                // sala" são dela — o link vai pelo poller (2c). O cérebro
+                // não fala em cima (reabria a descoberta de 18 dias atrás).
+                // Remarcação ("alert") segue pro cérebro: é ele quem remarca.
+                const consumed = sdrVerdict === "confirmed" || sdrVerdict === "in-call";
                 try {
                   const brain = getSdrBrain();
                   // O id da mensagem vai junto: é ele que deixa o debounce de
                   // rajada saber se este disparo ainda é o mais novo.
-                  if (brain) brain.handleInbound({ message: { from: m.from, text: bodyOf(m), id: m.id } }).catch((err) => req.log?.warn?.({ err: err.message }, "sdr-brain falhou"));
+                  if (brain && !consumed) brain.handleInbound({ message: { from: m.from, text: bodyOf(m), id: m.id } }).catch((err) => req.log?.warn?.({ err: err.message }, "sdr-brain falhou"));
                 } catch { /* nunca derruba a entrega do webhook */ }
               }
             }

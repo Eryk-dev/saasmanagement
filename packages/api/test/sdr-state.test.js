@@ -33,6 +33,10 @@ const CASES = [
   ["saudação liberada: a mensagem anterior tem 7h", {}, [out(PITCH, 7 * 60), inn("oi", 1)], "descoberta", { canGreet: true, gapMin: 420 }],
   ["teto: 15 mensagens do robô em 24h", {}, [...Array.from({ length: 15 }, (_, i) => out(`msg ${i}`, 600 - i)), inn("oi", 1)], "descoberta", { botToday: 15, capReached: true }],
   ["escada de preço: carimbos viram degrau", { sdrLog: { priceGuardAt: ago(60), priceExplainedAt: ago(30) } }, [inn("e o valor?", 1)], "novo", { priceStep: 2 }],
+  // R-118 (05/11): form reenviado por quem JÁ falou é volta (engaja); logo depois do 1º toque não é.
+  ["engajado: voltou pelo form depois de já ter conversado", {}, [out(PITCH, 60 * 24), inn("Sim, ajudaria", 60 * 23), out("Que bom! Qual sua maior dificuldade hoje?", 60 * 22), inn(FORM, 5)], "engajado", { returning: true, engaged: true }],
+  ["descoberta: form logo depois do 1º toque não é volta", {}, [out(PITCH, 60), inn(FORM, 5)], "descoberta", { returning: false, engaged: false }],
+  ["pos_call: voltou pelo form com a call vencida no card", { callAt: "2026-08-03T11:00" }, [out(PITCH, 60 * 24 * 17), inn("Sim", 60 * 24 * 16), inn(FORM, 5)], "pos_call", { returning: true, callPassed: true }],
 ];
 
 for (const [title, lead, msgs, state, facts] of CASES) {

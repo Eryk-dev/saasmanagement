@@ -22,7 +22,7 @@
 // (ex.: a M3 do roteiro OEM/Price diz "30/40 minutos" por decisão do Leo).
 
 import { sdrAgendaWindow } from "./sdr-agenda.js";
-import { SLOTS_RX, OFFER_CUE_RX, FORM_MSG_RX, isOfferMsg, expandSameDay, slotsInText } from "./sdr-signals.js";
+import { SLOTS_RX, OFFER_CUE_RX, FORM_MSG_RX, PITCH_RX, DEMO_RX, isOfferMsg, expandSameDay, slotsInText } from "./sdr-signals.js";
 import { DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, LEAD_MOBILE_RX, PERIOD_ASK_RX, plainReply } from "./sdr-intents.js";
 import { offerLine, NO_SLOT_TEXT } from "./sdr-offer.js";
 import { DEVICE_TIP } from "./sdr-flow.js";
@@ -339,6 +339,18 @@ export const GUARDS = [
       if (!kept.length) kept.push(part(`Combinado${ctx.nome ? ` ${ctx.nome}` : ""}, quando der me chama aqui que a gente combina a demonstração`));
       return { draft: withParts(d, kept), effects: [{ type: "log", level: "info", msg: "sdr-brain: adiamento do lead tirou a oferta" }] };
     } },
+  { id: "noPitchForReturning", rule: "R-118", enforce: true,
+    // Lead que VOLTOU pelo formulário já ouviu o pitch (Rita, 05/11 00:06:
+    // reenviou o form depois de duas calls e ouviu "Com o Lever OEM você
+    // digita o código…" de novo). O pitch da IA cai; sobra o reconhecimento
+    // e a oferta, que o motor escreve.
+    applies: (ctx) => !!ctx.returning,
+    check: (d) => d.parts.filter((p) => p.kind === "ia" && (PITCH_RX.test(p.text) || DEMO_RX.test(p.text))).map((p) => ({ why: "pitch repetido pra quem voltou pelo form", part: p.text.slice(0, 80) })),
+    fix: (d, ctx) => {
+      const kept = d.parts.filter((p) => !(p.kind === "ia" && (PITCH_RX.test(p.text) || DEMO_RX.test(p.text))));
+      if (!kept.length) kept.push(part(`Que bom que voltou${ctx.nome ? ` ${ctx.nome}` : ""}!`));
+      return { draft: withParts(d, kept), effects: [{ type: "log", level: "info", msg: "sdr-brain: volta pelo form tirou o pitch repetido" }] };
+    } },
   { id: "noOfferWithCall", rule: "R-038", enforce: true,
     // Conversa já marcada e sem pedido de remarcação: horário novo não sai
     // (28/10, Roberto: "estou em viagem" e o robô ofereceu hoje às 15h ou 17h
@@ -371,7 +383,8 @@ export const GUARDS = [
     // mensagem; "Conta jurídica" → "Perfeito Kelly" e fim passava limpo
     // (21 becos no raio-x). Agora vale sem call marcada, fora da janela da
     // call, salvo despedida/adiamento/desinteresse do lead ou texto do form.
-    applies: (ctx) => !ctx.callAt && !ctx.inCallWindow && !FORM_MSG_RX.test(ctx.lastInText || "") && !ctx.closing && !ctx.postponed && !ctx.noInterest && !ctx.handoff,
+    // Texto do form de quem VOLTOU (R-118) é a exceção: aí a saída é a oferta.
+    applies: (ctx) => !ctx.callAt && !ctx.inCallWindow && (!FORM_MSG_RX.test(ctx.lastInText || "") || !!ctx.returning) && !ctx.closing && !ctx.postponed && !ctx.noInterest && !ctx.handoff,
     check: (d) => {
       const semSaida = !d.parts.some((p) => isRealQuestion(p.text) || isOfferMsg(p.text));
       const diaSemHora = DAY_PROPOSAL_RX.test(joined(d)) && !HAS_HOUR_RX.test(joined(d));

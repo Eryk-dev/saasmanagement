@@ -13,7 +13,7 @@
 // carimba `factsDiff` na thread quando divergem (sombra).
 
 import { brtToIso } from "../crm/lead-flow.js";
-import { liveOfferedSlots, DEMO_RX, PITCH_RX } from "./sdr-signals.js";
+import { liveOfferedSlots, DEMO_RX, PITCH_RX, FORM_MSG_RX } from "./sdr-signals.js";
 import { wallNow } from "../crm/agenda-slots.js";
 import { leadPainFocus, SDR_AUTHOR, sdrBotConfig } from "./sdr-flow.js";
 import { isBusinessHours } from "../platform/business-hours.js";
@@ -56,6 +56,19 @@ export function humanMuteHolds(cfg, lastHumanOut, nowMs) {
   return true;
 }
 
+// VOLTOU PELO FORMULÁRIO (R-118): a última mensagem do lead é a pronta do
+// form E ele já tinha falado de verdade antes (mensagem que não é do form)
+// ou já teve call (marcada ou no histórico). A mensagem do form logo depois
+// do 1º toque, sem conversa antes, NÃO é volta (R-101: form não é resposta).
+export function isReturningByForm(lead = {}, msgs = []) {
+  const textOf = (m) => String(m?.transcript || m?.text || "");
+  const last = [...msgs].reverse().find((m) => m.direction === "in");
+  if (!last || !FORM_MSG_RX.test(textOf(last))) return false;
+  const before = msgs.slice(0, msgs.indexOf(last));
+  const spokeBefore = before.some((m) => m.direction === "in" && !FORM_MSG_RX.test(textOf(m)));
+  return spokeBefore || !!lead.callAt || (Array.isArray(lead.callHistory) && lead.callHistory.length > 0);
+}
+
 // Mensagens que valem pra agenda: depois de um cancelamento, as datas e ofertas
 // da call cancelada não autorizam a nova marcação (sdrLog.reschedule).
 export function agendaMessagesOf(msgs, reschedule) {
@@ -93,7 +106,8 @@ export function stateOf({ lead = {}, msgs = [], now = new Date(), product = null
   // Preço leva a agenda (R-072), menos na primeira fala do lead (antes de
   // qualquer mensagem nossa a resposta é descoberta, R-011).
   const askingPriceNow = PRICE_ASK_RX.test(burst) && !/quero saber mais sobre/i.test(burst) && !DEMO_COST_RX.test(burst) && msgs.some((m) => m.direction === "out");
-  const engaged = (leadEngaged(msgs) || (slotsOffered && bareHour(lastInText) != null) || askingPriceNow) && !noInterest;
+  const returning = isReturningByForm(lead, msgs);
+  const engaged = (leadEngaged(msgs) || (slotsOffered && bareHour(lastInText) != null) || askingPriceNow || returning) && !noInterest;
   const painMsg = [...msgs].reverse().find((m) => m.direction === "in" && statedPainOf(m.transcript || m.text));
   const statedPain = painMsg ? statedPainOf(painMsg.transcript || painMsg.text) : null;
   const firstReply = !msgs.some((m) => m.direction === "out");
@@ -119,7 +133,7 @@ export function stateOf({ lead = {}, msgs = [], now = new Date(), product = null
       callAt, inCallWindow, callFuture, callPassed, reschedule, awaitingReschedule,
       humanActive, handoffPending, botToday, capReached: botToday >= DAILY_CAP,
       gapMin, canGreet, demoOffered, slotsOffered, engaged, firstReply,
-      presenceAsked, presenceConfirmed, priceStep, priceAsks, lastInText, statedPain, noInterest,
+      presenceAsked, presenceConfirmed, priceStep, priceAsks, lastInText, statedPain, noInterest, returning,
     },
   };
 }

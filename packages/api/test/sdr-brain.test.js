@@ -1890,3 +1890,31 @@ test("a IA só recebe horários de hora cheia na lista, salvo pedido de hora que
   await brain.handleInbound({ message: { from: "5541999990000", text: "consegue às 10h30?", id: "h2" } });
   assert.ok(fakes.calls[1].slots.some((x) => x.at.endsWith(":30")), "pediu hora quebrada: os :30 entram");
 });
+
+// Kassio (05/11): o lembrete de confirmação termina em "tudo certo?" (saudação
+// pro GREETING_Q_RX), a pergunta anterior tinha 18 dias e o "Certo" era ack.
+// Com conversa marcada não existe pergunta pendente — e a positiva recente ao
+// lembrete nem chega na IA.
+test("pergunta pendente não vale com conversa marcada; positiva recente ao lembrete cala o cérebro #R-047 #R-113", async () => {
+  const lead = {
+    stage: "Call agendada", callAt: "2026-08-19T15:00", closer: "pl", callUrl: "https://meet.google.com/abc",
+    confirmLog: { at: "2026-08-19T15:00", manha: ISO("2026-08-19T11:01:00Z") },
+  };
+  const messages = [
+    { direction: "out", author: "sdr-bot", text: "Hoje você vende em marketplace com conta própria?", at: ISO("2026-08-01T21:54:30Z") },
+    { direction: "out", author: "sdr-bot", text: "Bom dia Rafael! Nossa conversa é hoje às 15h, nosso especialista já separou o horário. O link pra entrar é este: https://meet.google.com/abc. Me confirma por aqui que está tudo certo?", at: ISO("2026-08-19T11:01:00Z") },
+    { direction: "in", text: "Certo", at: ISO("2026-08-19T12:59:00Z") },
+  ];
+  // Sem o carimbo da positiva (webhook sem handleSdrInbound): a IA roda, mas sem pergunta pendente.
+  const repo = await world({ sdrBot: { offerContract: "v2", promptVersion: "v2", guardsMode: "enforce" }, lead, messages });
+  const fakes = makeFakes({ decisions: [{ acao: "silencio" }] });
+  await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "Certo" } });
+  assert.equal(fakes.calls.length, 1);
+  assert.equal(fakes.calls[0].facts.pendingQuestion, "", "pergunta de 18 dias atrás não volta com call marcada");
+  // Com a positiva carimbada há minutos (handleSdrInbound): nem chama a IA.
+  const repo2 = await world({ sdrBot: { offerContract: "v2", promptVersion: "v2", guardsMode: "enforce" }, lead: { ...lead, callConfirmed: true, confirmLog: { ...lead.confirmLog, confirmed: ISO("2026-08-19T12:59:00Z") } }, messages });
+  const fakes2 = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Tudo bem por aqui Rafael"] }] });
+  assert.equal(await brainOf(repo2, fakes2).handleInbound({ message: { from: "5541999990000", text: "Certo" } }), "confirmado");
+  assert.equal(fakes2.calls.length, 0);
+  assert.equal(fakes2.sent.length, 0);
+});

@@ -785,3 +785,22 @@ test("POST /messages/:id/transcribe: sem chave → 424; falha do modelo → 422 
   assert.equal((await repo.get("wa_messages", "wamid.A2")).transcript, undefined);
   await app.close();
 });
+
+// Kassio (05/11): "Certo" ao lembrete era positiva (handleSdrInbound) E
+// mensagem pro cérebro, que reabriu a descoberta de 18 dias atrás.
+test("webhook: positiva ao lembrete da call é consumida pela régua e NÃO acorda o cérebro; outra mensagem acorda #R-113", async () => {
+  const repo = makeMemRepo();
+  await repo.create("leads", { id: "ld1", saas: "leverads", phone: "41992516545", name: "Fulano", stage: "Call agendada", callAt: "2099-01-01T10:00", confirmLog: { at: "2099-01-01T10:00", manha: "2098-12-31T11:00:00.000Z" } });
+  const brainCalls = [];
+  const brain = { handleInbound: async (x) => { brainCalls.push(x.message.text); return "responder"; } };
+  const app = Fastify();
+  await app.register((await import("@fastify/multipart")).default);
+  registerWhatsappRoutes(app, repo, { whatsapp: fakeWa(), getSdrBrain: () => brain });
+  await app.ready();
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inMsg("5541992516545", "wamid.K1", "Certo") });
+  assert.equal((await repo.get("leads", "ld1")).callConfirmed, true, "a régua carimbou a positiva");
+  assert.deepEqual(brainCalls, [], "o cérebro não fala em cima da positiva");
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: inMsg("5541992516545", "wamid.K2", "Qual o endereço da reunião?") });
+  assert.deepEqual(brainCalls, ["Qual o endereço da reunião?"]);
+  await app.close();
+});

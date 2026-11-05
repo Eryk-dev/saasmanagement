@@ -185,11 +185,14 @@ test("migração: lead que só conversou com a IA ganha firstTouchAt da 1ª mens
 });
 
 // ── Confirmação com ação e link ─────────────────────────────────────────────
-test("reminderText: 2h leva o link e a dica do computador, sem perguntar por onde entra (Leo, 17/09); sem link, pede o ok; 10min sem link pede o ok #R-061 #R-112", () => {
+test("reminderText: manhã leva o link e a dica do computador, sem perguntar por onde entra (Leo, 17/09); 2h é curto com link e positiva (05/11); sem link, pede o ok; 10min sem link pede o ok #R-061 #R-112", () => {
+  const tManha = reminderText("manha", { nome: "Rafael", quando: "hoje às 14h", link: "https://meet.google.com/x" });
+  assert.match(tManha, /link pra entrar é este: https:\/\/meet\.google\.com\/x\. Se for entrar pelo celular, vale ter um computador por perto/);
+  assert.match(tManha, /Me confirma por aqui que está tudo certo\?$/);
+  assert.doesNotMatch(tManha, /celular ou pelo computador/);
   const t2h = reminderText("2h", { nome: "Rafael", quando: "hoje às 14h", link: "https://meet.google.com/x" });
-  assert.match(t2h, /link pra entrar é este: https:\/\/meet\.google\.com\/x\. Se for entrar pelo celular, vale ter um computador por perto/);
-  assert.match(t2h, /Me confirma por aqui que está tudo certo\?$/);
-  assert.doesNotMatch(t2h, /celular ou pelo computador/);
+  assert.equal(t2h, "Rafael, nossa conversa é hoje às 14h. O link pra entrar é este: https://meet.google.com/x. Consegue me confirmar por aqui?");
+  assert.doesNotMatch(t2h, /computador por perto/);
   assert.match(reminderText("2h", { nome: "Rafael", quando: "hoje às 14h", link: "" }), /Me manda um ok por aqui que eu já te passo o link/);
   assert.match(reminderText("10min", { nome: "", quando: "hoje às 14h", link: "" }), /Me manda um ok que te passo o link de acesso agora/);
   assert.doesNotMatch(reminderText("10min", { nome: "", quando: "", link: "" }), /Te espero lá/);

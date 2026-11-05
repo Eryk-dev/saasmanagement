@@ -3,7 +3,7 @@
 GERADO de `packages/api/src/sdr/sdr-rules.js` (`node src/sdr/sdr-rules.js --write`). Não edite à mão: o
 teste `sdr-rulebook.test.js` recusa o arquivo quando ele difere do registro.
 
-82 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
+84 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
 origem (data, quem pediu, PR ou print), o enunciado, os estados da conversa e o roteiro em que vale, a camada
 que a executa e as exceções. Toda regra ativa tem pelo menos um teste ou cena com a tag `#R-nnn`.
 
@@ -152,6 +152,12 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 - Regra: Lead que pede pra falar com outra pessoa (nome + número no texto, ou cartão de contato 👤): o motor cria o card do indicado (dedup por telefone; mesmo produto e dor de origem; origem "Indicação · <lead>"), manda o template sdr_indicacao ("<Indicado>, <Lead> me passou seu contato e pediu pra eu te explicar como funciona o <produto>") e só então responde "acabei de chamar". Template não aprovado ou envio falhou: resposta honesta ("vou pedir pro time chamar") e handoff "terceiro" pro time. Sem número: pede o número. Nunca "vou encaminhar" sem executar.
 - Vale em: estados todos; roteiro todos; executada por intent, effects, template, alerta, prompt
 
+### R-118 · Formulário reenviado por quem já conversou é volta, não lead novo
+
+- Origem: 2026-11-05, Leo (varredura 05/11 (Rita: reenviou o form às 00h06 depois de duas calls e ouviu o pitch do Lever OEM do zero, depois "vamos remarcar" sem horário))
+- Regra: A mensagem pronta do formulário vinda de quem já falou de verdade na conversa (ou já teve call, marcada ou no histórico) é o lead VOLTANDO: conta como engajado, o pitch e a descoberta não se repetem (o validador tira o pitch da IA) e a resposta reconhece a volta e convida direto com o par; com conversa marcada no futuro, lembra que está marcada. A primeira mensagem do form logo depois do 1º toque NÃO é volta (R-101).
+- Vale em: estados todos; roteiro todos; executada por state, prompt, guard (validador noPitchForReturning)
+
 ## Agenda e oferta de horário
 
 ### R-020 · Horário só da agenda real
@@ -229,7 +235,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-047 · Pergunta pendente volta
 
 - Origem: 2026-10-28, Leo (prints 28/10 (Kelly: 'Hoje sua maior dificuldade…?' → 'Tudo bem e vc?' → 'Tudo certo também Kelly' e a pergunta morreu; 'Que bom' idem))
-- Regra: Pergunta nossa que o lead respondeu só com saudação, ack ou "e você?" continua pendente: a resposta seguinte responde o que ele trouxe em uma frase e refaz a pergunta (uma vez; o motor a repete tal qual se a IA não refizer, isenta da regra da frase já dita).
+- Regra: Pergunta nossa que o lead respondeu só com saudação, ack ou "e você?" continua pendente: a resposta seguinte responde o que ele trouxe em uma frase e refaz a pergunta (uma vez; o motor a repete tal qual se a IA não refizer, isenta da regra da frase já dita). Só vale nos estados de descoberta/engajado/oferta: com conversa marcada, vencida ou remarcação em aberto não existe pergunta pendente; pergunta da régua da call ("me confirma por aqui?") não é pergunta de descoberta; pergunta com mais de 48h já morreu (05/11, Kassio: o "Certo" ao lembrete reabriu a descoberta de 18 dias atrás). A IA que recebeu a pergunta conta como tendo refeito.
 - Vale em: estados descoberta, engajado, oferta_feita, novo; roteiro todos; executada por guard, prompt, state
 
 ### R-032 · O pedido do lead filtra a lista; pedido lotado diz que lotou
@@ -497,13 +503,13 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-110 · Régua de confirmação: 08:00, 2h antes e 10 min antes
 
 - Origem: 2026-09-30, Leo (#1114 (sem véspera); 08:00 pra todos #1119 (05/10))
-- Regra: Manhã às 08:00 pra toda call do dia, pedindo a positiva (pula se já confirmada, call antes de 8h40 ou marcada hoje depois das 8h). 2h antes com o link (pulado quando colaria na manhã, inclusive quando a manhã ainda VAI sair: call das 9h não recebe o de 2h às 7h). 10 minutos antes com o link. Sem positiva até 1h antes, alerta de ligação pro closer, uma vez. Lembrete atrasado além da tolerância não sai.
+- Regra: Manhã às 08:00 pra toda call do dia, pedindo a positiva (pula se já confirmada, call antes de 8h40 ou marcada hoje depois das 8h). 2h antes com o link, numa frase curta DIFERENTE da manhã (pulado quando colaria na manhã, inclusive quando a manhã ainda VAI sair: call das 9h não recebe o de 2h às 7h; e pulado quando o lead JÁ confirmou — Leo, 05/11: o link foi na positiva, pedir de novo é esquecer o que ele disse). 10 minutos antes com o link. Na janela fechada nenhum template sai duas vezes pro mesmo horário (manhã, 2h e 10min caíam no mesmo corpo; o 10min do lead genérico usa o template de 10 min do roteiro). Sem positiva até 1h antes, alerta de ligação pro closer, uma vez. Lembrete atrasado além da tolerância não sai.
 - Vale em: estados todos; roteiro todos; executada por flow
 
 ### R-112 · Lembrete com ação e link; sem link, nunca "te espero lá"
 
 - Origem: 2026-09-17, raio-x E1 (#1029; 10min sem link não repete #1114)
-- Regra: O lembrete de 2h entrega o link quando a sala existe (e a cria quando falta) e recomenda o computador por perto; o de 10min sempre leva o link e, sem link, pede o ok em vez de "te espero lá". Positiva ao lembrete recebe o link em seguida, uma vez; humano que já mandou o link cala o robô. 10min sem link com janela fechada não repete o template sem link do 2h: fica o alerta.
+- Regra: O lembrete de 2h entrega o link quando a sala existe (e a cria quando falta); a recomendação do computador por perto vai na manhã (desde 05/11 o 2h é curto). O de 10min sempre leva o link e, sem link, pede o ok em vez de "te espero lá". Positiva ao lembrete recebe o link em seguida, uma vez; humano que já mandou o link cala o robô. 10min sem link com janela fechada não repete o template sem link do 2h: fica o alerta.
 - Vale em: estados todos; roteiro todos; executada por flow, alerta
 
 ### R-113 · Respostas ao lembrete
@@ -529,6 +535,12 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 - Origem: 2026-08-22, Leo (#733; furo real #1112/#1114 (30/09-01/10); 2ª tentativa #802)
 - Regra: Card em No show recebe "passei no horário e não te encontrei" uma vez por movimento, só depois de 20 minutos do horário, e nunca quando: a call aconteceu (resumo), o lead disse que entrou, o card foi movido mais de 24h depois, o lead avisou antes que não vinha (aí o texto não diz "não te encontrei") ou o lead disse não / sem interesse depois do furo (gente decide; 28/10, Sirlene). Sem resposta em 24h, 2ª tentativa com horários concretos (9h às 19h, dia útil); quem respondeu ou remarcou não recebe.
 - Vale em: estados todos; roteiro todos; executada por flow, alerta
+
+### R-117 · Call vencida com o lead de volta: agenda e remarca
+
+- Origem: 2026-11-05, Leo (varredura 05/11 (Rinaldo: call de 20/10, reenviou o form em 05/11 e ouviu "segue marcada pra terça (20/10)" e depois "pode ser sim" sem horário; Rita idem))
+- Regra: Horário marcado que passou há mais de 60 minutos sem desfecho no card não é conversa marcada pra conversa: o cérebro trata como SEM call (nenhuma trava de "conversa marcada" vale, a agenda vai no prompt) e, quando o lead volta — reenvia o formulário, pede pra remarcar, diz que o horário passou —, reconhece em uma frase que não aconteceu e oferece o par; a remarcação arquiva a antiga em callHistory. O card não se move (R-115).
+- Vale em: estados pos_call; roteiro todos; executada por state, prompt, guard, effects
 
 ## Portão de mudança
 
