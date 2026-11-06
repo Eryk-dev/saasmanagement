@@ -374,10 +374,12 @@ export async function sdrSlotsForLead(repo, { messages = [], now = wallNow(), ..
   if (window.startDate < ymd(now) || (window.days === 1 && (day === 0 || day === 6))) return { slots: [], ...window };
   const result = await slotsForLead(repo, { ...options, now, ...OFFER_HOURS, ...winOpts, sdr: true });
   result.slots = drop(result.slots);
-  if (result.slots.length) return { ...result, ...window };
+  const hasWhole = (list) => list.some((s) => String(s.at || "").endsWith(":00"));
+  if (result.slots.length && (window.requested || hasWhole(result.slots))) return { ...result, ...window };
   if (!window.requested) {
-    // A recusa esvaziou a janela espontânea: próximo dia útil depois dela.
-    if (!exclude.length && !refused.length) return { ...result, ...window };
+    // A recusa (ou uma janela só com :30, R-023) esvaziou a oferta
+    // espontânea: próximo dia útil depois dela.
+    if (!exclude.length && !refused.length && !result.slots.length) return { ...result, ...window };
     const nextStart = addBusinessDaysNaive(lastDayOf(window), 1).slice(0, 10);
     const more = await slotsForLead(repo, { ...options, now, ...OFFER_HOURS, startDate: nextStart, days: 2, sdr: true });
     more.slots = drop(more.slots);

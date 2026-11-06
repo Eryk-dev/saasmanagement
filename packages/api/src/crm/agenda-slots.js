@@ -359,9 +359,13 @@ export function withoutHeld(slots, holds, leadId) {
 // segue disponível pra quando o LEAD pedir ("consigo só 14h30") e pra marcação
 // na mão. Sem nenhuma hora cheia livre, devolve a lista inteira (melhor uma
 // oferta quebrada que nenhuma).
+// Só hora cheia, sempre (R-023): o robô nunca oferece :30 por conta própria.
+// Até 06/11 caía nas :30 quando a janela não tinha hora cheia (Caio, 04/11:
+// "amanhã às 9h30" ofertado, "Pode ser." virou "acabou de ser preenchido" e o
+// mesmo 9h30 de novo). Sem hora cheia, a janela espontânea anda um dia útil
+// (sdrSlotsForLead).
 export function wholeHourSlots(slots) {
-  const cheias = (slots || []).filter((s) => String(s?.at || "").endsWith(":00"));
-  return cheias.length ? cheias : (slots || []);
+  return (slots || []).filter((s) => String(s?.at || "").endsWith(":00"));
 }
 
 export function spreadPair(slots, minGapMin = 120) {

@@ -191,6 +191,13 @@ export function buildUserV2({ sdrName = "", nowLabel = "", lead = {}, digest = "
     facts.pendingQuestion
       ? `PERGUNTA PENDENTE: você perguntou "${String(facts.pendingQuestion).slice(0, 140)}" e ele respondeu só com saudação/ack ("tudo bem e vc?", "que bom"). Responda o que ele trouxe em uma frase curta e REFAÇA essa pergunta com outras palavras, na mesma resposta (oferecer=false). Nunca termine só no ack.`
       : "",
+    facts.callbackDay
+      ? `O LEAD ADIOU E MARCOU O DIA: ele disse que retoma ${facts.callbackDay}. Responda só "Combinado" + que você chama ${facts.callbackDay} (uma frase, sem pergunta) e pare: oferecer=false, NUNCA ofereça horário agora. O sistema chama ele nesse dia.`
+      : facts.callbackPending
+        ? `HÁ RETORNO COMBINADO pra ${facts.callbackPending}: não ofereça horário (oferecer=false) a menos que ele peça agora um dia ou hora; responda o que ele trouxe em uma frase e pare.`
+        : facts.postponed
+          ? "O LEAD ADIOU (\"te aviso\", \"estou em viagem\", \"agora não consigo\"): \"Combinado\" + \"quando der me chama aqui\" e pare (oferecer=false), sem horário."
+          : "",
     facts.returning
       ? `O LEAD REENVIOU O FORMULÁRIO e vocês JÁ conversaram antes (ele voltou): NÃO repita a apresentação do produto nem a descoberta do zero. Reconheça em uma frase que ele voltou${callAt && !facts.callPassed ? " e lembre que a conversa já está marcada (oferecer=false)" : " e convide direto pra demonstração (oferecer=true)"}.`
       : "",

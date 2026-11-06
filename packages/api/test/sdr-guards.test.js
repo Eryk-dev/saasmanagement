@@ -155,9 +155,9 @@ test("guards: a ordem é a da cadeia legada e o preço vence tudo #R-050 #R-009"
 test("offerLine: toda variante é lida de volta como oferta pela régua compartilhada (isOfferMsg/offeredSlotsIn) #R-021 #R-026", () => {
   for (const style of OFFER_STYLES) {
     const line = collapseSameDay(offerLine(PAIR, { style, wnow: WNOW, nome: "Rafael", lotouDay: "sexta" }));
-    // "Fica melhor X ou Y?" é repescagem de oferta JÁ feita, não oferta nova:
-    // por desenho não conta como slotsOffered (sdr-signals.js).
-    if (style === "fica-melhor") { assert.ok(!isOfferMsg(line), line); continue; }
+    // Inclusive "Fica melhor X ou Y?" (06/11, Caio): a repescagem é oferta de
+    // verdade; sem isso ela virava "pergunta pendente" (R-047) e o "Ok" do
+    // lead recebia "qual das duas opções você prefere?".
     assert.ok(isOfferMsg(line), `${style}: ${line}`);
     const read = offeredSlotsIn([{ direction: "out", author: "sdr-bot", text: line, at: "2026-08-19T13:00:00Z" }]);
     assert.deepEqual(read.map((s) => s.at), PAIR.map((s) => s.at), `${style} lido de volta`);

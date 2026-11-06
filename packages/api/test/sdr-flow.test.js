@@ -550,6 +550,34 @@ test("retorno combinado: sdrLog.callbackAt vencido em expediente chama 'como com
   await runner(talked, wa2, nowRef).tick();
   assert.equal(wa2.sent.length, 0);
   assert.equal((await talked.get("leads", "L1")).sdrLog.callbackVia, "skip:conversa-andou");
+  // "Ok" em cima do "Combinado" NÃO é conversa que andou (06/11, Caio): o retorno sai.
+  const acked = await mk([{ id: "i2", thread: "5541999990000", leadId: "L1", direction: "in", text: "Ok", at: ISO("2026-08-18T20:02:00Z") }]);
+  const wa3 = makeWa();
+  await runner(acked, wa3, nowRef).tick();
+  assert.equal(wa3.sent.length, 1, "o ack não cancela o retorno combinado");
+  assert.equal((await acked.get("leads", "L1")).sdrLog.callbackVia, "text");
+});
+
+test("retorno combinado pendente segura a cobrança da oferta e o 2º toque até o dia #R-121", async () => {
+  // Cobrança da oferta (1e): o lead disse "semana que vem retorno contato" depois da oferta.
+  const repo = await nudgeWorld({ extraMessages: [{ id: "i2", thread: "5541999990000", leadId: "L1", direction: "in", text: "Semana que vem retorno contato", at: ISO("2026-08-19T20:05:00Z") }] });
+  await repo.update("leads", "L1", { sdrLog: { firstTouchAt: ISO("2026-08-19T18:05:00Z"), firstTouchVia: "brain", callbackAt: "2026-08-24T12:30:00.000Z", callbackSetAt: ISO("2026-08-19T20:06:00Z"), callbackDoneAt: null } });
+  await repo.update("wa_threads", "5541999990000", { lastDir: "out", lastOutAuthor: "sdr-bot", lastText: OFFER, lastAt: ISO("2026-08-19T20:00:00Z") });
+  const wa = makeWa();
+  const stats = await runner(repo, wa, NUDGE_NOW).tick();
+  assert.equal(stats.offerNudge || 0, 0);
+  assert.equal(wa.sent.length, 0, "nada sai antes do dia combinado");
+  // 2º toque (1b): 1º toque há 30h, lead sem resposta mas com retorno combinado carimbado por gente.
+  const repo2 = await world({
+    product: { sdrBot: { enabled: true, enabledAt: ISO("2026-08-01T00:00:00Z"), secondTouch: true } },
+    leads: [{ id: "L1", name: "Rafael Silva", phone: "41999990000", stage: "Qualificando", createdAt: ISO("2026-08-18T12:00:00Z"), sdrLog: { firstTouchAt: ISO("2026-08-18T12:05:00Z"), firstTouchVia: "brain", callbackAt: "2026-08-24T12:30:00.000Z", callbackSetAt: ISO("2026-08-18T12:10:00Z"), callbackDoneAt: null } }],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads", lastDir: "out", lastOutAuthor: "sdr-bot", lastText: "Oiii Rafael", lastAt: ISO("2026-08-18T12:05:00Z") }],
+    messages: [{ id: "o1", thread: "5541999990000", leadId: "L1", direction: "out", author: "sdr-bot", text: "Oiii Rafael", at: ISO("2026-08-18T12:05:00Z") }],
+  });
+  const wa2 = makeWa({ approved: ["sdr_retomada_conversa"] });
+  await runner(repo2, wa2, { t: new Date("2026-08-19T19:00:00Z") }).tick();
+  assert.equal(wa2.sent.length, 0, "o 2º toque espera o dia combinado");
+  assert.ok(!(await repo2.get("leads", "L1")).sdrLog.secondTouchAt);
 });
 
 test("conversa comum (sem lembrete pendente) não passa pelo gancho #R-113", async () => {

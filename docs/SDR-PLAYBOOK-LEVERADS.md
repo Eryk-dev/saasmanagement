@@ -3,7 +3,7 @@
 GERADO de `packages/api/src/sdr/sdr-rules.js` (`node src/sdr/sdr-rules.js --write`). Não edite à mão: o
 teste `sdr-rulebook.test.js` recusa o arquivo quando ele difere do registro.
 
-85 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
+86 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
 origem (data, quem pediu, PR ou print), o enunciado, os estados da conversa e o roteiro em que vale, a camada
 que a executa e as exceções. Toda regra ativa tem pelo menos um teste ou cena com a tag `#R-nnn`.
 
@@ -181,7 +181,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-023 · Par com 2h de respiro, em hora cheia
 
 - Origem: 2026-08-25, Leo (oferta só em hora cheia)
-- Regra: Duas opções têm pelo menos 2h entre si e saem em hora cheia (9h, 14h). Hora quebrada (9h30) só entra quando o lead pede ("10h30", "e meia"); aí ele é agendado nela. A IA só recebe os :30 na lista quando o lead pediu, e horário quebrado escolhido sem pedido vira a hora cheia do mesmo horário ou re-oferta (Leo, 29/10; Alonso foi remarcado pra 10h30 sem pedir). A janela de oferta vai das 9h às 19h e pula o almoço.
+- Regra: Duas opções têm pelo menos 2h entre si e saem em hora cheia (9h, 14h). Hora quebrada (9h30) só entra quando o lead pede ("10h30", "e meia"); aí ele é agendado nela. A IA só recebe os :30 na lista quando o lead pediu, e horário quebrado escolhido sem pedido vira a hora cheia do mesmo horário ou re-oferta (Leo, 29/10; Alonso foi remarcado pra 10h30 sem pedir). A oferta espontânea nunca cai nas :30 nem quando a janela só tem hora quebrada: anda um dia útil (06/11, Caio levou "amanhã às 9h30" e, ao aceitar, "acabou de ser preenchido" com o mesmo 9h30). Hora quebrada que o robô ofereceu e o lead aceitou marca nela. A janela de oferta vai das 9h às 19h e pula o almoço.
 - Vale em: estados todos; roteiro todos; executada por agenda, prompt, effects
 
 ### R-024 · Horário ofertado fica reservado 30 minutos
@@ -229,7 +229,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-031 · Interesse sem saída ganha a oferta; dia solto ganha hora
 
 - Origem: 2026-08-24, Leo (#787 (trava de beco); dia solto 25/08)
-- Regra: Toda resposta avança (28/10): sem call marcada e fora da janela da call, resposta sem pergunta de verdade (saudação com "?" não conta) e sem oferta ganha o próximo passo: lead engajado recebe a oferta do par; lead ainda não engajado recebe a pergunta pendente ou a próxima pergunta de descoberta (nunca uma já feita). Dia sem hora ("conseguimos essa semana?") vira oferta concreta. Despedida, adiamento ("te aviso", "te retorno amanhã"), desinteresse e texto do form não recebem nada.
+- Regra: Toda resposta avança (28/10): sem call marcada e fora da janela da call, resposta sem pergunta de verdade (saudação com "?" não conta) e sem oferta ganha o próximo passo: lead engajado recebe a oferta do par; lead ainda não engajado recebe a pergunta pendente ou a próxima pergunta de descoberta (nunca uma já feita). Dia sem hora ("conseguimos essa semana?") vira oferta concreta. Despedida, adiamento ("te aviso", "te retorno amanhã"), desinteresse e texto do form não recebem nada. Resposta que promete retorno ("te chamo aqui na semana que vem", "quando voltar me chama") é saída, não beco: nada é emendado (06/11, Caio).
 - Vale em: estados todos; roteiro todos; executada por guard (validador nextStep)
 
 ### R-047 · Pergunta pendente volta
@@ -401,8 +401,14 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-084 · Silêncio quando não há o que responder
 
 - Origem: 2026-08-22, Leo (#736; "ok" pós-compromisso 05/10; reações 01/10)
-- Regra: Adiamento do lead ("estou em viagem", "te aviso", "vou ver com meu sócio") nunca recebe oferta de horário na mesma resposta (29/10, Ariel): a trava tira a oferta e fica o "me chama quando voltar". Mensagem que encerra sem pedir resposta ("ok", "valeu", reação) fica sem resposta; o "ok" depois do compromisso do roteiro também. Reação e saudação solta não abrem alerta nem janela de 24h. Lead que marca um dia pra ser chamado ("me chama na terça", "contato só a partir de segunda") ou robô que promete "te chamo amanhã": o dia vira carimbo (sdrLog.callbackAt) e a Manuela chama nesse dia, em expediente, com a agenda real (28/10: Reginaldo, Robson, Maurílio ficaram esperando).
+- Regra: Adiamento do lead ("estou em viagem", "te aviso", "vou ver com meu sócio", "no momento não consigo", "semana que vem retorno contato", "entro em contato") nunca recebe oferta de horário na mesma resposta (29/10, Ariel; 06/11, Caio): a trava tira a oferta e fica o "me chama quando voltar" ou o "te chamo no dia". Mensagem que encerra sem pedir resposta ("ok", "valeu", reação) fica sem resposta; o "ok" depois do compromisso do roteiro também. Reação e saudação solta não abrem alerta nem janela de 24h. Lead que marca um dia pra ser chamado ("me chama na terça", "contato só a partir de segunda") ou robô que promete "te chamo amanhã": o dia vira carimbo (sdrLog.callbackAt) e a Manuela chama nesse dia, em expediente, com a agenda real (28/10: Reginaldo, Robson, Maurílio ficaram esperando).
 - Vale em: estados todos; roteiro todos; executada por prompt, intent, flow, effects, guard (validador noOfferWhenPostponed)
+
+### R-121 · Retorno combinado segura o robô até o dia
+
+- Origem: 2026-11-06, Leo (print do Caio (06/11): "No momento não consigo. Semana que vem retorno contato" → "Combinado" + "Fica melhor segunda às 9h ou às 11h?" + "Ok" → "qual das duas opções você prefere?"; "preciso que ele sempre leia todo o contexto da conversa")
+- Regra: Lead que adia dizendo o dia ou a semana ("semana que vem retorno contato", "te retorno segunda", "entro em contato na próxima semana") recebe só o "Combinado, te chamo nesse dia" e o dia vira sdrLog.callbackAt. Até o dia chegar: nenhuma oferta de horário, nenhum toque automático (2º toque, escada, cobrança da oferta); "ok"/"obrigado"/reação em cima do combinado fica sem resposta e não cancela o retorno; fala substantiva do lead é respondida sem oferta. Pedido explícito de dia ou hora segue o fluxo normal. No dia, em expediente, a Manuela chama com a agenda real (seção 1f do flow, R-084).
+- Vale em: estados descoberta, engajado, oferta_feita; roteiro todos; executada por intent, prompt, guard, flow, effects (validador noOfferWhenPostponed)
 
 ### R-085 · Fora do expediente a pausa de humano ativo pode ser ignorada
 

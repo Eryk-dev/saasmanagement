@@ -206,7 +206,9 @@ export function burstInboundText(msgs = [], gapMs = 10 * 60_000) {
 // de segunda", "te chamo amanhã" viram um dia; o motor carimba
 // sdrLog.callbackAt e a escada (seção 1f) chama nesse dia, em vez de a
 // promessa morrer na conversa (Reginaldo, Robson, Othelo, Maurílio).
-const CALLBACK_RX = /\bme (?:chama|chame|liga|ligue|procura|procure|manda (?:uma )?mensagem|retorna|retorne)\b|\bte (?:chamo|ligo|procuro|retorno|falo)\b|\bcontato (?:so |somente |apenas )?a partir d[ea]\b|\b(?:so|somente|apenas) (?:a partir d[ea] )?(?:segunda|terca|quarta|quinta|sexta|amanha|semana que vem|proxima semana)\b|\bpode me chamar\b/;
+// 06/11 (Caio): "Semana que vem retorno contato" / "entro em contato na
+// próxima semana" / "te procuro segunda" também são o lead marcando o dia.
+const CALLBACK_RX = /\bme (?:chama|chame|liga|ligue|procura|procure|manda (?:uma )?mensagem|retorna|retorne)\b|\bte (?:chamo|ligo|procuro|retorno|falo)\b|\bcontato (?:so |somente |apenas )?a partir d[ea]\b|\b(?:so|somente|apenas) (?:a partir d[ea] )?(?:segunda|terca|quarta|quinta|sexta|amanha|semana que vem|proxima semana)\b|\bpode me chamar\b|\b(?:eu )?retorno (?:o )?contato\b|\bentro em contato\b|\b(?:eu )?(?:retorno|te chamo|te respondo|falo|entro em contato) (?:na |no |a |ate )?(?:semana que vem|proxima semana|amanha|segunda|terca|quarta|quinta|sexta)\b|\b(?:semana que vem|proxima semana|amanha|segunda|terca|quarta|quinta|sexta) (?:eu )?(?:retorno|te chamo|te respondo|falo|entro em contato)\b/;
 export function callbackDay(text, wnow) {
   const t = plainReply(text);
   if (!CALLBACK_RX.test(t) || !wnow) return null;
@@ -217,9 +219,14 @@ export function callbackDay(text, wnow) {
 const NO_RX = /^(?:nao|n|nop|nope|negativo)[.!\s]*$|^nao (?:consigo|posso|quero|da|vai dar|obrigad[oa])[.!\s]*$/;
 // Lead adiou a decisão (R-031/R-041: "Combinado", sem re-oferta).
 // 29/10 (Ariel): "estou em viagem" é adiamento: sem oferta, "me chama quando voltar".
-export const POSTPONE_RX = /\bte (?:retorno|respondo|aviso|chamo|falo)\b|\bdepois (?:eu )?te\b|\bmais tarde\b|\b(?:vou|preciso|tenho que|deixa eu) (?:ver|falar|conversar|alinhar) com\b|\bme (?:da|de) um tempo\b|\bvou pensar\b|\bt aviso\b|\bte aviso\b|\bqualquer coisa (?:eu )?te chamo\b|\b(?:estou|to|tou|estamos) (?:em )?viage|\bviajando\b|\bem viagem\b|\bfora da cidade\b|\bquando (?:eu )?(?:voltar|retornar|estiver de volta)\b/;
+// 06/11 (Caio): "No momento não consigo. Semana que vem retorno contato" é
+// adiamento (recebeu "Fica melhor segunda às 9h ou às 11h?" em cima do
+// "Combinado"). "Retorno contato", "entro em contato", "te procuro" e
+// "no momento/agora não consigo" entram; "só consigo semana que vem" segue
+// sendo pedido de janela (sdr-agenda.js), não adiamento.
+export const POSTPONE_RX = /\bte (?:retorno|respondo|aviso|chamo|falo)\b|\bdepois (?:eu )?te\b|\bmais tarde\b|\b(?:vou|preciso|tenho que|deixa eu) (?:ver|falar|conversar|alinhar) com\b|\bme (?:da|de) um tempo\b|\bvou pensar\b|\bt aviso\b|\bte aviso\b|\bqualquer coisa (?:eu )?te chamo\b|\b(?:estou|to|tou|estamos) (?:em )?viage|\bviajando\b|\bem viagem\b|\bfora da cidade\b|\bquando (?:eu )?(?:voltar|retornar|estiver de volta)\b|\bno momento (?:nao|n) (?:consigo|posso|da|vai dar|tenho como)\b|\bagora (?:nao|n) (?:consigo|posso|da|vai dar|tenho como)\b|\b(?:eu )?retorno (?:o )?contato\b|\bentro em contato\b|\b(?:eu )?te procuro\b|\b(?:semana que vem|proxima semana|amanha|segunda|terca|quarta|quinta|sexta) (?:eu )?(?:retorno|te chamo|te respondo|falo|entro em contato)\b|\bmais pra frente\b/;
 // Pedido de horário sem dia ("podemos marcar um horário?", "quais horários tem?").
-const SCHEDULE_WORDS_RX = /hor[áa]rio|\bagendar|\bmarcar|\bagenda\b|dispon[íi]vel|que horas|quais (?:dias|datas)/i;
+export const SCHEDULE_WORDS_RX = /hor[áa]rio|\bagendar|\bmarcar|\bagenda\b|dispon[íi]vel|que horas|quais (?:dias|datas)/i;
 const EMAIL_RX = /[\w.+-]+@[\w-]+\.[\w.-]+/;
 
 // Lista fechada, em ORDEM DE PRECEDÊNCIA (a primeira que casa é a `primary`).
@@ -260,6 +267,13 @@ export function classifyInbound(text, { wnow = null, offered = [], slotsOffered 
   const hour = bareHour(raw);
   const slot = offered.length ? acceptedSlot(raw, offered) : null;
   const window = wnow ? sdrAgendaWindow([{ direction: "in", text: raw }], wnow) : null;
+  // ADIAMENTO (R-084/R-121, 06/11 Caio): "no momento não consigo, semana que
+  // vem retorno contato" é adiamento, não pedido de remarcação. Com o dia do
+  // retorno dito, vence até o desinteresse ("agora não consigo, te chamo
+  // segunda" não é "agora não"); sem dia, vale antes do pedido de agenda.
+  // Pedido de janela ("só amanhã de tarde", "contato só a partir de segunda")
+  // é agenda, não adiamento: o lead quer marcar, só que nesse dia.
+  const postponed = !question && (POSTPONE_RX.test(plain) || (!!callbackDay(raw, wnow) && !window?.requested));
   const primary =
     AUTO_REPLY_RX.test(raw) ? "auto_reply"
       : FORM_MSG_RX.test(raw) ? "form_message"
@@ -267,17 +281,18 @@ export function classifyInbound(text, { wnow = null, offered = [], slotsOffered 
           : requestsCancellation(raw) ? "cancel"
             : callAt && DENY_CALL_RX.test(raw) ? "deny_call"
               : WAITING_ROOM_RX.test(plain) ? "waiting_room"
-                : !question && NO_INTEREST_RX.test(plain) && !FORM_MSG_RX.test(raw) ? "no_interest"
-                  : OBJECTION_RX.test(plain) ? "objection"
-                    : slot ? "accept_slot"
-                      : slotsOffered && hour != null ? "bare_hour"
-                        : window?.requested || HAS_HOUR_RX.test(raw) || SCHEDULE_WORDS_RX.test(raw) ? "schedule_ask"
-                          : RESCHEDULE_ASK_RX.test(plain) ? "reschedule_ask"
-                            : isShortYes(raw) ? "yes"
-                              : NO_RX.test(plain) ? "no"
-                                : POSTPONE_RX.test(plain) ? "postpone"
-                                  : GREETING_ONLY_RX.test(raw) ? "greeting_only"
-                                    : question ? "question" : "other";
+                : postponed && callbackDay(raw, wnow) ? "postpone"
+                  : !question && NO_INTEREST_RX.test(plain) && !FORM_MSG_RX.test(raw) ? "no_interest"
+                    : OBJECTION_RX.test(plain) ? "objection"
+                      : slot ? "accept_slot"
+                        : slotsOffered && hour != null ? "bare_hour"
+                          : postponed ? "postpone"
+                            : window?.requested || HAS_HOUR_RX.test(raw) || SCHEDULE_WORDS_RX.test(raw) ? "schedule_ask"
+                              : RESCHEDULE_ASK_RX.test(plain) ? "reschedule_ask"
+                                : isShortYes(raw) ? "yes"
+                                  : NO_RX.test(plain) ? "no"
+                                    : GREETING_ONLY_RX.test(raw) ? "greeting_only"
+                                      : question ? "question" : "other";
   return { primary, all, hour, slot, window, email, plain };
 }
 
