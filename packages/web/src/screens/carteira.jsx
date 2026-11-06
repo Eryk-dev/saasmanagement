@@ -26,7 +26,8 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { currentUser, displayName } from "../lib/users.js";
 import { openOnboarding, openRecord } from "../lib/open-record.js";
 import { AvisoTopo, BarraComposicao, BarraFiltros, Info } from "../components/story.jsx";
-import { Segmented } from "../components/viz.jsx";
+import { Pill, Segmented } from "../components/viz.jsx";
+import { tenureLabel } from "../lib/milestones.js";
 import { SelectPopover } from "../components/select-popover.jsx";
 
 const { useState, useEffect, useMemo, Suspense } = React;
@@ -219,16 +220,18 @@ export const matchesProduct = (row, value) => {
 };
 
 // Ordenação da lista pelo cabeçalho (06/11/2026): Cliente (nome, A→Z), Saúde
-// (o número), Pagamento (o mais atrasado primeiro: inadimplente com mais dias
+// (o número), Tempo de casa (o mais antigo primeiro, a seta fica no cabeçalho
+// de Cliente), Pagamento (o mais atrasado primeiro: inadimplente com mais dias
 // e valor, aguardando o 1º pagamento, em dia) e Assinatura (a que renova antes
 // primeiro). O 1º clique mostra primeiro o que pede atenção, o 2º inverte e o
 // 3º volta à ordem padrão (estágio, saúde, MRR). Linha sem o dado (saúde não
 // calculada, sem cobrança, sem data de renovação) fica no fim nos dois sentidos.
-export const SORTABLE = { Cliente: "name", "Saúde": "health", Pagamento: "payment", Assinatura: "subscription" };
+export const SORTABLE = { Cliente: "name", "Tempo de casa": "tenure", "Saúde": "health", Pagamento: "payment", Assinatura: "subscription" };
 const PAYMENT_RANK = { inadimplente: 0, aguardando_pagamento: 1, adimplente: 2 };
 // Chave de cada coluna: lista comparada em ordem; null = sem dado (vai pro fim).
 const SORT_KEYS = {
   name: (r) => [String(r.name || "").trim()],
+  tenure: (r) => (Number.isFinite(Date.parse(r.startedAt || "")) ? [Date.parse(r.startedAt)] : null),
   health: (r) => (r.healthAt || r.health ? [Number(r.health) || 0] : null),
   payment: (r) => (r.payment?.status in PAYMENT_RANK
     ? [PAYMENT_RANK[r.payment.status], -(Number(r.payment.overdueDays) || 0), -(Number(r.payment.overdueAmount) || 0)] : null),
@@ -236,6 +239,7 @@ const SORT_KEYS = {
 };
 export const SORT_WORDS = {
   name: { asc: "A a Z", desc: "Z a A" },
+  tenure: { asc: "mais antigo primeiro", desc: "mais novo primeiro" },
   health: { asc: "menor primeiro", desc: "maior primeiro" },
   payment: { asc: "mais atrasado primeiro", desc: "em dia primeiro" },
   subscription: { asc: "renova antes primeiro", desc: "renova depois primeiro" },
@@ -259,6 +263,19 @@ export function sortRows(rows, sort) {
   return rows.slice().sort((a, b) => cmp(a, b) || String(a.name || "").localeCompare(String(b.name || ""), "pt-BR"));
 }
 export const nextSort = (sort, key) => (sort?.key !== key ? { key, dir: "asc" } : sort.dir === "asc" ? { key, dir: "desc" } : { key: "", dir: "asc" });
+
+// Tempo de casa ao lado do nome, como na tela Clientes: "3 meses", com
+// "cliente desde" no hover.
+const sinceLabel = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "2-digit" }).replace(".", "");
+};
+function TenurePill({ row, now }) {
+  const casa = tenureLabel(row, now);
+  if (!casa) return null;
+  const since = sinceLabel(row.startedAt);
+  return <Pill title={since ? `cliente desde ${since}` : undefined}>{casa}</Pill>;
+}
 
 // Seta do cabeçalho: as duas apagadas sem ordenação; a do sentido acesa.
 function SortArrow({ dir }) {
@@ -296,7 +313,10 @@ function Row({ row, now, onOpen, onResults }) {
     style={{ gridTemplateColumns: CARTEIRA_GRID, gap: CARTEIRA_GRID_GAP }}>
     <div className="carteira-client">
       <div className="carteira-cell carteira-client-main">
-        <span className="carteira-name">{row.name || "sem nome"}</span>
+        <span className="carteira-name-line">
+          <span className="carteira-name">{row.name || "sem nome"}</span>
+          <TenurePill row={row} now={now} />
+        </span>
         <span className="carteira-cell-sub">
           {[row.mrr ? `${money(row.mrr)}/mês` : "", row.owner ? displayName(row.owner) : "sem dono"].filter(Boolean).join(" · ")}
         </span>
@@ -506,7 +526,12 @@ export function CarteiraScreen() {
               ? <Board rows={stage === "ativos" || stage === "churn" ? searched : shown} now={now} stages={boardStages} onOpen={setOpenId} />
               : <div className="carteira-table">
                   <div className="carteira-head" style={{ gridTemplateColumns: CARTEIRA_GRID, gap: CARTEIRA_GRID_GAP }}>
-                    {["Cliente", "Estágio", "Saúde", "Pagamento", "Assinatura", "Próximo passo"].map((h) => SORTABLE[h]
+                    {["Cliente", "Estágio", "Saúde", "Pagamento", "Assinatura", "Próximo passo"].map((h) => h === "Cliente"
+                      ? <span key={h} className="carteira-sort-pair">
+                          <SortHead label="Cliente" sort={sort} onSort={setSort} />
+                          <SortHead label="Tempo de casa" sort={sort} onSort={setSort} />
+                        </span>
+                      : SORTABLE[h]
                       ? <SortHead key={h} label={h} sort={sort} onSort={setSort} />
                       : <span key={h} className="kicker">{h}</span>)}
                   </div>

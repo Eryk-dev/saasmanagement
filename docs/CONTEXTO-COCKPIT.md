@@ -1972,12 +1972,14 @@ no grupo do menu "CS e suporte" (chave `suporte`), com a permissão de Clientes
   ganha o link "resultados ›", que fica na linha dos chips de produto. O
   seletor Produto (Todos, LeverAds, LeverPrice, LeverAds + LeverPrice,
   Mentoria; só com 2+ produtos no workspace) recorta como o de dono, inclusive
-  as contagens e o seletor da visão Resultados. Cabeçalhos Cliente (A→Z),
-  Saúde (número), Pagamento (o mais atrasado primeiro: inadimplente por dias
+  as contagens e o seletor da visão Resultados. O nome tem ao lado o tempo de
+  casa (`Pill` com "cliente desde" no hover, como em Clientes). Cabeçalhos
+  Cliente (A→Z), Tempo de casa (no cabeçalho de Cliente; o mais antigo
+  primeiro), Saúde (número), Pagamento (o mais atrasado primeiro: inadimplente por dias
   e valor, aguardando, em dia) e Assinatura (renova antes primeiro) ordenam a
   lista (`sortRows`): o 1º clique mostra primeiro o que pede atenção, o 2º
   inverte e o 3º volta à ordem por estágio; linha sem o dado (saúde não
-  calculada, sem cobrança, sem data de renovação) fica no fim. Filtro e ordem ficam no
+  calculada, sem cobrança, sem data de renovação, sem início) fica no fim. Filtro e ordem ficam no
   `localStorage` (`cockpit_carteira_produto`, `cockpit_carteira_ordem`); smoke
   `carteira-produto` e `carteira-ordem`.
 

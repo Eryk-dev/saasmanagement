@@ -1406,6 +1406,9 @@ try {
     // Link dos resultados na linha dos produtos (06/11/2026).
     const withLink = renderToString(React.createElement(CarteiraRow, { row: { ...carteiraRow, products: both.products }, now: carteiraNow, onOpen() {}, onResults() {} }));
     if (!/carteira-products-line[\s\S]*LeverPrice[\s\S]*carteira-results-btn/.test(withLink)) throw new Error("o link dos resultados não está depois dos produtos");
+    // Tempo de casa ao lado do nome, com "cliente desde" no hover.
+    const pill = renderToString(React.createElement(CarteiraRow, { row: { ...carteiraRow, startedAt: new Date(carteiraNow - 100 * 86400000).toISOString() }, now: carteiraNow, onOpen() {} }));
+    if (!/carteira-name-line[\s\S]*title="cliente desde [^"]+"[^>]*>3 meses</.test(pill)) throw new Error("a linha não mostra o tempo de casa com o cliente desde");
     console.log("✓ carteira-produto");
   } catch (err) {
     console.error(`✗ carteira-produto: ${err.message}`);
@@ -1442,6 +1445,11 @@ try {
       { id: "c", name: "C", subscription: { renewInDays: 9 } }, { id: "e", name: "E", subscription: { status: "canceled", renewInDays: null } }];
     const sids = (dir) => sortRows(subs, { key: "subscription", dir }).map((r) => r.id).join("");
     if (sids("asc") !== "cabe" || sids("desc") !== "acbe") throw new Error(`assinatura: ${sids("asc")} / ${sids("desc")}`);
+    // Tempo de casa: o mais antigo primeiro; sem data de início no fim.
+    const casa = [{ id: "n", name: "Novo", startedAt: "2026-10-01T00:00:00Z" }, { id: "x", name: "Sem" },
+      { id: "v", name: "Velho", startedAt: "2025-01-10T00:00:00Z" }, { id: "m", name: "Meio", startedAt: "2026-03-01T00:00:00Z" }];
+    const tids = (dir) => sortRows(casa, { key: "tenure", dir }).map((r) => r.id).join("");
+    if (tids("asc") !== "vmnx" || tids("desc") !== "nmvx") throw new Error(`tempo de casa: ${tids("asc")} / ${tids("desc")}`);
     console.log("✓ carteira-ordem");
   } catch (err) {
     console.error(`✗ carteira-ordem: ${err.message}`);
