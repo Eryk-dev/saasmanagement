@@ -1428,6 +1428,20 @@ try {
     const seq = [];
     for (let i = 0; i < 3; i++) { s = nextSort(s, "health"); seq.push(s.key ? s.dir : "padrão"); }
     if (seq.join(",") !== "asc,desc,padrão") throw new Error(`ciclo do clique: ${seq}`);
+    // Pagamento: o mais atrasado primeiro; sem cobrança no fim nos dois sentidos.
+    const pay = [
+      { id: "d", name: "Dia", payment: { status: "adimplente" } }, { id: "s", name: "Sem", payment: { status: "" } },
+      { id: "i", name: "Inad 5", payment: { status: "inadimplente", overdueDays: 5, overdueAmount: 100 } },
+      { id: "j", name: "Inad 30", payment: { status: "inadimplente", overdueDays: 30, overdueAmount: 50 } },
+      { id: "g", name: "Aguarda", payment: { status: "aguardando_pagamento" } },
+    ];
+    const pids = (dir) => sortRows(pay, { key: "payment", dir }).map((r) => r.id).join("");
+    if (pids("asc") !== "jigds" || pids("desc") !== "dgijs") throw new Error(`pagamento: ${pids("asc")} / ${pids("desc")}`);
+    // Assinatura: renova antes primeiro; sem data de renovação no fim.
+    const subs = [{ id: "a", name: "A", subscription: { renewInDays: 200 } }, { id: "b", name: "B", subscription: null },
+      { id: "c", name: "C", subscription: { renewInDays: 9 } }, { id: "e", name: "E", subscription: { status: "canceled", renewInDays: null } }];
+    const sids = (dir) => sortRows(subs, { key: "subscription", dir }).map((r) => r.id).join("");
+    if (sids("asc") !== "cabe" || sids("desc") !== "acbe") throw new Error(`assinatura: ${sids("asc")} / ${sids("desc")}`);
     console.log("✓ carteira-ordem");
   } catch (err) {
     console.error(`✗ carteira-ordem: ${err.message}`);

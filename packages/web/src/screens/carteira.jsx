@@ -218,18 +218,44 @@ export const matchesProduct = (row, value) => {
   return !f || f.test(productIdsOf(row));
 };
 
-// Ordenação da lista pelo cabeçalho (06/11/2026): Cliente (nome, A→Z) e Saúde
-// (o número). 1º clique crescente, 2º decrescente, 3º volta à ordem padrão
-// (estágio, saúde, MRR). Cliente ainda sem saúde calculada fica no fim nos dois
-// sentidos.
-export const SORTABLE = { Cliente: "name", "Saúde": "health" };
-const hasHealth = (r) => Boolean(r.healthAt || r.health);
+// Ordenação da lista pelo cabeçalho (06/11/2026): Cliente (nome, A→Z), Saúde
+// (o número), Pagamento (o mais atrasado primeiro: inadimplente com mais dias
+// e valor, aguardando o 1º pagamento, em dia) e Assinatura (a que renova antes
+// primeiro). O 1º clique mostra primeiro o que pede atenção, o 2º inverte e o
+// 3º volta à ordem padrão (estágio, saúde, MRR). Linha sem o dado (saúde não
+// calculada, sem cobrança, sem data de renovação) fica no fim nos dois sentidos.
+export const SORTABLE = { Cliente: "name", "Saúde": "health", Pagamento: "payment", Assinatura: "subscription" };
+const PAYMENT_RANK = { inadimplente: 0, aguardando_pagamento: 1, adimplente: 2 };
+// Chave de cada coluna: lista comparada em ordem; null = sem dado (vai pro fim).
+const SORT_KEYS = {
+  name: (r) => [String(r.name || "").trim()],
+  health: (r) => (r.healthAt || r.health ? [Number(r.health) || 0] : null),
+  payment: (r) => (r.payment?.status in PAYMENT_RANK
+    ? [PAYMENT_RANK[r.payment.status], -(Number(r.payment.overdueDays) || 0), -(Number(r.payment.overdueAmount) || 0)] : null),
+  subscription: (r) => (r.subscription?.renewInDays != null ? [Number(r.subscription.renewInDays)] : null),
+};
+export const SORT_WORDS = {
+  name: { asc: "A a Z", desc: "Z a A" },
+  health: { asc: "menor primeiro", desc: "maior primeiro" },
+  payment: { asc: "mais atrasado primeiro", desc: "em dia primeiro" },
+  subscription: { asc: "renova antes primeiro", desc: "renova depois primeiro" },
+};
+const compareKeys = (a, b) => {
+  for (let i = 0; i < a.length; i++) {
+    const d = typeof a[i] === "string" ? a[i].localeCompare(b[i], "pt-BR", { sensitivity: "base" }) : a[i] - b[i];
+    if (d) return d;
+  }
+  return 0;
+};
 export function sortRows(rows, sort) {
-  if (!sort?.key) return rows;
+  const keyOf = SORT_KEYS[sort?.key];
+  if (!keyOf) return rows;
   const dir = sort.dir === "desc" ? -1 : 1;
-  const cmp = sort.key === "name"
-    ? (a, b) => String(a.name || "").trim().localeCompare(String(b.name || "").trim(), "pt-BR", { sensitivity: "base" }) * dir
-    : (a, b) => (hasHealth(b) - hasHealth(a)) || ((Number(a.health) || 0) - (Number(b.health) || 0)) * dir;
+  const cmp = (a, b) => {
+    const ka = keyOf(a), kb = keyOf(b);
+    if (!ka || !kb) return (!ka) - (!kb);
+    return compareKeys(ka, kb) * dir;
+  };
   return rows.slice().sort((a, b) => cmp(a, b) || String(a.name || "").localeCompare(String(b.name || ""), "pt-BR"));
 }
 export const nextSort = (sort, key) => (sort?.key !== key ? { key, dir: "asc" } : sort.dir === "asc" ? { key, dir: "desc" } : { key: "", dir: "asc" });
@@ -244,7 +270,7 @@ function SortArrow({ dir }) {
 function SortHead({ label, sort, onSort }) {
   const key = SORTABLE[label];
   const dir = sort?.key === key ? sort.dir : "";
-  const word = label === "Cliente" ? { asc: "A a Z", desc: "Z a A" } : { asc: "menor primeiro", desc: "maior primeiro" };
+  const word = SORT_WORDS[key];
   const next = nextSort(sort, key);
   return <button type="button" className="kicker carteira-sort" data-on={dir || undefined} onClick={() => onSort(next)}
     title={next.key ? `ordenar por ${label.toLowerCase()}: ${word[next.dir]}` : "voltar à ordem padrão (estágio)"}
