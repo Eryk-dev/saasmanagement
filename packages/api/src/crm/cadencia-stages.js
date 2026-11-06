@@ -13,10 +13,12 @@
 //    o movimento dependesse do toque, o card ficaria no Dia 2 pra sempre e a
 //    coluna deixaria de significar "dia".
 //
-// 2) Quem move pra "Qualificando" é a RESPOSTA do lead, não o toque do SDR.
-//    Hoje o primeiro toque já promove o lead, o que enche a etapa de gente que
-//    nunca respondeu e apaga a diferença entre "ainda não falei" e "estou
-//    conversando".
+// 2) Quem move pra "Qualificando" é o FIM da cadência (06/11/2026). Nem o
+//    toque do SDR nem a mensagem do lead tiram o card da esteira: até então a
+//    mensagem pronta do formulário levava 590 leads por mês pra Qualificando
+//    menos de 2 minutos depois do cadastro, pulando os 7 dias inteiros. O lead
+//    anda Novo lead → Dia 2 … Dia 7 → Qualificando; antes disso, só uma pessoa
+//    move (ou o robô, ao marcar a call).
 //
 // Dia 1 é a etapa "Novo lead" que já existe — não se cria coluna duplicada pro
 // primeiro dia.
@@ -64,13 +66,15 @@ export function diaDaCadencia(lead, now = Date.now()) {
 }
 
 // Etapa em que o lead DEVERIA estar agora. `null` = não mexe (já passou dos 7
-// dias e a nutrição não existe no funil, ou já está onde deveria).
-export function etapaAlvo(lead, now = Date.now(), { temNutricao = true } = {}) {
+// dias e o funil não tem Qualificando). Passou do Dia 7 → Qualificando: a
+// cadência acabou e o lead entra na fila de trabalho; quem não responde de
+// lá vai pra Nutrição pelo corte da escada do robô (sdr-flow.js, R-102).
+export function etapaAlvo(lead, now = Date.now(), { temQualificando = true } = {}) {
   const dia = diaDaCadencia(lead, now);
   if (dia <= 1) return ETAPA_DIA_1;
   const encontrada = DIAS.find((d) => d.dia === dia);
   if (encontrada) return encontrada.stage;
-  return temNutricao ? ETAPA_NUTRICAO : null; // passou do dia 7
+  return temQualificando ? ETAPA_QUALIFICANDO : null; // passou do dia 7
 }
 
 // O lead está numa etapa onde a cadência corre? Só esses andam sozinhos —

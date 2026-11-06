@@ -38,13 +38,15 @@ test("dia da cadência conta da entrada, com o dia da chegada sendo o Dia 1", ()
   assert.equal(diaDaCadencia({}, AGORA), 1, "sem data não pode sumir do board");
 });
 
-test("a etapa alvo é a coluna do dia; depois do 7 vai pra Nutrição", () => {
+test("a etapa alvo é a coluna do dia; depois do 7 vai pra Qualificando", () => {
   assert.equal(etapaAlvo({ createdAt: haDias(0) }, AGORA), "Novo lead");
   assert.equal(etapaAlvo({ createdAt: haDias(1) }, AGORA), "Dia 2");
   assert.equal(etapaAlvo({ createdAt: haDias(6) }, AGORA), "Dia 7");
-  assert.equal(etapaAlvo({ createdAt: haDias(7) }, AGORA), "Nutrição");
-  // Funil sem Nutrição: não inventa etapa, deixa onde está.
-  assert.equal(etapaAlvo({ createdAt: haDias(9) }, AGORA, { temNutricao: false }), null);
+  assert.equal(etapaAlvo({ createdAt: haDias(7) }, AGORA), "Qualificando");
+  // Funil sem Qualificando: não inventa etapa, deixa onde está.
+  assert.equal(etapaAlvo({ createdAt: haDias(9) }, AGORA, { temQualificando: false }), null);
+  // cadenciaDesde (card reaberto ou puxado de volta) vence o cadastro.
+  assert.equal(etapaAlvo({ createdAt: haDias(40), cadenciaDesde: haDias(0) }, AGORA), "Novo lead");
 });
 
 test("migração insere as colunas ENTRE Novo lead e Qualificando", async () => {
@@ -90,11 +92,45 @@ test("passada perdida não deixa lead preso: ele pula direto pra coluna certa", 
   assert.equal((await repo.get("leads", l.id)).stage, "Dia 6");
 });
 
-test("depois do dia 7 o lead cai na Nutrição", async () => {
+test("depois do dia 7 o lead vai pra Qualificando, e o relógio para ali", async () => {
   const repo = await repoPronto();
   const l = await repo.create("leads", { saas: "leverads", stage: "Dia 7", createdAt: haDias(9) });
   await makeCadenciaRunner({ repo }).tick(AGORA);
-  assert.equal((await repo.get("leads", l.id)).stage, "Nutrição");
+  assert.equal((await repo.get("leads", l.id)).stage, "Qualificando");
+  const r = await makeCadenciaRunner({ repo }).tick(AGORA + 86400000 * 5);
+  assert.equal(r.movidos, 0, "Qualificando não é etapa do relógio");
+});
+
+// ── Mensagem do lead não tira da cadência (06/11/2026) ────────────────────
+test("mensagem do lead em Novo lead (inclusive a pronta do form) não move o card", async () => {
+  const { recordMessage } = await import("../src/whatsapp/wa-store.js");
+  const repo = await repoPronto();
+  const lead = await repo.create("leads", { saas: "leverads", stage: "Novo lead", phone: "41999990000", createdAt: haDias(0) });
+  await recordMessage(repo, { phone: "5541999990000", direction: "in", text: "Olá, me chamo Ana e quero saber mais sobre a Lever", leadId: lead.id, saas: "leverads" });
+  await recordMessage(repo, { phone: "5541999990000", direction: "in", text: "tenho 3 contas no ML", leadId: lead.id, saas: "leverads" });
+  assert.equal((await repo.get("leads", lead.id)).stage, "Novo lead");
+});
+
+test("resposta do lead numa coluna de dia também não move: ele segue a cadência", async () => {
+  const { recordMessage } = await import("../src/whatsapp/wa-store.js");
+  const repo = await repoPronto();
+  const lead = await repo.create("leads", { saas: "leverads", stage: "Dia 3", phone: "41999990000", createdAt: haDias(2) });
+  await recordMessage(repo, { phone: "5541999990000", direction: "in", text: "oi, pode me ligar amanhã", leadId: lead.id, saas: "leverads" });
+  assert.equal((await repo.get("leads", lead.id)).stage, "Dia 3");
+  await makeCadenciaRunner({ repo }).tick(AGORA + 86400000);
+  assert.equal((await repo.get("leads", lead.id)).stage, "Dia 4");
+});
+
+test("card puxado de volta pro Novo lead recomeça a cadência do zero", async () => {
+  const { applyStageMove } = await import("../src/crm/lead-flow.js");
+  const repo = await repoPronto();
+  const lead = await repo.create("leads", { saas: "leverads", stage: "Nutrição", createdAt: haDias(30) });
+  const patch = await applyStageMove(repo, { lead, toStage: "Novo lead", author: "u1", now: new Date(AGORA) });
+  assert.equal(patch.cadenciaDesde, new Date(AGORA).toISOString());
+  await repo.update("leads", lead.id, { ...patch, stage: "Novo lead" });
+  const r = await makeCadenciaRunner({ repo }).tick(AGORA + 3600000);
+  assert.equal(r.movidos, 0, "não pode pular pra Qualificando pelo cadastro antigo");
+  assert.equal((await repo.get("leads", lead.id)).stage, "Novo lead");
 });
 
 test("o relógio NUNCA move quem já saiu da cadência", async () => {

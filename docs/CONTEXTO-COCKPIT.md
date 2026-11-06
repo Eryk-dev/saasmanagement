@@ -256,6 +256,19 @@ Recusa ou resposta ambígua não libera agenda. Datas e ofertas anteriores ao
 cancelamento não valem como pedido para a nova call. Áudio transcrito segue
 a mesma regra; os testes ficam em `sdr-brain.test.js`.
 
+**Cadência de 7 dias no funil (06/11/2026):** com `app_config/cadencia_dias`
+ligado, o lead anda Novo lead → Dia 2 … Dia 7 pelo relógio
+(`crm/cadencia-runner.js`, conta de `cadenciaDesde || createdAt`) e só vai pra
+Qualificando no 8º dia. Nem o toque do SDR nem a mensagem do lead (inclusive a
+pronta do formulário) tiram o card da esteira; só uma pessoa ou o robô ao
+marcar a call. Voltar pro Novo lead (`applyStageMove` ou a reabertura R-090)
+grava `cadenciaDesde` e recomeça a contagem. O robô manda o 2º toque e a
+cobrança da oferta também nas colunas de dia; a escada (R-102) roda em Novo
+lead e Qualificando, e o corte vai pra etapa nomeada Nutrição (o kind
+`contato` também é do Dia 2 e do No show). Levantamento que motivou a mudança:
+`docs/SDR-ETAPAS-LEVANTAMENTO-2026-11.md`. Testes: `cadencia-stages.test.js`,
+`sdr-ladder.test.js`, `sdr-second-touch.test.js`.
+
 **Rulebook do robô SDR (15/10/2026):** toda regra de comportamento do robô é
 uma entrada em `packages/api/src/sdr/sdr-rules.js` com id estável (R-nnn),
 origem (data, quem pediu, PR ou print), enunciado, estados da conversa e

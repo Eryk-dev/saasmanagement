@@ -7,7 +7,7 @@
 
 import { randomUUID } from "node:crypto";
 import { kindOf, cadenceOf, firstStage, stageByKind, isNoShowStage, isWonLead, LOSS_KINDS, TOUCH_TYPES } from "./stages.js";
-import { NOMES_DIAS as CADENCIA_DIAS } from "./cadencia-stages.js";
+import { NOMES_DIAS as CADENCIA_DIAS, ETAPA_DIA_1 } from "./cadencia-stages.js";
 import { removePlanHistory } from "../billing/plan-history.js";
 import { cancelLeadOnboardings } from "../customers/onboardings.js";
 import { followupDayOf, todayBrt, dayStartIso, followupStepOf, firstFollowupDay, nextFollowupDay, FOLLOWUP_STEPS } from "../shared/followup-contacts.js";
@@ -287,6 +287,13 @@ export async function applyStageMove(repo, { lead, toStage, patch = {}, author =
       out.integrationAt = "";
       out.integrationConfirmed = false;
     }
+    // Card que VOLTA pro Novo lead (pessoa puxando de volta) num funil com as
+    // colunas de dia recomeça a cadência de 7 dias do zero. Sem isso o relógio,
+    // que conta do cadastro, mandaria um card antigo direto pra Qualificando na
+    // passada seguinte (cadencia-runner.js).
+    if (toStage === ETAPA_DIA_1 && (product?.funnel || []).some((f) => CADENCIA_DIAS.includes(f?.stage))) {
+      out.cadenciaDesde = now.toISOString();
+    }
     // Follow-up em 4 contatos: entrar na etapa recomeça a sequência no
     // Contato 1, marcado num DIA (o que veio no patch, ou hoje + o prazo do
     // Contato 1). Sem horário: não ocupa agenda de ninguém.
@@ -393,11 +400,9 @@ export async function onActivityCreated(repo, activity) {
     // movimento canônico (applyStageMove) zera tentativas, loga o histórico e
     // re-agenda o GPS pela cadência do estágio de destino.
     //
-    // EXCEÇÃO — funil com as colunas de dia: ali quem promove pra "Qualificando"
-    // é a RESPOSTA do lead, não o toque do SDR. Promover no toque encheria a
-    // etapa de gente que nunca respondeu e apagaria a diferença entre "ainda
-    // não falei" e "estou conversando" — que é a leitura inteira do board. O
-    // relógio (cadencia-runner) leva o lead pro Dia seguinte.
+    // EXCEÇÃO — funil com as colunas de dia: ali o toque do SDR não promove.
+    // O lead anda pela cadência de 7 dias no relógio (cadencia-runner) e só
+    // vai pra "Qualificando" quando ela acaba.
     const temColunasDeDia = (product?.funnel || []).some((f) => CADENCIA_DIAS.includes(f?.stage));
     if (!temColunasDeDia && kindOf(product, stage) === "novo") {
       const target = stageByKind(product, "qualificacao") || stageByKind(product, "contato");
@@ -440,8 +445,8 @@ export async function onOutboundMessage(repo, leadId, { author = "system", text 
     }
     if (kind !== "contato" || isNoShowStage(stage) || isWonLead(product, lead)) return null;
     // Coluna de dia da cadência também é `contato`, mas ali o toque NÃO promove:
-    // quem tira o lead da cadência é a resposta dele (wa-store.promoverPorResposta).
-    // Sem esta guarda, o primeiro toque em "Dia 3" mandaria pra Qualificando e a
+    // quem tira o lead da cadência é o fim dela (cadencia-runner). Sem esta
+    // guarda, o primeiro toque em "Dia 3" mandaria pra Qualificando e a
     // cadência inteira viraria enfeite.
     if (CADENCIA_DIAS.includes(stage)) return null;
     const target = stageByKind(product, "qualificacao");

@@ -63,6 +63,21 @@ test("24h calado: manda a retomada UMA vez e carimba secondTouchAt #R-101", asyn
   assert.equal(wa.sent.filter((s) => s.name === "sdr_retomada_conversa").length, 1);
 });
 
+test("lead na coluna Dia 2 da cadência também recebe a retomada das 24h #R-101", async () => {
+  // Desde 06/11/2026 o card fica na cadência de 7 dias (a mensagem do lead não
+  // o tira mais de lá), então 24h depois do 1º toque ele já está no Dia 2.
+  const repo = await world({
+    lead: { stage: "Dia 2" },
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads", hasIn: false, lastOutAuthor: "sdr-bot" }],
+    messages: [{ id: "m1", thread: "5541999990000", leadId: "L1", direction: "out", author: "sdr-bot", text: "Oiii, Rafael...", at: ISO("2026-08-19T12:30:00Z") }],
+  });
+  await repo.update("products", "leverads", { funnel: [FUNNEL[0], { stage: "Dia 2", kind: "contato" }, ...FUNNEL.slice(1)] });
+  const wa = makeWa({ approved: ["sdr_retomada_conversa"] });
+  await tickOf(repo, wa);
+  assert.equal(wa.sent.filter((s) => s.name === "sdr_retomada_conversa").length, 1);
+  assert.equal((await repo.get("leads", "L1")).stage, "Dia 2", "a retomada não move o card");
+});
+
 test("lead que respondeu qualquer coisa fica FORA do segundo toque #R-101", async () => {
   const repo = await world({
     threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads", hasIn: true, lastOutAuthor: "sdr-bot" }],

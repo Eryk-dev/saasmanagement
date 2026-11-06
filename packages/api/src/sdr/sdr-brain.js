@@ -618,7 +618,9 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       const voltouPeloForm = FORM_MSG_RX.test(message?.text || "") && (lead.disqualified || !BRAIN_KINDS.has(kind)) && kind !== "call";
       if (voltouPeloForm) {
         const stage = firstStage(product);
-        await repo.update("leads", lead.id, { stage, stageSince: now().toISOString(), disqualified: false, lostReason: "", lostNote: "", sdrLog: { ...(lead.sdrLog || {}), reopenedAt: now().toISOString(), reopenedFrom: lead.stage || "" } });
+        // cadenciaDesde: a cadência de 7 dias recomeça agora, senão o relógio
+        // (que conta do cadastro antigo) tiraria o card do Novo lead na hora.
+        await repo.update("leads", lead.id, { stage, stageSince: now().toISOString(), cadenciaDesde: now().toISOString(), disqualified: false, lostReason: "", lostNote: "", sdrLog: { ...(lead.sdrLog || {}), reopenedAt: now().toISOString(), reopenedFrom: lead.stage || "" } });
         lead = (await repo.get("leads", lead.id)) || { ...lead, stage, disqualified: false };
         await raiseAlert(repo, thread, { text: `Lead antigo voltou pelo formulário (estava em ${lead.sdrLog?.reopenedFrom || "?"}) · card reaberto em ${stage}, robô atendendo` });
       } else {

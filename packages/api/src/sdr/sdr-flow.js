@@ -30,8 +30,9 @@ import { NO_INTEREST_RX, plainReply, isNonAnswer } from "./sdr-intents.js";
 import { callbackPending } from "./sdr-state.js";
 import { upsertNotification } from "../tasks/tasks-core.js";
 import { digits } from "../whatsapp/whatsapp.js";
-import { kindOf, firstStage, isNoShowStage, isWonLead, stageByKind } from "../crm/stages.js";
+import { kindOf, firstStage, isNoShowStage, isWonLead } from "../crm/stages.js";
 import { brtToIso, onOutboundMessage, applyStageMove } from "../crm/lead-flow.js";
+import { NOMES_DIAS, ETAPA_NUTRICAO } from "../crm/cadencia-stages.js";
 import { isBusinessHours, hourOf } from "../platform/business-hours.js";
 import { resolveWabaId, getWaHealth } from "../whatsapp/wa-health.js";
 import { raiseAlert } from "../whatsapp/wa-call-flow.js";
@@ -807,7 +808,9 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           // sorteando a cada tick) e diferente por lead.
           if (nowMs - t0 < 24 * HOUR + jitterMs(lead.id) || nowMs - t0 > SECOND_TOUCH_MAX_MS) continue;
           const kind = kindOf(product, lead.stage || firstStage(product));
-          if (!["novo", "qualificacao"].includes(kind)) continue;
+          // Colunas de dia (Dia 2..7) entram: desde 06/11 a mensagem do lead não
+          // tira o card da cadência, então a conversa recente mora nelas.
+          if (!["novo", "qualificacao"].includes(kind) && !NOMES_DIAS.includes(lead.stage)) continue;
           if (isWonLead(product, lead) || lead.callAt) continue;
           const phone = lead.waPhone || lead.phone;
           const thread = await findThreadByPhone(repo, phone);
@@ -993,7 +996,14 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
       // errada (a mediana em Qualificando era de 9,1 dias, com 448 cards).
       // Qualificando vira fila de trabalho; Nutrição vira o reservatório.
       if (cfg.ladderDrop && (cfg.ladder || cfg.conversationTest)) {
-        const target = stageByKind(product, "contato");
+        // Nutrição pelo NOME: o kind `contato` também é do No show e das colunas
+        // de dia, e `stageByKind` caía no Dia 2 (529 cards em 30 dias até
+        // 06/11/2026). Sem a etapa nomeada, a 1ª `contato` que não é nenhuma
+        // das duas; sem nenhuma, não corta.
+        const funnelRows = product.funnel || [];
+        const target = funnelRows.find((f) => f?.stage === ETAPA_NUTRICAO)
+          || funnelRows.find((f) => f?.stage && kindOf(product, f.stage) === "contato" && !isNoShowStage(f.stage) && !NOMES_DIAS.includes(f.stage))
+          || null;
         let dropped = 0;
         for (const lead of leads) {
           if (dropped >= LADDER_DROP_PER_TICK) break;
@@ -1090,7 +1100,9 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           if (sends >= CAP || nudgeNow >= OFFER_NUDGE_PER_TICK) break;
           if (!eligible(lead) || !passOn(cfg.offerNudge, lead)) continue;
           if (callbackPending(lead, nowMs)) continue; // retorno combinado: espera o dia (R-121)
-          if (!["novo", "qualificacao"].includes(kindOf(product, lead.stage || firstStage(product)))) continue;
+          // Cobrança de oferta é a mesma conversa continuando: vale também nas
+          // colunas de dia, onde o lead fica enquanto a cadência corre.
+          if (!["novo", "qualificacao"].includes(kindOf(product, lead.stage || firstStage(product))) && !NOMES_DIAS.includes(lead.stage)) continue;
           if (isWonLead(product, lead) || lead.callAt || isNoShowStage(lead.stage)) continue;
           const t = threadOf(lead);
           if (!t || t.lastDir !== "out" || t.lastOutAuthor !== SDR_AUTHOR || !isOfferMsg(t.lastText || "")) continue;

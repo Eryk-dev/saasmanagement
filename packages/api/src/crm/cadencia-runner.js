@@ -5,11 +5,12 @@
 // container reiniciado, fim de semana) não deixa lead preso — a passada
 // seguinte coloca ele na coluna correta de uma vez, mesmo que pule colunas.
 //
-// Só toca lead que está numa etapa da cadência. Quem respondeu e foi pra
-// Qualificando, quem marcou call, quem fechou ou foi descartado nunca é movido
-// pelo relógio — ali o dono do movimento é a pessoa.
+// Só toca lead que está numa etapa da cadência (Novo lead e Dia 2..7); no 8º
+// dia ele sai pra Qualificando. Quem já está em Qualificando, marcou call,
+// fechou ou foi descartado nunca é movido pelo relógio — ali o dono do
+// movimento é a pessoa (ou o robô, pela escada).
 
-import { etapaAlvo, estaNaCadencia, ETAPA_NUTRICAO, CADENCIA_FLAG } from "./cadencia-stages.js";
+import { etapaAlvo, estaNaCadencia, ETAPA_QUALIFICANDO, CADENCIA_FLAG } from "./cadencia-stages.js";
 import { applyStageMove } from "./lead-flow.js";
 
 export function makeCadenciaRunner({ repo, log = console }) {
@@ -28,7 +29,7 @@ export function makeCadenciaRunner({ repo, log = console }) {
       const etapas = funis.get(lead.saas);
       if (!etapas || !etapas.length) continue;
 
-      const alvo = etapaAlvo(lead, now, { temNutricao: etapas.includes(ETAPA_NUTRICAO) });
+      const alvo = etapaAlvo(lead, now, { temQualificando: etapas.includes(ETAPA_QUALIFICANDO) });
       if (!alvo || alvo === lead.stage) continue;
       // Etapa que o funil daquele produto não tem: não inventa coluna.
       if (!etapas.includes(alvo)) continue;

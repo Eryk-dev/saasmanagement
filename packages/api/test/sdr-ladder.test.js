@@ -233,6 +233,23 @@ test("48h de silêncio depois do encerramento: card vai pra Nutrição #R-102", 
   assert.equal(acts[0].meta.to, "Nutrição");
 });
 
+test("funil com colunas de dia: o corte vai pra Nutrição, nunca pro Dia 2 (kind contato) #R-102", async () => {
+  const repo = await world({
+    lead: { sdrLog: { firstTouchAt: ISO("2026-08-13T12:00:00Z"), firstTouchVia: "template", ladder: { at: ISO("2026-08-13T12:00:00Z"), step: 1, done: true, warm: false, lastAt: ISO("2026-08-18T12:00:00Z") } } },
+    messages: [{ id: "m1", direction: "out", author: "sdr-bot", text: "encerrando", at: ISO("2026-08-18T12:00:00Z") }],
+  });
+  await repo.update("products", "leverads", { funnel: [
+    { stage: "Novo lead", kind: "novo" },
+    ...["Dia 2", "Dia 3", "Dia 4", "Dia 5", "Dia 6", "Dia 7"].map((stage) => ({ stage, kind: "contato" })),
+    { stage: "Qualificando", kind: "qualificacao" },
+    { stage: "Call agendada", kind: "call" },
+    { stage: "Nutrição", kind: "contato" },
+    { stage: "No show", kind: "contato" },
+  ] });
+  await tickOf(repo, makeWa());
+  assert.equal((await repo.get("leads", "L1")).stage, "Nutrição");
+});
+
 test("respondeu depois do encerramento: card FICA e a escada reinicia #R-102", async () => {
   const repo = await world({
     lead: { sdrLog: { firstTouchAt: ISO("2026-08-13T12:00:00Z"), firstTouchVia: "template", ladder: { at: ISO("2026-08-13T12:00:00Z"), step: 1, done: true, warm: false, lastAt: ISO("2026-08-18T12:00:00Z") } } },
