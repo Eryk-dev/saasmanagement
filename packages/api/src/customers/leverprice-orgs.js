@@ -21,6 +21,7 @@ import crypto from "node:crypto";
 import { isChurnedCustomer } from "../billing/churn.js";
 import { releaseLeverpriceFor } from "../billing/leverprice-access.js";
 import { customerEmails } from "./leverads-orgs.js";
+import { applyLeverpriceName } from "./leverprice-names.js";
 import { signupProductsOf } from "../shared/signup-products.js";
 
 const norm = (v) => String(v || "").trim().toLowerCase();
@@ -83,8 +84,13 @@ export async function handleLeverpriceOrgCreated(repo, { orgId, coreOrgId = null
   const link = { via: plan.via, at: now().toISOString(), coreOrgId: core };
   const orgName = String(name || "").trim();
   if (orgName) link.orgName = orgName;
-  await repo.update("customers", plan.customerId, { leverpriceOrgId: id, leverpriceOrgLink: link });
+  const saved = await repo.update("customers", plan.customerId, { leverpriceOrgId: id, leverpriceOrgLink: link });
   log?.info?.({ org: id, customer: plan.customerId, via: plan.via }, "leverprice-orgs: conta nova vinculada no cadastro");
+  // O cliente ganha o nome da empresa da conta (leverpriceNamePatches).
+  if (saved) {
+    const lead = saved.leadId ? leads.find((l) => l.id === saved.leadId) || null : null;
+    await applyLeverpriceName(repo, saved, lead, now().toISOString());
+  }
   // Venda já paga: libera o LeverPrice na hora (billing/leverprice-access.js).
   // Nunca quebra o vínculo; sem chave ou em dry-run só relata.
   const access = await releaseLeverpriceFor(repo, plan.customerId, { ...(release || {}), log });

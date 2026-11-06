@@ -488,7 +488,14 @@ internos; depois a comparação de modelos com o mesmo conjunto.
    para o contato e fica o carimbo `nameFrom`. O nome que veio da org
    acompanha a renomeação no LeverAds. O lead da venda sem empresa ganha a da
    org (`orgNamePatches`, 22/10/2026; caso Luciana → Via Original). Nome de
-   empresa dado à mão não muda. Rotas em `/api/customers/leverads-orgs` e
+   empresa dado à mão não muda. A conta do LeverPrice segue a mesma regra
+   (`customers/leverprice-names.js`, 06/11/2026; caso Max → JOIAS) com o nome
+   que o cadastro do LeverPrice informou (`leverpriceOrgLink.orgName`): campo
+   `leverpriceOrgName` (as buscas leem), `nameFrom.via = "leverprice_org"`.
+   Aplica no vínculo e a cada passada do ciclo de vida (`crmLifecycle`, que
+   pega os vínculos manuais); com conta do LeverAds, o nome segue a do
+   LeverAds e o LeverPrice só preenche o campo da busca. Sem espelho de orgs do
+   LeverPrice, renomear a org lá não chega aqui. Rotas em `/api/customers/leverads-orgs` e
    `/api/customers/:id/leverads-org`. `screens.js` controla permissões por
    tela, exceções e acessos administrativos; `lib/users.js` espelha a UI.
    `roles` já participa de regras de acesso — não assumir que é só etiqueta.

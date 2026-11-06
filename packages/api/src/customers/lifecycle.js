@@ -16,6 +16,7 @@
 //   espelhado do vínculo do cliente e das orgs do LeverAds.
 
 import { appendTimeline } from "../events/timeline.js";
+import { syncLeverpriceNames } from "./leverprice-names.js";
 
 const norm = (v) => String(v || "").trim().toLowerCase();
 const FREE_MAIL = new Set(["gmail.com", "hotmail.com", "outlook.com", "yahoo.com", "yahoo.com.br", "icloud.com", "live.com", "bol.com.br", "uol.com.br", "terra.com.br"]);
@@ -145,7 +146,9 @@ export async function runLifecycleSweep(repo, opts = {}) {
     const saved = await refreshLifecycle(repo, c, opts);
     if (saved !== c) changed++;
   }
-  return { changed, ...(await syncWorkspaces(repo, opts)) };
+  // Nome da empresa pela conta do LeverPrice (o LeverAds faz no espelho de orgs).
+  const names = await syncLeverpriceNames(repo, opts);
+  return { changed, renamed: names.renamed, ...(await syncWorkspaces(repo, opts)) };
 }
 
 export function startLifecycleSweep(repo, { log, intervalMs = 15 * 60_000 } = {}) {

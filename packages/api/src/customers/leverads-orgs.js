@@ -137,20 +137,25 @@ export function planEmailLinks({ orgs, customers, leads, saasId = SAAS_ID() }) {
 // ou o primeiro nome deles), passa a ser o da empresa, com a pessoa no contato.
 // Nome de empresa dado à mão não é tocado; nome que já veio da org acompanha a
 // org quando ela é renomeada no LeverAds. O lead da venda ganha a empresa
-// quando está sem.
-export function orgNamePatches(customer, org, lead = null, nowIso = new Date().toISOString()) {
+// quando está sem. A conta do LeverPrice usa a mesma regra com o próprio campo
+// (`source`, ver leverprice-orgs.js leverpriceNamePatches).
+export const ORG_NAME_SOURCES = {
+  leverads: { field: "leveradsOrgName", via: "leverads_org" },
+  leverprice: { field: "leverpriceOrgName", via: "leverprice_org" },
+};
+export function orgNamePatches(customer, org, lead = null, nowIso = new Date().toISOString(), source = ORG_NAME_SOURCES.leverads) {
   const orgName = String(org?.name || "").trim();
   if (!orgName) return { customer: null, lead: null };
   const patch = {};
-  if (customer.leveradsOrgName !== orgName) patch.leveradsOrgName = orgName;
+  if (customer[source.field] !== orgName) patch[source.field] = orgName;
   const name = norm(customer.name);
   const people = [customer.contact, lead?.name].map(norm).filter(Boolean);
   const personal = !name || people.some((p) => p === name || p.startsWith(`${name} `));
-  const followsOrg = customer.nameFrom?.via === "leverads_org" && name === norm(customer.leveradsOrgName);
+  const followsOrg = customer.nameFrom?.via === source.via && name === norm(customer[source.field]);
   if ((personal || followsOrg) && name !== norm(orgName)) {
     patch.name = orgName;
     if (!customer.contact && customer.name) patch.contact = customer.name;
-    patch.nameFrom = { via: "leverads_org", previous: customer.name || "", at: nowIso };
+    patch.nameFrom = { via: source.via, previous: customer.name || "", at: nowIso };
   }
   return {
     customer: Object.keys(patch).length ? patch : null,

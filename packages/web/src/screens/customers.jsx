@@ -490,7 +490,7 @@ function CustomersScreen({ initialTab }) {
     if (!needle) return sortedCustomers;
     return sortedCustomers.filter((c) => {
       const lead = (LEADS || []).find((l) => l.id === c.leadId);
-      return [c.name, c.contact, c.email, c.leveradsOrgName, lead?.name, lead?.email, lead?.company].some((v) => fold(v).includes(needle));
+      return [c.name, c.contact, c.email, c.leveradsOrgName, c.leverpriceOrgName, lead?.name, lead?.email, lead?.company].some((v) => fold(v).includes(needle));
     });
   }, [sortedCustomers, q, LEADS]); // eslint-disable-line react-hooks/exhaustive-deps
   const filteredCustomers = baseFilter === "active"

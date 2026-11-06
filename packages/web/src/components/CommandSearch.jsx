@@ -30,17 +30,20 @@ function scoreLead(l, q, qDigits) {
 }
 
 // Cliente pelo CADASTRO (nome, contato, e-mail, telefone) e pelo nome da conta
-// no LeverAds (leveradsOrgName): renomear o cliente não muda o lead de origem,
-// e a busca só olhava o lead; "Via Original" não achava a "Luciana" (22/10).
+// no LeverAds (leveradsOrgName) e no LeverPrice (leverpriceOrgName): renomear
+// o cliente não muda o lead de origem, e a busca só olhava o lead; "Via
+// Original" não achava a "Luciana" (22/10), nem "JOIAS" o "Max" (06/11).
 function scoreCustomer(c, q, qDigits) {
-  const name = norm(c.name), contact = norm(c.contact), org = norm(c.leveradsOrgName);
+  const name = norm(c.name), contact = norm(c.contact);
   let best = -1;
   if (q && name.startsWith(q)) best = Math.max(best, 100);
   else if (q && name.includes(q)) best = Math.max(best, 70);
   if (q && contact.startsWith(q)) best = Math.max(best, 60);
   else if (q && contact.includes(q)) best = Math.max(best, 45);
-  if (q && org.startsWith(q)) best = Math.max(best, 60);
-  else if (q && org.includes(q)) best = Math.max(best, 45);
+  for (const org of [norm(c.leveradsOrgName), norm(c.leverpriceOrgName)]) {
+    if (q && org.startsWith(q)) best = Math.max(best, 60);
+    else if (q && org.includes(q)) best = Math.max(best, 45);
+  }
   if (q && norm(c.email).includes(q)) best = Math.max(best, 40);
   if (qDigits && digits(c.phone).includes(qDigits)) best = Math.max(best, 55);
   return best;
