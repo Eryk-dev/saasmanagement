@@ -51,12 +51,12 @@ export default [
     expect: { result: "agendar", sent: [/amanhã \(20\/08\) às 9h/], lead: { callAt: "2026-08-20T09:00" } },
   },
   {
-    id: "C-V2-05b", title: "id inválido (fora da lista) sem hora no texto do lead: não marca nada, re-oferta com desculpa",
+    id: "C-V2-05b", title: "id inválido (fora da lista) sem hora no texto do lead: não marca nada, re-oferta seca (sem a desculpa de outro cliente: ninguém pegou nada)",
     rules: ["R-020", "R-028"],
     world: after([...pitched, { direction: "in", text: "sim", at: ISO("2026-08-19T12:30:00Z") }, { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?", at: ISO("2026-08-19T12:31:00Z") }]),
     ai: [{ acao: "agendar", mensagens: [], horario: "", slotIds: [], slots: [] }],
     inbounds: ["o primeiro"],
-    expect: { result: "reoferta", sent: [/me desculpa! Consigo amanhã às 9h ou às 11h/], lead: { callAt: undefined } },
+    expect: { result: "reoferta", sent: [/^Consigo amanhã às 9h ou às 11h, qual fica melhor pra você\?$/], notSent: [/me desculpa/], lead: { callAt: undefined } },
   },
   {
     id: "C-V2-06", title: "IA escreveu dia/hora nas partes mesmo assim: a parte cai e fica só a oferta do motor (uma oferta por resposta)",

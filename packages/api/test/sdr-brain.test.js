@@ -343,12 +343,12 @@ test("hora pedida que nunca esteve na lista: 'às 15h não tenho vaga' + o par r
   assert.match(texto, /Às 15h não tenho vaga\. Consigo amanhã às 9h ou às 11h/);
 });
 
-test("re-oferta determinística (horário inventado pela IA) também pede desculpa #R-020 #R-028", async () => {
+test("re-oferta determinística (hora pedida sem vaga no dia): a verdade com o dia, sem a desculpa de outro cliente #R-020 #R-028", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "pode ser 9h", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: "2026-08-19T09:00" }] });
-  assert.equal(await brainOf(repo, fakes).handleInbound(INBOUND), "reoferta");
-  assert.match(fakes.sent[0].text, /preenchido por outro cliente, me desculpa/);
-  assert.match(fakes.sent[0].text, /amanhã às 9h/);
+  assert.equal(await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "pode ser 9h" } }), "reoferta");
+  assert.match(fakes.sent[0].text, /^Hoje às 9h não tenho vaga\. Consigo amanhã às 9h/);
+  assert.doesNotMatch(fakes.sent[0].text, /preenchido por outro cliente/);
 });
 
 test("oferta só em hora cheia; hora quebrada só quando o LEAD pede #R-023", async () => {
@@ -1917,4 +1917,56 @@ test("pergunta pendente não vale com conversa marcada; positiva recente ao lemb
   assert.equal(await brainOf(repo2, fakes2).handleInbound({ message: { from: "5541999990000", text: "Certo" } }), "confirmado");
   assert.equal(fakes2.calls.length, 0);
   assert.equal(fakes2.sent.length, 0);
+});
+
+// Igor (06/11): o robô ofereceu segunda 13h/16h, o lead pediu "primeiro horário
+// do dia, 8, 9 horas no máximo", a IA tentou marcar 9h (sem vaga) e o motor
+// respondeu "acabou de ser preenchido por outro cliente" com o MESMO par; no
+// turno seguinte ("pode ser outro dia") ofereceu 10h/13h, esquecendo a faixa.
+test("hora pedida sem vaga recebe a verdade + o par dentro da faixa; 'pode ser outro dia' mantém a faixa #R-028 #R-032 #R-119 #R-040", async () => {
+  const repo = await world({
+    sdrBot: { offerContract: "v2", promptVersion: "v2", guardsMode: "enforce" },
+    lead: { sourcePain: "OEM", niche: "autopecas" },
+    messages: [
+      { direction: "out", author: "sdr-bot", text: "Oiii Rafael, tudo bem? Com o Lever OEM você digita o código e recebe o anúncio completo, com fotos, título de 200 caracteres, descrição e compatibilidade. Isso ajudaria na sua operação?", at: ISO("2026-08-19T12:00:00Z") },
+      { direction: "in", text: "Sim", at: ISO("2026-08-19T12:30:00Z") },
+      { direction: "out", author: "sdr-bot", text: "Fica melhor segunda às 13h ou às 16h?", at: ISO("2026-08-19T12:31:00Z") },
+    ],
+  });
+  // Segunda (24/08) sem vaga às 9h pra todo mundo.
+  await repo.create("agenda_blocks", { id: "seg-cedo", users: ["pl", "leonardo", "jonan", "jonathan", "vit"], recur: "once", date: "2026-08-24", fromHour: 8, toHour: 10 });
+  const fakes = makeFakes({ decisions: [
+    { acao: "agendar", horario: "2026-08-24T09:00", slotIds: [], slots: [] },
+    { acao: "responder", mensagens: ["Tranquilo Rafael, vamos ajustar para outro dia"], oferecer: true },
+  ] });
+  const brain = brainOf(repo, fakes);
+  await repo.create("wa_messages", { id: "i1", thread: "5541999990000", leadId: "L1", saas: "leverads", direction: "in", text: "Para mim fica melhor no primeiro horário do dia, 8, 9 horas no máximo.", at: ISO("2026-08-19T12:45:00Z") });
+  const r1 = await brain.handleInbound({ message: { from: "5541999990000", text: "Para mim fica melhor no primeiro horário do dia, 8, 9 horas no máximo.", id: "i1" } });
+  assert.equal(r1, "reoferta");
+  assert.equal(fakes.sent.length, 1);
+  assert.match(fakes.sent[0].text, /^Segunda às 9h não tenho vaga\. Consigo /, "a verdade (com o dia), não a desculpa de outro cliente");
+  assert.doesNotMatch(fakes.sent[0].text, /acabou de ser preenchido|13h|16h/);
+  assert.ok(/às 9h/.test(fakes.sent[0].text), `o par respeita a faixa pedida: ${fakes.sent[0].text}`);
+  // A lista que a IA recebeu já estava filtrada pela faixa (só até as 9h).
+  assert.ok(fakes.calls[0].slots.length && fakes.calls[0].slots.every((s) => Number(s.at.slice(11, 13)) <= 9), JSON.stringify(fakes.calls[0].slots.map((s) => s.at)));
+  // Turno seguinte: "pode ser outro dia" muda o dia e MANTÉM a faixa (até as 9h).
+  const repo2 = await world({
+    sdrBot: { offerContract: "v2", promptVersion: "v2", guardsMode: "enforce" },
+    lead: { sourcePain: "OEM", niche: "autopecas" },
+    messages: [
+      { direction: "out", author: "sdr-bot", text: "Oiii Rafael, tudo bem? Com o Lever OEM você digita o código e recebe o anúncio completo, com fotos, título de 200 caracteres, descrição e compatibilidade. Isso ajudaria na sua operação?", at: ISO("2026-08-19T12:00:00Z") },
+      { direction: "in", text: "Sim", at: ISO("2026-08-19T12:30:00Z") },
+      { direction: "out", author: "sdr-bot", text: "Fica melhor segunda às 13h ou às 16h?", at: ISO("2026-08-19T12:31:00Z") },
+      { direction: "in", text: "Para mim fica melhor no primeiro horário do dia, 8, 9 horas no máximo.", at: ISO("2026-08-19T12:45:00Z") },
+      { direction: "out", author: "sdr-bot", text: fakes.sent[0].text, at: ISO("2026-08-19T12:46:00Z") },
+      { direction: "in", text: "Pode ser outro dia", at: ISO("2026-08-19T12:50:00Z") },
+    ],
+  });
+  await repo2.create("agenda_blocks", { id: "seg-cedo", users: ["pl", "leonardo", "jonan", "jonathan", "vit"], recur: "once", date: "2026-08-24", fromHour: 8, toHour: 10 });
+  const fakes2 = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Tranquilo Rafael, vamos ajustar para outro dia"], oferecer: true }] });
+  assert.equal(await brainOf(repo2, fakes2).handleInbound({ message: { from: "5541999990000", text: "Pode ser outro dia" } }), "responder");
+  const offer = fakes2.sent.map((x) => x.text).find((t) => /^Consigo /.test(t));
+  assert.ok(offer, `devia ter oferecido: ${JSON.stringify(fakes2.sent.map((x) => x.text))}`);
+  assert.doesNotMatch(offer, /1[0-9]h/, `outro dia mantém a faixa até as 9h: ${offer}`);
+  assert.ok(fakes2.calls[0].slots.every((x) => Number(x.at.slice(11, 13)) <= 9), JSON.stringify(fakes2.calls[0].slots.map((x) => x.at)));
 });

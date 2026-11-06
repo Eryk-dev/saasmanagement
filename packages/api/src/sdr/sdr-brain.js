@@ -1408,8 +1408,18 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       const pick = slotList.find((s) => s.at === decision.horario);
       if (!pick) {
         // Horário fora da agenda real: re-oferta determinística (com o par
-        // espaçado), nada de marcar no escuro.
-        await send(reofferText(nome, suggestedPair, wnow), { path: "reoferta" });
+        // espaçado), nada de marcar no escuro. A desculpa "outro cliente
+        // pegou" só sobre horário NOSSO que ele escolheu (R-028, takenSlot);
+        // hora que ele pediu e não existe: "às 9h não tenho vaga" + o par
+        // real; dia lotado: diz que lotou (06/11, Igor: "8, 9 horas no
+        // máximo" virou "acabou de ser preenchido" + o mesmo par de 13h/16h).
+        const pool = suggestedPair.length ? suggestedPair : offerPool.slice(0, 1);
+        const triedDay = /^\d{4}-\d{2}-\d{2}T/.test(String(decision.horario || "")) ? dayLabelOf(String(decision.horario).slice(0, 10)) : "";
+        const line = takenSlot ? reofferText(nome, pool, wnow)
+          : leadHour != null ? offerLine(pool, { style: "sem-vaga-hora", hour: leadHour, day: triedDay, wnow })
+            : requestedEmpty && offerDate ? offerLine(pool, { style: "lotou", lotouDay: dayLabelOf(offerDate), wnow })
+              : offerLine(pool, { wnow });
+        await send(line, { path: "reoferta" });
         return "reoferta";
       }
       const fresh = await repo.get("leads", lead.id);

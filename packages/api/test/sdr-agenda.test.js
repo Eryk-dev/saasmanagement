@@ -325,3 +325,33 @@ test("29/10 (Gustavo): 'Pode ser amanhã?' + 'Hoje no período da tarde vou esta
   assert.equal(sdrAgendaWindow([inbound("quarta dá?")], NOW).startDate, "2026-09-23");
   assert.equal(sdrAgendaWindow([inbound("dá pra ser quarta?")], NOW).startDate, "2026-09-23");
 });
+
+// Igor (06/11): "Para mim fica melhor no primeiro horário do dia, 8, 9 horas no
+// máximo" não virava pedido (o robô repetiu 13h/16h e disse que "acabou de
+// ser preenchido"); e "pode ser outro dia" no turno seguinte perdia a faixa.
+test("teto de hora ('até as 9h', '9 horas no máximo', 'primeiro horário') vira faixa e fica valendo no turno seguinte #R-032 #R-119 #R-028", () => {
+  const igor = sdrAgendaWindow([inbound("Para mim fica melhor no primeiro horário do dia, 8, 9 horas no máximo.")], NOW);
+  assert.deepEqual([igor.requested, igor.periodOnly, igor.fromHour, igor.toHour, igor.startDate, igor.days], [true, true, undefined, 10, "2026-09-21", 5]);
+  assert.equal(sdrAgendaWindow([inbound("Até as 9h pra mim")], NOW).toHour, 10);
+  assert.equal(sdrAgendaWindow([inbound("no máximo às 10h")], NOW).toHour, 11);
+  assert.equal(sdrAgendaWindow([inbound("o mais cedo possível")], NOW).toHour, 11);
+  assert.equal(sdrAgendaWindow([inbound("Primeiro horário do dia fica melhor")], NOW).toHour, 11);
+  // Número sem marca de hora não é teto ("no máximo 10 pedidos por dia").
+  assert.equal(sdrAgendaWindow([inbound("faço no máximo 10 pedidos por dia")], NOW).requested, false);
+  // A faixa fica valendo: "pode ser outro dia" muda o dia, não a hora.
+  const offer = { direction: "out", author: "sdr-bot", text: "Fica melhor quarta às 13h ou às 16h?", at: "2026-09-21T11:00:00Z" };
+  const w = sdrAgendaWindow([
+    offer,
+    { direction: "in", text: "Para mim fica melhor no primeiro horário do dia, 8, 9 horas no máximo.", at: "2026-09-21T11:01:00Z" },
+    { direction: "out", author: "sdr-bot", text: "Às 9h não tenho vaga. Consigo amanhã às 9h, fica bom pra você?", at: "2026-09-21T11:02:00Z" },
+    { direction: "in", text: "Pode ser outro dia", at: "2026-09-21T11:20:00Z" },
+    { direction: "in", text: "Nao tem problema", at: "2026-09-21T11:20:10Z" },
+  ], NOW);
+  assert.equal(w.requested, true);
+  assert.equal(w.toHour, 10, "a faixa de hora acompanha o dia novo");
+  assert.equal(w.carried, true);
+  assert.equal(w.startDate, "2026-09-23", "'outro dia' anda dois dias úteis");
+  // Faixa nova substitui a antiga.
+  const w2 = sdrAgendaWindow([offer, inbound("9 horas no máximo"), { direction: "in", text: "Pensando bem, à tarde fica melhor", at: "2026-09-21T11:30:00Z" }], NOW);
+  assert.deepEqual([w2.fromHour, w2.toHour], [12, 19]);
+});

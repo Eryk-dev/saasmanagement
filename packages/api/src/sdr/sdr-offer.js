@@ -23,7 +23,7 @@ export const NO_SLOT_TEXT = {
 
 // Oferta canônica (voz da Manuela): "Consigo X ou Y, qual fica melhor pra você?"
 // `empty` escolhe a frase quando não há horário (NO_SLOT_TEXT).
-export function offerLine(slots = [], { style = "consigo", wnow = null, nome = "", lotouDay = "", hour = null, empty = "sem-horario" } = {}) {
+export function offerLine(slots = [], { style = "consigo", wnow = null, nome = "", lotouDay = "", hour = null, day = "", empty = "sem-horario" } = {}) {
   const l = slots.map((s) => labelOf(s, wnow));
   if (style === "tenho-agenda") {
     if (l.length >= 2) return `Tenho agenda para ${l[0]} ou ${l[1]}. Qual funciona melhor para você?`;
@@ -43,7 +43,10 @@ export function offerLine(slots = [], { style = "consigo", wnow = null, nome = "
     // Hora que o lead pediu e NÃO existe na lista (28/10: "pode ser às 12hs?",
     // "oito da noite"): a verdade é "não tenho vaga nessa hora", nunca a
     // desculpa de "outro cliente pegou" sobre um horário que ninguém ofereceu.
-    const h = Number.isFinite(Number(hour)) && hour != null ? `Às ${hour}h não tenho vaga` : "Nessa hora não tenho vaga";
+    // Com o DIA que ele tentou ("hoje às 9h não tenho vaga"): senão "às 9h não
+    // tenho vaga" ao lado de "consigo amanhã às 9h" se contradiz (06/11).
+    const when = Number.isFinite(Number(hour)) && hour != null ? `às ${hour}h` : "nessa hora";
+    const h = day ? `${day.charAt(0).toUpperCase()}${day.slice(1)} ${when} não tenho vaga` : `${when.charAt(0).toUpperCase()}${when.slice(1)} não tenho vaga`;
     return l.length ? `${h}. ${base}` : `${h}. Qual outro horário fica melhor pra você?`;
   }
   if (style === "desculpa") {
