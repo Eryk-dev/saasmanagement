@@ -197,6 +197,62 @@ function Products({ list }) {
   </span>;
 }
 
+// Filtro por produto (06/11/2026): pelos produtos da linha (a venda, o plano
+// em texto e as contas vinculadas, customer-status.js productsSummary). "Os
+// dois" é o pacote LeverAds + LeverPrice.
+export const PRODUCT_FILTERS = [
+  { value: "leverads", label: "LeverAds", test: (ids) => ids.includes("leverads") },
+  { value: "leverprice", label: "LeverPrice", test: (ids) => ids.includes("leverprice") },
+  { value: "ambos", label: "LeverAds + LeverPrice", test: (ids) => ids.includes("leverads") && ids.includes("leverprice") },
+  { value: "mentoria", label: "Mentoria", test: (ids) => ids.includes("mentoria") },
+];
+const productIdsOf = (row) => (row.products || []).map((p) => p.id);
+export function productFilterOptions(rows) {
+  const present = PRODUCT_FILTERS.filter((f) => rows.some((r) => f.test(productIdsOf(r))));
+  // Um produto só no workspace: o filtro não recorta nada.
+  if (present.filter((f) => f.value !== "ambos").length < 2) return [];
+  return [{ value: "todos", label: "Todos os produtos" }, ...present.map(({ value, label }) => ({ value, label }))];
+}
+export const matchesProduct = (row, value) => {
+  const f = PRODUCT_FILTERS.find((x) => x.value === value);
+  return !f || f.test(productIdsOf(row));
+};
+
+// Ordenação da lista pelo cabeçalho (06/11/2026): Cliente (nome, A→Z) e Saúde
+// (o número). 1º clique crescente, 2º decrescente, 3º volta à ordem padrão
+// (estágio, saúde, MRR). Cliente ainda sem saúde calculada fica no fim nos dois
+// sentidos.
+export const SORTABLE = { Cliente: "name", "Saúde": "health" };
+const hasHealth = (r) => Boolean(r.healthAt || r.health);
+export function sortRows(rows, sort) {
+  if (!sort?.key) return rows;
+  const dir = sort.dir === "desc" ? -1 : 1;
+  const cmp = sort.key === "name"
+    ? (a, b) => String(a.name || "").trim().localeCompare(String(b.name || "").trim(), "pt-BR", { sensitivity: "base" }) * dir
+    : (a, b) => (hasHealth(b) - hasHealth(a)) || ((Number(a.health) || 0) - (Number(b.health) || 0)) * dir;
+  return rows.slice().sort((a, b) => cmp(a, b) || String(a.name || "").localeCompare(String(b.name || ""), "pt-BR"));
+}
+export const nextSort = (sort, key) => (sort?.key !== key ? { key, dir: "asc" } : sort.dir === "asc" ? { key, dir: "desc" } : { key: "", dir: "asc" });
+
+// Seta do cabeçalho: as duas apagadas sem ordenação; a do sentido acesa.
+function SortArrow({ dir }) {
+  return <svg className="carteira-sort-icon" width="9" height="12" viewBox="0 0 9 12" aria-hidden="true">
+    <path d="M4.5 1 8 5H1z" data-on={dir === "asc" || undefined} />
+    <path d="M4.5 11 1 7h7z" data-on={dir === "desc" || undefined} />
+  </svg>;
+}
+function SortHead({ label, sort, onSort }) {
+  const key = SORTABLE[label];
+  const dir = sort?.key === key ? sort.dir : "";
+  const word = label === "Cliente" ? { asc: "A a Z", desc: "Z a A" } : { asc: "menor primeiro", desc: "maior primeiro" };
+  const next = nextSort(sort, key);
+  return <button type="button" className="kicker carteira-sort" data-on={dir || undefined} onClick={() => onSort(next)}
+    title={next.key ? `ordenar por ${label.toLowerCase()}: ${word[next.dir]}` : "voltar à ordem padrão (estágio)"}
+    aria-label={`${label}${dir ? `, ordenado ${word[dir]}` : ""}. ${next.key ? `Ordenar ${word[next.dir]}` : "Voltar à ordem padrão"}`}>
+    {label}<SortArrow dir={dir} />
+  </button>;
+}
+
 // Cliente com produto que tem resultado medido (LeverAds ou LeverPrice).
 export const hasResults = (row) => (row.products || []).some((p) => p.id === "leverads" || p.id === "leverprice");
 
@@ -218,13 +274,15 @@ function Row({ row, now, onOpen, onResults }) {
         <span className="carteira-cell-sub">
           {[row.mrr ? `${money(row.mrr)}/mês` : "", row.owner ? displayName(row.owner) : "sem dono"].filter(Boolean).join(" · ")}
         </span>
-        <Products list={row.products} />
+        {/* Os produtos e, logo depois deles, o link dos resultados. */}
+        <span className="carteira-products-line">
+          <Products list={row.products} />
+          {onResults && hasResults(row) && <button type="button" className="carteira-results-btn" title="ver o que cada produto fez por este cliente"
+            aria-label={`Ver resultados: ${row.name}`} onClick={(e) => { e.stopPropagation(); onResults(row.id); }}>
+            resultados <span aria-hidden="true">›</span>
+          </button>}
+        </span>
       </div>
-      {/* Centralizado na altura da célula do cliente, à direita. */}
-      {onResults && hasResults(row) && <button type="button" className="carteira-results-btn" title="ver o que cada produto fez por este cliente"
-        aria-label={`Ver resultados: ${row.name}`} onClick={(e) => { e.stopPropagation(); onResults(row.id); }}>
-        resultados <span aria-hidden="true">›</span>
-      </button>}
     </div>
     <Cell tone={st.tone} label={st.label} sub={lifeSub} title={st.title} />
     <HealthCell row={row} />
@@ -288,6 +346,9 @@ export function CarteiraScreen() {
   const [view, setViewState] = useState(() => stored("cockpit_carteira_view", "lista"));
   const [stage, setStage] = useState("ativos");
   const [owner, setOwnerState] = useState(() => stored("cockpit_carteira_dono", "todos"));
+  const [productFilter, setProductFilterState] = useState(() => stored("cockpit_carteira_produto", "todos"));
+  const [sort, setSortState] = useState(() => { const [key, dir] = stored("cockpit_carteira_ordem", "").split(":"); return { key: Object.values(SORTABLE).includes(key) ? key : "", dir: dir === "desc" ? "desc" : "asc" }; });
+  const setSort = (v) => { setSortState(v); store("cockpit_carteira_ordem", v.key ? `${v.key}:${v.dir}` : ""); };
   const [q, setQ] = useState("");
   const [openId, setOpenId] = useState(null); // cliente com o card aberto
   const [resultId, setResultIdState] = useState(() => stored("cockpit_carteira_resultado", ""));
@@ -295,6 +356,7 @@ export function CarteiraScreen() {
   const verResultados = (id) => { setResultId(id); setView("resultados"); document.querySelector(".carteira-page")?.scrollTo?.(0, 0); };
   const setView = (v) => { setViewState(v); store("cockpit_carteira_view", v); };
   const setOwner = (v) => { setOwnerState(v); store("cockpit_carteira_dono", v); };
+  const setProductFilter = (v) => { setProductFilterState(v); store("cockpit_carteira_produto", v); };
   const now = Date.now();
 
   useEffect(() => {
@@ -317,9 +379,13 @@ export function CarteiraScreen() {
     ...owners.filter((id) => id !== me).map((id) => ({ value: id, label: displayName(id) })),
   ];
   const ownerValue = ownerOptions.some((o) => o.value === owner) ? owner : "todos";
+  const productOptions = useMemo(() => productFilterOptions(rows), [rows]);
+  const productValue = productOptions.some((o) => o.value === productFilter) ? productFilter : "todos";
+  const productPicker = productOptions.length > 0 && <div className="carteira-owner"><SelectPopover label="Produto" value={productValue} options={productOptions} onChange={setProductFilter} size="sm" /></div>;
 
-  // Recorte por dono e busca primeiro: as contagens dos estágios respeitam o dono.
-  const mine = rows.filter((r) => (ownerValue === "todos" ? true : ownerValue === "sem" ? !r.owner : r.owner === ownerValue));
+  // Recorte por dono, produto e busca primeiro: as contagens dos estágios respeitam os três.
+  const mine = rows.filter((r) => (ownerValue === "todos" ? true : ownerValue === "sem" ? !r.owner : r.owner === ownerValue)
+    && matchesProduct(r, productValue));
   const term = q.trim().toLowerCase();
   const searched = term ? mine.filter((r) => `${r.name} ${(r.products || []).map((p) => PRODUCT[p.id] || p.id).join(" ")}`.toLowerCase().includes(term)) : mine;
   const active = searched.filter((r) => stageOf(r) !== "churn");
@@ -330,6 +396,7 @@ export function CarteiraScreen() {
     : stage === "marco" ? active.filter((r) => r.milestones?.late > 0)
     : searched.filter((r) => stageOf(r) === stage))
     .slice().sort((a, b) => ORDER[stageOf(a)] - ORDER[stageOf(b)] || (a.health || 101) - (b.health || 101) || (b.mrr || 0) - (a.mrr || 0));
+  const listed = sortRows(shown, sort);
 
   const late = active.filter((r) => r.followup?.late);
   const overdue = active.filter((r) => r.payment?.status === "inadimplente");
@@ -349,7 +416,7 @@ export function CarteiraScreen() {
   ];
   const boardStages = stage === "churn" ? [STAGE.churn] : STAGES.filter((s) => s.id !== "churn");
 
-  // Resultados: clientes do dono escolhido (ativos primeiro, churn no fim), por nome.
+  // Resultados: clientes do dono e do produto escolhidos (ativos primeiro, churn no fim), por nome.
   const resultOptions = mine.slice()
     .sort((a, b) => (stageOf(a) === "churn") - (stageOf(b) === "churn") || String(a.name || "").localeCompare(String(b.name || ""), "pt-BR"))
     .map((r) => ({
@@ -379,6 +446,7 @@ export function CarteiraScreen() {
                 toolbar={<>
                   <div className="carteira-result-pick"><SelectPopover label="Cliente" value={resultValue} options={resultOptions} onChange={setResultId} size="sm" searchable placeholder="Escolha um cliente" /></div>
                   <div className="carteira-owner"><SelectPopover label="Dono da conta" value={ownerValue} options={ownerOptions} onChange={setOwner} size="sm" /></div>
+                  {productPicker}
                 </>} />
             </Suspense>
           : <>
@@ -401,6 +469,7 @@ export function CarteiraScreen() {
             <div className="carteira-filters">
               <BarraFiltros valor={stage} onChange={setStage} filtros={filtros} escondidos={escondidos} />
               <div className="carteira-owner"><SelectPopover label="Dono da conta" value={ownerValue} options={ownerOptions} onChange={setOwner} size="sm" /></div>
+              {productPicker}
               <label className="carteira-search">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20.4 20.4-4.2-4.2" /></svg>
                 <input aria-label="Buscar cliente" value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar cliente…" />
@@ -411,9 +480,11 @@ export function CarteiraScreen() {
               ? <Board rows={stage === "ativos" || stage === "churn" ? searched : shown} now={now} stages={boardStages} onOpen={setOpenId} />
               : <div className="carteira-table">
                   <div className="carteira-head" style={{ gridTemplateColumns: CARTEIRA_GRID, gap: CARTEIRA_GRID_GAP }}>
-                    {["Cliente", "Estágio", "Saúde", "Pagamento", "Assinatura", "Próximo passo"].map((h) => <span key={h} className="kicker">{h}</span>)}
+                    {["Cliente", "Estágio", "Saúde", "Pagamento", "Assinatura", "Próximo passo"].map((h) => SORTABLE[h]
+                      ? <SortHead key={h} label={h} sort={sort} onSort={setSort} />
+                      : <span key={h} className="kicker">{h}</span>)}
                   </div>
-                  {shown.map((r) => <Row key={r.id} row={r} now={now} onOpen={setOpenId} onResults={verResultados} />)}
+                  {listed.map((r) => <Row key={r.id} row={r} now={now} onOpen={setOpenId} onResults={verResultados} />)}
                   {!shown.length && <div className="carteira-empty">{rows.length ? "nenhum cliente com esses filtros" : "nenhum cliente neste produto ainda"}</div>}
                 </div>}
           </section>

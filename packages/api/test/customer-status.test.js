@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { customerStatusBoard, milestoneSummary, paymentSummary, productsSummary, subscriptionSummary } from "../src/customers/customer-status.js";
+import { customerStatusBoard, milestoneSummary, paymentSummary, productsFromPlanText, productsSummary, subscriptionSummary } from "../src/customers/customer-status.js";
 import { registerRevenueRoutes } from "../src/customers/routes.revenue.js";
 
 const DAY = 86_400_000;
@@ -50,6 +50,40 @@ test("produtos: o que a venda inclui e se já tem conta em cada sistema", () => 
     { id: "leverads", account: true }, { id: "leverprice", account: false },
   ]);
   assert.deepEqual(productsSummary({ products: ["mentoria"] }), [{ id: "mentoria", account: null }]);
+});
+
+test("produtos: conta vinculada entra mesmo sem produto na venda (cliente antigo, plano só em texto)", () => {
+  assert.deepEqual(productsSummary({ plan: "Anual", leveradsOrgId: "org1" }), [{ id: "leverads", account: true }]);
+  assert.deepEqual(productsSummary({ plan: "Anual", leverpriceOrgId: "lp1" }), [{ id: "leverprice", account: true }]);
+  assert.deepEqual(productsSummary({ planCode: "men_assistido", leveradsOrgId: "org1" }), [
+    { id: "mentoria", account: null }, { id: "leverads", account: true },
+  ]);
+  assert.deepEqual(productsSummary({ plan: "Anual" }), [], "sem venda e sem conta, nada");
+});
+
+test("produtos: o plano escrito à mão completa a venda (os dois produtos do pacote antigo)", () => {
+  assert.deepEqual(productsSummary({ plan: "LeverAds + LeverPrice · Anual", leveradsOrgId: "org1" }), [
+    { id: "leverads", account: true }, { id: "leverprice", account: false },
+  ]);
+  assert.deepEqual(productsSummary({ plan: "ADS + PRICE · Anual" }), [{ id: "leverads", account: false }, { id: "leverprice", account: false }]);
+  assert.deepEqual(productsSummary({ products: ["leverads"], plan: "LeverAds + LeverPrice · Anual" }), [{ id: "leverads", account: false }],
+    "produtos das assinaturas mandam");
+});
+
+test("productsFromPlanText: o que os nomes de plano antigos citam", () => {
+  const cases = {
+    "LeverAds (15 contas) + LeverPrice (6 contas) · Anual": ["leverads", "leverprice"],
+    "1000 SKUS (4.00) + PRICE (640.00) · Anual": ["leverads", "leverprice"],
+    "LeverPrice + LeveraAds · Anual": ["leverads", "leverprice"],
+    "LeverOEM Escala + LeverPrice Essencial · Anual": ["leverads", "leverprice"],
+    "LeverAds Full + Lever Price + OEM · Anual": ["leverads", "leverprice"],
+    "Lever Price · Essencial · Anual": ["leverprice"],
+    "Criação 1000 anúncios + Otimização 600 anúncios · Serviço único": ["leverads"],
+    "1 MES OEM · Serviço único": ["leverads"],
+    "MENTORIA GABI 6 MESES · Serviço único": ["mentoria"],
+    "Anual": [], "Teste grátis · Serviço único": [], "": [],
+  };
+  for (const [text, want] of Object.entries(cases)) assert.deepEqual(productsFromPlanText(text), want, text);
 });
 
 test("régua: feitos, atrasados, a barra por marco e o próximo em aberto", () => {

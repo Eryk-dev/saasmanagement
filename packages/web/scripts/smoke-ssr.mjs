@@ -1388,6 +1388,52 @@ try {
     failed++;
   }
 
+  // Carteira por produto (06/11/2026): o filtro só aparece com 2+ produtos no
+  // workspace, "ambos" é o pacote, e a linha mostra os dois chips do pacote.
+  try {
+    const { productFilterOptions, matchesProduct, CarteiraRow } = await server.ssrLoadModule("/src/screens/carteira.jsx");
+    const row = (ids) => ({ id: ids.join("-") || "x", name: "Loja", products: ids.map((id) => ({ id, account: id === "leverads" })) });
+    const ads = row(["leverads"]), price = row(["leverprice"]), both = row(["leverads", "leverprice"]);
+    if (productFilterOptions([ads, ads]).length) throw new Error("um produto só não devia mostrar o filtro");
+    const opts = productFilterOptions([ads, price, both]).map((o) => o.value).join(",");
+    if (opts !== "todos,leverads,leverprice,ambos") throw new Error(`opções: ${opts}`);
+    const pick = (v) => [ads, price, both].filter((r) => matchesProduct(r, v)).map((r) => r.id).join(" ");
+    for (const [v, want] of [["leverprice", "leverprice leverads-leverprice"], ["ambos", "leverads-leverprice"], ["todos", "leverads leverprice leverads-leverprice"]]) {
+      if (pick(v) !== want) throw new Error(`filtro ${v}: ${pick(v)}`);
+    }
+    const html = renderToString(React.createElement(CarteiraRow, { row: { ...carteiraRow, products: both.products }, now: carteiraNow, onOpen() {} }));
+    if (!html.includes(">LeverAds<") || !html.includes("LeverPrice<!-- --> · sem conta")) throw new Error("a linha não mostra os dois produtos do pacote");
+    // Link dos resultados na linha dos produtos (06/11/2026).
+    const withLink = renderToString(React.createElement(CarteiraRow, { row: { ...carteiraRow, products: both.products }, now: carteiraNow, onOpen() {}, onResults() {} }));
+    if (!/carteira-products-line[\s\S]*LeverPrice[\s\S]*carteira-results-btn/.test(withLink)) throw new Error("o link dos resultados não está depois dos produtos");
+    console.log("✓ carteira-produto");
+  } catch (err) {
+    console.error(`✗ carteira-produto: ${err.message}`);
+    failed++;
+  }
+
+  // Carteira: ordenação pelo cabeçalho (Cliente A→Z, Saúde pelo número).
+  try {
+    const { sortRows, nextSort } = await server.ssrLoadModule("/src/screens/carteira.jsx");
+    const rows = [
+      { id: "b", name: "Bruna", health: 80, healthAt: "x" }, { id: "a", name: "ana", health: 30, healthAt: "x" },
+      { id: "z", name: "Zeca" }, { id: "c", name: " Ção", health: 55, healthAt: "x" },
+    ];
+    const ids = (sort) => sortRows(rows, sort).map((r) => r.id).join("");
+    for (const [sort, want] of [[{ key: "name", dir: "asc" }, "abcz"], [{ key: "name", dir: "desc" }, "zcba"],
+      [{ key: "health", dir: "asc" }, "acbz"], [{ key: "health", dir: "desc" }, "bcaz"], [{ key: "", dir: "asc" }, "bazc"]]) {
+      if (ids(sort) !== want) throw new Error(`${JSON.stringify(sort)}: ${ids(sort)}, esperava ${want}`);
+    }
+    let s = { key: "", dir: "asc" };
+    const seq = [];
+    for (let i = 0; i < 3; i++) { s = nextSort(s, "health"); seq.push(s.key ? s.dir : "padrão"); }
+    if (seq.join(",") !== "asc,desc,padrão") throw new Error(`ciclo do clique: ${seq}`);
+    console.log("✓ carteira-ordem");
+  } catch (err) {
+    console.error(`✗ carteira-ordem: ${err.message}`);
+    failed++;
+  }
+
   // ── Minhas atividades: a linha da fila tem que CABER (12/09) ────────────
   // Mesma disciplina de Clientes e Pipeline: a grade da linha é uma constante
   // com orçamento, então alargar coluna sem refazer a conta falha o build.

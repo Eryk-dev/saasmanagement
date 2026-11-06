@@ -60,13 +60,33 @@ export function paymentSummary(invoices, subs, now = Date.now()) {
 }
 
 // Produtos que a venda inclui e se o cliente já tem conta em cada um. Mentoria
-// não tem sistema: `account` fica null (nada a cobrar do integrador).
+// não tem sistema: `account` fica null (nada a cobrar do integrador). Conta
+// vinculada também diz o produto (06/11/2026): o cliente antigo, com o plano só
+// em texto ("Anual"), não tem produto na venda, e a Carteira escondia o botão
+// "resultados" de quem tem conta do LeverAds com números. Mesma regra da tela
+// de Resultados (result-products.js resultProductIds). O nome do plano em
+// texto completa a venda quando as assinaturas não dizem os produtos
+// (`customer.products`): "LeverAds + LeverPrice · Anual" mostrava só o
+// LeverAds da conta vinculada (productsFromPlanText).
 export function productsSummary(customer, plans = []) {
-  return dealProductsOf({ customer, plans }).map((id) => ({
-    id,
-    account: id === "leverads" ? Boolean(customer.leveradsOrgId || customer.orgId)
-      : id === "leverprice" ? Boolean(customer.leverpriceOrgId) : null,
-  }));
+  const has = { leverads: Boolean(customer.leveradsOrgId || customer.orgId), leverprice: Boolean(customer.leverpriceOrgId) };
+  const ids = dealProductsOf({ customer, plans });
+  const listed = Array.isArray(customer.products) && customer.products.length > 0;
+  const text = listed ? [] : productsFromPlanText(`${customer.plan || ""} ${customer.planCustom || ""}`);
+  for (const id of ["leverads", "leverprice", "mentoria"]) if ((has[id] || text.includes(id)) && !ids.includes(id)) ids.push(id);
+  return ids.map((id) => ({ id, account: id in has ? has[id] : null }));
+}
+
+// Produtos citados no nome do plano escrito à mão (cliente de antes do
+// catálogo): "ADS + PRICE", "LeverOEM Escala + LeverPrice Essencial", "1000
+// SKUS + PRICE", "Criação 1000 anúncios", "MENTORIA GABI". "Anual" sozinho não
+// diz nada. Só para mostrar: acesso e cobrança não leem isto.
+const PRICE_TEXT = /lever\s*price|\bprice\b/i;
+const ADS_TEXT = /lever\s*a+ds|lever\s*oem|\bads\b|\boem\b|an[uú]ncios?|\bskus?\b/i;
+const MENTORIA_TEXT = /mentoria/i;
+export function productsFromPlanText(text) {
+  const t = String(text || "");
+  return [ADS_TEXT.test(t) && "leverads", PRICE_TEXT.test(t) && "leverprice", MENTORIA_TEXT.test(t) && "mentoria"].filter(Boolean);
 }
 
 export function nextFollowup(followups, now = Date.now()) {

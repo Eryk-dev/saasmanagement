@@ -1964,6 +1964,19 @@ no grupo do menu "CS e suporte" (chave `suporte`), com a permissão de Clientes
   R$ 0. O card da lista tem `flex-shrink:0`: com `overflow:hidden` ele
   encolhia na coluna flex e cortava as linhas sem rolagem. Prévia:
   `customerResultsPreview`; revisão `test:review:carteira-resultados`.
+- **Produtos, filtro e ordem da lista (06/11/2026):** os produtos da linha
+  (`productsSummary`) somam a venda, a conta vinculada (LeverAds ou LeverPrice)
+  e, sem `customer.products`, o nome do plano em texto
+  (`productsFromPlanText`: "ADS + PRICE", "LeverOEM + LeverPrice", só para
+  mostrar; acesso e cobrança não leem). Cliente antigo com conta vinculada
+  ganha o link "resultados ›", que fica na linha dos chips de produto. O
+  seletor Produto (Todos, LeverAds, LeverPrice, LeverAds + LeverPrice,
+  Mentoria; só com 2+ produtos no workspace) recorta como o de dono, inclusive
+  as contagens e o seletor da visão Resultados. Cabeçalhos Cliente (A→Z) e
+  Saúde (número) ordenam a lista: crescente, decrescente e volta à ordem por
+  estágio; sem saúde calculada fica no fim. Filtro e ordem ficam no
+  `localStorage` (`cockpit_carteira_produto`, `cockpit_carteira_ordem`); smoke
+  `carteira-produto` e `carteira-ordem`.
 
 **Guias: base de conhecimento interna (03/11/2026).** Domínio `guides/` e tela
 `#guides` no grupo "CS e suporte". Um guia (`guides`) é de um produto do
