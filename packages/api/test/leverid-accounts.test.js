@@ -45,6 +45,12 @@ test("customerOrgId: orgId do LeverId vale antes do leveradsOrgId", () => {
   assert.equal(customerOrgId({}), "");
 });
 
+test("customerOrgId: cliente só do LeverPrice usa a org do LeverId do vínculo, nunca o leverpriceOrgId", () => {
+  assert.equal(customerOrgId({ leverpriceOrgId: VAZIA, leverpriceOrgLink: { via: "convite", coreOrgId: ORG } }), ORG);
+  assert.equal(customerOrgId({ leverpriceOrgId: VAZIA, leverpriceOrgLink: { via: "manual" } }), "");
+  assert.equal(customerOrgId({ leveradsOrgId: VAZIA, leverpriceOrgLink: { coreOrgId: ORG } }), VAZIA);
+});
+
 test("groupOrgAccounts: contas por org; org sem conta fica com lista vazia", () => {
   const g = groupOrgAccounts(ROWS);
   assert.deepEqual(g[ORG].accounts.map((a) => [a.email, a.role, a.mfa]), [["dona@loja.test", "owner", true], ["op@loja.test", "member", false]]);

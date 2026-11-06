@@ -513,8 +513,12 @@ internos; depois a comparação de modelos com o mesmo conjunto.
    informação) pelo convite ou pelo e-mail 1 × 1 de cliente com LeverPrice no
    negócio, ativo e sem org; org já vinculada não regrava e `leveradsOrgId`/`orgId`
    não mudam. Ausência do badge
-   é o "sem conta": não há linha escrita. Vincular e desfazer só no card do
-   cliente. No card da Integração, escolher o integrador mostra o link da
+   é o "sem conta": não há linha escrita. Cliente só do LeverPrice ganha o
+   badge pela org do LeverId do vínculo (`leverpriceOrgLink.coreOrgId`; o
+   `leverpriceOrgId` não serve, nas orgs antigas do LeverPrice o id local é
+   outro), e o bloco "conta LeverId" da ficha tem uma linha por produto do
+   negócio (a do LeverPrice só mostra a conta vinculada). Vincular e desfazer
+   só no card do cliente. No card da Integração, escolher o integrador mostra o link da
    agenda dele (`BookingLinkActions`, o mesmo do gate de Integração); com
    negócio de origem, a marcação cai nele. A régua de marcos do card do cliente
    é uma barra por marco + o próximo com "✓ feito" (`milestone-strip.jsx`);

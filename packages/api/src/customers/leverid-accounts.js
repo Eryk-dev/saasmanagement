@@ -1,7 +1,11 @@
 // Quem do cliente já tem LeverId (a badge da tela Clientes). A org do cliente
 // no LeverId tem o mesmo id da org no LeverAds (docs/PLANO-AUTH.md: a carga
 // preserva os ids), então vale `customer.orgId` e, enquanto ele não existe,
-// `customer.leveradsOrgId`.
+// `customer.leveradsOrgId`. Cliente só do LeverPrice não tem nenhum dos dois:
+// vale a org do LeverId que o cadastro do LeverPrice informou
+// (`leverpriceOrgLink.coreOrgId`); o `leverpriceOrgId` não, porque nas orgs
+// antigas do LeverPrice o id local é outro. A SPA usa a mesma regra
+// (web/src/lib/leverid.js).
 //
 // Cache por org de 60 s: a lista de clientes pede todas as orgs de uma vez e a
 // ficha pede a mesma org de novo logo depois; a identidade só é chamada para as
@@ -11,7 +15,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const LEVERID_TTL_MS = 60_000;
 export const LEVERID_MAX_ORGS = 500;
 
-export const customerOrgId = (customer) => String(customer?.orgId || customer?.leveradsOrgId || "").trim().toLowerCase();
+export const customerOrgId = (customer) => String(customer?.orgId || customer?.leveradsOrgId
+  || customer?.leverpriceOrgLink?.coreOrgId || "").trim().toLowerCase();
 
 // Ids válidos, sem repetição, em minúsculas (o cadastro tem lixo no campo).
 export function parseOrgIds(raw) {

@@ -4,17 +4,19 @@ import { Popover } from "./popover.jsx";
 import { Card, FilterTab } from "./viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { pendingSignupProducts } from "../lib/leverid.js";
-import { signupProductLabel } from "../../../api/src/shared/signup-products.js";
+import { signupProductLabel, signupProductsOf } from "../../../api/src/shared/signup-products.js";
 import "./leverads-accounts.css";
 // Contas do LeverAds na tela Clientes (espelho `leverads_orgs` da API,
 // customers/leverads-orgs.js):
 //   · FreeAccountsTab   aba Gratuitas: contas sem venda e as pagantes sem
 //                       cliente, com "Vincular a cliente";
-//   · CustomerOrgLink   bloco "conta LeverId" da ficha: a conta vinculada (e
+//   · CustomerOrgLink   bloco "conta LeverId" da ficha, uma linha por
+//                       produto do negócio. LeverAds: a conta vinculada (e
 //                       por onde veio), desfazer e "Vincular" com as mais
-//                       novas primeiro; sem conta, o "Link de cadastro" com
-//                       convite: o cliente cria a conta por ele e já entra no
-//                       plano da venda;
+//                       novas primeiro. LeverPrice: a conta que o cadastro
+//                       vinculou (`leverpriceOrgId`, só leitura). Sem conta, o
+//                       "Link de cadastro" do produto com convite: o cliente
+//                       cria a conta por ele e já entra no plano da venda;
 //   · SignupInviteLink  o mesmo "Link de cadastro" nos cards do Negócio e da
 //                       Integração, para o integrador mandar ao cliente sem
 //                       conta; um botão por produto do negócio (LeverAds e/ou
@@ -104,11 +106,11 @@ const VIA = { convite: "vinculada pelo link de cadastro", email: "vinculada pelo
 // criada por ele vincula sozinha a este cliente e recebe o plano. Um botão por
 // produto do negócio ainda sem conta (LeverAds e/ou LeverPrice, ver
 // lib/leverid.js pendingSignupProducts); o convite é um só e a API devolve a
-// URL de cada produto em `links`.
-export function SignupInviteLink({ customer, lead = null }) {
+// URL de cada produto em `links`. `only` restringe aos produtos de uma linha.
+export function SignupInviteLink({ customer, lead = null, only = null }) {
   const [invite, setInvite] = useState(null);
   const [state, setState] = useState({ product: "", msg: "" });
-  const products = pendingSignupProducts(customer, lead);
+  const products = pendingSignupProducts(customer, lead).filter((p) => !only || only.includes(p));
   if (!products.length) return null;
   const urlOf = (res, product) => (res?.links || []).find((l) => l.product === product)?.url
     || (product === "leverads" && !res?.links ? res?.url : "");
@@ -150,6 +152,14 @@ export function CustomerOrgLink({ customer, lead, onChanged }) {
   const orgId = norm(customer.leveradsOrgId);
   const org = orgId ? mirror.orgs.find((o) => o.id === orgId) : null;
   const emails = emailsOf(customer, lead);
+  // Uma linha por produto do negócio, ou com conta vinculada. Cliente só do
+  // LeverPrice não ganha a linha do LeverAds (nem o "Vincular" dela).
+  const lpId = norm(customer.leverpriceOrgId);
+  const lpLink = customer.leverpriceOrgLink || {};
+  const sold = signupProductsOf({ customer, lead });
+  const showPrice = !!lpId || sold.includes("leverprice");
+  const showAds = !!orgId || sold.includes("leverads") || !showPrice;
+  const adsTag = showPrice ? "LeverAds · " : "";
 
   async function link(o) {
     setBusy(o.id); setErr("");
@@ -167,32 +177,39 @@ export function CustomerOrgLink({ customer, lead, onChanged }) {
   return (
     <section className="customer-peek-orglink">
       <div className="customer-peek-kicker"><span>conta LeverId</span>
-        {orgId && customer.orgLink?.via && VIA[customer.orgLink.via] && <span className="customer-peek-state">{VIA[customer.orgLink.via]}</span>}
+        {showAds && !showPrice && orgId && customer.orgLink?.via && VIA[customer.orgLink.via] && <span className="customer-peek-state">{VIA[customer.orgLink.via]}</span>}
       </div>
-      {orgId ? (
+      {showAds && (orgId ? (
         <div className="lva-linked">
           <div>
             <strong>{org?.name || "conta vinculada"}</strong>
-            <small>{org ? orgFacts(org) : `org ${orgId.slice(0, 8)}…`}</small>
+            <small>{adsTag}{showPrice && VIA[customer.orgLink?.via] ? `${VIA[customer.orgLink.via]} · ` : ""}{org ? orgFacts(org) : `org ${orgId.slice(0, 8)}…`}</small>
           </div>
           <button type="button" onClick={unlink} disabled={!!busy}>{busy === "unlink" ? "…" : "desfazer"}</button>
         </div>
       ) : (
         <div className="lva-linked">
-          <div><small>{mirror.configured ? "sem conta vinculada" : "lista de contas desligada aqui"}</small></div>
+          <div><small>{adsTag}{mirror.configured ? "sem conta vinculada" : "lista de contas desligada aqui"}</small></div>
           <div className="lva-actions">
             {mirror.configured && <button ref={ref} type="button" className="lva-primary" onClick={() => setOpen(true)} disabled={!!busy}>Vincular</button>}
-            <SignupInviteLink customer={customer} lead={lead} />
+            <SignupInviteLink customer={customer} lead={lead} only={["leverads"]} />
           </div>
         </div>
-      )}
-      {/* Conta do LeverAds já vinculada e o negócio inclui o LeverPrice sem conta. */}
-      {orgId && pendingSignupProducts(customer, lead).length > 0 && (
-        <div className="lva-linked lva-linked-more">
-          <div><small>LeverPrice sem conta vinculada</small></div>
-          <div className="lva-actions"><SignupInviteLink customer={customer} lead={lead} /></div>
+      ))}
+      {/* LeverPrice: a conta que o aviso do cadastro vinculou (convite ou e-mail) ou a gravada no cliente. Sem "desfazer" aqui. */}
+      {showPrice && (lpId ? (
+        <div className={`lva-linked${showAds ? " lva-linked-more" : ""}`}>
+          <div>
+            <strong>{lpLink.orgName || "conta vinculada"}</strong>
+            <small>{["LeverPrice", VIA[lpLink.via], `org ${lpId.slice(0, 8)}…`].filter(Boolean).join(" · ")}</small>
+          </div>
         </div>
-      )}
+      ) : (
+        <div className={`lva-linked${showAds ? " lva-linked-more" : ""}`}>
+          <div><small>LeverPrice sem conta vinculada</small></div>
+          <div className="lva-actions"><SignupInviteLink customer={customer} lead={lead} only={["leverprice"]} /></div>
+        </div>
+      ))}
       {err && <p className="lva-err" role="alert">{err}</p>}
       {open && <OrgPicker anchor={ref} orgs={mirror.orgs} emails={emails} busy={busy} onPick={link}
         onRefresh={mirror.refresh} refreshing={mirror.loading} onClose={() => setOpen(false)} />}
