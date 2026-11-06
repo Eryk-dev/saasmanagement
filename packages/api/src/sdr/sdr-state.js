@@ -60,6 +60,15 @@ export function humanMuteHolds(cfg, lastHumanOut, nowMs) {
 // form E ele já tinha falado de verdade antes (mensagem que não é do form)
 // ou já teve call (marcada ou no histórico). A mensagem do form logo depois
 // do 1º toque, sem conversa antes, NÃO é volta (R-101: form não é resposta).
+// RETORNO COMBINADO PENDENTE (R-121, 06/11 Caio): o lead marcou o dia
+// ("semana que vem retorno contato") e o dia ainda não chegou. Até lá o robô
+// não oferece horário, nenhum toque automático sai e "ok" em cima do
+// combinado fica sem resposta. O flow (seção 1f) chama no dia.
+export function callbackPending(lead = {}, nowMs = Date.now()) {
+  const cb = Date.parse(lead?.sdrLog?.callbackAt || "");
+  return Number.isFinite(cb) && cb > nowMs && !lead?.sdrLog?.callbackDoneAt;
+}
+
 export function isReturningByForm(lead = {}, msgs = []) {
   const textOf = (m) => String(m?.transcript || m?.text || "");
   const last = [...msgs].reverse().find((m) => m.direction === "in");

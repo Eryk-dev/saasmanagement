@@ -59,6 +59,11 @@ export const LOTOU_CLAIM_RX = /\blot(?:ou|ad[ao]s?|aram)\b|n[ãa]o (?:tenho|temo
 // PROMESSA DE VOLTAR DEPOIS (R-030): ninguém volta.
 // 28/10: "te passo as opções", "vou encaminhar seu contato", "vou pedir pro
 // time", "deixo sinalizado aqui" também são promessas que ninguém cumpre.
+// PROMESSA DE RETORNO na nossa resposta ("te chamo aqui na semana que vem",
+// "quando voltar me chama"): é saída de conversa, não beco (R-031/R-121,
+// 06/11 Caio: a trava de beco emendou "Fica melhor segunda às 9h ou às 11h?"
+// em cima do "Combinado, te chamo semana que vem").
+export const CALLBACK_PROMISE_RX = /\bte (?:chamo|ligo|procuro|retorno)\b|\bme chama\b|\bquando (?:der|voltar|puder|estiver de volta)\b/i;
 export const PROMISE_RX = /\bte (?:confirmo|retorno|aviso|respondo|passo)\b|\bj[áa] te (?:falo|aviso|confirmo|retorno|respondo|passo)\b|\b(?:vou|deixa eu|vamos|consigo) (?:ver|verificar|checar|confirmar|consultar|olhar|dar uma olhada)\b[^.?!]*\b(?:agenda|hor[áa]rio|especialista|time|aqui|vaga|disponibilidade)|\bem (?:alguns |poucos |uns )?(?:minutos|instantes|minutinhos)\b|\bvou (?:te )?(?:passar|encaminhar|repassar|direcionar|sinalizar)\b|\bvou (?:pedir|avisar|falar com|deixar sinalizado)\b|\bencaminho\b|\brepasso\b|\bpe[çc]o pr[ao]\b|\bdeixo sinalizado\b/i;
 // Pergunta solta de dia ao lado de uma oferta concreta (R-026).
 export const SCHEDULE_ASK_Q_RX = /\bqual (?:dia|data|hor[áa]rio|per[íi]odo|outro dia)\b[^?]*\?/i;
@@ -386,7 +391,7 @@ export const GUARDS = [
     // Texto do form de quem VOLTOU (R-118) é a exceção: aí a saída é a oferta.
     applies: (ctx) => !ctx.callAt && !ctx.inCallWindow && (!FORM_MSG_RX.test(ctx.lastInText || "") || !!ctx.returning) && !ctx.closing && !ctx.postponed && !ctx.noInterest && !ctx.handoff,
     check: (d) => {
-      const semSaida = !d.parts.some((p) => isRealQuestion(p.text) || isOfferMsg(p.text));
+      const semSaida = !d.parts.some((p) => isRealQuestion(p.text) || isOfferMsg(p.text) || CALLBACK_PROMISE_RX.test(p.text));
       const diaSemHora = DAY_PROPOSAL_RX.test(joined(d)) && !HAS_HOUR_RX.test(joined(d));
       return semSaida || diaSemHora ? [{ why: semSaida ? "sem pergunta nem próximo passo" : "dia sem hora" }] : [];
     },

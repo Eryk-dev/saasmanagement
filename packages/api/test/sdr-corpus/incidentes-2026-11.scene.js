@@ -1,13 +1,23 @@
 // Cenas da varredura de 05/11/2026 (pedido do Leo: "o robô SDR está fazendo
 // loucura" — Kassio, Rinaldo, Rita), no contrato v2 em enforce, como roda em
 // produção. Nomes trocados pelo Rafael do mundo de teste.
-// Regras cobertas aqui (o meta-teste do rulebook lê a tag no fonte): #R-117 #R-118 #R-047 #R-113
+// Regras cobertas aqui (o meta-teste do rulebook lê a tag no fonte): #R-117 #R-118 #R-047 #R-113 #R-121 #R-084 #R-031 #R-023
 import { ISO } from "../helpers/sdr-world.js";
 
 const V2 = { offerContract: "v2", promptVersion: "v2", guardsMode: "enforce" };
 const PITCH_OEM = "Oiii Rafael, tudo bem? Com o Lever OEM você digita o código e recebe o anúncio completo, com fotos, título de 200 caracteres, descrição e compatibilidade, pronto para revisar e publicar no Mercado Livre e Shopee. Isso ajudaria na sua operação?";
 const FORM_OEM = "Oi, me chamo Rafael e quero saber mais sobre o Lever OEM. Minha operação: autopeças, Online + loja física, 1 conta, Até 500 anúncios ativos.";
 const OEM_LEAD = { sourcePain: "OEM", niche: "autopecas" };
+// Conversa do Caio (06/11) até o template de retomada, com as datas do mundo.
+const CAIO_HISTORY = [
+  { direction: "in", text: "Oi, me chamo Rafael e quero saber mais sobre o Lever OEM. Minha operação: autopeças, Só online, 1 conta, 1.000 a 5.000 anúncios ativos.", at: ISO("2026-08-17T21:24:00Z") },
+  { direction: "out", author: "sdr-bot", text: "No Lever OEM você digita o código da peça e recebe o anúncio completo, com fotos, título, descrição e compatibilidade", at: ISO("2026-08-17T21:25:00Z") },
+  { direction: "out", author: "sdr-bot", text: "Isso ajudaria na sua operação?", at: ISO("2026-08-17T21:25:10Z") },
+  { direction: "in", text: "Sim", at: ISO("2026-08-17T21:41:00Z") },
+  { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?", at: ISO("2026-08-17T21:42:00Z") },
+  { direction: "out", author: "sdr-bot", text: "Bom dia Rafael! Os horários de ontem já não estão mais livres, mas consigo hoje às 11h ou amanhã às 16h, qual fica melhor pra você?", at: ISO("2026-08-18T12:21:00Z") },
+  { direction: "out", author: "sdr-bot", via: "flow", text: "Oiii Rafael, tudo bem? Vamos retomar nossa conversa sobre a LeverAds? Me dá um ok aqui, por favor", at: ISO("2026-08-19T12:21:00Z") },
+];
 // Rinaldo: call marcada pelo robô em 03/08 (16 dias antes do NOW), nunca
 // marcada como no-show; o card segue em "Call agendada".
 const RINALDO_MSGS = [
@@ -103,5 +113,81 @@ export default [
     ai: [{ acao: "responder", mensagens: ["Oiii Rafael! Hoje você vende em marketplace com conta própria?"], oferecer: false }],
     inbounds: ["Oi, me chamo Rafael e quero saber mais sobre a LeverAds. Minha operação: Outro, 1 conta, 500 a 1.000 anúncios ativos."],
     expect: { result: "responder", state: "descoberta", sent: [/conta própria\?$/], notSent: [/^Consigo /] },
+  },
+
+  // ── Caio (06/11/2026, le_mstiy7n10p): "No momento não consigo. Semana que
+  // vem retorno contato" recebeu "Combinado" + "Fica melhor segunda às 9h ou
+  // às 11h?", e o "Ok" seguinte recebeu "qual das duas opções você prefere?".
+  // Histórico igual ao real (form, pitch, "Sim", oferta, cobrança da manhã,
+  // template de retomada via flow); NOW é quarta 19/08, "semana que vem" =
+  // segunda 24/08.
+  {
+    id: "C-R121-01", title: "Caio (06/11) turno 1: 'No momento não consigo. Semana que vem retorno contato' recebe só o 'Combinado' (sem 'Fica melhor…') e o dia vira callbackAt",
+    rules: ["R-121", "R-084", "R-031"],
+    world: { sdrBot: V2, lead: OEM_LEAD, messages: CAIO_HISTORY },
+    ai: [{ acao: "responder", mensagens: ["Combinado Rafael, te chamo aqui na semana que vem"], oferecer: false }],
+    inbounds: ["Olá.\n\nNo momento não consigo.\n\nSemana que vem retorno contato"],
+    expect: { result: "responder", intent: "postpone", sent: [/^Combinado Rafael, te chamo aqui na semana que vem$/], notSent: [/Fica melhor/, /^Consigo /, /qual fica melhor/], sdrLog: { callbackAt: /^2026-08-24T12:30/ }, audit: { notRules: ["R-031"] } },
+  },
+  {
+    id: "C-R121-02", title: "Caio (06/11) turno 2: 'Ok' em cima do 'Combinado' fica sem resposta (nada de 'qual das duas opções você prefere?') e o retorno de segunda continua de pé",
+    rules: ["R-121", "R-084"],
+    world: {
+      sdrBot: V2,
+      lead: { ...OEM_LEAD, sdrLog: { callbackAt: "2026-08-24T12:30:00.000Z", callbackSetAt: ISO("2026-08-19T12:58:20Z"), callbackDoneAt: null } },
+      messages: [...CAIO_HISTORY,
+        { direction: "in", text: "Olá.\n\nNo momento não consigo.\n\nSemana que vem retorno contato", at: ISO("2026-08-19T12:58:00Z") },
+        { direction: "out", author: "sdr-bot", text: "Combinado Rafael, te chamo aqui na semana que vem", at: ISO("2026-08-19T12:58:20Z") }],
+    },
+    ai: [{ acao: "responder", mensagens: ["Perfeito Rafael, qual das duas opções você prefere?"], oferecer: false }],
+    inbounds: ["Ok"],
+    expect: { result: "silencio", notSent: [/opções/, /prefere/, /./], sdrLog: { callbackAt: "2026-08-24T12:30:00.000Z", callbackDoneAt: null } },
+  },
+  {
+    id: "C-R121-03", title: "retorno combinado pendente + pedido explícito de horário: a agenda sai normalmente (o pedido do lead vence)",
+    rules: ["R-121"],
+    world: {
+      sdrBot: V2,
+      lead: { ...OEM_LEAD, sdrLog: { callbackAt: "2026-08-24T12:30:00.000Z", callbackSetAt: ISO("2026-08-19T12:58:20Z"), callbackDoneAt: null } },
+      messages: [...CAIO_HISTORY,
+        { direction: "in", text: "Semana que vem retorno contato", at: ISO("2026-08-19T12:58:00Z") },
+        { direction: "out", author: "sdr-bot", text: "Combinado Rafael, te chamo aqui na semana que vem", at: ISO("2026-08-19T12:58:20Z") }],
+    },
+    ai: [{ acao: "responder", mensagens: ["Claro Rafael"], oferecer: true }],
+    inbounds: ["Na verdade, quais horários você tem amanhã?"],
+    expect: { result: "responder", sent: [/^Claro Rafael$/, /^Consigo amanhã às 9h ou às 11h, qual fica melhor pra você\?$/] },
+  },
+  {
+    id: "C-R121-04", title: "retorno combinado pendente + fala substantiva sem pedir horário: responde sem oferta e o retorno segue",
+    rules: ["R-121", "R-084"],
+    world: {
+      sdrBot: V2,
+      lead: { ...OEM_LEAD, sdrLog: { callbackAt: "2026-08-24T12:30:00.000Z", callbackSetAt: ISO("2026-08-19T12:58:20Z"), callbackDoneAt: null } },
+      messages: [...CAIO_HISTORY,
+        { direction: "in", text: "Semana que vem retorno contato", at: ISO("2026-08-19T12:58:00Z") },
+        { direction: "out", author: "sdr-bot", text: "Combinado Rafael, te chamo aqui na semana que vem", at: ISO("2026-08-19T12:58:20Z") }],
+    },
+    ai: [{ acao: "responder", mensagens: ["Boa Rafael, o Lever OEM trabalha junto com o Bling"], oferecer: true }],
+    inbounds: ["Tenho 3 contas no Mercado Livre e uso o Bling"],
+    expect: { result: "responder", sent: [/Bling/], notSent: [/^Consigo /, /Fica melhor/], sdrLog: { callbackAt: "2026-08-24T12:30:00.000Z" } },
+  },
+  {
+    id: "C-R084-04", title: "a IA promete 'te chamo segunda' sem o lead ter dito o dia: a promessa é saída (nada emendado) e vira callbackAt",
+    rules: ["R-084", "R-031"],
+    world: { sdrBot: V2, lead: OEM_LEAD, messages: CAIO_HISTORY },
+    ai: [{ acao: "responder", mensagens: ["Tranquilo Rafael", "Combinado, te chamo segunda"], oferecer: true }],
+    inbounds: ["Estou em viagem"],
+    expect: { result: "responder", sent: [/^Combinado, te chamo segunda$/], notSent: [/^Consigo /, /Fica melhor/], sdrLog: { callbackAt: /^2026-08-24T12:30/ } },
+  },
+  {
+    id: "C-R023-03", title: "Caio (04/11): 'Pode ser.' ao 'Consigo amanhã às 9h30' que NÓS oferecemos marca às 9h30 (sem 'acabou de ser preenchido')",
+    rules: ["R-023", "R-028"],
+    world: {
+      sdrBot: V2, lead: OEM_LEAD,
+      messages: [...CAIO_HISTORY.slice(0, 4), { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h30, fica bom pra você?", at: ISO("2026-08-19T12:42:00Z") }],
+    },
+    ai: [{ acao: "agendar", horario: "2026-08-20T09:30", mensagens: [] }],
+    inbounds: ["Pode ser."],
+    expect: { result: "agendar", lead: { callAt: "2026-08-20T09:30" }, sent: [/amanhã \(20\/08\) às 9h30/], notSent: [/preenchido por outro cliente/] },
   },
 ];

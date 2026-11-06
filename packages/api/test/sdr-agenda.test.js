@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { slotsForLead, wallFromNaive, sdrCloserPools } from "../src/crm/agenda-slots.js";
+import { slotsForLead, wallFromNaive, sdrCloserPools, wholeHourSlots, OFFER_HOURS } from "../src/crm/agenda-slots.js";
 import { sdrAgendaWindow, sdrSlotsForLead } from "../src/sdr/sdr-agenda.js";
 
 const NOW = wallFromNaive("2026-09-21T08:00"); // segunda-feira
@@ -354,4 +354,25 @@ test("teto de hora ('até as 9h', '9 horas no máximo', 'primeiro horário') vir
   // Faixa nova substitui a antiga.
   const w2 = sdrAgendaWindow([offer, inbound("9 horas no máximo"), { direction: "in", text: "Pensando bem, à tarde fica melhor", at: "2026-09-21T11:30:00Z" }], NOW);
   assert.deepEqual([w2.fromHour, w2.toHour], [12, 19]);
+});
+
+// Caio (04/11, R-023): hoje e amanhã só com :30 livres ofereciam "amanhã às
+// 9h30"; a oferta espontânea anda pro dia útil seguinte, em hora cheia.
+test("janela espontânea só com :30 livres anda um dia útil: a oferta nunca cai em hora quebrada #R-023", async () => {
+  const repo = await world();
+  // Consultas de 60 min às XX:30 de 2 em 2 horas, hoje (21/09) e amanhã
+  // (22/09), pra equipe inteira (o C sobe pro pool sênior quando o dia do
+  // Vitor enche): sobram só buracos de 60 min começando em :30.
+  let n = 0;
+  for (const u of TEAM) for (const day of ["2026-09-21", "2026-09-22"]) for (let h = 7; h <= 19; h += 2) {
+    await repo.create("consultations", { id: `c${++n}`, owner: u.id, at: `${day}T${String(h).padStart(2, "0")}:30`, durationMin: 60 });
+  }
+  const raw = await slotsForLead(repo, { ...options, grade: "C", ...OFFER_HOURS, startDate: "2026-09-21", days: 2, sdr: true });
+  assert.ok(raw.slots.length && raw.slots.every((s) => s.at.endsWith(":30")), `cenário: só :30 livres: ${raw.slots.map((s) => s.at.slice(5))}`);
+  const { slots, extended } = await sdrSlotsForLead(repo, { ...options, grade: "C" });
+  assert.ok(slots.length, "sem hora cheia hoje/amanhã a janela anda");
+  assert.ok(slots.some((s) => s.at.endsWith(":00")), JSON.stringify(slots.map((s) => s.at)));
+  assert.ok(slots.every((s) => s.at >= "2026-09-23T"), `oferta anda pro dia útil seguinte: ${slots.slice(0, 3).map((s) => s.at)}`);
+  assert.equal(extended, true);
+  assert.deepEqual(wholeHourSlots([{ at: "2026-09-22T09:30" }, { at: "2026-09-22T10:30" }]), [], "wholeHourSlots nunca devolve :30");
 });

@@ -27,7 +27,10 @@ export const lastRealReply = (msgs = []) => [...msgs].reverse().find(isRealReply
 export const SLOTS_RX = /(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo) às \d{1,2}h/i;
 // "Tenho agenda para … Qual funciona melhor para você?" é a oferta do roteiro
 // Lever OEM (Leo, 05/10): entra na régua pra slotsOffered/cobrança/aceite.
-export const OFFER_CUE_RX = /consigo|tenho .*(?:livre|dispon)|tenho agenda|qual fica melhor|qual funciona melhor|fica bom pra voc|funciona para voc|pode ser\?|encaix|op[çc][õo]es|ficou /i;
+// "Fica melhor segunda às 9h ou às 11h?" (repescagem do motor, estilo
+// fica-melhor) É oferta (06/11, Caio): sem isso ela virava "pergunta pendente"
+// do R-047 e o "Ok" do lead recebia "qual das duas opções você prefere?".
+export const OFFER_CUE_RX = /consigo|tenho .*(?:livre|dispon)|tenho agenda|fica melhor|qual funciona melhor|fica bom pra voc|funciona para voc|pode ser\?|encaix|op[çc][õo]es|ficou /i;
 export const NOT_OFFER_RX = /nossa conversa|agendad|remarcad|confirmando|est[áa] tudo certo|te espero|come[çc]a em|separou|marcad[oa] (?:ent[ãa]o )?pra/i;
 export const isOfferMsg = (t) => SLOTS_RX.test(t || "") && OFFER_CUE_RX.test(t || "") && !NOT_OFFER_RX.test(t || "");
 
@@ -131,8 +134,10 @@ export function acceptedSlot(text, offered = []) {
     }
   }
   if (offered.length === 1 && ACCEPT_RX.test(t)) return offered[0];
-  if (offered.length >= 2 && /\b(?:o )?primeir[oa]\b/.test(t)) return offered[0];
-  if (offered.length >= 2 && /\b(?:o )?segund[oa]\b/.test(t)) return offered[1];
+  // "o primeiro" / "o segundo" = a opção; "primeiro horário do dia" (Igor,
+  // 06/11) é pedido de faixa, não escolha.
+  if (offered.length >= 2 && /\b(?:o )?primeir[oa]\b(?!\s+horario\s+(?:d[aeo]\b|que|dispon|livre|possivel|da manha|da tarde))/.test(t)) return offered[0];
+  if (offered.length >= 2 && /\b(?:o )?segund[oa]\b(?!\s+horario\s+(?:d[aeo]\b|que|dispon|livre|possivel))/.test(t)) return offered[1];
   return null;
 }
 

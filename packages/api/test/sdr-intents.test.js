@@ -49,6 +49,14 @@ const CASES = [
   ["não consigo", {}, "no", [], []],
   ["Vou ver com meu sócio e te retorno", {}, "postpone", [], []],
   ["te retorno amanhã", { wnow: WNOW }, "postpone", ["day_word"], []],  // o parser da agenda diz que não é pedido; é adiamento (R-031)
+  // Caio (06/11, R-121): adiou e marcou a semana; não é remarcação nem pedido de agenda.
+  ["Olá.\n\nNo momento não consigo.\n\nSemana que vem retorno contato", { wnow: WNOW }, "postpone", ["day_word"], []],
+  ["No momento não consigo", {}, "postpone", [], []],
+  ["Entro em contato na próxima semana", { wnow: WNOW }, "postpone", ["day_word"], []],
+  ["Te retorno segunda", { wnow: WNOW }, "postpone", ["day_word"], []],
+  ["Agora não consigo, te chamo amanhã", { wnow: WNOW }, "postpone", ["day_word"], []],  // com o dia dito, vence o "agora não" do desinteresse
+  ["Só consigo semana que vem", { wnow: WNOW }, "schedule_ask", ["day_word"], []],  // pedido de janela, não adiamento
+  ["sim, mas só amanhã de tarde", { wnow: WNOW }, "schedule_ask", ["day_word", "interest"], []],  // idem: "só amanhã" é agenda
   ["Olá, boa tarde", {}, "greeting_only", [], []],
   ["Bom dia", {}, "greeting_only", [], []],
   ["quanto custa?", {}, "question", ["price_ask"], []],
@@ -119,6 +127,11 @@ test("callbackDay: 'me chama na terça', 'contato somente a partir de terça', '
   assert.equal(callbackDay("Pode me chamar na sexta", WNOW), "2026-09-25");
   assert.equal(callbackDay("Pode ser terça às 10h?", WNOW), null, "pedido de horário não é retorno combinado");
   assert.equal(callbackDay("te retorno", WNOW), null, "sem dia não há o que carimbar");
+  // Caio (06/11): o lead marca a semana sem "me chama"/"te chamo".
+  assert.equal(callbackDay("Olá.\n\nNo momento não consigo.\n\nSemana que vem retorno contato", WNOW), "2026-09-28");
+  assert.equal(callbackDay("Entro em contato na próxima semana", WNOW), "2026-09-28");
+  assert.equal(callbackDay("Te procuro na sexta", WNOW), "2026-09-25");
+  assert.equal(callbackDay("Só consigo semana que vem", WNOW), null, "pedido de janela não é retorno combinado");
 });
 
 // Raio-x 28/10: engajamento de verdade, desinteresse de verdade, dor declarada.

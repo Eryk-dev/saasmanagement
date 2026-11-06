@@ -3,8 +3,9 @@
 // Até 15/10 ela existia em 8 cópias (cérebro e flow), cada uma com a sua
 // variação, e a régua que LÊ a oferta de volta (isOfferMsg/offeredSlotsIn em
 // sdr-signals.js) dependia de todas escreverem igual. Aqui ficam todos os
-// estilos que o motor usa; test/sdr-acoplamento.test.js garante que cada um
-// é reconhecido como oferta pela régua compartilhada.
+// estilos que o motor usa; test/sdr-guards.test.js ("offerLine: toda
+// variante é lida de volta") garante que cada um é reconhecido como oferta
+// pela régua compartilhada.
 //
 // Os textos são byte a byte os que o cérebro mandava: trocar uma palavra aqui
 // muda o que o lead lê E o que o motor reconhece como "já ofereci".

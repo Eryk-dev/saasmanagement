@@ -26,7 +26,8 @@
 // produto ligado), iniciado no index.js.
 import { findThreadByPhone, listMessages, recordMessage, waMatchKey } from "../whatsapp/wa-store.js";
 import { lastRealReply, isOfferMsg, offeredSlotsIn, windowOpenAt, AUTO_REPLY_RX, GREETING_ONLY_RX, collapseSameDay } from "./sdr-signals.js";
-import { NO_INTEREST_RX, plainReply } from "./sdr-intents.js";
+import { NO_INTEREST_RX, plainReply, isNonAnswer } from "./sdr-intents.js";
+import { callbackPending } from "./sdr-state.js";
 import { upsertNotification } from "../tasks/tasks-core.js";
 import { digits } from "../whatsapp/whatsapp.js";
 import { kindOf, firstStage, isNoShowStage, isWonLead, stageByKind } from "../crm/stages.js";
@@ -792,6 +793,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
         for (const lead of leads) {
           if (sends >= CAP || secondTouchNow >= SECOND_TOUCH_PER_TICK) break;
           if (!eligible(lead) || !passOn(cfg.secondTouch, lead)) continue;
+          if (callbackPending(lead, nowMs)) continue; // retorno combinado: espera o dia (R-121)
           const t0 = Date.parse(lead.sdrLog?.firstTouchAt || "");
           if (!Number.isFinite(t0)) continue;
           if (lead.sdrLog?.firstTouchVia === "human") continue; // 1º toque foi gente: fila humana
@@ -894,6 +896,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
         // primeiro, como na campanha — a curva de resposta cai com a idade.
         const cands = leads
           .filter((l) => eligible(l) && passOn(cfg.ladder, l))
+          .filter((l) => !callbackPending(l, nowMs)) // retorno combinado: espera o dia (R-121)
           .filter((l) => !isWonLead(product, l) && !l.callAt && !isNoShowStage(l.stage))
           .filter((l) => ["novo", "qualificacao"].includes(kindOf(product, l.stage || firstStage(product))))
           // A ESCADA VALE PRA QUEM A GENTE JÁ TOCOU, não só pra quem levou o 1º
@@ -1042,7 +1045,9 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           const msgs = await listMessages(repo, thread.id);
           const stampedAt = Date.parse(lead.sdrLog?.callbackSetAt || "") || 0;
           // Lead falou (ou gente falou) depois do combinado: a conversa já andou.
-          if (msgs.some((m) => Date.parse(m.at || 0) > Math.max(stampedAt, cbMs - 12 * HOUR) && (m.direction === "in" || humanIds.has(m.author)))) { await stampLog(lead, { callbackDoneAt: nowIso, callbackVia: "skip:conversa-andou" }); continue; }
+          // "Ok"/"obrigado" em cima do "Combinado" não conta (06/11, Caio: o
+          // "Ok" cancelava o retorno de segunda).
+          if (msgs.some((m) => Date.parse(m.at || 0) > Math.max(stampedAt, cbMs - 12 * HOUR) && ((m.direction === "in" && !isNonAnswer(m.transcript || m.text)) || humanIds.has(m.author)))) { await stampLog(lead, { callbackDoneAt: nowIso, callbackVia: "skip:conversa-andou" }); continue; }
           const nome = leadGreetName(lead, msgs);
           const to = thread.phone || digits(phone);
           try {
@@ -1084,6 +1089,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
         for (const lead of leads) {
           if (sends >= CAP || nudgeNow >= OFFER_NUDGE_PER_TICK) break;
           if (!eligible(lead) || !passOn(cfg.offerNudge, lead)) continue;
+          if (callbackPending(lead, nowMs)) continue; // retorno combinado: espera o dia (R-121)
           if (!["novo", "qualificacao"].includes(kindOf(product, lead.stage || firstStage(product)))) continue;
           if (isWonLead(product, lead) || lead.callAt || isNoShowStage(lead.stage)) continue;
           const t = threadOf(lead);

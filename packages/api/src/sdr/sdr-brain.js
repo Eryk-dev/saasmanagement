@@ -31,11 +31,11 @@ import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, greetName,
 import { transcriber as defaultTranscriber } from "../whatsapp/transcribe.js";
 import { FORM_MSG_RX, SLOTS_RX, OFFER_CUE_RX, isOfferMsg, ACCEPT_RX, offeredSlotsIn, liveOfferedSlots, acceptedSlot, AUTO_REPLY_RX, BARE_HOUR_RX, collapseSameDay, expandSameDay, DEMO_RX, PITCH_RX } from "./sdr-signals.js";
 import { transcribeInbound } from "../whatsapp/wa-transcribe.js";
-import { AFFILIATE_RX, DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, NO_INTEREST_RX, LEAD_MOBILE_RX, DENY_CALL_RX, PERIOD_ASK_RX, PRICE_ASK_RX, WAITING_ROOM_RX, OBJECTION_RX, OEM_NO_RX, bareHour, leadEngaged, lastInboundText, plainReply, requestsCancellation, rescheduleReply, classifyInbound, asksReschedule, burstInboundText, callbackDay, statedPainOf, isNonAnswer, CONFUSED_RX, CLOSING_RX, POSTPONE_RX, referralIn, DEMO_COST_RX, WEAK_PROFILE_RX, EXPLAIN_HERE_RX, ONBOARDING_RX, COMPLAINT_RX, asksHalfHour } from "./sdr-intents.js";
+import { AFFILIATE_RX, DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, NO_INTEREST_RX, LEAD_MOBILE_RX, DENY_CALL_RX, PERIOD_ASK_RX, PRICE_ASK_RX, WAITING_ROOM_RX, OBJECTION_RX, OEM_NO_RX, bareHour, leadEngaged, lastInboundText, plainReply, requestsCancellation, rescheduleReply, classifyInbound, asksReschedule, burstInboundText, callbackDay, statedPainOf, isNonAnswer, CONFUSED_RX, CLOSING_RX, POSTPONE_RX, SCHEDULE_WORDS_RX, referralIn, DEMO_COST_RX, WEAK_PROFILE_RX, EXPLAIN_HERE_RX, ONBOARDING_RX, COMPLAINT_RX, asksHalfHour } from "./sdr-intents.js";
 import { SDR_TEMPLATES } from "./sdr-templates.leverads.js";
 import { resolveWabaId } from "../whatsapp/wa-health.js";
-import { stateOf, humanMuteHolds, GREETING_GAP_MS, DAILY_CAP, botTalkLast24h, handoffHolds, isReturningByForm } from "./sdr-state.js";
-import { PRICE_RX, REDIRECT_RX, DRY_REFUSAL_RX, FAKE_OFFER_RX, PROMISE_RX, SCHEDULE_ASK_Q_RX, DEVICE_ASK_RX, stripDuration, stripDeviceAsk, sameSentence, alreadySaid, isFreshOffer, realOfferOf, discoveryQuestionFor, GREETING_Q_RX, isRealQuestion, nextQuestionFor, DAY_PROPOSAL_RX, makeDraft, validateDraft } from "./sdr-guards.js";
+import { stateOf, humanMuteHolds, GREETING_GAP_MS, DAILY_CAP, botTalkLast24h, handoffHolds, isReturningByForm, callbackPending } from "./sdr-state.js";
+import { PRICE_RX, REDIRECT_RX, DRY_REFUSAL_RX, FAKE_OFFER_RX, PROMISE_RX, CALLBACK_PROMISE_RX, SCHEDULE_ASK_Q_RX, DEVICE_ASK_RX, stripDuration, stripDeviceAsk, sameSentence, alreadySaid, isFreshOffer, realOfferOf, discoveryQuestionFor, GREETING_Q_RX, isRealQuestion, nextQuestionFor, DAY_PROPOSAL_RX, makeDraft, validateDraft } from "./sdr-guards.js";
 import { reofferText, offerLine, NO_SLOT_TEXT } from "./sdr-offer.js";
 // Compat: quem importava daqui continua funcionando (replay, testes).
 export { bareHour, DEMO_RX, PITCH_RX, PRICE_RX, stripDuration, stripDeviceAsk, sameSentence };
@@ -814,7 +814,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     // atrás). A pergunta da régua da call ("me confirma por aqui?") não é
     // pergunta de descoberta, e pergunta com mais de 48h já morreu.
     const lastBotQ = callAtLive || awaitingReschedule ? null : [...msgs].reverse().find((m) => m.direction === "out" && m.author === SDR_AUTHOR
-      && /\?\s*$/.test(m.text || "") && !GREETING_Q_RX.test(m.text || "") && !isOfferMsg(m.text || "") && !REMINDER_Q_RX.test(m.text || "")
+      && /\?\s*$/.test(m.text || "") && !GREETING_Q_RX.test(m.text || "") && !isOfferMsg(m.text || "") && !SLOTS_RX.test(m.text || "") && !REMINDER_Q_RX.test(m.text || "")
       && nowMs - Date.parse(m.at || 0) < 48 * HOUR);
     const afterQ = lastBotQ ? msgs.slice(msgs.indexOf(lastBotQ) + 1).filter((m) => m.direction === "in") : [];
     const pendingQuestion = lastBotQ && afterQ.length && afterQ.every((m) => isNonAnswer(m.transcript || m.text)) && lead.sdrLog?.reaskedFor !== lastBotQ.id ? lastBotQ.text : "";
@@ -838,7 +838,17 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       }
     }
     const closing = CLOSING_RX.test(burstPlain) && !burstText.includes("?");
-    const postponed = POSTPONE_RX.test(burstPlain) && !burstText.includes("?");
+    // ADIAMENTO (R-084) e RETORNO COMBINADO (R-121, 06/11 Caio: "No momento não
+    // consigo. Semana que vem retorno contato" levou "Fica melhor segunda às 9h
+    // ou às 11h?" em cima do "Combinado"). O dia que o lead disse vira
+    // `cbDay` (carimbo sdrLog.callbackAt, seção 1f do flow chama no dia); com
+    // retorno pendente, fala do lead que não pede horário também é adiamento:
+    // a resposta sai sem oferta.
+    const cbDay = callbackDay(burstText, wnow);
+    const cbPending = !callAtLive && callbackPending(lead, nowMs);
+    const asksTime = HAS_HOUR_RX.test(burstText) || DAY_WORD_RX.test(burstText) || SCHEDULE_WORDS_RX.test(burstText) || PERIOD_ASK_RX.test(burstText);
+    // Pedido de janela ("só amanhã de tarde") é agenda, não adiamento.
+    const postponed = !burstText.includes("?") && (POSTPONE_RX.test(burstPlain) || (!!cbDay && !requestedDate) || (cbPending && !asksTime));
     // O que a agenda tinha na hora da decisão vai pro carimbo da thread
     // (thread.brain): sem isso, "por que ofereceu amanhã?" não tem resposta.
     Object.assign(meta, { slots: slotList.slice(0, 3).map((s) => s.label), pair: suggestedPair.map((s) => s.label) });
@@ -866,6 +876,15 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     if (factsDiff.length) {
       if (shadowStats.factsDiff.length < 50) shadowStats.factsDiff.push({ lead: lead.id, factsDiff, state: st.state });
       log.warn?.({ lead: lead.id, factsDiff }, "sdr-state: fatos divergem do cérebro");
+    }
+    // "OK" EM CIMA DO RETORNO COMBINADO (R-121, 06/11 Caio): o lead marcou o
+    // dia, nós dissemos "Combinado", e ele fechou com "Ok". Nada a responder:
+    // a IA refazia a pergunta ("qual das duas opções você prefere?") e o flow
+    // lia o "Ok" como conversa que andou, cancelando o retorno de segunda.
+    if (cbPending && !asksTime && !burstText.includes("?") && burstText.trim().split(/\s+/).filter(Boolean).length <= 4
+      && (closing || isNonAnswer(burstText) || ACCEPT_RX.test(burstPlain))) {
+      log.info?.({ lead: lead.id, callbackAt: lead.sdrLog?.callbackAt }, "sdr-brain: ack em cima do retorno combinado, silêncio");
+      return "silencio";
     }
     // LEAD NA SALA SEM ESPECIALISTA (raio-x 30/09): 4 casos em 2 semanas, 3
     // com o closer preso na call anterior. O robô respondia "deixa eu
@@ -940,6 +959,18 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       callLabel: callAtLive ? slotLabelFull(callAtLive, wnow) : "", callPassed, returning, rescheduling: !!awaitingReschedule || reschedule?.status === "offered",
       statedPain, pendingQuestion, pendingQuestionId: pendingQuestion ? lastBotQ.id : "", confused, closing, postponed, noInterest: noInterestNow, weakProfile,
     });
+    // RETORNO COMBINADO (R-084/R-121): "me chama na terça", "semana que vem
+    // retorno contato" (o lead) ou "te chamo amanhã" (a nossa resposta) vira
+    // carimbo que a escada (seção 1f do flow) executa no dia. O dia do lead
+    // manda; a nossa fala é o fallback. Vale nos dois caminhos (enforce e
+    // legado): antes só o enforce carimbava.
+    const stampCallback = async (sentParts = []) => {
+      if (callAtLive) return;
+      const day = cbDay || callbackDay(sentParts.join(" "), wnow);
+      if (!day) return;
+      const [y, mo, d] = day.split("-").map(Number);
+      await stamp(lead, { callbackAt: new Date(Date.UTC(y, mo - 1, d, 12, 30)).toISOString(), callbackSetAt: new Date(nowMs).toISOString(), callbackDoneAt: null }).catch(() => {});
+    };
     // SOMBRA DO VALIDADOR (15/10): o texto cru da IA passa pelo validador em
     // enforce e o resultado é comparado com o que a cadeia legada produziu;
     // divergência vai pro carimbo (shadow) e pro shadowStats (os testes de cena
@@ -1186,7 +1217,8 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       promptVersion: cfg.promptVersion,
       state: st.state,
       script: st.script,
-      facts: { demoOffered, slotsOffered, engaged, firstReply, askingNow: askingPriceNow, statedPain, pendingQuestion, confused, noInterest: noInterestNow, weakProfile: weakProfile || !!lead.sdrLog?.profileNote, profileNote: lead.sdrLog?.profileNote || "", callPassed, returning },
+      facts: { demoOffered, slotsOffered, engaged, firstReply, askingNow: askingPriceNow, statedPain, pendingQuestion, confused, noInterest: noInterestNow, weakProfile: weakProfile || !!lead.sdrLog?.profileNote, profileNote: lead.sdrLog?.profileNote || "", callPassed, returning,
+        callbackDay: cbDay ? dayLabelOf(cbDay) : "", callbackPending: cbPending ? dayLabelOf(String(lead.sdrLog?.callbackAt || "").slice(0, 10)) : "", postponed },
     });
     // A IA recebeu a pergunta pendente: conta como refeita (uma vez, R-047).
     // Antes só o motor carimbava, e a pergunta voltava a cada mensagem.
@@ -1400,7 +1432,10 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       }
       // Hora quebrada sem o lead ter pedido: cai pra hora cheia do mesmo
       // horário; sem vaga nela, re-oferta (R-023).
-      if (/:30$/.test(String(decision.horario || "")) && !asksHalfHour(burstText)) {
+      // Exceção: :30 que NÓS oferecemos e o lead aceitou marca (04/11, Caio:
+      // "amanhã às 9h30" ofertado, "Pode ser." virou "acabou de ser preenchido").
+      const weOffered30 = offeredSlotsIn(agendaMessages, SDR_AUTHOR).some((o) => o.at === decision.horario);
+      if (/:30$/.test(String(decision.horario || "")) && !asksHalfHour(burstText) && !weOffered30) {
         const whole = slotList.find((x) => x.at === `${String(decision.horario).slice(0, 13)}:00`);
         log.info?.({ lead: lead.id, de: decision.horario, para: whole?.at || "" }, "sdr-brain: hora quebrada sem pedido virou hora cheia");
         decision.horario = whole ? whole.at : "";
@@ -1495,15 +1530,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
         if (sentSlots.length) await holdSlots(repo, { saas: product.id, leadId: lead.id, slots: sentSlots, now: at }).catch(() => {});
         await stamp(lead, { lastOffer: { at: new Date(nowMs).toISOString(), slots: sentSlots.map((x) => x.at) } }).catch(() => {});
       }
-      // RETORNO COMBINADO (R-084): "me chama na terça" / "te chamo amanhã"
-      // vira carimbo que a escada (seção 1f do flow) executa no dia.
-      if (!callAtLive) {
-        const cbDay = callbackDay(burstText, wnow) || callbackDay(finalParts.join(" "), wnow);
-        if (cbDay) {
-          const [y, mo, d] = cbDay.split("-").map(Number);
-          await stamp(lead, { callbackAt: new Date(Date.UTC(y, mo - 1, d, 12, 30)).toISOString(), callbackSetAt: new Date(nowMs).toISOString(), callbackDoneAt: null }).catch(() => {});
-        }
-      }
+      await stampCallback(finalParts);
       return "responder";
     }
     // TRAVA DE PREÇO (1ª vez): a IA citou valor → sai a resposta oficial no
@@ -1667,7 +1694,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     // Sem pergunta OU propondo dia sem hora nenhuma: nos dois casos o lead fica
     // sem o que responder, então o motor emenda a oferta concreta.
     // TODA RESPOSTA AVANÇA (28/10): mesma semântica do guard nextStep (R-031).
-    const semSaida = !parts.some((t) => isRealQuestion(t) || isOfferMsg(t));
+    const semSaida = !parts.some((t) => isRealQuestion(t) || isOfferMsg(t) || CALLBACK_PROMISE_RX.test(t));
     const diaSemHora = DAY_PROPOSAL_RX.test(parts.join(" ")) && !HAS_HOUR_RX.test(parts.join(" "));
     if ((semSaida || diaSemHora) && !callAtLive && !inCallWindow && !FORM_MSG_RX.test(lastInText) && !closing && !postponed && !noInterestNow) {
       if (!engaged) {
@@ -1684,6 +1711,14 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
         else parts.push(push);
       }
       log.info?.({ lead: lead.id }, "sdr-brain: trava de beco emendou o próximo passo");
+    }
+    // ADIAMENTO SEM OFERTA (R-084/R-121): espelho do guard noOfferWhenPostponed
+    // na cadeia legada, pra sombra não divergir.
+    if (postponed && !callAtLive && parts.some((t) => isOfferMsg(t))) {
+      const kept = parts.filter((t) => !isOfferMsg(t));
+      parts.length = 0;
+      parts.push(...(kept.length ? kept : [`Combinado${nome ? ` ${nome}` : ""}, quando der me chama aqui que a gente combina a demonstração`]));
+      log.info?.({ lead: lead.id }, "sdr-brain: adiamento do lead tirou a oferta");
     }
     // UMA OFERTA POR RESPOSTA (Leo, 08/10): dois balões com pares diferentes
     // saíram no mesmo minuto ("13h ou 15h" e logo "9h ou 11h"). Fica a ÚLTIMA
@@ -1705,6 +1740,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     shadowCompare(sh, rawParts, "responder", parts);
     await send(parts, { kind: "ia", path: "responder" });
     if (aborted) return "abortado";
+    await stampCallback(parts);
     // Horário citado na resposta fica RESERVADO enquanto o lead decide: some da
     // oferta dos outros leads por 30 min (agenda-slots.js). Só quando a resposta
     // realmente ofereceu horário.
