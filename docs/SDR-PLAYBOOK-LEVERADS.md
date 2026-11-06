@@ -3,7 +3,7 @@
 GERADO de `packages/api/src/sdr/sdr-rules.js` (`node src/sdr/sdr-rules.js --write`). Não edite à mão: o
 teste `sdr-rulebook.test.js` recusa o arquivo quando ele difere do registro.
 
-84 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
+85 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
 origem (data, quem pediu, PR ou print), o enunciado, os estados da conversa e o roteiro em que vale, a camada
 que a executa e as exceções. Toda regra ativa tem pelo menos um teste ou cena com a tag `#R-nnn`.
 
@@ -211,7 +211,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-028 · Horário tomado é desculpa, nunca recusa seca
 
 - Origem: 2026-08-25, Leo (caso Gabriel; "não tenho vaga" com agenda aberta é a pior contradição (#1150, 15/10); desculpa só sobre horário NOSSO (raio-x 28/10))
-- Regra: Horário que o lead escolheu entre os que a gente OFERECEU e caiu no meio do caminho: pede desculpa, diz que outro cliente pegou e re-oferece. Hora que ele pediu e nunca esteve na lista ("pode ser às 12hs?", "oito da noite") recebe a verdade: "às 12h não tenho vaga" + o par real, sem culpar outro cliente. "Não tenho horário" só sai quando a lista está realmente vazia.
+- Regra: Horário que o lead escolheu entre os que a gente OFERECEU e caiu no meio do caminho: pede desculpa, diz que outro cliente pegou e re-oferece. Horário inventado pela IA sem o lead ter escolhido nem pedido hora (06/11): re-oferta seca, sem desculpa (a desculpa era mentira sobre horário que ninguém pegou). Hora que ele pediu e nunca esteve na lista ("pode ser às 12hs?", "oito da noite") recebe a verdade: "às 12h não tenho vaga" + o par real, sem culpar outro cliente. "Não tenho horário" só sai quando a lista está realmente vazia.
 - Vale em: estados todos; roteiro todos; executada por guard, offer (validador apologyOnTakenSlot)
 
 ### R-029 · Sem oferta VIVA, nunca "os horários que te passei"
@@ -241,8 +241,14 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-032 · O pedido do lead filtra a lista; pedido lotado diz que lotou
 
 - Origem: 2026-09-30, Leo (#1113; "terça ou quarta" (#1140); "depois desse horário" (#1147, 13/10); "boa tarde" não é período (#1150, 15/10))
-- Regra: Dia, período, hora, faixa ("depois das 15h", "depois das 1800", "fora do horário comercial" = a partir das 18h), relativo ao par oferecido ("mais tarde", "antes desse"), "terça ou quarta", "outra semana" e "na sexta estarei livre" viram janela e a lista chega filtrada. Negação com alternativa depois é pedido; cláusula de motivo ("porque minha operação é de manhã") não é; saudação ("boa tarde") não é período; pedido que ficou no passado é esquecido; período pedido ontem anda pra hoje. Pedido sem vaga: diz em uma frase que lotou e oferece o par das alternativas; só vira humano se o lead recusar as alternativas e insistir. Hora que cabe hoje e amanhã: pergunta "hoje ou amanhã?" em vez de marcar no palpite.
+- Regra: Dia, período, hora, faixa ("depois das 15h", "depois das 1800", "fora do horário comercial" = a partir das 18h; teto: "até as 9h", "9 horas no máximo", "primeiro horário do dia", "o mais cedo possível" = as primeiras horas, 06/11 Igor), relativo ao par oferecido ("mais tarde", "antes desse"), "terça ou quarta", "outra semana" e "na sexta estarei livre" viram janela e a lista chega filtrada. Negação com alternativa depois é pedido; cláusula de motivo ("porque minha operação é de manhã") não é; saudação ("boa tarde") não é período; pedido que ficou no passado é esquecido; período pedido ontem anda pra hoje. Pedido sem vaga: diz em uma frase que lotou e oferece o par das alternativas; só vira humano se o lead recusar as alternativas e insistir. Hora que cabe hoje e amanhã: pergunta "hoje ou amanhã?" em vez de marcar no palpite.
 - Vale em: estados todos; roteiro todos; executada por agenda, intent, prompt
+
+### R-119 · A faixa de hora que o lead pediu fica valendo nos turnos seguintes
+
+- Origem: 2026-11-06, Leo (print do Igor (06/11): "8, 9 horas no máximo" → "acabou de ser preenchido" + o mesmo par de 13h/16h; "pode ser outro dia" → 10h/13h. "Parece que ele leva em consideração apenas a última mensagem do cliente")
+- Regra: A faixa de hora que o lead pediu ("até as 9h", "depois das 15h", "à tarde") continua valendo nas respostas seguintes da mesma conversa: "pode ser outro dia" muda o dia e mantém a faixa, até ele pedir outra. Hora pedida que não existe na lista recebe "às 9h não tenho vaga" + o par dentro da faixa; a desculpa "outro cliente pegou" só vale pra horário NOSSO que ele escolheu (R-028). A IA lê a conversa inteira (últimas 24 mensagens) e a lista já chega filtrada pela faixa.
+- Vale em: estados todos; roteiro todos; executada por agenda, offer
 
 ### R-040 · Recusa do par muda os horários
 

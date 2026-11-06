@@ -50,6 +50,11 @@ const NEXT_WEEK_RX = /semana que vem|proxima semana|outra semana|semana seguinte
 // Hora escrita "1800", "18:00", "18hs", "18 horas" (28/10: "só consigo depois
 // das 1800" não era lido e o robô ofereceu 14h).
 const HOUR_BOUND_RX = /\b(depois|apos|a partir|antes)\s+(?:d[aeo]s?|[ao]s?)\s*(\d{1,2})(?::?[0-5]\d)?\s*(?:h\d{0,2}|hs|hrs|horas)?\b/;
+// Teto de hora: "até as 9h"/"até as 9", "no máximo (às) 9h", "9 horas no
+// máximo". Número sem marca de hora só vale depois de "até as" ("no máximo 10
+// pedidos" não é horário).
+const UNTIL_HOUR_RX = /\bate\s+(?:a|as|o|os)\s+(\d{1,2})(?::?[0-5]\d)?\s*(?:h\d{0,2}|hs|hrs|horas)?\b|\b(?:ate|no maximo|maximo)\s+(?:a|as|o|os)?\s*(\d{1,2})(?::?[0-5]\d)?\s*(?:h\d{0,2}|hs|hrs|horas)\b|\b(\d{1,2})(?::?[0-5]\d)?\s*(?:h\d{0,2}|hs|hrs|horas)\s+(?:no maximo|no max|maximo)\b/;
+const EARLIEST_RX = /\bprimeir[oa]s? hor(?:ario|a)s?\b|\bmais cedo possivel\b|\bo mais cedo\b|\blogo cedo\b|\bbem cedo\b|\bcedinho\b|\bde manha cedo\b|\bmanha bem cedo\b/;
 // "Fora do horário comercial", "depois do expediente", "sou CLT", "só à noite":
 // o lead só pode no fim do dia (28/10, Everton/VitorMatheus: o robô insistia no
 // par da manhã e dizia que só atende em horário comercial).
@@ -77,6 +82,17 @@ const REASON_RX = /^(?:porque|pq|pois|ja que|visto que)\b/;
 // pista de alternativa, "manhã/tarde/noite" é recusa, não pedido; "depois
 // das 15h" é sempre restrição (alternativa por natureza).
 function periodOf(t, negIdx, offer = null) {
+  // TETO DE HORA (06/11, Igor: "primeiro horário do dia, 8, 9 horas no
+  // máximo" não virava pedido e o robô insistiu em 13h/16h): "até as 9h",
+  // "9 horas no máximo", "no máximo 9h" = a conversa tem que COMEÇAR até
+  // essa hora, inclusive (toHour é exclusivo). "Primeiro horário do dia",
+  // "o mais cedo possível", "logo cedo" = as primeiras horas da agenda.
+  const until = t.match(UNTIL_HOUR_RX);
+  if (until) {
+    const h = Number(until[1] ?? until[2] ?? until[3]);
+    if (h >= 0 && h <= 23) return { fromHour: null, toHour: h + 1 };
+  }
+  if (EARLIEST_RX.test(t)) return { fromHour: null, toHour: OFFER_HOURS.fromHour + 2 };
   const bound = t.match(HOUR_BOUND_RX);
   if (bound) {
     const h = Number(bound[2]);
@@ -297,6 +313,11 @@ export function sdrAgendaWindow(messages = [], now = wallNow(), { callAt = "" } 
   let offerMsg = null; // a mensagem da última oferta nossa (pra excluir o que foi recusado)
   const refused = new Set();
   let exclude = [];
+  // PREFERÊNCIA DE HORA QUE FICA VALENDO (R-119, Leo 06/11): "9 horas no
+  // máximo" dito num turno vale nos seguintes ("pode ser outro dia" muda o
+  // dia, não a hora) até o lead pedir outra faixa. Antes cada turno lia só a
+  // última mensagem e o robô ofereceu 10h/13h a quem tinha pedido até as 9h.
+  let standing = null;
   for (const g of groupBursts(messages.slice(-24))) {
     const m = g.last;
     const parsedAt = m.at ? wallNow(new Date(m.at)) : now;
@@ -316,6 +337,8 @@ export function sdrAgendaWindow(messages = [], now = wallNow(), { callAt = "" } 
       continue;
     }
     if (lastDayOf(requested) < ymd(now)) { window = defaultWindow(now); continue; }
+    if (requested.fromHour != null || requested.toHour != null) standing = { fromHour: requested.fromHour, toHour: requested.toHour };
+    else if (standing) Object.assign(requested, standing, { carried: true });
     window = requested;
   }
   // Pedido SÓ de período feito num dia anterior ("consigo à tarde", dito
