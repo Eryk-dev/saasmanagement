@@ -10,6 +10,7 @@ const TEAM = [
   { id: "jonan", name: "Jonan", roles: ["closer"], compLevel: 1 },
   { id: "jonathan", name: "Jonathan", roles: ["closer"], compLevel: 1 },
   { id: "vit", name: "Vitor Silva", roles: ["integrator"], compLevel: 3 },
+  { id: "us_ric", name: "Ricardo", roles: ["closer"], compLevel: 3, saas: "leverads" },
   { id: "other", name: "Outro", roles: ["closer"], compLevel: 3 },
   { id: "wrong-product", name: "Leonardo", roles: ["closer"], saas: "uniquekids" },
 ];
@@ -26,6 +27,7 @@ test("equipe SDR é nominal e respeita produto, independente de compLevel #R-033
   const pools = sdrCloserPools(TEAM, "leverads");
   assert.deepEqual(pools.upper.map((u) => u.id), ["leo", "jonan", "jonathan"]);
   assert.deepEqual(pools.junior.map((u) => u.id), ["vit"]);
+  assert.deepEqual(pools.priceJunior.map((u) => u.id), ["us_ric"]);
 });
 
 // Oferta espontânea (Leo, 30/09): HOJE com 2h de folga + o próximo dia útil.
@@ -47,16 +49,39 @@ test("S/A/B somente Leonardo/Jonan/Jonathan; C/D/E e sem nota priorizam Vitor; o
 });
 
 // Leo, 23/10/2026: Price é call de Leonardo/Jonan/Jonathan, mesmo pra lead C/D/E.
-test("lead de Lever Price nunca vai pro Vitor, qualquer que seja a nota #R-033", async () => {
+// Leo, 08/11/2026: Price com nota D ou E vai pro Ricardo primeiro.
+test("lead de Lever Price nunca vai pro Vitor; C e sem nota ficam com os de cima, D/E com o Ricardo #R-033", async () => {
   const repo = await world();
-  for (const grade of ["C", "D", "E", null]) {
+  for (const grade of ["S", "A", "B", "C", "D", "E", null]) {
     const price = await sdrSlotsForLead(repo, { ...options, grade, lead: { id: "p1", saas: "leverads", sourcePain: "PRICE" } });
     assert.ok(price.slots.length);
-    assert.equal(price.pool, "upper");
-    assert.ok(price.slots.every((s) => ["leo", "jonan", "jonathan"].includes(s.closer)), `Price nota ${grade} fora do Vitor`);
+    assert.ok(price.slots.every((s) => s.closer !== "vit"), `Price nota ${grade} fora do Vitor`);
+    if (["D", "E"].includes(grade)) {
+      assert.equal(price.pool, "price-junior");
+      assert.ok(price.slots.every((s) => s.closer === "us_ric"), `Price nota ${grade} vai pro Ricardo`);
+    } else {
+      assert.equal(price.pool, "upper");
+      assert.ok(price.slots.every((s) => ["leo", "jonan", "jonathan"].includes(s.closer)), `Price nota ${grade} com os de cima`);
+    }
     const oem = await sdrSlotsForLead(repo, { ...options, grade, lead: { id: "o1", saas: "leverads", sourcePain: "OEM" } });
-    assert.ok(oem.slots.every((s) => s.closer === "vit"), `OEM nota ${grade} segue no Vitor`);
+    assert.ok(oem.slots.every((s) => s.closer !== "us_ric"), `OEM nota ${grade} nunca vai pro Ricardo`);
+    if (!["S", "A", "B"].includes(grade)) assert.ok(oem.slots.every((s) => s.closer === "vit"), `OEM nota ${grade} segue no Vitor`);
   }
+});
+
+test("Price D/E só sobe pros de cima no dia em que o Ricardo lota; sem Ricardo cadastrado volta pros de cima #R-033", async () => {
+  const repo = await world();
+  const lead = { id: "p2", saas: "leverads", sourcePain: "PRICE" };
+  await repo.create("agenda_blocks", { id: "r", user: "us_ric", recur: "once", date: "2026-09-22", allDay: true });
+  const result = await sdrSlotsForLead(repo, { ...options, grade: "D", lead });
+  assert.equal(result.pool, "price-junior+upper");
+  assert.ok(result.slots.filter((s) => s.at.startsWith("2026-09-21T")).every((s) => s.closer === "us_ric"), "hoje segue do Ricardo");
+  const amanha = result.slots.filter((s) => s.at.startsWith("2026-09-22T"));
+  assert.ok(amanha.length && amanha.every((s) => ["leo", "jonan", "jonathan"].includes(s.closer)), "amanhã lotado do Ricardo sobe pros de cima");
+  await repo.remove("users", "us_ric");
+  const semRicardo = await sdrSlotsForLead(repo, { ...options, grade: "E", lead });
+  assert.equal(semRicardo.pool, "upper");
+  assert.ok(semRicardo.slots.length && semRicardo.slots.every((s) => ["leo", "jonan", "jonathan"].includes(s.closer)));
 });
 
 test("S/A/B balanceia entre os três; não desce ao Vitor com pool ausente #R-033", async () => {
