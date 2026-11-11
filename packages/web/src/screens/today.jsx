@@ -1958,7 +1958,8 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
             <LeadSection title="Informações da apresentação" className="today-presentation">
               <LeadOriginRow lead={l} saasCfg={saasCfg} />
               {l.proposal_edit_url && !preview ? <>
-                <PresentationConfig key={l.proposal_edit_url} lead={l} />
+                <PresentationConfig key={l.proposal_edit_url} lead={l}
+                  onLead={(f) => patch({ proposalUrl: f.proposalUrl, proposal_edit_url: f.proposal_edit_url, proposta_id: f.proposta_id, ...(f.amount > 0 ? { amount: f.amount } : {}) })} />
               </> : <p className="today-script-hint">{preview ? "A configuração da apresentação aparece aqui na atividade do lead." : "Prepare a proposta pelo botão Proposta no WhatsApp para preencher pedidos, ticket médio, produtos e plano aqui. A configuração continua disponível na apresentação."}</p>}
             </LeadSection>
             <LeadSection title="Perguntas e respostas do formulário">
