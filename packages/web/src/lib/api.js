@@ -199,6 +199,9 @@ export const api = {
   // Tela zero do deck de slides no card de Atividades (planos de hoje).
   proposalConfig: (id) => req("GET", `/api/leads/${id}/proposal-config`),
   saveProposalConfig: (id, deckC) => req("PUT", `/api/leads/${id}/proposal-config`, { deckC }),
+  // Produtos da proposta pelo card: { lote } troca pro deck de criação de
+  // anúncios; { plataforma, price, oem } troca pro deck de slides com a marcação.
+  setProposalProducts: (id, products) => req("PUT", `/api/leads/${id}/proposal-products`, products),
   shareProposal: (id, offer) => req("POST", `/api/leads/${id}/proposal-share`, { offer }),
   // Proposta personalizada (objetiva): capa + combinado+valor. `preview:true`
   // devolve { html } sem salvar; senão faz upsert e devolve { id, url }.

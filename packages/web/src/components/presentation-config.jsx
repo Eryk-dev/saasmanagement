@@ -65,23 +65,81 @@ export function LeadOriginRow({ lead, saasCfg }) {
   );
 }
 
-export function PresentationConfig({ lead }) {
+// Os produtos que o closer marca no card (Leo, 11/11/2026). LeverAds, Lever
+// Price e pacote de OEM moram no deck de slides; o lote de criação de anúncios
+// é o deck OEM, uma apresentação própria que anda sozinha. Marcar um produto
+// do outro deck troca a apresentação do lead (PUT /proposal-products): o
+// card volta a apontar pra proposta daquele modelo, com o que já tinha.
+const SLIDES_PRODUCTS = [
+  { key: "plataforma", title: "LeverAds", hint: "plano da plataforma, por mês" },
+  { key: "price", title: "Lever Price", hint: "precificação automática, por mês" },
+  { key: "oem", title: "Pacote de OEM avulso", hint: "pagamento único" },
+];
+const LOTE = { title: "Criação de anúncios OEM · lote", hint: "apresentação própria: quantidade × valor por anúncio, combinados na call" };
+
+export function PresentationConfig({ lead, onLead }) {
   const url = lead.proposal_edit_url;
-  const [data, setData] = useState(null); // null = carregando · { fallback } · payload do deck
+  const [data, setData] = useState(null); // null = carregando · { fallback, layout } · payload do deck
+  const [swap, setSwap] = useState(""); // "" | busy | mensagem de erro
   useEffect(() => {
     let alive = true;
     setData(null);
     api.proposalConfig(lead.id)
-      .then((r) => { if (alive) setData(r?.layout === "slides" && r.cfg ? r : { fallback: true }); })
-      .catch(() => { if (alive) setData({ fallback: true }); });
+      .then((r) => { if (alive) setData(r?.layout === "slides" && r.cfg ? r : { fallback: true, layout: r?.layout || "" }); })
+      .catch(() => { if (alive) setData({ fallback: true, layout: "" }); });
     return () => { alive = false; };
   }, [lead.id, url]);
+
+  // Troca de deck pela marcação de produtos. O card remonta quando o link do
+  // lead muda (key no pai); sem pai, o payload da resposta já basta.
+  function switchProducts(products) {
+    if (swap === "busy") return;
+    setSwap("busy");
+    api.setProposalProducts(lead.id, products)
+      .then((r) => {
+        setSwap("");
+        setData(r?.layout === "slides" && r.cfg ? { ...r, url: r.lead?.proposal_edit_url } : { fallback: true, layout: r?.layout || "", url: r?.lead?.proposal_edit_url });
+        if (onLead && r?.lead) onLead(r.lead);
+      })
+      .catch((e) => setSwap(e?.message || "não consegui trocar a apresentação, tente de novo"));
+  }
+
   if (!data) return <p className="today-script-hint" role="status">Carregando apresentação…</p>;
-  if (data.fallback) return <PresentationFrame url={url} />;
-  return <DeckConfig leadId={lead.id} url={url} initial={data} />;
+  const liveUrl = data.url || url;
+  if (data.fallback) {
+    return <>
+      {data.layout === "oem" && <OemProducts busy={swap === "busy"} error={swap !== "busy" ? swap : ""} onSwitch={switchProducts} />}
+      <PresentationFrame key={liveUrl} url={liveUrl} />
+    </>;
+  }
+  return <DeckConfig key={data.proposal} leadId={lead.id} url={liveUrl} initial={data} swap={swap} onSwitch={switchProducts} />;
 }
 
-function DeckConfig({ leadId, url, initial }) {
+// Deck OEM no card: os produtos ficam marcáveis do mesmo jeito. Marcar um do
+// deck de slides leva a apresentação pra lá, já com esse produto na oferta.
+function OemProducts({ busy, error, onSwitch }) {
+  return (
+    <div className="deck-cfg-products" role="group" aria-label="Produtos na proposta">
+      <div className="kicker">Produtos na proposta</div>
+      {SLIDES_PRODUCTS.map((x) => (
+        <ProductRow key={x.key} title={x.title} hint={x.hint} on={false} disabled={busy}
+          onToggle={() => onSwitch({ plataforma: x.key === "plataforma", price: x.key === "price", oem: x.key === "oem" })} />
+      ))}
+      <ProductRow title={LOTE.title} hint={LOTE.hint} on disabled={busy} onToggle={() => onSwitch({ lote: false })} />
+      <SwapStatus busy={busy} error={error} />
+    </div>
+  );
+}
+
+function SwapStatus({ busy, error }) {
+  return (
+    <span className="deck-cfg-status mono dim" role="status" data-tone={error ? "neg" : undefined}>
+      {busy ? "trocando a apresentação…" : error || ""}
+    </span>
+  );
+}
+
+function DeckConfig({ leadId, url, initial, swap = "", onSwitch }) {
   const [catalog, setCatalog] = useState(initial.catalog);
   const [cfg, setCfgState] = useState(initial.cfg);
   const cfgRef = useRef(initial.cfg);
@@ -183,6 +241,10 @@ function DeckConfig({ leadId, url, initial }) {
             <SelectPopover label="Pacote de OEM" size="sm" width={260} value={String(cfg.oemPack)} options={packOptions} onChange={(v) => update({ oemPack: v })} />
           </ProductRow>
         )}
+        {onSwitch && (
+          <ProductRow title={LOTE.title} hint={LOTE.hint} on={false} disabled={swap === "busy"} onToggle={() => onSwitch({ lote: true })} />
+        )}
+        {onSwitch && (swap ? <SwapStatus busy={swap === "busy"} error={swap !== "busy" ? swap : ""} /> : null)}
         {!planOptions.length && !priceOptions.length && !packOptions.length && (
           <p className="today-script-hint">Nenhum plano à venda no catálogo. Cadastre em Comercial → Planos.</p>
         )}
@@ -209,10 +271,10 @@ function DeckConfig({ leadId, url, initial }) {
   );
 }
 
-function ProductRow({ title, hint, on, onToggle, children }) {
+function ProductRow({ title, hint, on, onToggle, disabled = false, children }) {
   return (
     <div className="deck-cfg-product" data-on={on || undefined}>
-      <Checkbox checked={on} onChange={onToggle}>
+      <Checkbox checked={on} onChange={onToggle} disabled={disabled}>
         <span className="deck-cfg-product-title">{title}</span>
         <span className="deck-cfg-product-hint">{hint}</span>
       </Checkbox>

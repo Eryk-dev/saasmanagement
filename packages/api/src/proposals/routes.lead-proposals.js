@@ -3,8 +3,10 @@
 
 import { dispatchProposal } from "./dispatch.js";
 import { publicBase } from "../platform/request.js";
-import { buildCustomProposal, proposalOffersOf, publicProposal, shareProposalOffer, syncProposalLeadSnapshot, syncProposalCatalog, deckConfigOf, saveDeckConfig } from "./proposal.js";
+import { buildCustomProposal, proposalOffersOf, publicProposal, shareProposalOffer, syncProposalLeadSnapshot, syncProposalCatalog, deckConfigOf, saveDeckConfig, runNativeProposal } from "./proposal.js";
 import { slimCatalog } from "./proposal-slides-page.js";
+import { calcOem, deckOemConfig } from "./proposal-oem-page.js";
+import { catalogAmount } from "./proposal-catalog.js";
 import { proposalPageHtml } from "./proposal-page.js";
 import { logActivity } from "../crm/lead-flow.js";
 
@@ -114,6 +116,61 @@ export function registerLeadProposalRoutes(app, repo) {
     const { p } = await workingDeck(lead);
     if (!p) return reply.code(409).send({ error: "o lead não tem apresentação em slides pra configurar" });
     return deckPayload(await saveDeckConfig(repo, p, deckC));
+  });
+
+  // ── Produtos da proposta, no card de Atividades (Leo, 11/11/2026) ─────────
+  // O closer marca no próprio card QUAIS produtos a proposta vai sinalizar, e
+  // a apresentação SEGUE a marcação: lote de criação de anúncios (deck OEM,
+  // quantidade × valor combinados na call) é uma apresentação própria e anda
+  // sozinho; LeverAds, Lever Price e pacote de OEM moram no deck de slides, e
+  // a marcação vira a tela zero (state.deckC). Trocar de deck NÃO cria outra
+  // proposta quando o lead já teve uma daquele modelo: o card volta a apontar
+  // pra ela, com os números que o closer já tinha preenchido (link mandado ao
+  // cliente é cópia congelada e segue de pé). Deck fixado à mão no lead não é
+  // trocado por aqui: o menu "Proposta no WhatsApp" é quem solta a fixação.
+  app.put("/api/leads/:id/proposal-products", async (req, reply) => {
+    let lead = await repo.get("leads", req.params.id);
+    if (!lead) return reply.code(404).send({ error: "Not found" });
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    if (lead.proposalPinned) return reply.code(409).send({ error: "A apresentação deste lead está fixada. Solte pelo menu Proposta no WhatsApp antes de trocar os produtos." });
+
+    const templates = (await repo.list("proposal_templates")).filter((t) => t.saas === lead.saas);
+    const target = body.lote ? "oem" : "slides";
+    const template = target === "oem"
+      ? templates.find((t) => t.layout === "oem" && (t.status === "published" || t.selectable))
+      : (templates.find((t) => t.layout === "slides" && t.status === "published") || templates.find((t) => t.layout === "slides"));
+    if (!template) return reply.code(409).send({ error: target === "oem" ? "Este produto não tem apresentação de criação de anúncios." : "Este produto não tem apresentação em slides." });
+
+    // Proposta de trabalho do modelo escolhido: a atual, uma anterior do lead
+    // (reaproveitada) ou uma nova.
+    const working = (p) => p && p.template === template.id && p.editKey && !p.sharedFrom && p.origin !== "custom";
+    let p = lead.proposta_id ? await repo.get("proposals", lead.proposta_id) : null;
+    if (!working(p)) {
+      const ids = await repo.listWhere("proposals", { lead: lead.id, template: template.id }, { fields: ["template", "editKey", "sharedFrom", "origin", "createdAt"] });
+      const prev = ids.filter(working).sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))[0];
+      if (prev) {
+        p = await repo.get("proposals", prev.id);
+        const proposalUrl = `${publicBase(req)}/p/${p.id}`;
+        const patch = { proposta_id: p.id, proposalUrl, proposal_edit_url: `${proposalUrl}?k=${p.editKey}` };
+        const amount = p.layout === "oem" ? calcOem(deckOemConfig(p)).total : catalogAmount(p);
+        if (amount > 0 && !lead.planClosed && !lead.wonAt) patch.amount = amount;
+        lead = await repo.update("leads", lead.id, patch);
+      } else {
+        const r = await runNativeProposal(repo, lead, { force: true, template: template.id, baseUrl: publicBase(req) });
+        if (!r.ok) return reply.code(409).send({ error: r.error || "Não foi possível gerar a apresentação." });
+        p = r.proposal;
+        lead = r.lead;
+      }
+    }
+    const leadOut = { proposta_id: lead.proposta_id, proposalUrl: lead.proposalUrl, proposal_edit_url: lead.proposal_edit_url, amount: lead.amount };
+    if (target === "oem") return { proposal: p.id, layout: "oem", lead: leadOut };
+
+    p = await syncProposalCatalog(repo, await syncProposalLeadSnapshot(repo, p));
+    const cfg = deckConfigOf(p);
+    for (const key of ["plataforma", "price", "oem"]) if (typeof body[key] === "boolean") cfg[key] = body[key];
+    const saved = await saveDeckConfig(repo, p, cfg);
+    const fresh = await repo.get("leads", lead.id);
+    return { ...deckPayload(saved), lead: { ...leadOut, amount: fresh?.amount ?? leadOut.amount } };
   });
 
   app.post("/api/leads/:id/proposal-share", async (req, reply) => {
