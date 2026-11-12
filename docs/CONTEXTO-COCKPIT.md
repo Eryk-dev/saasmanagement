@@ -2000,6 +2000,20 @@ no grupo do menu "CS e suporte" (chave `suporte`), com a permissão de Clientes
   `lifecycle === "integracao"`, o mesmo critério da Carteira. A linha da
   Carteira traz `integration` e, em `aguardando`, o próximo passo "Integração a
   marcar" abre o card da venda. Teste: `integration-status.test.js`.
+- **Concluir a integração leva o card do negócio (12/11/2026):**
+  `updateOnboarding` para `concluida`, feito pela própria integração (não pelo
+  espelho do lead), move o card do negócio de origem para Pós-venda. Ele usa o
+  `applyStageMove` e registra a atividade `integration_done`. Sem lead de
+  origem, a implantação usa o `customer.leadId`. Só move o card que está em
+  Ganho ou Integração, num funil com Pós-venda. A resposta traz `leadMovedTo`
+  (não gravado), e o card da integração mostra no aviso para onde o card foi.
+  Teste: `crm-onboardings.test.js`.
+- **Caminho de volta às integrações anteriores (12/11/2026):** no card do
+  cliente, o "em andamento" ganhou "integrações anteriores (N)", recolhido, com
+  as concluídas e canceladas (data, integrador). Cada uma abre o card da
+  integração, onde está a pesquisa. No card do negócio, sem integração aberta,
+  o atalho vira "integração concluída →". O aviso de checklist incompleto só
+  aparece ao concluir agora, não em integração já concluída.
 - **Pesquisa de satisfação da integração (12/11/2026):** recurso de CS, uma
   pesquisa por integração (coleção `integration_surveys`), enviada à mão pelo
   card da integração (ainda não há envio automático). A lógica fica em

@@ -12,7 +12,7 @@
 // passa a mandar. Desfazer a venda cancela a integração que ainda não começou.
 
 import { randomUUID } from "node:crypto";
-import { kindOf } from "../crm/stages.js";
+import { kindOf, stageByKind } from "../crm/stages.js";
 import { requiresIntegration } from "../billing/plan-catalog.js";
 import { appendTimeline } from "../events/timeline.js";
 import { refreshLifecycle } from "./lifecycle.js";
@@ -111,7 +111,41 @@ export async function updateOnboarding(repo, id, body, { by = "", now = new Date
   if (!Object.keys(patch).length) return cur;
   const saved = await repo.update(ONBOARDINGS, id, patch);
   if (moving) await afterChange(repo, saved, "onboarding.stage_changed", { from: cur.stage, to: stage }, now);
+  // Concluir pela integração leva o card do negócio junto (12/11/2026): antes o
+  // card ficava na etapa Integração do funil com a entrega já feita. O espelho
+  // (fromLead) é o caminho inverso: o card já está lá.
+  if (moving && stage === "concluida" && !fromLead) {
+    const leadMovedTo = await leadToPostSale(repo, saved, { now, by }).catch(() => "");
+    if (leadMovedTo) return { ...saved, leadMovedTo };
+  }
   return saved;
+}
+
+// Card do negócio da integração concluída → Pós-venda, pelo mesmo
+// applyStageMove de toda mudança de etapa. Só sai de Ganho ou Integração (card
+// já adiante, ou que voltou pra venda, fica onde está) e só num funil com etapa
+// de Pós-venda. Integração sem lead de origem usa o lead da venda do cliente
+// quando é a implantação. Devolve a etapa nova ("" = não moveu).
+async function leadToPostSale(repo, onboarding, { now = new Date(), by = "" } = {}) {
+  const customer = await repo.get("customers", onboarding.customer).catch(() => null);
+  const leadId = onboarding.lead || (onboarding.kind === "implantacao" ? customer?.leadId || "" : "");
+  if (!leadId) return "";
+  const lead = await repo.get("leads", leadId).catch(() => null);
+  if (!lead || lead.customerId !== onboarding.customer) return "";
+  const product = lead.saas ? await repo.get("products", lead.saas).catch(() => null) : null;
+  if (!["ganho", "integracao"].includes(kindOf(product, lead.stage))) return "";
+  const to = stageByKind(product, "posvenda")?.stage || "";
+  if (!to || to === lead.stage) return "";
+  // Import tardio: crm/lead-flow já importa este módulo (cancelLeadOnboardings).
+  const { applyStageMove, logActivity } = await import("../crm/lead-flow.js");
+  const moved = await applyStageMove(repo, { lead, toStage: to, author: by || "cockpit", now });
+  await repo.update("leads", lead.id, { stage: to, ...moved });
+  await logActivity(repo, {
+    saas: lead.saas || "", lead: lead.id, type: "system", author: by || "cockpit",
+    text: `Integração concluída: o card foi para ${to}`,
+    meta: { event: "integration_done", onboarding: onboarding.id, from: lead.stage, to },
+  }).catch(() => {});
+  return to;
 }
 
 export const onboardingsOf = (repo, customerId) => repo.listWhere(ONBOARDINGS, { customer: customerId });

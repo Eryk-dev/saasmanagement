@@ -265,7 +265,15 @@ const leadGuia = (() => { const d = new Date(); d.setHours(17, 0, 0, 0); return 
   id: "ld_guia", saas: "leverads", name: "Rodrigo Galante", company: "Galante Comércio", phone: "5541999990002", stage: "Integração",
   integrator: "lucas", closer: "tiago", integrationAt: d.toISOString(), integrationCallUrl: "https://meet.google.com/abc-defg-hij", customerId: "c2",
 }; })();
+// ?concluida: a implantação do negócio de exemplo já foi concluída (prints do
+// caminho de volta às integrações anteriores, 12/11/2026).
+const modoConcluida = typeof location !== "undefined" && new URLSearchParams(location.search).has("concluida");
 const integracaoAtual = () => (modoGuia ? { ...integracaoPreview, kind: "implantacao", lead: "ld_guia", stage: "aguardando_kickoff" } : integracaoPreview);
+// Integrações passadas do cliente c2: a implantação concluída e um treinamento cancelado.
+const integracoesPassadas = [
+  { ...integracaoPreview, id: "ob_prev_impl", kind: "implantacao", lead: "ld_guia", stage: "concluida", stageAt: "2026-09-02T15:00:00.000Z", goLiveAt: "2026-09-02T15:00:00.000Z", integrator: "lucas", progress: 100 },
+  { ...integracaoPreview, id: "ob_prev_trein", kind: "treinamento", lead: "", stage: "cancelada", stageAt: "2026-08-20T15:00:00.000Z", goLiveAt: "", integrator: "lucas", progress: 0 },
+];
 const RESPOSTAS = {
   customerStatus: (saas) => customerStatusPreview(saas),
   customerResults: (id) => customerResultsPreview(id),
@@ -282,8 +290,8 @@ const RESPOSTAS = {
   onboardingTemplates: () => ({ templates: TEMPLATES_PREVIEW }),
   saveOnboardingTemplates: (saas, templates) => ({ templates }),
   get: (col, id) => (modoGuia && id === "ld_guia" ? leadGuia : (window.SEED?.[String(col).toUpperCase()] || []).find((r) => r.id === id) || null),
-  customerOnboardings: (id) => ({ onboardings: id === "c2" ? [integracaoPreview] : [] }),
-  onboarding: () => integracaoAtual(),
+  customerOnboardings: (id) => ({ onboardings: id === "c2" ? [...(modoConcluida ? [] : [integracaoPreview]), ...integracoesPassadas] : [] }),
+  onboarding: (id) => integracoesPassadas.find((x) => x.id === id) || integracaoAtual(),
   // Pesquisa de satisfação da integração: respondida com nota baixa (abre acompanhamento).
   // ?survey=none | sent mostra os outros estados do bloco no card.
   onboardingSurvey: () => surveyPreview === "none" ? { survey: null } : surveyPreview === "sent" ? { survey: { id: "is_prev", onboarding: "ob_prev_1", customer: "c2", status: "sent", channel: "whatsapp", sentAt: "2026-09-16T13:00:00.000Z", link: "https://levermoney.com.br/public/pesquisa/prev" } } : ({ survey: { id: "is_prev", onboarding: "ob_prev_1", customer: "c2", status: "answered", channel: "whatsapp", sentAt: "2026-09-16T13:00:00.000Z", answeredAt: "2026-09-16T18:20:00.000Z", score: 3, ready: "parcial", comment: "A call foi boa, mas ainda não sei subir anúncio novo sem ajuda.", followup: "fu_prev_1", link: "https://levermoney.com.br/public/pesquisa/prev" } }),

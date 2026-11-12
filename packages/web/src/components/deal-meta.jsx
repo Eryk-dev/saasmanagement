@@ -73,8 +73,13 @@ function useCustomerLinks(lead) {
     Promise.all([api.get("customers", lead.customerId).catch(() => null), api.customerOnboardings(lead.customerId).catch(() => null)])
       .then(([customer, r]) => {
         if (!alive || !customer) return;
-        const open = ((r && r.onboardings) || []).filter((o) => !["concluida", "cancelada"].includes(o.stage));
-        setState({ customer, onboarding: open.find((o) => o.lead === lead.id) || open[0] || null });
+        const all = (r && r.onboardings) || [];
+        const open = all.filter((o) => !["concluida", "cancelada"].includes(o.stage));
+        // Sem integração aberta, o atalho leva à concluída deste negócio (12/11/2026):
+        // depois de concluir não havia como voltar a ela pelo card.
+        const done = all.filter((o) => o.stage === "concluida" && o.lead === lead.id)
+          .sort((a, b) => String(b.goLiveAt || b.stageAt || "").localeCompare(String(a.goLiveAt || a.stageAt || "")))[0] || null;
+        setState({ customer, onboarding: open.find((o) => o.lead === lead.id) || open[0] || done });
       });
     return () => { alive = false; };
   }, [lead?.customerId, lead?.id]);
@@ -110,7 +115,7 @@ export function LeadCrmStrip({ lead, onPatch, onLeave }) {
       <span aria-hidden="true" style={{ width: 1, height: 14, background: "var(--line-2)", margin: "0 4px" }} />
       <button type="button" style={link} onClick={() => { onLeave?.(); openCustomer(links.customer.id); }} title="Abrir o card do cliente">cliente: {links.customer.name} →</button>
       {links.onboarding && <button type="button" style={link} onClick={() => { onLeave?.(); openOnboarding(links.onboarding.id); }} title="Abrir o card da integração">
-        integração {links.onboarding.progress ?? 0}% →</button>}
+        {links.onboarding.stage === "concluida" ? "integração concluída" : `integração ${links.onboarding.progress ?? 0}%`} →</button>}
       {/* Cliente sem conta: o integrador manda o link de cadastro daqui. */}
       {pendingSignupProducts(links.customer, lead).length > 0 && <span className="lva-inline"><SignupInviteLink customer={links.customer} lead={lead} /></span>}
     </>}

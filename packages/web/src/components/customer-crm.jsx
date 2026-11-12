@@ -84,6 +84,9 @@ function Row({ label, children, onClick, sub }) {
 export function CustomerNow({ customer, lead, onLeave, onScheduleMeeting }) {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Integrações concluídas e canceladas (12/11/2026): antes sumiam do card ao
+  // concluir e não havia caminho de volta. Ficam recolhidas, mais recente primeiro.
+  const [showPast, setShowPast] = useState(false);
   const load = () => Promise.all([
     api.customerOnboardings(customer.id).catch(() => null),
     api.customerFollowups(customer.id).catch(() => null),
@@ -110,6 +113,8 @@ export function CustomerNow({ customer, lead, onLeave, onScheduleMeeting }) {
 
   const now = Date.now();
   const onboardings = (data?.onboardings || []).filter((o) => !["concluida", "cancelada"].includes(o.stage));
+  const past = (data?.onboardings || []).filter((o) => ["concluida", "cancelada"].includes(o.stage))
+    .sort((a, b) => String(b.goLiveAt || b.stageAt || "").localeCompare(String(a.goLiveAt || a.stageAt || "")));
   const followups = (data?.followups || []).filter((f) => f.status === "aberto");
   const live = (data?.meetings || []).filter((m) => m.status === "scheduled");
   const next = live.filter((m) => Date.parse(m.at) > now).sort((a, b) => Date.parse(a.at) - Date.parse(b.at))[0];
@@ -155,6 +160,15 @@ export function CustomerNow({ customer, lead, onLeave, onScheduleMeeting }) {
     {pending && <div className="customer-peek-pending">
       <span>{`Reunião de ${day(pending.at)} sem resumo`}</span>
       <button type="button" onClick={summarize} disabled={busy}>{busy ? "Gerando…" : "Gerar resumo"}</button>
+    </div>}
+    {past.length > 0 && <div style={{ paddingTop: 6 }}>
+      <button type="button" className="customer-peek-link" aria-expanded={showPast} onClick={() => setShowPast((v) => !v)} style={{ fontSize: 12 }}>
+        {showPast ? "▾" : "▸"} {past.length === 1 ? "integração anterior" : `integrações anteriores (${past.length})`}
+      </button>
+      {showPast && past.map((o) => <Row key={o.id} label={`Integração · ${KIND[o.kind] || o.kind}`} onClick={() => go(() => openOnboarding(o.id))}
+        sub={o.integrator ? displayName(o.integrator) : "sem integrador"}>
+        {o.stage === "concluida" ? `concluída${o.goLiveAt || o.stageAt ? ` em ${day(o.goLiveAt || o.stageAt)}` : ""}` : `cancelada${o.stageAt ? ` em ${day(o.stageAt)}` : ""}`}
+      </Row>)}
     </div>}
   </section>;
 }

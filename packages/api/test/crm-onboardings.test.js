@@ -164,3 +164,38 @@ test("modelo de checklist: integração aberta no cliente nasce com os itens do 
   const lead = await repo.create("leads", { saas: "leverads", stage: "Integração", customerId: outro.id });
   assert.deepEqual((await syncLeadOnboarding(repo, lead)).items, [], "o espelho do card não ganha modelo");
 });
+
+// ── Concluir a integração leva o card do negócio (12/11/2026) ────────────
+test("concluir pela integração leva o card do negócio de Integração para Pós-venda", async () => {
+  const repo = await seed();
+  const c = await repo.create("customers", { id: "cu_9", name: "Rr", saas: "leverads", leadId: "le_9" });
+  await repo.create("leads", { id: "le_9", saas: "leverads", name: "Rr", stage: "Integração", customerId: c.id, wonAt: "2026-11-01T12:00:00.000Z" });
+  const o = await createOnboarding(repo, { customer: c.id, lead: "le_9", items: [{ title: "a", doneAt: "2026-11-10T12:00:00.000Z" }] }, { by: "yudi" });
+  const saved = await updateOnboarding(repo, o.id, { stage: "concluida" }, { by: "yudi", now: new Date("2026-11-12T17:48:00.000Z") });
+  assert.equal(saved.leadMovedTo, "Pós-venda");
+  const lead = await repo.get("leads", "le_9");
+  assert.equal(lead.stage, "Pós-venda");
+  assert.equal(lead.stageSince, "2026-11-12T17:48:00.000Z");
+  const acts = (await repo.list("activities")).filter((a) => a.lead === "le_9" && a.meta?.event === "integration_done");
+  assert.equal(acts.length, 1);
+  assert.match(acts[0].text, /Integração concluída: o card foi para Pós-venda/);
+  assert.equal((await repo.get(ONBOARDINGS, o.id)).leadMovedTo, undefined, "o aviso não é gravado na integração");
+});
+
+test("concluir não mexe no card que já está adiante, e a implantação manual usa o lead da venda", async () => {
+  const repo = await seed();
+  const c = await repo.create("customers", { id: "cu_8", name: "Forze", saas: "leverads", leadId: "le_8" });
+  await repo.create("leads", { id: "le_8", saas: "leverads", name: "Forze", stage: "Pós-venda", customerId: c.id });
+  const a = await createOnboarding(repo, { customer: c.id, kind: "implantacao", items: [] });
+  assert.equal((await updateOnboarding(repo, a.id, { stage: "concluida" })).leadMovedTo, undefined);
+  assert.equal((await repo.get("leads", "le_8")).stage, "Pós-venda");
+  // Manual, sem lead, implantação: o lead da venda (customer.leadId) vai junto.
+  await repo.update("leads", "le_8", { stage: "Ganho" });
+  const b = await createOnboarding(repo, { customer: c.id, kind: "implantacao", items: [] });
+  assert.equal((await updateOnboarding(repo, b.id, { stage: "concluida" })).leadMovedTo, "Pós-venda");
+  // Produto novo sem lead não mexe no card da venda.
+  await repo.update("leads", "le_8", { stage: "Integração" });
+  const d = await createOnboarding(repo, { customer: c.id, kind: "novo_produto", items: [] });
+  await updateOnboarding(repo, d.id, { stage: "concluida" });
+  assert.equal((await repo.get("leads", "le_8")).stage, "Integração");
+});

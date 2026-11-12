@@ -146,9 +146,11 @@ export function OnboardingDrawer({ id, onClose }) {
         stage: draft.stage, kind: draft.kind, integrator: draft.integrator || "", notes: draft.notes || "",
         kickoffAt: draft.kickoffAt || "", plannedGoLiveAt: draft.plannedGoLiveAt || "", items,
       });
-      setO(saved);
-      setDraft(saved);
-      toast("Integração salva", "pos");
+      const { leadMovedTo, ...row } = saved;
+      setO(row);
+      setDraft(row);
+      // Concluir leva o card do negócio para o Pós-venda (api onboardings.js).
+      toast(leadMovedTo ? `Integração concluída · o card do negócio foi para ${leadMovedTo}` : "Integração salva", "pos");
     } catch (e) {
       setError(e.message || "Não foi possível salvar.");
     } finally {
@@ -195,7 +197,7 @@ export function OnboardingDrawer({ id, onClose }) {
           <section>
             <div className="customer-peek-kicker"><span>etapa</span><span className="customer-peek-state" data-tone={TONE[stage?.tone] || "mut"}>{progressOf(items)}% do checklist</span></div>
             <div style={{ marginTop: 10 }}><SelectPopover value={draft.stage} options={ONBOARDING_STAGES} onChange={(v) => set({ stage: v })} label="Etapa da integração" /></div>
-            {draft.stage === "concluida" && pending > 0 && <p className="customer-peek-note" role="alert" style={{ color: "var(--neg)" }}>Faltam {pending} {pending === 1 ? "item" : "itens"} do checklist: a integração só conclui com tudo feito.</p>}
+            {draft.stage === "concluida" && o?.stage !== "concluida" && pending > 0 && <p className="customer-peek-note" role="alert" style={{ color: "var(--neg)" }}>Faltam {pending} {pending === 1 ? "item" : "itens"} do checklist: a integração só conclui com tudo feito.</p>}
             <div className="customer-peek-bar"><i style={{ width: `${progressOf(items)}%`, background: "var(--accent)" }} /></div>
           </section>
           {leadInteg && <LeadIntegration info={leadInteg} onOpenLead={() => { onClose(); openLeadById(draft.lead); }} />}
