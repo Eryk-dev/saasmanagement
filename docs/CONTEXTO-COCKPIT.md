@@ -1991,7 +1991,9 @@ no grupo do menu "CS e suporte" (chave `suporte`), com a permissão de Clientes
   e `aguardando` em `lifecycle: "integracao"`. Quando o cliente fica integrado,
   grava `milestonesDone.onboarding` com a data do go-live e conclui o
   acompanhamento aberto desse marco. O primeiro sweep depois do deploy marca a
-  base legada. `syncLeadOnboarding` recalcula também quando não há integração
+  base legada. Cliente em churn não fica com integração aberta: o
+  `refreshLifecycle` cancela a que estiver aberta (motivo nas notas) e não
+  marca o marco. `syncLeadOnboarding` recalcula também quando não há integração
   para espelhar (Ganho direto para Pós-venda). A régua só abre acompanhamento
   do marco da integração (rótulo "Integração", antes "Onboarding") para quem
   está `aguardando`. O número "em integração" de Clientes usa

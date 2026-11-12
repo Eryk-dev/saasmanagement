@@ -61,8 +61,11 @@ export function financialStatusOf(subs, invoices) {
 
 // "integracao" = a definição única de integration-status.js: integração aberta
 // ou venda esperando a entrega. Sem `integration`, calcula só pelas integrações.
+// Churn: encerrado à mão (endedAt) ou todas as assinaturas encerradas.
+const isChurnOf = (customer, subs) => Boolean(customer.endedAt) || (subs.length > 0 && subs.every((s) => ENDED_SUBS.has(s.status)));
+
 export function lifecycleOf(customer, { subs, onboardings, financialStatus, integration = null }) {
-  if (customer.endedAt || (subs.length && subs.every((s) => ENDED_SUBS.has(s.status)))) return "churn";
+  if (isChurnOf(customer, subs)) return "churn";
   if (isIntegrating((integration || integrationOf(customer, { onboardings })).status)) return "integracao";
   const health = Number(customer.health) || 0;
   if (financialStatus === "inadimplente" || (health > 0 && health < RISK_HEALTH)) return "risco";
@@ -107,6 +110,21 @@ const TIMELINE_KIND = {
 // conclui o acompanhamento aberto desse marco.
 export async function refreshLifecycle(repo, customer, { now = new Date() } = {}) {
   const { subs, invoices, onboardings, followups, lead, product } = await inputsOf(repo, customer);
+  // Cliente em churn não tem integração em andamento (12/11/2026): a que ficou
+  // aberta é cancelada, com o motivo nas notas. Cancelar passa pelo
+  // updateOnboarding, que já recalcula este cliente; aqui só devolve o salvo.
+  const churned = isChurnOf(customer, subs);
+  const stale = churned ? onboardings.filter((o) => OPEN_ONBOARDING.has(o.stage)) : [];
+  if (stale.length) {
+    // Import tardio: onboardings → lifecycle é um ciclo.
+    const { updateOnboarding } = await import("./onboardings.js");
+    const dia = now.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+    for (const o of stale) {
+      const notes = [o.notes || "", `Cancelada automaticamente em ${dia}: cliente em churn.`].filter(Boolean).join("\n");
+      await updateOnboarding(repo, o.id, { stage: "cancelada", notes }, { now, fromLead: true });
+    }
+    return (await repo.get("customers", customer.id)) || customer;
+  }
   const integration = integrationOf(customer, { onboardings, lead, product });
   const financialStatus = financialStatusOf(subs, invoices);
   const lifecycle = lifecycleOf(customer, { subs, onboardings, financialStatus, integration });
@@ -115,7 +133,9 @@ export async function refreshLifecycle(repo, customer, { now = new Date() } = {}
   const changes = [["lifecycle", lifecycle], ["financialStatus", financialStatus], ["csStage", csStage]].filter(([k, v]) => (customer[k] || "") !== v);
   const patch = {};
   if ((customer.integrationStatus || "") !== integration.status) patch.integrationStatus = integration.status;
-  const markMilestone = integration.status === "integrado" && !customer.milestonesDone?.onboarding;
+  // Churn não ganha o marco da integração: "integrado" ali pode ser só a
+  // integração cancelada, não uma entrega feita.
+  const markMilestone = integration.status === "integrado" && !churned && !customer.milestonesDone?.onboarding;
   if (markMilestone) patch.milestonesDone = { ...(customer.milestonesDone || {}), onboarding: integration.at || at };
   if (!changes.length && !Object.keys(patch).length) return customer;
   for (const [field, to] of changes) {

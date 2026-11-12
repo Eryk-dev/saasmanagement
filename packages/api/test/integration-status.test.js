@@ -117,3 +117,30 @@ test("marco da integração vira acompanhamento só quando a venda espera a entr
     runner.stop();
   }
 });
+
+// ── Churn fecha a integração que ficou aberta ─────────────────────────────
+test("cliente em churn: a integração aberta é cancelada com o motivo e o marco não é marcado", async () => {
+  const repo = await seed({ customer: { endedAt: "2026-11-25T12:00:00.000Z" }, leadRow: lead("Integração") });
+  await repo.create("onboardings", { id: "ob_velha", customer: "cu_1", saas: "leverads", kind: "implantacao", stage: "configuracao", notes: "faltou acesso", createdAt: DEPOIS, items: [] });
+  await repo.create("onboardings", { id: "ob_feita", customer: "cu_1", saas: "leverads", kind: "treinamento", stage: "concluida", createdAt: DEPOIS, items: [] });
+  await refreshLifecycle(repo, await repo.get("customers", "cu_1"), { now: new Date("2026-11-26T15:00:00.000Z") });
+  const o = await repo.get("onboardings", "ob_velha");
+  assert.equal(o.stage, "cancelada");
+  assert.match(o.notes, /^faltou acesso\nCancelada automaticamente em 26\/11\/2026: cliente em churn\.$/);
+  assert.equal((await repo.get("onboardings", "ob_feita")).stage, "concluida", "concluída fica como está");
+  const c = await repo.get("customers", "cu_1");
+  assert.equal(c.lifecycle, "churn");
+  assert.notEqual(c.integrationStatus, "integrando");
+  assert.equal(c.milestonesDone?.onboarding, undefined, "churn não ganha o marco da integração");
+  // Rodar de novo não mexe em nada (nada aberto pra cancelar).
+  await refreshLifecycle(repo, await repo.get("customers", "cu_1"), { now: new Date("2026-11-27T15:00:00.000Z") });
+  assert.match((await repo.get("onboardings", "ob_velha")).notes, /26\/11\/2026/);
+});
+
+test("cliente ativo: integração aberta continua aberta", async () => {
+  const repo = await seed({ leadRow: lead("Integração") });
+  await repo.create("onboardings", { id: "ob_1", customer: "cu_1", saas: "leverads", kind: "implantacao", stage: "configuracao", createdAt: DEPOIS, items: [] });
+  await refreshLifecycle(repo, await repo.get("customers", "cu_1"));
+  assert.equal((await repo.get("onboardings", "ob_1")).stage, "configuracao");
+  assert.equal((await repo.get("customers", "cu_1")).integrationStatus, "integrando");
+});
