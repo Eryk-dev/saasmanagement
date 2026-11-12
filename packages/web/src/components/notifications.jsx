@@ -28,6 +28,8 @@ function when(iso) {
 const TABS = [["all", "Todas"], ["mention", "Menções"], ["assigned", "Atribuídas a mim"]];
 // Suporte (14/09) entra nas mesmas abas: menção em nota e ticket atribuído.
 const inTab = (n, tab) => tab === "all" || (tab === "mention" ? (n.type === "mention" || n.type === "ticket_mention") : (n.type === "assigned" || n.type === "ticket_assigned"));
+// Marcação pelo link cujo horário (link.until) já passou: a API recusa ligar.
+const bookingPast = (n) => { const t = Date.parse(n.link?.until || ""); return Number.isFinite(t) && t <= Date.now(); };
 const DOT = { wa_waiting: "var(--neg)", ticket_sla_breach: "var(--neg)", ticket_sla_warning: "var(--warn)" };
 const ACTION = { wa_waiting: "Responder", mention: "Responder", assigned: "Abrir tarefa", ticket_reply: "Ver resposta", ticket_mention: "Responder", ticket_sla_breach: "Atender agora", ticket_sla_warning: "Atender", ticket_assigned: "Abrir ticket", ticket_new: "Abrir ticket",
   // Alertas do Lever CRM (customers/crm-alerts.js e health.js).
@@ -91,6 +93,7 @@ export function NotificationsBell() {
       });
     }
     setOpen(false);
+    if (n.link?.booking && bookingPast(n)) { toast(`Essa marcação já passou e não dá mais pra ligar a um card · limpe o aviso no ×`, "warn", 6000); return; }
     if (n.link?.booking) { setLinking({ eventId: n.link.booking, userId: n.link.bookingUser || "", text: n.text }); return; }
     // Destino que não é tarefa (13/09): o aviso de silêncio no WhatsApp abre a
     // conversa. Tela fechada pra pessoa = aviso, não navegação quebrada.
@@ -154,7 +157,7 @@ export function NotificationsBell() {
                   <span className="notification-text">{n.text}</span>
                   <span className="notification-meta">
                     {(n.task || n.link?.screen) && <span className="notification-action">
-                      {n.link?.booking ? `Ligar a um card${n.pinned ? " · fixo até ligar" : ""}` : ACTION[n.type] || "Abrir"} →
+                      {n.link?.booking ? (bookingPast(n) ? "Já passou · limpe no ×" : `Ligar a um card${n.pinned ? " · fixo até ligar" : ""}`) : ACTION[n.type] || "Abrir"}{n.link?.booking && bookingPast(n) ? "" : " →"}
                     </span>}
                     <span title={n.by === "api" ? "Cockpit" : displayName(n.by) || n.by}>{when(n.at)}{n.saas ? ` · ${n.saas}` : ""}</span>
                   </span>

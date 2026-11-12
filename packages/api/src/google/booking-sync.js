@@ -500,6 +500,12 @@ ${ev.description || ""}`)) continue;
     const ev = await gu.getEvent(user.id, String(eventId || ""));
     if (!ev || ev.status === "cancelled") return { code: 410, error: "essa marcação foi cancelada ou apagada na agenda do Google" };
     if (!ev.start?.dateTime) return { code: 422, error: "a marcação não tem horário" };
+    // Marcação que já passou não vira integração de card nenhum (12/11/2026: o
+    // aviso da marcação de 10/11 do Lukas foi ligado ao card do Emerson, que
+    // ficou com a integração no dia errado e a sala de outro cliente).
+    if (Date.parse(ev.start.dateTime) <= now.getTime()) {
+      return { code: 409, error: `essa marcação era de ${whenLabel(toNaiveBrt(ev.start.dateTime))} e já passou: confira com quem marcou e marque a integração pelo card` };
+    }
     const other = (await repo.listWhere("leads", { integrationBookedEventId: ev.id })).find((l) => l.id !== lead.id);
     if (other) return { code: 409, error: `essa marcação já está ligada ao card de ${other.name || "outro cliente"}` };
     const ahead = lead.integrationMeetEventId && lead.integrationMeetEventId !== ev.id && Date.parse(lead.integrationScheduledAt || "") > now.getTime();

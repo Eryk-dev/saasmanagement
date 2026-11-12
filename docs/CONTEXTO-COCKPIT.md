@@ -1526,6 +1526,12 @@ no Google move o bloqueio; ligar a um card (automática ou à mão), cancelar ou
 apagar o evento no Google, ou remover na Agenda tira o bloqueio, que não volta.
 Na Agenda ele não se arrasta e o clique abre o `BookingLinkModal` com
 "liberar horário" (confirmação; o evento do Google não muda).
+Marcação que já passou não liga a card (`linkEvent` devolve 409 com a data):
+em 12/11/2026 o aviso fixo da marcação de 10/11 do Lukas foi ligado ao card do
+Emerson, que ficou com a integração no dia errado. No sino, o aviso com
+`link.until` vencido mostra "Já passou · limpe no ×" e não abre a escolha.
+Marcação feita pelo link mandado da ficha do cliente cai na Implantação ou no
+acompanhamento (`meetings[]`), não no card do negócio.
 Prévia com o funil atual e um lead por etapa: `?shell&etapas#today` ou
 `#pipeline` (`preview/etapas-mock.js`); revisão:
 `node scripts/review/lead-stage.mjs` em `packages/web`.

@@ -485,3 +485,15 @@ test("horário do pré-bloqueio: sem fim vale 1h; passando da meia-noite fecha o
   assert.deepEqual(holdSlot({ start: { dateTime: "2026-10-09T13:00:00Z" } }), { date: "2026-10-09", fromHour: 10, toHour: 11, weekday: 5 });
   assert.deepEqual(holdSlot({ start: { dateTime: "2026-10-09T23:30:00-03:00" }, end: { dateTime: "2026-10-10T00:30:00-03:00" } }), { date: "2026-10-09", fromHour: 23.5, toHour: 24, weekday: 5 });
 });
+
+test("marcação que já passou não liga a card nenhum (caso Emerson × Lukas, 12/11/2026)", async () => {
+  const { repo, cal, eryk } = await setup();
+  const past = booking({ id: "velha", start: { dateTime: "2026-10-06T16:00:00-03:00" }, end: { dateTime: "2026-10-06T17:00:00-03:00" } });
+  const sync = makeBookingSync({ repo, googleUser: { ...gu, getEvent: async () => past }, google, fetch: cal.fetch, log: { warn() {} } });
+  const r = await sync.linkEvent({ userId: "eryk", eventId: "velha", leadId: "bia", now: NOW });
+  assert.equal(r.code, 409);
+  assert.match(r.error, /06\/10.*16:00 e já passou/);
+  const bia = await repo.get("leads", "bia");
+  assert.equal(bia.integrationAt, undefined, "o card não muda");
+  assert.equal(bia.integrationBookedEventId, undefined);
+});
