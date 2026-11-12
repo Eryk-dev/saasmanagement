@@ -166,6 +166,8 @@ const ROUTE_SCREENS = [
   ["/api/agenda_blocks", ["agenda", "pipeline", "today", "overview"]],
   // Horários livres calculados no SERVIDOR (SDR automatizado + quem marca call).
   ["/api/agenda/free-slots", ["agenda", "pipeline", "today", "whatsapp"]],
+  // Reuniões dos registros do cliente (integração/acompanhamento) na grade da Agenda.
+  ["/api/agenda/record-meetings", ["agenda", "pipeline", "today", "overview"]],
   ["/api/sdr/", ["whatsapp"]], // status do SDR automatizado (card da aba Automações)
   ["/api/consultations", ["consultas"]], // consultas 1:1 (mentoria UniqueKids): agenda + ações (meet/summary)
   ["/api/deliverables", ["consultas"]],  // Manual da Família (entregável) + compose por IA

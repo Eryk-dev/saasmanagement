@@ -233,6 +233,29 @@ export async function meetingsOfCustomer(repo, customerId) {
   return out.sort((a, b) => String(b.at).localeCompare(String(a.at)));
 }
 
+// Reuniões dos registros (integração e acompanhamento) pra tela Agenda (12/11/
+// 2026): a marcação pelo link mandado da ficha e a reunião marcada pela ficha
+// moravam só em `meetings[]` e não apareciam na Agenda de quem atende (caso
+// Emerson Tratores). Canceladas ficam fora; as passadas entram como histórico.
+export async function listAgendaRecordMeetings(repo, { from = "" } = {}) {
+  const customers = new Map((await repo.list("customers").catch(() => [])).map((c) => [c.id, c]));
+  const out = [];
+  for (const [collection, cfg] of Object.entries(MEETING_HOSTS)) {
+    for (const r of await repo.list(collection).catch(() => [])) {
+      for (const m of r.meetings || []) {
+        if (!m?.at || m.status === "canceled" || (from && String(m.at) < from)) continue;
+        const c = customers.get(r.customer) || null;
+        out.push({
+          id: m.id, at: m.at, label: m.label || cfg.label, status: m.status || "scheduled", responsible: m.responsible || "",
+          meetUrl: m.meetUrl || "", bookedVia: m.bookedVia || "", customer: r.customer || "", customerName: c?.name || "",
+          saas: c?.saas || r.saas || "", lead: r.lead || c?.leadId || "", host: { collection, id: r.id, label: cfg.label },
+        });
+      }
+    }
+  }
+  return out.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+}
+
 export function startRecordMeetingSummaries(repo, { google, googleUser, anthropic, log, intervalMs = 600_000 } = {}) {
   const meetings = makeRecordMeetings({ repo, google, googleUser, anthropic, log });
   let running = false;

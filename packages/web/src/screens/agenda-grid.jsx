@@ -142,7 +142,7 @@ function Chevron({ open }) {
   );
 }
 
-function AgendaView({ leads, consultations = [], onOpenLead, blocking, move, personIds, people = [], onPersons, view: viewProp, onView }) {
+function AgendaView({ leads, consultations = [], recordMeetings = [], onOpenLead, blocking, move, personIds, people = [], onPersons, view: viewProp, onView }) {
   const [filtersOpen, setFiltersOpen] = useStP(false);
   // FILTRO DE PESSOAS (09/10/2026): era UMA pessoa ou todos; agora o operador
   // escolhe quem quer ver (ex.: só os dois closers da tarde). `only` = null é a
@@ -161,6 +161,8 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, move, per
       return;
     }
     if (kind === "integração" && meeting && l.customerId) { openCustomer(l.customerId); return; }
+    // Reunião de um registro do cliente (Implantação/acompanhamento): mora na ficha.
+    if (l._record) { openCustomer(l._customerId); return; }
     onOpenLead?.(l);
   };
   const [pickerOpen, setPickerOpen] = useStP(false);
@@ -274,6 +276,31 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, move, per
         _customerId: c.customerId || "",
       },
     }));
+  // Reuniões dos registros do cliente (integração/acompanhamento, 12/11/2026):
+  // mesmo "lead" de fachada das consultas, com a cor de quem atende. A
+  // integração conta como "int"; acompanhamento e outras, como reunião.
+  const recordEvents = (recordMeetings || [])
+    .filter((m) => m.at)
+    .map((m) => {
+      const ms = Date.parse(m.at);
+      return {
+        kind: "integração",
+        t: wallAt(m.at),
+        meeting: m.label !== "Integração",
+        who: m.responsible || "",
+        done: m.status === "done" || (Number.isFinite(ms) && ms < Date.now()),
+        l: {
+          id: `reuniao-${m.id}`,
+          name: m.customerName || "cliente",
+          company: m.label || "Reunião",
+          integrator: m.responsible || "",
+          integrationCallUrl: m.meetUrl || "",
+          saas: m.saas, stage: "",
+          _record: true,
+          _customerId: m.customer || "",
+        },
+      };
+    });
   const events = leads
     .flatMap(l => {
       const k = stageKind(saasCfgOf(l), l.stage);
@@ -319,6 +346,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, move, per
       return out;
     })
     .concat(consultEvents)
+    .concat(recordEvents)
     .filter(e => e && Number.isFinite(e.t.getTime()) && e.t >= start && e.t < end)
     .filter(e => !only || only.has(e.who || ""));
   // Contagem por tipo (já na semana/pessoa filtradas) alimenta as abas; a grade
@@ -1045,7 +1073,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, move, per
                   // grade mostrava as duas iguais. Consulta 1:1 não tem valor,
                   // mostra a posição no pacote (3/8).
                   const valor = l._pack || valorCurto(l.amount);
-                  const movable = leadDraggable(kind, done);
+                  const movable = leadDraggable(kind, done) && !l._record; // reunião do registro remarca pela ficha
                   return (
                     <div key={l.id + kind + t.getTime()} role="button" tabIndex={0}
                       {...(movable ? dragProps({ type: "lead", key: `${l.id}-${kind}`, l, kind, who: who || "", t }, 1) : {})}

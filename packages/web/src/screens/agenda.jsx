@@ -86,6 +86,17 @@ export function AgendaScreen({ onOpenLead }) {
     api.list("consultations").then((rows) => alive && setConsultas((rows || []).filter(ofSaas))).catch(() => {});
     return () => { alive = false; };
   }, [version, saasId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Reuniões dos registros do cliente (integração/acompanhamento, 12/11/2026):
+  // a marcada pelo link mandado da ficha ou pela ficha só existia em
+  // `meetings[]` e não aparecia aqui (caso Emerson Tratores). A que nasceu
+  // de um compromisso desta tela já aparece pelo compromisso e fica de fora.
+  const [recordMeetings, setRecordMeetings] = useS([]);
+  useE(() => {
+    let alive = true;
+    const from = new Date(Date.now() - 60 * 86_400_000).toISOString();
+    api.agendaRecordMeetings(from).then((r) => alive && setRecordMeetings((r?.meetings || []).filter(ofSaas))).catch(() => {});
+    return () => { alive = false; };
+  }, [version, saasId]); // eslint-disable-line react-hooks/exhaustive-deps
   // Pessoas com agenda: closers e integradores (Ajustes → Equipe) do produto
   // ativo — pessoa de OUTRO produto (ex.: Ana só UniqueKids) não entra no filtro.
   const people = useM(() => {
@@ -100,6 +111,10 @@ export function AgendaScreen({ onOpenLead }) {
 
   const [blocks, setBlocks] = useS(() => (window.SEED?.AGENDA_BLOCKS || []).map((b) => ({ ...b })));
   useE(() => { setBlocks((window.SEED?.AGENDA_BLOCKS || []).map((b) => ({ ...b }))); }, [version]);
+  const looseMeetings = useM(() => {
+    const viaBlock = new Set(blocks.map((b) => b.meeting?.id).filter(Boolean));
+    return recordMeetings.filter((m) => !viaBlock.has(m.id));
+  }, [recordMeetings, blocks]);
   const [leads, setLeads] = useS(() => (window.SEED?.LEADS || []).filter(ofSaas));
   useE(() => { setLeads((window.SEED?.LEADS || []).filter(ofSaas)); }, [version, saasId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -218,8 +233,11 @@ export function AgendaScreen({ onOpenLead }) {
     for (const c of consultas) {
       if (c.owner && c.at && c.status !== "canceled") put(c.owner, c.at, `consulta com ${c.clientName || "cliente"}`);
     }
+    for (const r of looseMeetings) {
+      if (r.responsible && r.status === "scheduled") put(r.responsible, r.at, `${String(r.label || "reunião").toLowerCase()} com ${r.customerName || "cliente"}`);
+    }
     return m;
-  }, [leads, consultas]);
+  }, [leads, consultas, looseMeetings]);
   // Conflito com a agenda viva da pessoa no intervalo [from, to) da data.
   const liveConflict = (user, date, from, to) => {
     for (let h = Math.floor(from); h < to; h++) {
@@ -526,7 +544,7 @@ export function AgendaScreen({ onOpenLead }) {
         ))}
         </div>
         </section>}
-        <AgendaView leads={leads} consultations={consultas} onOpenLead={onOpenLead}
+        <AgendaView leads={leads} consultations={consultas} recordMeetings={looseMeetings} onOpenLead={onOpenLead}
           personIds={peopleSel} people={people} onPersons={setPeopleSel}
           view={view} onView={setView}
           blocking={{ blocksFor, onSlot, onBlock }}

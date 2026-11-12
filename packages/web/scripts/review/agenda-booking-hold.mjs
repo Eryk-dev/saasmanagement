@@ -27,6 +27,16 @@ try {
     assert.equal(await p.locator('.agenda-block', { hasText: 'Lukas marcou pelo link' }).count(), 0, 'o horário foi liberado');
     await p.close();
   }
+  // Reunião que mora na Implantação do cliente (caso Emerson Tratores) aparece na grade, sem arrastar.
+  for (const width of [1440, 390]) {
+    const p = await h.open(width, '&recordMeeting');
+    const item = p.locator('.agenda-day-col [role=button]', { hasText: 'Emerson tratores' }).first();
+    await item.waitFor();
+    assert.match(await item.textContent(), /16:00/);
+    assert.equal(await item.getAttribute('draggable'), null, 'remarca pela ficha, não arrasta');
+    await h.capture(p, `record-meeting-${width}`);
+    await p.close();
+  }
   assert.deepEqual(h.errors, []);
-  console.log('Pré-bloqueio da marcação: aparece na Agenda, não arrasta, abre a escolha do card e libera com confirmação; desktop e mobile aprovados.');
+  console.log('Pré-bloqueio da marcação: aparece na Agenda, não arrasta, abre a escolha do card e libera com confirmação; reunião da Implantação aparece na grade; desktop e mobile aprovados.');
 } finally { await h.close(); }

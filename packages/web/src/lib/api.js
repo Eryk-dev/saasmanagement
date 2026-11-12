@@ -413,6 +413,7 @@ export const api = {
   customerRecordMeetings: (customerId) => req("GET", `/api/customers/${customerId}/record-meetings`),
   scheduleRecordMeeting: (host, id, body) => req("POST", `/api/customers/${host}/${id}/meetings`, body),
   rescheduleRecordMeeting: (host, id, mid, at) => req("PATCH", `/api/customers/${host}/${id}/meetings/${mid}`, { at }),
+  agendaRecordMeetings: (from = "") => req("GET", `/api/agenda/record-meetings${from ? `?from=${encodeURIComponent(from)}` : ""}`),
   cancelRecordMeeting: (host, id, mid) => req("DELETE", `/api/customers/${host}/${id}/meetings/${mid}`),
   summarizeRecordMeeting: (host, id, mid, force = false) => req("POST", `/api/customers/${host}/${id}/meetings/${mid}/summary`, { force }),
   // Acompanhamento de CS (check-in, QBR, renovação, risco).

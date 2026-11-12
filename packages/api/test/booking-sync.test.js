@@ -497,3 +497,22 @@ test("marcação que já passou não liga a card nenhum (caso Emerson × Lukas, 
   assert.equal(bia.integrationAt, undefined, "o card não muda");
   assert.equal(bia.integrationBookedEventId, undefined);
 });
+
+test("reuniões dos registros do cliente vão pra Agenda (caso Emerson Tratores): canceladas e antigas ficam fora", async () => {
+  const repo = makeMemRepo();
+  const { listAgendaRecordMeetings } = await import("../src/calls/record-meetings.js");
+  await repo.create("customers", { id: "c1", saas: "leverads", name: "Emerson tratores", leadId: "le1" });
+  await repo.create("onboardings", { id: "ob1", customer: "c1", meetings: [
+    { id: "m1", at: "2026-11-12T19:00:00.000Z", label: "Integração", status: "scheduled", responsible: "yudi", meetUrl: "https://meet.google.com/x", bookedVia: "link" },
+    { id: "m2", at: "2026-11-11T19:00:00.000Z", label: "Integração", status: "canceled", responsible: "yudi" },
+    { id: "m0", at: "2026-08-01T19:00:00.000Z", label: "Integração", status: "done", responsible: "yudi" },
+  ] });
+  await repo.create("cs_followups", { id: "fu1", customer: "c1", meetings: [{ id: "m3", at: "2026-11-20T13:00:00.000Z", label: "Check-in", status: "scheduled", responsible: "ana" }] });
+  const list = await listAgendaRecordMeetings(repo, { from: "2026-10-01" });
+  assert.deepEqual(list.map((m) => m.id), ["m1", "m3"]);
+  assert.deepEqual(list[0], {
+    id: "m1", at: "2026-11-12T19:00:00.000Z", label: "Integração", status: "scheduled", responsible: "yudi", meetUrl: "https://meet.google.com/x",
+    bookedVia: "link", customer: "c1", customerName: "Emerson tratores", saas: "leverads", lead: "le1", host: { collection: "onboardings", id: "ob1", label: "Integração" },
+  });
+  assert.equal(list[1].host.collection, "cs_followups");
+});

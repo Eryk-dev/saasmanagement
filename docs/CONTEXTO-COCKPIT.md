@@ -1532,6 +1532,12 @@ Emerson, que ficou com a integração no dia errado. No sino, o aviso com
 `link.until` vencido mostra "Já passou · limpe no ×" e não abre a escolha.
 Marcação feita pelo link mandado da ficha do cliente cai na Implantação ou no
 acompanhamento (`meetings[]`), não no card do negócio.
+A Agenda desenha essas reuniões dos registros (`GET /api/agenda/record-meetings`,
+`listAgendaRecordMeetings` em `calls/record-meetings.js`; canceladas fora, 60
+dias de histórico) como integração/reunião na cor de quem atende, sem arrastar,
+e o clique abre a ficha do cliente; a que nasceu de um compromisso da Agenda
+(`agenda_blocks.meeting`) aparece só pelo compromisso. Antes de 12/11/2026 elas
+não apareciam (caso Emerson Tratores).
 Prévia com o funil atual e um lead por etapa: `?shell&etapas#today` ou
 `#pipeline` (`preview/etapas-mock.js`); revisão:
 `node scripts/review/lead-stage.mjs` em `packages/web`.

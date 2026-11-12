@@ -76,6 +76,8 @@ export const agendaReviewMock = {
     window.__reviewMutations.push({method:'create',col,data});return row;
   },
   update:async(col,id,data)=>{await hold('update');const row=col==='leads'?window.SEED.LEADS.find(l=>l.id===id):blocks.find(b=>b.id===id);Object.assign(row,data);window.__reviewMutations.push({method:'update',col,id,data});return row;},
+  // &recordMeeting: integração marcada pelo link da ficha, morando na Implantação (12/11/2026).
+  agendaRecordMeetings:async()=>({meetings:params.has('recordMeeting')?[{id:'mt1',at:`${brtYmd(0)}T19:00:00.000Z`,label:'Integração',status:'scheduled',responsible:'rm',meetUrl:'https://meet.google.com/abc',bookedVia:'link',customer:'cu1',customerName:'Emerson tratores',saas:'leverads',lead:'',host:{collection:'onboardings',id:'ob1',label:'Integração'}}]:[]}),
   linkBooking:async(eventId,body)=>{window.__reviewMutations.push({method:'linkBooking',eventId,body});return {ok:true};},
   remove:async(col,id)=>{await hold('remove');blocks=blocks.filter(b=>b.id!==id);window.__reviewMutations.push({method:'remove',col,id});return {ok:true};},
 };

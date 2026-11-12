@@ -6,8 +6,9 @@
 //   DELETE /api/customers/{onboardings|followups}/:id/meetings/:mid       cancela e apaga o evento
 //   POST   /api/customers/{onboardings|followups}/:id/meetings/:mid/summary   resume agora (o poller resume sozinho)
 //   GET    /api/customers/:id/record-meetings     as reuniões de todos os registros do cliente
+//   GET    /api/agenda/record-meetings?from=      as reuniões de todos os clientes, pra tela Agenda
 
-import { makeRecordMeetings, meetingsOfCustomer } from "./record-meetings.js";
+import { makeRecordMeetings, meetingsOfCustomer, listAgendaRecordMeetings } from "./record-meetings.js";
 
 const SEGMENTS = [["onboardings", "onboardings"], ["followups", "cs_followups"]];
 
@@ -23,6 +24,7 @@ export function registerRecordMeetingRoutes(app, repo, { google, googleUser, ant
   const meetings = makeRecordMeetings({ repo, google, googleUser, anthropic, log: app.log });
   const by = (req) => req.authUser?.id || "api";
   app.get("/api/customers/:id/record-meetings", async (req) => ({ meetings: await meetingsOfCustomer(repo, req.params.id) }));
+  app.get("/api/agenda/record-meetings", async (req) => ({ meetings: await listAgendaRecordMeetings(repo, { from: String(req.query?.from || "") }) }));
   for (const [segment, collection] of SEGMENTS) {
     const base = `/api/customers/${segment}/:id/meetings`;
     app.post(base, async (req, reply) => guard(reply, async () =>
