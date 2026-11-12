@@ -25,6 +25,7 @@ import { openCustomer, openLeadById } from "../lib/open-record.js";
 import { toast } from "../atoms.jsx";
 import { GuideViewer } from "./guide-viewer.jsx";
 import { OnboardingRun } from "./onboarding-run.jsx";
+import { IntegrationSurvey } from "./integration-survey.jsx";
 // O desenho de gaveta do card do cliente: estes blocos também abrem fora da
 // tela de Clientes (card do Negócio, card da Integração).
 import "../screens/customers.css";
@@ -248,6 +249,8 @@ export function OnboardingDrawer({ id, onClose }) {
               <button type="button" className="customer-peek-link" onClick={addItem} disabled={!newItem.title.trim()}>incluir</button>
             </div>
           </section>
+          {/* Pesquisa de satisfação (CS, envio à mão): lê o estado salvo (o), não o rascunho. */}
+          <IntegrationSurvey onboarding={o} customer={customer} lead={lead} />
           <section>
             <div className="customer-peek-kicker"><span>notas</span></div>
             <textarea className="inp" rows={3} style={{ width: "100%", marginTop: 8, height: "auto", padding: 8 }} value={draft.notes || ""} onChange={(e) => set({ notes: e.target.value })} placeholder="combinados, acessos, pendências…" />

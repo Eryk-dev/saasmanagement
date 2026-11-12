@@ -22,6 +22,8 @@ export function timelineTitle(item) {
     case "customer.financial_status_changed": return `Financeiro: ${fromTo(FINANCIAL, d)}`;
     case "onboarding.created": return "Integração aberta";
     case "onboarding.stage_changed": return `Integração: ${fromTo(STAGE, d)}`;
+    case "integration_survey.sent": return "Pesquisa da integração enviada";
+    case "integration_survey.answered": return d.score != null ? `Pesquisa da integração: nota ${d.score} de 5` : "Pesquisa da integração respondida";
     case "workspace.created": return "Conta criada no produto";
     case "user.signed_up": return "Cadastro no LeverId";
     default: break;

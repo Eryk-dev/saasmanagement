@@ -24,7 +24,7 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { currentUser, displayName } from "../lib/users.js";
-import { openOnboarding, openRecord } from "../lib/open-record.js";
+import { openLeadById, openOnboarding, openRecord } from "../lib/open-record.js";
 import { AvisoTopo, BarraComposicao, BarraFiltros, Info } from "../components/story.jsx";
 import { Pill, Segmented } from "../components/viz.jsx";
 import { tenureLabel } from "../lib/milestones.js";
@@ -166,6 +166,13 @@ function nextStep(row, now) {
       open: () => openOnboarding(o.id), title: "abrir a integração",
     };
   }
+  // Venda fechada com a entrega ainda não começada (integration-status.js da
+  // API): o passo é levar o card da venda para a Integração.
+  if (row.integration?.status === "aguardando") return {
+    tone: "warn", label: "Integração a marcar", sub: "venda fechada, entrega não começou",
+    // "aguardando" só existe com o lead da venda (integrationOf exige leadId).
+    open: () => openLeadById(row.integration.leadId), title: "abrir o card da venda",
+  };
   if (row.tickets?.urgent) return { tone: "neg", label: plural(row.tickets.urgent, "ticket urgente", "tickets urgentes"), sub: plural(row.tickets.open, "aberto", "abertos"), open: () => { location.hash = "#tickets"; }, title: "abrir os tickets" };
   if (row.tickets?.open) return { tone: "mut", label: plural(row.tickets.open, "ticket aberto", "tickets abertos"), sub: "", open: () => { location.hash = "#tickets"; }, title: "abrir os tickets" };
   return null;
@@ -307,7 +314,8 @@ function Row({ row, now, onOpen, onResults }) {
   const open = () => onOpen(row.id);
   const lifeSub = row.churned ? (row.endedAt ? `saiu em ${ddmm(row.endedAt)}` : "")
     : row.onboarding && stageOf(row) === "integracao" ? `${row.onboarding.progress}% do checklist`
-    : row.nps ? `NPS ${row.nps.score}` : "";
+    : row.integration?.status === "aguardando" && stageOf(row) === "integracao" ? "integração não começou"
+    : [row.nps ? `NPS ${row.nps.score}` : "", row.integrationSurvey ? `integração ${row.integrationSurvey.score}/5` : ""].filter(Boolean).join(" · ");
   return <div className="carteira-row" role="button" tabIndex={0} aria-label={`Abrir cliente: ${row.name}`} data-churn={row.churned || undefined}
     onClick={open} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); open(); } }}
     style={{ gridTemplateColumns: CARTEIRA_GRID, gap: CARTEIRA_GRID_GAP }}>

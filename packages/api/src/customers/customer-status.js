@@ -123,6 +123,14 @@ export function milestoneSummary(customer, product, subs, now = Date.now()) {
   };
 }
 
+// Última resposta da pesquisa da integração (integration-survey.js). Fica na
+// linha para o CS avaliar; não entra no health score.
+export function lastIntegrationSurvey(rows) {
+  const r = rows.filter((x) => x.status === "answered" && x.score != null)
+    .sort((a, b) => String(b.answeredAt).localeCompare(String(a.answeredAt)))[0];
+  return r ? { score: Number(r.score), ready: r.ready || "", at: r.answeredAt || "", onboarding: r.onboarding || "" } : null;
+}
+
 export function ticketsSummary(tickets) {
   const open = tickets.filter((t) => STATUS_KIND[t.status] !== "done");
   return { open: open.length, urgent: open.filter((t) => t.priority === "urgent" || t.priority === "high").length };
@@ -145,7 +153,7 @@ const groupBy = (rows, key) => {
   return out;
 };
 
-export function statusRow(c, { subs = [], invoices = [], followups = [], onboardings = [], tickets = [], nps = [], plans = [], product = null }, now = Date.now()) {
+export function statusRow(c, { subs = [], invoices = [], followups = [], onboardings = [], tickets = [], nps = [], surveys = [], plans = [], product = null }, now = Date.now()) {
   const churned = isChurnedCustomer(c, now);
   return {
     id: c.id, name: c.name || "", owner: c.owner || "", saas: c.saas || "",
@@ -153,6 +161,9 @@ export function statusRow(c, { subs = [], invoices = [], followups = [], onboard
     plan: c.plan || "",
     mrr: churned ? 0 : round((Number(c.arr) || 0) / 12),
     lifecycle: c.lifecycle || "", csStage: c.csStage || "",
+    // Estado da integração gravado pelo sweep (integration-status.js):
+    // integrando, aguardando (venda sem a entrega começar) ou integrado.
+    integration: { status: c.integrationStatus || "", at: c.milestonesDone?.onboarding || "", leadId: c.leadId || "" },
     health: Number(c.health) || 0, healthParts: c.healthParts || null, healthAt: c.healthAt || "",
     payment: paymentSummary(invoices, subs, now),
     subscription: subscriptionSummary(subs, now),
@@ -162,13 +173,14 @@ export function statusRow(c, { subs = [], invoices = [], followups = [], onboard
     milestones: milestoneSummary(c, product, subs, now),
     tickets: ticketsSummary(tickets),
     nps: lastNps(nps),
+    integrationSurvey: lastIntegrationSurvey(surveys),
   };
 }
 
 // Uma leitura por coleção (filtrada pelo produto), nunca uma por cliente.
 export async function customerStatusBoard(repo, { saas = "", now = Date.now() } = {}) {
   const where = saas ? { saas } : {};
-  const [customers, subs, invoices, followups, onboardings, tickets, nps, plans, products] = await Promise.all([
+  const [customers, subs, invoices, followups, onboardings, tickets, nps, plans, products, surveys] = await Promise.all([
     repo.listWhere("customers", where),
     repo.listWhere("subscriptions", where),
     repo.listWhere("invoices", where),
@@ -178,17 +190,19 @@ export async function customerStatusBoard(repo, { saas = "", now = Date.now() } 
     repo.listWhere("nps", where),
     repo.listWhere("plans", where),
     repo.list("products"),
+    repo.listWhere("integration_surveys", where).catch(() => []),
   ]);
   const productOf = new Map(products.map((p) => [p.id, p]));
   const by = {
     subs: groupBy(subs, "customer"), invoices: groupBy(invoices, "customer"),
     followups: groupBy(followups, "customer"), onboardings: groupBy(onboardings, "customer"),
     tickets: groupBy(tickets, "customerId"), nps: groupBy(nps, "customer"),
+    surveys: groupBy(surveys, "customer"),
   };
   const rows = customers.map((c) => statusRow(c, {
     subs: by.subs.get(c.id) || [], invoices: by.invoices.get(c.id) || [],
     followups: by.followups.get(c.id) || [], onboardings: by.onboardings.get(c.id) || [],
-    tickets: by.tickets.get(c.id) || [], nps: by.nps.get(c.id) || [], plans, product: productOf.get(c.saas) || null,
+    tickets: by.tickets.get(c.id) || [], nps: by.nps.get(c.id) || [], surveys: by.surveys.get(c.id) || [], plans, product: productOf.get(c.saas) || null,
   }, now));
   return { generatedAt: new Date(now).toISOString(), rows };
 }

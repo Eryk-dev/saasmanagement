@@ -1971,6 +1971,59 @@ no grupo do menu "CS e suporte" (chave `suporte`), com a permissão de Clientes
   M marcos" e o próximo marco quando ele ainda não é o próximo passo, e o
   "mais" tem o filtro "Marco atrasado". Testes: `customer-milestones.test.js`,
   `customer-status.test.js`.
+- **Integração numa definição só (12/11/2026):** o card do lead (Ganho →
+  Integração → Pós-venda), o registro `onboardings` e o marco "onboarding" da
+  régua não conversavam. Clientes lia o marco (concluir a integração não o
+  marcava, e o acompanhamento do marco só nasce até 30 dias depois do
+  vencimento, então quase toda a base aparecia com "falta: Onboarding"), e o
+  número "em integração" contava qualquer marco em aberto, inclusive upsell e
+  renovação. Já a Carteira lia o registro. Agora `customers/integration-status.js`
+  (`integrationOf`) decide:
+  - `integrando`: tem integração aberta (o registro manda);
+  - `integrado`: integração concluída (go-live, implantação primeiro), marco já
+    feito ou legado;
+  - `aguardando`: o card da venda está no Ganho ou na Integração sem registro
+    aberto, num funil com etapa de Integração e com venda a partir de
+    `LEGACY_CUTOFF` (12/11/2026).
+
+  Legado conta como integrado: venda anterior ao corte, sem lead, ou com o card
+  em Pós-venda. `refreshLifecycle` grava `integrationStatus` e põe `integrando`
+  e `aguardando` em `lifecycle: "integracao"`. Quando o cliente fica integrado,
+  grava `milestonesDone.onboarding` com a data do go-live e conclui o
+  acompanhamento aberto desse marco. O primeiro sweep depois do deploy marca a
+  base legada. `syncLeadOnboarding` recalcula também quando não há integração
+  para espelhar (Ganho direto para Pós-venda). A régua só abre acompanhamento
+  do marco da integração (rótulo "Integração", antes "Onboarding") para quem
+  está `aguardando`. O número "em integração" de Clientes usa
+  `lifecycle === "integracao"`, o mesmo critério da Carteira. A linha da
+  Carteira traz `integration` e, em `aguardando`, o próximo passo "Integração a
+  marcar" abre o card da venda. Teste: `integration-status.test.js`.
+- **Pesquisa de satisfação da integração (12/11/2026):** recurso de CS, uma
+  pesquisa por integração (coleção `integration_surveys`), enviada à mão pelo
+  card da integração (ainda não há envio automático). A lógica fica em
+  `customers/integration-survey.js`, as rotas em `routes.integration-survey.js`
+  e a página em `integration-survey-page.js`, que usa o `shell` do
+  `nps-page.js`.
+  - `POST /api/customers/onboardings/:id/survey { channel }` cria a pesquisa
+    ou reaproveita o mesmo link até haver resposta (respondida dá 409).
+  - Canais: `link` (copia a mensagem), `whatsapp` (abre o WhatsApp do CS com o
+    texto; a API da Meta não é usada) e `email` (conta conectada; sem e-mail
+    ou sem conta dá 409).
+  - O cliente responde em `/public/pesquisa/:token` (aberta em
+    `OPEN_PREFIXES`, rate-limit por IP): nota de 1 a 5 gravada no clique
+    (pode trocar por 15 min), "já usa sozinho?" (sim, parcial, não) e um
+    comentário. A nota é uma escala de carinhas coloridas (1 triste vermelha a
+    5 sorrindo verde, `shared/satisfaction-faces.js`); o card e a Análise de
+    Integração usam a mesma carinha (`Face` em `integration-survey.jsx`).
+  - Nota até 3 ou "não" abre um acompanhamento `check_in` para o dono da conta,
+    com prazo no dia seguinte e `source: "pesquisa_integracao"`. O comentário
+    que chega depois entra nas notas dele.
+  - A nota não entra no health score. Aparece no card (`integration-survey.jsx`),
+    na linha da Carteira (`integrationSurvey` do status, sub-linha "integração
+    N/5"), na Análise de Integração (`pesquisa` em
+    `/api/integrations/:saas/summary`, por integrador, com os comentários) e na
+    timeline (`integration_survey.sent`/`.answered`).
+  - Teste: `integration-survey.test.js`.
 - **Acompanhamento na fila de Atividades:** o bootstrap manda
   `CS_FOLLOWUPS` (abertos, só para quem tem Clientes) e `buildQueue` os põe na
   fila do dono (grupo `cs`), com prazo por dia como o follow-up: vencido cai em

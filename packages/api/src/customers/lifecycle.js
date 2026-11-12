@@ -17,10 +17,12 @@
 
 import { appendTimeline } from "../events/timeline.js";
 import { syncLeverpriceNames } from "./leverprice-names.js";
+import { integrationOf, isIntegrating, OPEN_ONBOARDING } from "./integration-status.js";
+
+export { OPEN_ONBOARDING };
 
 const norm = (v) => String(v || "").trim().toLowerCase();
 const FREE_MAIL = new Set(["gmail.com", "hotmail.com", "outlook.com", "yahoo.com", "yahoo.com.br", "icloud.com", "live.com", "bol.com.br", "uol.com.br", "terra.com.br"]);
-export const OPEN_ONBOARDING = new Set(["aguardando_kickoff", "kickoff", "configuracao", "treinamento", "go_live"]);
 const ENDED_SUBS = new Set(["canceled", "expired", "ended"]);
 const RISK_HEALTH = 50; // mesma faixa vermelha do filtro de Clientes (routes.crud.js)
 
@@ -57,9 +59,11 @@ export function financialStatusOf(subs, invoices) {
   return "adimplente";
 }
 
-export function lifecycleOf(customer, { subs, onboardings, financialStatus }) {
+// "integracao" = a definição única de integration-status.js: integração aberta
+// ou venda esperando a entrega. Sem `integration`, calcula só pelas integrações.
+export function lifecycleOf(customer, { subs, onboardings, financialStatus, integration = null }) {
   if (customer.endedAt || (subs.length && subs.every((s) => ENDED_SUBS.has(s.status)))) return "churn";
-  if (onboardings.some((o) => OPEN_ONBOARDING.has(o.stage))) return "integracao";
+  if (isIntegrating((integration || integrationOf(customer, { onboardings })).status)) return "integracao";
   const health = Number(customer.health) || 0;
   if (financialStatus === "inadimplente" || (health > 0 && health < RISK_HEALTH)) return "risco";
   return "ativo";
@@ -79,14 +83,16 @@ export function csStageOf(customer, { lifecycle, followups = [] }) {
   return "saudavel";
 }
 
-async function inputsOf(repo, customerId) {
-  const [subs, invoices, onboardings, followups] = await Promise.all([
-    repo.listWhere("subscriptions", { customer: customerId }),
-    repo.listWhere("invoices", { customer: customerId }),
-    repo.listWhere("onboardings", { customer: customerId }),
-    repo.listWhere("cs_followups", { customer: customerId }),
+async function inputsOf(repo, customer) {
+  const [subs, invoices, onboardings, followups, lead, product] = await Promise.all([
+    repo.listWhere("subscriptions", { customer: customer.id }),
+    repo.listWhere("invoices", { customer: customer.id }),
+    repo.listWhere("onboardings", { customer: customer.id }),
+    repo.listWhere("cs_followups", { customer: customer.id }),
+    customer.leadId ? repo.get("leads", customer.leadId).catch(() => null) : null,
+    customer.saas ? repo.get("products", customer.saas).catch(() => null) : null,
   ]);
-  return { subs, invoices, onboardings, followups };
+  return { subs, invoices, onboardings, followups, lead, product };
 }
 
 const TIMELINE_KIND = {
@@ -96,21 +102,36 @@ const TIMELINE_KIND = {
 };
 
 // Recalcula e grava o que mudou; devolve o cliente atualizado (ou o mesmo).
+// Também grava `integrationStatus` e, quando o cliente fica integrado, o marco
+// "onboarding" da régua com a data do go-live (o que a tela Clientes lê) e
+// conclui o acompanhamento aberto desse marco.
 export async function refreshLifecycle(repo, customer, { now = new Date() } = {}) {
-  const { subs, invoices, onboardings, followups } = await inputsOf(repo, customer.id);
+  const { subs, invoices, onboardings, followups, lead, product } = await inputsOf(repo, customer);
+  const integration = integrationOf(customer, { onboardings, lead, product });
   const financialStatus = financialStatusOf(subs, invoices);
-  const lifecycle = lifecycleOf(customer, { subs, onboardings, financialStatus });
+  const lifecycle = lifecycleOf(customer, { subs, onboardings, financialStatus, integration });
   const csStage = csStageOf(customer, { lifecycle, followups });
   const at = now.toISOString();
   const changes = [["lifecycle", lifecycle], ["financialStatus", financialStatus], ["csStage", csStage]].filter(([k, v]) => (customer[k] || "") !== v);
-  if (!changes.length) return customer;
+  const patch = {};
+  if ((customer.integrationStatus || "") !== integration.status) patch.integrationStatus = integration.status;
+  const markMilestone = integration.status === "integrado" && !customer.milestonesDone?.onboarding;
+  if (markMilestone) patch.milestonesDone = { ...(customer.milestonesDone || {}), onboarding: integration.at || at };
+  if (!changes.length && !Object.keys(patch).length) return customer;
   for (const [field, to] of changes) {
     await appendTimeline(repo, {
       id: `tl:${field}:${customer.id}:${at}`, kind: TIMELINE_KIND[field],
       source: "cockpit", at, customer: customer.id, lead: customer.leadId || "", data: { from: customer[field] || "", to },
     });
   }
-  return repo.update("customers", customer.id, { ...Object.fromEntries(changes), lifecycleAt: at }, { silent: true });
+  const saved = await repo.update("customers", customer.id, { ...Object.fromEntries(changes), ...patch, ...(changes.length ? { lifecycleAt: at } : {}) }, { silent: true });
+  if (markMilestone && followups.some((f) => f.status === "aberto" && f.milestone === "onboarding")) {
+    // Import tardio: customer-milestones → cs-followups → lifecycle é um ciclo.
+    const { completeMilestoneTasks } = await import("./customer-milestones.js");
+    try { await completeMilestoneTasks(repo, saved, ["onboarding"], { by: "system" }); } catch { /* best-effort */ }
+    return (await repo.get("customers", customer.id)) || saved;
+  }
+  return saved;
 }
 
 // Workspaces: um por produto × tenant. Vem do vínculo gravado no cliente e das

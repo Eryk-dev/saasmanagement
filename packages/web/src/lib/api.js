@@ -387,6 +387,10 @@ export const api = {
   // Modo integração: cliente, formulário, resumo da venda, pendências e guias do checklist.
   onboardingKit: (id) => req("GET", `/api/customers/onboardings/${encodeURIComponent(id)}/kit`),
   openOnboardings: () => req("GET", "/api/customers/onboardings?open=1"),
+  // Pesquisa de satisfação da integração (recurso de CS): a do card e o pedido
+  // manual ({ channel: link|whatsapp|email }; e-mail sai pela conta conectada).
+  onboardingSurvey: (id) => req("GET", `/api/customers/onboardings/${encodeURIComponent(id)}/survey`),
+  askOnboardingSurvey: (id, channel) => req("POST", `/api/customers/onboardings/${encodeURIComponent(id)}/survey`, { channel }),
   // Reunião com Meet próprio num registro do cliente (host = "onboardings" | "followups").
   // Versões da proposta do lead, com o estado de cada uma.
   // Calls de venda como registro: as do lead e o placar de comparecimento.

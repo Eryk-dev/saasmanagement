@@ -90,17 +90,20 @@ const legacyTask = (repo, key) => createTask(repo, { saas: "leverads", title: "m
 test("tick: cada marco vencido vira acompanhamento de CS do dono, com o nome do marco, e não duplica", async () => {
   const { repo, runner } = await cenario();
   const r1 = await runner.tick(new Date(HOJE));
-  assert.equal(r1.created, 2); // onboarding + check-in de mês 1
+  // Só o check-in de mês 1: cliente legado já está integrado, e o marco da
+  // integração só vira acompanhamento com a venda esperando a entrega
+  // (integration-status.test.js).
+  assert.equal(r1.created, 1);
   assert.equal((await repo.list("tasks")).length, 0, "marco não vira mais tarefa do quadro");
   const fs = await followups(repo);
-  assert.equal(fs.length, 2);
+  assert.equal(fs.length, 1);
   const checkin = fs.find((f) => f.milestone === "checkin_m1");
   assert.deepEqual([checkin.kind, checkin.title, checkin.owner, checkin.status, checkin.source], ["check_in", "Check-in de mês 1", "eryk", "aberto", "marco"]);
   assert.equal(checkin.dueAt.slice(0, 10), new Date(HOJE).toISOString().slice(0, 10));
   assert.match(checkin.notes, /Marco da régua de pós-venda: Check-in de mês 1/);
   const r2 = await runner.tick(new Date(HOJE));
   assert.equal(r2.created, 0);
-  assert.equal((await followups(repo)).length, 2);
+  assert.equal((await followups(repo)).length, 1);
   runner.stop();
 });
 
@@ -146,7 +149,7 @@ test("tick: tarefa de marco antiga continua sendo o trabalho do marco (sem acomp
   const { repo, runner } = await cenario();
   await legacyTask(repo, "checkin_m1");
   await runner.tick(new Date(HOJE));
-  assert.deepEqual((await followups(repo)).map((f) => f.milestone), ["onboarding"]);
+  assert.deepEqual((await followups(repo)).map((f) => f.milestone), []);
   runner.stop();
 });
 
@@ -164,13 +167,14 @@ test("acompanhamento feito marca o marco na ficha; reabrir desmarca", async () =
 
 test("marco concluído na ficha conclui o acompanhamento aberto", async () => {
   const { repo, runner } = await cenario();
+  await repo.create("cs_followups", { id: "fu_qbr", customer: "cu_1", saas: "leverads", kind: "qbr", status: "aberto", milestone: "revisao_m3" });
   await runner.tick(new Date(HOJE));
   const c = await repo.get("customers", "cu_1");
   const updated = await repo.update("customers", "cu_1", { milestonesDone: { ...(c.milestonesDone || {}), checkin_m1: new Date(HOJE).toISOString() } });
   assert.equal(await completeMilestoneTasks(repo, updated, ["checkin_m1"], { by: "eryk" }), 1);
   const f = (await followups(repo)).find((x) => x.milestone === "checkin_m1");
   assert.equal(f.status, "feito");
-  assert.equal((await followups(repo)).find((x) => x.milestone === "onboarding").status, "aberto", "só o marco concluído");
+  assert.equal((await followups(repo)).find((x) => x.milestone === "revisao_m3").status, "aberto", "só o marco concluído");
   assert.equal(await completeMilestoneTasks(repo, updated, ["checkin_m1"], { by: "eryk" }), 0, "idempotente");
   runner.stop();
 });
@@ -205,10 +209,11 @@ test("marco concluído na ficha conclui a tarefa antiga aberta", async () => {
 
 test("hook sai do ar com o runner parado (não vaza entre execuções)", async () => {
   const { repo, runner } = await cenario();
-  const t = await legacyTask(repo, "onboarding");
+  // checkin_m1: o marco da integração o lifecycle grava sozinho no legado.
+  const t = await legacyTask(repo, "checkin_m1");
   runner.stop();
   await completeTask(repo, t.id, true, { by: "eryk" });
-  assert.equal((await repo.get("customers", "cu_1")).milestonesDone, undefined);
+  assert.equal((await repo.get("customers", "cu_1")).milestonesDone?.checkin_m1, undefined);
 });
 
 // ── Marco com gate de prova (pedido de depoimento) ────────────────────────

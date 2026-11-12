@@ -1,11 +1,13 @@
 // Marcos de pós-venda por tempo de casa. A régua padrão nasce aqui; um produto
 // pode sobrescrever com `product.milestones` = [{ key, label, dueDays }].
 // Conclusão fica em `customer.milestonesDone` = { [key]: isoDate } (PATCH cru).
+// O marco "onboarding" (rótulo "Integração") é gravado pelo servidor quando o
+// cliente fica integrado (api customers/integration-status.js).
 
 const DAY = 86_400_000;
 
 export const DEFAULT_MILESTONES = [
-  { key: "onboarding", label: "Onboarding", dueDays: 7, hint: "semana 1" },
+  { key: "onboarding", label: "Integração", dueDays: 7, hint: "semana 1" },
   { key: "checkin_m1", label: "Check-in de mês 1", dueDays: 30, hint: "mês 1" },
   { key: "revisao_m3", label: "Revisão de resultado", dueDays: 90, hint: "mês 3" },
   // Pedido de depoimento: só pra quem TEM prova (o gate "proof" olha a fila de

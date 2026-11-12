@@ -11,8 +11,8 @@
 // um template literal, então o código interno usa concatenação (mesma regra do
 // integration-form-page.js).
 
-const escJson = (obj) => JSON.stringify(obj).replace(/</g, "\\u003c");
-const esc = (s) => String(s == null ? "" : s)
+export const escJson = (obj) => JSON.stringify(obj).replace(/</g, "\\u003c");
+export const esc = (s) => String(s == null ? "" : s)
   .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
   .replaceAll('"', "&quot;").replaceAll("'", "&#39;");
 
@@ -66,7 +66,8 @@ const STYLE = `
   }
 `;
 
-const shell = (title, body, extra = "") => `<!doctype html>
+// Também usado pela pesquisa da integração (integration-survey-page.js).
+export const shell = (title, body, extra = "") => `<!doctype html>
 <html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">

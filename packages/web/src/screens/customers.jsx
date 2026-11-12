@@ -1,5 +1,4 @@
-import { LeadGrade, LeadPhoneCopy } from "../components/lead-card.jsx";
-import { CallfaceButton } from "../components/callface-button.jsx";
+import { LeadGrade } from "../components/lead-card.jsx";
 
 import React from "react";
 import { createPortal } from "react-dom";
@@ -658,10 +657,11 @@ function CustomersScreen({ initialTab }) {
                 terminou a integração e churn. */}
             <div className="customers-kpis">
               {(() => {
-                const emIntegracao = activeCustomers.filter((c) => {
-                  const nm = isKidsWorkspace ? null : nextMilestone(withCycle(c), product);
-                  return !!nm;
-                }).length;
+                // Mesmo critério da Carteira (12/11/2026): o ciclo de vida que o
+                // servidor grava (integração aberta ou venda esperando a
+                // entrega). Antes contava quem tinha QUALQUER marco em aberto —
+                // upsell do mês 6 e renovação inclusos —, ou seja, a base toda.
+                const emIntegracao = isKidsWorkspace ? 0 : activeCustomers.filter((c) => c.lifecycle === "integracao").length;
                 const churnRecente = customers
                   .filter((c) => isChurned(c) && c.endedAt)
                   .sort((a, b) => new Date(b.endedAt) - new Date(a.endedAt))[0];
@@ -669,7 +669,7 @@ function CustomersScreen({ initialTab }) {
                 return [
                   { rot: "clientes ativos", val: String(activeCustomers.length), nota: "base do produto" },
                   { rot: "MRR", val: window.fmt.moneyFull(totalMrr), nota: keyAccounts.length ? `${window.fmt.moneyFull(coreMrr)} sem ${keyAccounts.length === 1 ? "a conta grande" : "as contas grandes"}` : "receita recorrente da base" },
-                  { rot: "em integração", val: String(emIntegracao), tom: emIntegracao > 0 ? "var(--warn)" : null, nota: "ainda não terminaram a régua" },
+                  { rot: "em integração", val: String(emIntegracao), tom: emIntegracao > 0 ? "var(--warn)" : null, nota: "integração aberta ou a marcar" },
                   { rot: "churn", val: String(churnedCount), tom: churnedCount > 0 ? "var(--neg)" : null, nota: diasChurn == null ? "nenhum encerramento" : `o mais recente há ${diasChurn} d` },
                 ];
               })().map((k) => (
@@ -1166,12 +1166,7 @@ function CustomerPeek(props) {
       <div className="customer-peek">
         <header className="customer-peek-head">
           <LeadGrade tier={tier} placeholder />
-          <div><div className="customer-peek-title"><h2>{customer.name}</h2><LeverIdBadge org={props.leverId} orgId={customerOrgId(customer)} /><button className="customer-peek-edit" aria-label="Editar cliente" title="Editar cliente" onClick={()=>setOperation('edit')} disabled={!!busy}><Icon name="pencil" size={13}/></button></div><p>{[customer.contact,customer.keyAccount?'conta grande':null,tenureLabel(customer)?`${tenureLabel(customer)} de casa`:null].filter(Boolean).join(' · ')}</p>
-            {/* Telefone do cliente (campo WhatsApp) com copiar + Ligar pela Callface
-                (29/10/2026): o pós-venda liga daqui sem procurar o número em Editar.
-                Cliente sem telefone cai no do lead de origem. */}
-            {(customer.phone||lead?.phone)&&<div className="customer-peek-phone"><LeadPhoneCopy phone={customer.phone||lead?.phone}/><CallfaceButton variant="inline" phone={customer.phone||lead?.phone} leadId={lead?.id||''}/></div>}
-            <CustomerStateChips customer={customer}/></div>
+          <div><div className="customer-peek-title"><h2>{customer.name}</h2><LeverIdBadge org={props.leverId} orgId={customerOrgId(customer)} /><button className="customer-peek-edit" aria-label="Editar cliente" title="Editar cliente" onClick={()=>setOperation('edit')} disabled={!!busy}><Icon name="pencil" size={13}/></button></div><p>{[customer.contact,customer.keyAccount?'conta grande':null,tenureLabel(customer)?`${tenureLabel(customer)} de casa`:null].filter(Boolean).join(' · ')}</p><CustomerStateChips customer={customer}/></div>
           <button aria-label="Fechar ficha" onClick={onClose} disabled={!!busy}>✕</button>
         </header>
         <div className="customer-peek-body">

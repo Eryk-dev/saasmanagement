@@ -26,11 +26,12 @@ import { completeTask, registerTaskHook } from "../tasks/tasks-core.js";
 import { createFollowup, updateFollowup, FOLLOWUPS } from "./cs-followups.js";
 import { isChurnedCustomer } from "../billing/churn.js";
 import { influencedByOrg } from "./leverads-results.js";
+import { integrationOf } from "./integration-status.js";
 
 const DAY = 86_400_000;
 
 export const DEFAULT_MILESTONES = [
-  { key: "onboarding", label: "Onboarding", dueDays: 7, hint: "semana 1" },
+  { key: "onboarding", label: "Integração", dueDays: 7, hint: "semana 1" },
   { key: "checkin_m1", label: "Check-in de mês 1", dueDays: 30, hint: "mês 1" },
   { key: "revisao_m3", label: "Revisão de resultado", dueDays: 90, hint: "mês 3" },
   // Pedido de depoimento: só pra quem TEM prova (o gate "proof" olha a fila de
@@ -103,7 +104,7 @@ const fmtDia = (iso) => {
 // Título por marco. Cai no rótulo do template quando o produto sobrescreve a
 // régua com marcos próprios (aí o título é "<rótulo> · <cliente>").
 const TITULO = {
-  onboarding: (nome) => `Onboarding de ${nome} (semana 1)`,
+  onboarding: (nome) => `Integração de ${nome} ainda não começou (semana 1)`,
   checkin_m1: (nome) => `Check-in de mês 1 com ${nome}`,
   revisao_m3: (nome) => `Revisão de resultado com ${nome} (mês 3)`,
   upsell_m6: (nome) => `Conversa de upsell com ${nome} (mês 6)`,
@@ -213,6 +214,14 @@ export function startCustomerMilestones(repo, {
       return (provaMap.get(String(c.leveradsOrgId)) || 0) > 0;
     };
 
+    const awaitingIntegration = async (c) => {
+      const [onboardings, lead] = await Promise.all([
+        repo.listWhere("onboardings", { customer: c.id }).catch(() => []),
+        c.leadId ? repo.get("leads", c.leadId).catch(() => null) : null,
+      ]);
+      return integrationOf(c, { onboardings, lead, product: prodById.get(c.saas) || null }).status === "aguardando";
+    };
+
     for (const c of customers) {
       if (!inMilestoneRuler(c, ms)) continue;
       const customer = { ...c, contractCycle: c.contractCycle || cycleOf.get(c.id) };
@@ -223,6 +232,10 @@ export function startCustomerMilestones(repo, {
         // resultado no painel: o texto do pedido cita o número, e sem número o
         // pedido não existe.
         if (m.gate === "proof" && !(await hasProof(c))) continue;
+        // Marco da integração (12/11/2026, integration-status.js): com
+        // integração aberta o trabalho é o próprio registro; integrado, o
+        // lifecycle já marca. Só a venda esperando a entrega pede acompanhamento.
+        if (m.key === "onboarding" && !(await awaitingIntegration(c))) continue;
         // Tarefa de marco de antes de 03/11 continua sendo o trabalho do marco.
         const legacy = await repo.listWhere("tasks", { customerId: c.id, milestoneKey: m.key }, { fields: [] }).catch(() => []);
         if (legacy.length) continue;

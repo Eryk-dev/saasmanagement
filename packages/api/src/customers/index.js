@@ -4,6 +4,7 @@
 import { registerIntegrationRoutes } from "./routes.integrations.js";
 import { registerReferralRoutes } from "./routes.referrals.js";
 import { registerNpsRoutes } from "./routes.nps.js";
+import { registerIntegrationSurveyRoutes } from "./routes.integration-survey.js";
 import { registerCustomerResultsRoutes } from "./routes.customer-results.js";
 import { registerLeverIdRoutes } from "./routes.leverid.js";
 import { registerLeveradsOrgRoutes } from "./routes.leverads-orgs.js";
@@ -35,6 +36,9 @@ export function register(app, repo, ctx) {
   // Depois do mailer/whatsapp: o pedido sai por e-mail e, dentro da janela de
   // 24h, por WhatsApp.
   registerNpsRoutes(app, repo, { mailer: ctx.mailer, whatsapp: ctx.whatsapp });
+  // Pesquisa de satisfação da integração (recurso de CS): link por integração,
+  // enviado à mão pelo card (/public/pesquisa/:token para o cliente).
+  registerIntegrationSurveyRoutes(app, repo, { mailer: ctx.mailer });
   // Resultados do cliente na ficha: número vivo do banco do produto + envio
   // manual do relatório mensal.
   registerCustomerResultsRoutes(app, repo, { mailer: ctx.mailer, whatsapp: ctx.whatsapp });

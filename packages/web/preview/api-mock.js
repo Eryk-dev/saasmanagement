@@ -36,6 +36,7 @@ const inboxPreview = typeof location !== "undefined" && new URLSearchParams(loca
 import { trainingMock } from "./training-mock.js";
 import { ticketsMock } from "./tickets-mock.js";
 import { financeMock, financeMpPayments, financeRules } from "./finance-mock.js";
+const surveyPreview = typeof location !== "undefined" ? new URLSearchParams(location.search).get("survey") || "" : "";
 const financePreview = typeof location !== "undefined" && new URLSearchParams(location.search).has("finance");
 import { teamPreviewScore } from "./team-mock.js";
 const teamPreview = typeof location !== "undefined" && new URLSearchParams(location.search).has("team");
@@ -74,7 +75,7 @@ export const LEADS_FAKE = [
 
 export const CLIENTES_FAKE = [
   { id: "c1", saas: "leverads", name: "Zpack Embalagens", contact: "Marianna Reis", arr: 28800, plan: "Pro trimestral", startedAt: emDias(-120), milestonesDone: { onboarding: emDias(-118), contas: emDias(-110), carga: emDias(-100), anuncio: emDias(-90), rotina: emDias(-70), resultado: emDias(-40) } },
-  { id: "c2", saas: "leverads", name: "Galante Comércio", contact: "Rodrigo Galante", arr: 300000, plan: "Enterprise anual", keyAccount: true, startedAt: emDias(-260), milestonesDone: { onboarding: emDias(-255), contas: emDias(-250), carga: emDias(-240), anuncio: emDias(-230), rotina: emDias(-200), resultado: emDias(-170) } },
+  { id: "c2", saas: "leverads", name: "Galante Comércio", contact: "Rodrigo Galante", lifecycle: "integracao", integrationStatus: "integrando", arr: 300000, plan: "Enterprise anual", keyAccount: true, startedAt: emDias(-260), milestonesDone: { onboarding: emDias(-255), contas: emDias(-250), carga: emDias(-240), anuncio: emDias(-230), rotina: emDias(-200), resultado: emDias(-170) } },
   { id: "c3", saas: "leverads", name: "Braga Ferramentas", contact: "Otávio Braga", arr: 34200, plan: "Pro anual", startedAt: emDias(-90), milestonesDone: { onboarding: emDias(-88), contas: emDias(-80), carga: emDias(-70), anuncio: emDias(-60) } },
   { id: "c4", saas: "leverads", name: "RN Distribuidora", contact: "Ricardo Nunes", arr: 57600, plan: "Pro anual", startedAt: emDias(-60), milestonesDone: { onboarding: emDias(-58), contas: emDias(-50), carga: emDias(-40) } },
   { id: "c5", saas: "leverads", name: "Lojão do Bebê", contact: "Pedro Rocha", arr: 40800, plan: "Pro anual", startedAt: emDias(-45), milestonesDone: { onboarding: emDias(-44), contas: emDias(-40), carga: emDias(-30), anuncio: emDias(-20), rotina: emDias(-10) } },
@@ -129,7 +130,7 @@ const STATUS_PREVIEW = {
   c8: { owner: "leo", lifecycle: "churn", csStage: "churn", health: 0, pay: "", sub: ["canceled", "monthly", null], products: [["leverads", true]] },
 };
 // Régua de marcos de exemplo: `done` feitos, `late` atrasados e o próximo em `next` dias.
-const MARCOS_PREVIEW = [["onboarding", "Onboarding"], ["checkin_m1", "Check-in de mês 1"], ["revisao_m3", "Revisão de resultado"], ["depoimento", "Pedir depoimento e autorizar case"], ["upsell_m6", "Conversa de upsell"], ["renovacao", "Contato de renovação"]];
+const MARCOS_PREVIEW = [["onboarding", "Integração"], ["checkin_m1", "Check-in de mês 1"], ["revisao_m3", "Revisão de resultado"], ["depoimento", "Pedir depoimento e autorizar case"], ["upsell_m6", "Conversa de upsell"], ["renovacao", "Contato de renovação"]];
 function reguaPreview([done, late, next]) {
   const steps = MARCOS_PREVIEW.map(([key, label], i) => ({ key, label, status: i < done ? "done" : i < done + late ? "late" : i === done + late && next <= 7 ? "soon" : "next" }));
   const first = steps.find((x) => x.status !== "done");
@@ -283,6 +284,10 @@ const RESPOSTAS = {
   get: (col, id) => (modoGuia && id === "ld_guia" ? leadGuia : (window.SEED?.[String(col).toUpperCase()] || []).find((r) => r.id === id) || null),
   customerOnboardings: (id) => ({ onboardings: id === "c2" ? [integracaoPreview] : [] }),
   onboarding: () => integracaoAtual(),
+  // Pesquisa de satisfação da integração: respondida com nota baixa (abre acompanhamento).
+  // ?survey=none | sent mostra os outros estados do bloco no card.
+  onboardingSurvey: () => surveyPreview === "none" ? { survey: null } : surveyPreview === "sent" ? { survey: { id: "is_prev", onboarding: "ob_prev_1", customer: "c2", status: "sent", channel: "whatsapp", sentAt: "2026-09-16T13:00:00.000Z", link: "https://levermoney.com.br/public/pesquisa/prev" } } : ({ survey: { id: "is_prev", onboarding: "ob_prev_1", customer: "c2", status: "answered", channel: "whatsapp", sentAt: "2026-09-16T13:00:00.000Z", answeredAt: "2026-09-16T18:20:00.000Z", score: 3, ready: "parcial", comment: "A call foi boa, mas ainda não sei subir anúncio novo sem ajuda.", followup: "fu_prev_1", link: "https://levermoney.com.br/public/pesquisa/prev" } }),
+  askOnboardingSurvey: (id, channel) => ({ survey: { id: "is_prev", onboarding: id, status: "sent", channel, sentAt: "2026-09-18T18:00:00.000Z" }, link: "https://levermoney.com.br/public/pesquisa/prev", text: "Oi! Queremos saber como foi a sua integração com a Lever. São 3 perguntas rápidas, leva uns 30 segundos: https://levermoney.com.br/public/pesquisa/prev" }),
   // Modo integração (03/11/2026): o kit da integração de exemplo e o PATCH dos itens.
   updateOnboarding: (id, patch) => {
     Object.assign(integracaoPreview, patch);

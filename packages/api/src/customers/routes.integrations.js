@@ -4,6 +4,7 @@
 // configurado. Read-only. Espelho do routes.pitch.js, mas do lado pós-venda.
 
 import { CLIENT_PENDING_LABEL, lateOurs } from "./client-pending.js";
+import { SURVEYS, surveyStats } from "./integration-survey.js";
 
 // Agregação estruturada: distribuição de sentimento, pendências (com quem
 // resolve) e itens configurados, ordenados por frequência. Normalização
@@ -111,6 +112,15 @@ export function registerIntegrationRoutes(app, repo) {
       itens: [...doCliente, ...doTime].sort((a, b) => b.dias - a.dias).slice(0, 8),
     };
 
-    return { ...agg, recent, integradores, integrator: integFilter, atrasos };
+    // Pesquisa de satisfação da integração (integration-survey.js): o que o
+    // CLIENTE disse, ao lado do que a transcrição leu. Por integrador da
+    // integração; não entra no health score.
+    const surveys = (await repo.listWhere(SURVEYS, { saas }).catch(() => []))
+      .filter((r) => integFilter == null || (r.integrator || "") === integFilter);
+    const pesquisa = surveyStats(surveys);
+    const customerName = new Map((await repo.listWhere("customers", { saas }).catch(() => [])).map((c) => [c.id, c.name || ""]));
+    pesquisa.recent = pesquisa.recent.map((r) => ({ ...r, customerName: customerName.get(r.customer) || "" }));
+
+    return { ...agg, recent, integradores, integrator: integFilter, atrasos, pesquisa };
   });
 }

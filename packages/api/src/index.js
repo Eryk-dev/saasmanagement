@@ -39,6 +39,9 @@ const OPEN_PREFIXES = ["/f/", "/public/forms/", "/fi/", "/public/integration-for
   // NPS (routes.nps.js): o cliente responde a nota pelo link do e-mail/WhatsApp,
   // sem login. O token de 32 hex do link é quem identifica a avaliação.
   "/public/nps/",
+  // Pesquisa de satisfação da integração (routes.integration-survey.js): mesmo
+  // desenho do NPS, o token de 32 hex identifica a pesquisa.
+  "/public/pesquisa/",
   // Portal do Suporte (routes.support-portal.js): o cliente abre, acompanha e
   // responde o chamado pelo link. O token de 32 hex identifica o chamado; abrir
   // chamado novo só funciona com o portal ligado no produto.

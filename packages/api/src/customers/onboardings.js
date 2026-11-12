@@ -146,7 +146,13 @@ export async function syncLeadOnboarding(repo, lead, { now = new Date() } = {}) 
   if (!existing) {
     const wants = leadKind === "integracao" || Boolean(lead.integrationAt)
       || (leadKind === "ganho" && await planAsksIntegration(repo, lead.customerId));
-    if (!wants) return null;
+    if (!wants) {
+      // Sem integração pra espelhar, o card ainda decide o estado do cliente
+      // (integration-status.js): Ganho espera a entrega, Pós-venda é integrado.
+      const customer = await repo.get("customers", lead.customerId).catch(() => null);
+      if (customer) await refreshLifecycle(repo, customer, { now });
+      return null;
+    }
     const created = await createOnboarding(repo, {
       customer: lead.customerId, lead: lead.id, kind: "implantacao", integrator: lead.integrator || "", kickoffAt: lead.integrationAt || "",
     }, { now, source: "lead" });
