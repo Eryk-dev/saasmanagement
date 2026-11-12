@@ -92,3 +92,19 @@ test("guard: sub-rotas de tarefa herdam a tela `tasks`; caixa de entrada é de q
   assert.equal(screenForRequest("POST", "/api/notifications/read"), null);
   assert.equal(screenForRequest("POST", "/api/feedback/asset"), null);
 });
+
+test("limpar do sino: POST /api/notifications/clear tira só os avisos de quem chama", async (t) => {
+  const repo = makeMemRepo();
+  const { app, ANA, VITOR } = await buildApp(repo);
+  t.after(() => app.close());
+  await app.inject({ method: "POST", url: "/api/tasks", headers: VITOR, payload: { title: "Ligar", assignees: ["ana"] } });
+  const [aviso] = (await app.inject({ url: "/api/notifications", headers: ANA })).json().items;
+  const other = (await app.inject({ method: "POST", url: "/api/notifications/clear", headers: VITOR, payload: { ids: [aviso.id] } })).json();
+  assert.equal(other.cleared, 0, "o Vitor não limpa o aviso da Ana");
+  const r = (await app.inject({ method: "POST", url: "/api/notifications/clear", headers: ANA, payload: { ids: [aviso.id] } })).json();
+  assert.deepEqual(r, { ok: true, cleared: 1 });
+  const inbox = (await app.inject({ url: "/api/notifications", headers: ANA })).json();
+  assert.equal(inbox.items.length, 0);
+  assert.equal(inbox.unread, 0);
+  assert.equal((await repo.get("notifications", aviso.id)).cleared, true, "fica no banco: a chave do aviso segue valendo");
+});

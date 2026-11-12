@@ -83,10 +83,21 @@ export function BookingLinkActions({ lead, userId }) {
 
 // Janela do aviso do sino: ligar à mão a marcação sem card (regra da lista em
 // lib/booking-candidates.js).
-export function BookingLinkModal({ eventId, userId, text = "", onClose }) {
+// Aberto pela Agenda (pré-bloqueio da marcação, 12/11/2026), ganha
+// `onRelease`: tirar o compromisso da agenda do cockpit sem ligar a card nenhum
+// (o evento no Google fica como está). `onLinked` avisa quem abriu que ligou.
+export function BookingLinkModal({ eventId, userId, text = "", onClose, onLinked, onRelease }) {
   const [query, setQuery] = React.useState("");
   const [busy, setBusy] = React.useState("");
   const [error, setError] = React.useState("");
+  const [releasing, setReleasing] = React.useState(false); // 1º clique pede confirmação
+  async function release() {
+    if (busy) return;
+    if (!releasing) { setReleasing(true); return; }
+    setBusy("release"); setError("");
+    try { await onRelease(); onClose(); }
+    catch (err) { setError(err.message || "Não foi possível liberar o horário"); setBusy(""); }
+  }
   const rows = bookingCandidates(window.SEED?.LEADS, window.SEED?.SAAS, userId, query);
   // Card fora da entrega: liga PRIMEIRO (a ligação já passa o card pra quem
   // recebeu a marcação; se a marcação foi cancelada ou é de outro card, nada se
@@ -97,6 +108,7 @@ export function BookingLinkModal({ eventId, userId, text = "", onClose }) {
     setBusy(lead.id); setError("");
     try {
       await api.linkBooking(eventId, { user: userId, leadId: lead.id });
+      onLinked?.(lead);
     } catch (err) {
       setError(err.message || "Não foi possível ligar a marcação");
       setBusy("");
@@ -143,7 +155,13 @@ export function BookingLinkModal({ eventId, userId, text = "", onClose }) {
         ); })}
       </div>
       {error && <div role="alert" style={{ marginTop: 10, fontSize: 12, color: "var(--neg)" }}>{error}</div>}
-      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginTop: 14 }}>
+        {onRelease && (
+          <button type="button" onClick={release} disabled={!!busy} style={{ ...btn, marginRight: "auto", color: releasing ? "var(--neg)" : "var(--fg-3)" }}
+            title="Tira o pré-bloqueio da agenda do cockpit. O evento no Google Agenda não muda.">
+            {busy === "release" ? "liberando…" : releasing ? "confirmar: liberar o horário" : "liberar horário"}
+          </button>
+        )}
         <button type="button" onClick={onClose} disabled={!!busy} style={btn}>fechar</button>
       </div>
     </Modal>

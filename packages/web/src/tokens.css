@@ -535,6 +535,13 @@ body[data-tk-panel] .fb-balloon { display: none; }
 .notification-item[data-read] .notification-text { color: var(--fg-3); }
 .notification-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; font-size: 11.5px; color: var(--fg-3); }
 .notification-action { display: inline-flex; align-items: center; min-height: 30px; padding: 0 12px; border: 1px solid var(--line-1); border-radius: var(--r-2); font-size: 12px; font-weight: 600; color: var(--fg-1); background: var(--bg-1); }
+/* × de limpar o aviso (12/11/2026): discreto, aparece no hover/foco da linha; no toque fica sempre visível. */
+.notification-row { position: relative; }
+.notification-row .notification-item { padding-right: 40px; }
+.notification-clear { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; display: grid; place-items: center; border-radius: var(--r-2); color: var(--fg-4); background: transparent; opacity: 0; transition: opacity .12s, background .12s, color .12s; }
+.notification-row:hover .notification-clear, .notification-clear:focus-visible { opacity: 1; }
+.notification-clear:hover { color: var(--fg-1); background: var(--bg-2); }
+@media (hover: none) { .notification-clear { opacity: 1; } }
 
 /* Skeleton de carregamento (atoms.jsx): bloco pulsando no lugar do dado. */
 .skel { background: var(--bg-2, var(--bg-inset)); animation: skel-pulse 1.4s ease-in-out infinite; flex-shrink: 0; }

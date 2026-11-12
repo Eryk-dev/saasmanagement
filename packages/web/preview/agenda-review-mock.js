@@ -53,6 +53,8 @@ export function setupAgendaReview(seed) {
   }
   blocks = params.has('empty') ? [] : [{id:'lunch',saas:'leverads',kind:'block',user:'vn',users:['vn'],date:brtYmd(0),recur:'once',fromHour:12,toHour:13,reason:'almoço'},
     {id:'meli',saas:'leverads',kind:'event',user:'rm',users:['rm'],weekday:5,recur:'weekly',fromHour:13,toHour:14,title:'MELI · reunião semanal'}];
+  // &bookingHold: marcação pelo link sem card, pré-bloqueada (12/11/2026).
+  if (params.has('bookingHold')) blocks.push({id:'ab_booking_ev1',saas:'',kind:'event',user:'rm',users:['rm'],date:brtYmd(0),recur:'once',fromHour:16,toHour:17,title:'Lukas marcou pelo link · ligar a um card',booking:{eventId:'ev1',user:'rm',who:'Lukas',at:`${brtYmd(0)}T16:00`}});
   seed.AGENDA_BLOCKS = blocks;
   window.__reviewMutations = [];
   localStorage.setItem('cockpit_agenda_view','day');
@@ -74,5 +76,6 @@ export const agendaReviewMock = {
     window.__reviewMutations.push({method:'create',col,data});return row;
   },
   update:async(col,id,data)=>{await hold('update');const row=col==='leads'?window.SEED.LEADS.find(l=>l.id===id):blocks.find(b=>b.id===id);Object.assign(row,data);window.__reviewMutations.push({method:'update',col,id,data});return row;},
+  linkBooking:async(eventId,body)=>{window.__reviewMutations.push({method:'linkBooking',eventId,body});return {ok:true};},
   remove:async(col,id)=>{await hold('remove');blocks=blocks.filter(b=>b.id!==id);window.__reviewMutations.push({method:'remove',col,id});return {ok:true};},
 };

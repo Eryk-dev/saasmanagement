@@ -103,9 +103,16 @@ export const todayMock = {
   notifications: async () => {
     if (!new URLSearchParams(location.search).has('orphan')) return { unread: 0, items: [] };
     const read = (window.__orphanRead ||= false);
-    return { unread: read ? 0 : 1, items: [{ id: 'no_orf', user: 'leo', type: 'integration_booking', text: 'Rita M. marcou qui 09/10 10:00 pelo seu link de convite e não achei o card: toque para ligar a um card', by: 'api', at: new Date().toISOString(), read, link: { screen: 'today', booking: 'ev_orf', bookingUser: 'eryk' } }] };
+    const cleared = (window.__clearedNotifications ||= []);
+    // A marcação vem fixa no topo (pinned) mesmo atrás de um aviso mais novo.
+    const items = [
+      { id: 'no_orf', user: 'leo', type: 'integration_booking', text: 'Rita M. marcou qui 09/10 10:00 pelo seu link de convite e não achei o card: toque para ligar a um card', by: 'api', at: new Date(Date.now() - 86_400_000).toISOString(), read, pinned: true, link: { screen: 'today', booking: 'ev_orf', bookingUser: 'eryk' } },
+      { id: 'no_task', user: 'leo', type: 'overdue', text: 'A tarefa "Revisar proposta" está atrasada', by: 'api', at: new Date().toISOString(), read: false, task: 't1' },
+    ].filter((n) => !cleared.includes(n.id));
+    return { unread: items.filter((n) => !n.read).length, items };
   },
   notificationsRead: async () => { window.__orphanRead = true; return { ok: true }; },
+  notificationsClear: async ({ ids = [] }) => { (window.__clearedNotifications ||= []).push(...ids); window.__reviewMutations.push({ method: 'notificationsClear', ids }); return { ok: true, cleared: ids.length }; },
   linkBooking: async (eventId, body) => { window.__reviewMutations.push({ method: 'linkBooking', eventId, body }); return { ok: true }; },
   // &gbusy: agenda do Google do Eryk conectada, com 10:00–11:30 ocupados no dia pedido.
   googleBusy: async (user, from) => (new URLSearchParams(location.search).has('gbusy') && user === 'eryk'

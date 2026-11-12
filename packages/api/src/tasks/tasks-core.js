@@ -532,36 +532,49 @@ export async function notifyEvents(repo, task, events, { by = ACTOR_API, users =
 // (google/booking-sync.js, chave booking-orphan:<evento>): fica no topo da lista
 // enquanto ninguém liga, mesmo lida ou soterrada pelos avisos de tarefa (15/10/
 // 2026: o "marcar todas como lidas" e o corte nos 50 mais novos sumiram com a
-// marcação de um cliente pra integração do mesmo dia). Sai quando um card
-// passa a ter a marcação, quando o horário passa (link.until) ou, nos avisos
-// sem horário gravado, depois de 7 dias.
-const ORPHAN_BOOKING_MS = 7 * 24 * 3600 * 1000;
-async function pendingBookingNotices(repo, all, now = Date.now()) {
+// marcação de um cliente pra integração do mesmo dia). Sai do topo SÓ quando um
+// card passa a ter a marcação, quando o cliente cancela (settled, gravado pela
+// rotina) ou quando a pessoa limpa o aviso (cleared). Até 12/11/2026 saía também
+// quando o horário passava: a marcação de 10/11 caiu pro fim da lista, atrás de
+// ~900 avisos de tarefa, antes de alguém ligar ao card.
+async function pendingBookingNotices(repo, all) {
   const out = [];
   for (const n of all) {
     const ev = n.link?.booking;
-    if (!ev || !String(n.key || "").startsWith("booking-orphan:")) continue;
-    const until = Date.parse(n.link.until || "");
-    if (Number.isFinite(until) ? until <= now : now - Date.parse(n.at || 0) > ORPHAN_BOOKING_MS) continue;
+    if (!ev || n.settled || !String(n.key || "").startsWith("booking-orphan:")) continue;
     const linked = await repo.listWhere("leads", { integrationBookedEventId: ev }, { fields: [] }).catch(() => []);
     if (!linked.length) out.push({ ...n, pinned: true });
   }
   return out;
 }
-export async function listNotifications(repo, user, { unread = false, limit = 50, now = Date.now() } = {}) {
-  const all = (await repo.listWhere("notifications", { user })).sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")));
+// Aviso limpo pelo ícone do sino (cleared) não aparece nem conta como não lido.
+// Fica no banco (sem apagar) porque várias rotinas usam a CHAVE do aviso pra não
+// repetir (wa:<conversa>, booking:<evento>…): apagado, ele voltaria no próximo passe.
+const visible = (n) => !n.cleared;
+export async function listNotifications(repo, user, { unread = false, limit = 50 } = {}) {
+  const all = (await repo.listWhere("notifications", { user })).filter(visible).sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")));
   const unreadCount = all.filter((n) => !n.read).length;
-  const pinned = unread ? [] : await pendingBookingNotices(repo, all, now);
+  const pinned = unread ? [] : await pendingBookingNotices(repo, all);
   const pinnedIds = new Set(pinned.map((n) => n.id));
   const rest = (unread ? all.filter((n) => !n.read) : all).filter((n) => !pinnedIds.has(n.id));
   const items = [...pinned, ...rest].slice(0, Math.max(1, Math.min(200, num(limit) || 50)));
   return { items, unread: unreadCount };
 }
 export async function markNotificationsRead(repo, user, { ids = [], all = false } = {}, { now = nowIso() } = {}) {
-  const mine = (await repo.listWhere("notifications", { user })).filter((n) => !n.read);
+  const mine = (await repo.listWhere("notifications", { user })).filter((n) => !n.read && visible(n));
   const targets = all ? mine : mine.filter((n) => ids.map(String).includes(String(n.id)));
   for (let i = 0; i < targets.length; i++) {
     await repo.update("notifications", targets[i].id, { read: true, readAt: now }, { silent: i < targets.length - 1 });
+  }
+  return targets.length;
+}
+// Limpar do sino (ícone na linha do aviso): só os da própria pessoa. A marcação
+// sem card limpa daqui continua pré-bloqueada na Agenda, onde ainda dá pra ligar.
+export async function clearNotifications(repo, user, { ids = [] } = {}, { now = nowIso() } = {}) {
+  const want = new Set(ids.map(String));
+  const targets = (await repo.listWhere("notifications", { user })).filter((n) => want.has(String(n.id)) && visible(n));
+  for (let i = 0; i < targets.length; i++) {
+    await repo.update("notifications", targets[i].id, { cleared: true, clearedAt: now, read: true, readAt: targets[i].readAt || now }, { silent: i < targets.length - 1 });
   }
   return targets.length;
 }

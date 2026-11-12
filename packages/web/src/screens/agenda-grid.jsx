@@ -984,14 +984,16 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, move, per
                     // Arrasta da faixa em que está: soltar na faixa de outra
                     // pessoa troca ESTA participante pela nova. É div e não
                     // button porque o Firefox não arrasta <button>.
-                    const movable = canMove && !b.allDay;
+                    // Pré-bloqueio da marcação pelo link: o horário é do cliente
+                    // (muda na página do Google), não se arrasta.
+                    const movable = canMove && !b.allDay && !b.booking;
                     const fromPerson = personLane != null ? persons[personLane] : undefined;
                     return (
                       <div role="button" tabIndex={0} className="agenda-block" key={`blk-${b.id}-${personLane ?? "all"}`}
                         {...(movable ? dragProps({ type: "block", key: `blk-${b.id}`, b, fromPerson }, to - from) : {})}
                         onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); e.currentTarget.click(); } }}
                         onClick={(e) => { e.stopPropagation(); blocking.onBlock && blocking.onBlock(b); }}
-                        title={`${b._who ? b._who + " · " : ""}${label}${b.recur === "weekly" ? " · toda semana" : ""}${blocking.onBlock ? " · clique pra editar" : ""}${movable ? " · arraste pra mudar o horário" : ""}`}
+                        title={`${b._who ? b._who + " · " : ""}${label}${b.recur === "weekly" ? " · toda semana" : ""}${blocking.onBlock ? (b.booking ? " · clique pra ligar a um card" : " · clique pra editar") : ""}${movable ? " · arraste pra mudar o horário" : ""}`}
                         style={{
                           position: "absolute", top: (from - H0) * hourH + 1,
                           left: `calc(${left}% + 2px)`, width: `calc(${bw}% - 4px)`,

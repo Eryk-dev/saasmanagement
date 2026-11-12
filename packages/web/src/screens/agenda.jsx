@@ -17,6 +17,7 @@ import { bizWall, bizNow } from "../lib/format.js";
 import { SelectPopover } from "../components/select-popover.jsx";
 import { meetingTypeOptions } from "../components/customer-meeting.jsx";
 import { openCustomer, openLeadById } from "../lib/open-record.js";
+import { BookingLinkModal } from "../components/booking-link.jsx";
 import "./agenda.css";
 
 // Tela Agenda — a agenda DE VERDADE do time, tudo num calendário só:
@@ -106,6 +107,9 @@ export function AgendaScreen({ onOpenLead }) {
   const customers = useM(() => (window.SEED?.CUSTOMERS || []).filter(ofSaas), [version, saasId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [editor, setEditor] = useS(null); // { block? , date, fromHour } → modal
+  // Pré-bloqueio da marcação pelo link sem card (google/booking-sync.js): clicar
+  // abre a escolha do card, como o aviso do sino.
+  const [linking, setLinking] = useS(null); // agenda_block com `booking`
   const [notice, setNotice] = useS("");
   const noticeT = React.useRef(null);
   const flash = (msg) => { setNotice(msg); clearTimeout(noticeT.current); noticeT.current = setTimeout(() => setNotice(""), 4000); };
@@ -247,7 +251,10 @@ export function AgendaScreen({ onOpenLead }) {
   // A visão Equipe manda também a PESSOA da coluna: clicar no vão livre do
   // Rafael já abre o modal com ele selecionado.
   const onSlot = (day, hour, user) => setEditor({ block: null, date: ymd(day), fromHour: hour, user: user || "" });
-  const onBlock = (b) => setEditor({ block: b, date: b.recur === "once" ? b.date : "", fromHour: Number(b.fromHour) || 9 });
+  const onBlock = (b) => {
+    if (b.booking?.eventId) { setLinking(b); return; }
+    setEditor({ block: b, date: b.recur === "once" ? b.date : "", fromHour: Number(b.fromHour) || 9 });
+  };
 
   // Salvar do modal: valida, checa conflito de CADA participante e cria/atualiza.
   // Recorrência abrangente: `weekdaysSel` = dias da semana alvo (null = pontual);
@@ -373,6 +380,7 @@ export function AgendaScreen({ onOpenLead }) {
   const blockMovePlan = (item, { day, hour, person }) => {
     const b = blocks.find((x) => x.id === item.b.id);
     if (!b) return { error: "Item não encontrado" };
+    if (b.booking) return { error: "Marcação do cliente pelo link: o horário muda na página do Google" };
     const parts = participantsOf(b);
     // Só troca de pessoa quando o item estava na faixa de alguém e caiu na de
     // OUTRA que ainda não participa; cair na faixa de outra participante só
@@ -549,6 +557,14 @@ export function AgendaScreen({ onOpenLead }) {
           conflictOf={liveConflict}
           onDelete={(b) => removeBlocks([b])}
           onClose={() => setEditor(null)}
+        />
+      )}
+      {/* Ligado: a rotina tira o pré-bloqueio e a integração do card ocupa o horário. */}
+      {linking && (
+        <BookingLinkModal eventId={linking.booking.eventId} userId={linking.booking.user || linking.user} text={linking.title}
+          onClose={() => setLinking(null)}
+          onLinked={() => setBlocks((prev) => prev.filter((b) => b.id !== linking.id))}
+          onRelease={async () => { await removeBlocks([linking]); flash("Horário liberado na agenda do cockpit. O evento no Google não mudou."); }}
         />
       )}
     </div>

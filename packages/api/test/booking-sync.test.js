@@ -4,8 +4,9 @@
 import test, { afterEach, beforeEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeBookingSync, recordBookingClick, phonesIn, emailKey } from "../src/google/booking-sync.js";
-import { listNotifications, markNotificationsRead, upsertNotification } from "../src/tasks/tasks-core.js";
+import { makeBookingSync, recordBookingClick, phonesIn, emailKey, holdSlot } from "../src/google/booking-sync.js";
+import { listNotifications, markNotificationsRead, upsertNotification, clearNotifications } from "../src/tasks/tasks-core.js";
+import { blockHits } from "../src/crm/agenda-slots.js";
 
 const NOW = new Date("2026-10-07T15:00:00.000Z"); // 12:00 em Brasília
 // Relógio parado em NOW pro arquivo inteiro: a fixture marca a integração em
@@ -295,7 +296,11 @@ test("aviso de marcação sem card fica no topo do sino até alguém ligar, mesm
   assert.equal(list.items[0].id, aviso.id, "no topo, apesar de lido e de 60 avisos mais novos");
   assert.equal(list.items[0].pinned, true);
   assert.ok(!(await listNotifications(repo, "eryk", { unread: true, now })).items.some((n) => n.id === aviso.id), "com o sino fechado (só não lidos) não aparece");
-  assert.ok(!(await listNotifications(repo, "eryk", { now: Date.parse(aviso.link.until) + 1 })).items.some((n) => n.id === aviso.id), "horário passou: sai do topo e da página");
+  // 12/11/2026: o horário passar NÃO tira do topo (a marcação de 10/11 sumiu
+  // atrás de ~900 avisos antes de alguém ligar ao card).
+  mock.timers.setTime(Date.parse(aviso.link.until) + 86_400_000);
+  assert.equal((await listNotifications(repo, "eryk")).items[0].id, aviso.id, "horário passou: continua no topo até ligar");
+  mock.timers.setTime(NOW.getTime());
   await sync.linkEvent({ userId: "eryk", eventId: "orf", leadId: "bia", now: NOW });
   list = await listNotifications(repo, "eryk", { now });
   assert.ok(!list.items.some((n) => n.id === aviso.id), "ligado a um card, sai do topo");
@@ -370,4 +375,113 @@ test("link da ficha vencido (mais de 14 dias) não prende a marcação: segue a 
   await sync.syncUser(eryk, NOW);
   assert.equal((await repo.get("cs_followups", "fu1")).meetings.length, 0);
   assert.equal((await repo.get("leads", "ana")).integrationBookedEventId, "bk1");
+});
+
+// ── Pré-bloqueio na Agenda e limpar do sino (12/11/2026) ────────────────────
+const orphanOf = (over = {}) => booking({ id: "orf", attendees: [{ email: "lukas@mail.com", displayName: "Lukas" }], description: "Agendado por Lukas", ...over });
+
+test("marcação sem card pré-bloqueia o horário na agenda de quem recebeu, até ligar a um card", async () => {
+  const { repo, cal, eryk } = await setup();
+  const orphan = orphanOf();
+  const sync = makeBookingSync({ repo, googleUser: { ...gu, getEvent: async () => orphan }, google, fetch: cal.fetch, log: { warn() {} } });
+  cal.queue.push([orphan]);
+  await sync.syncUser(eryk, NOW);
+  const [hold] = await repo.list("agenda_blocks");
+  assert.equal(hold.kind, "event");
+  assert.equal(hold.user, "eryk");
+  assert.deepEqual(hold.users, ["eryk"]);
+  assert.equal(hold.date, "2026-10-09");
+  assert.equal(hold.fromHour, 10);
+  assert.equal(hold.toHour, 11);
+  assert.equal(hold.recur, "once");
+  assert.deepEqual(hold.booking, { eventId: "orf", user: "eryk", who: "Lukas", at: "2026-10-09T10:00" });
+  assert.match(hold.title, /Lukas marcou pelo link/);
+
+  assert.ok(blockHits(hold, "2026-10-09-10-30"), "a grade do cockpit (SDR, calls) não oferece o horário");
+  assert.ok(!blockHits(hold, "2026-10-09-11-00"));
+
+  await sync.linkEvent({ userId: "eryk", eventId: "orf", leadId: "bia", now: NOW });
+  assert.equal((await repo.list("agenda_blocks")).length, 0, "ligado ao card: a integração do card ocupa o horário");
+  assert.ok(!(await repo.list("notifications")).some((n) => /Conflito/.test(n.text)), "o pré-bloqueio não vira conflito com a própria marcação");
+});
+
+test("card com outra integração por vir: a marcação também fica pré-bloqueada", async () => {
+  const { repo, cal, sync, eryk } = await setup();
+  await repo.update("leads", "ana", { integrationAt: "2026-10-08T09:00", integrationMeetEventId: "ck9", integrationScheduledAt: "2026-10-08T12:00:00.000Z" });
+  cal.queue.push([booking()]);
+  await sync.syncUser(eryk, NOW);
+  const [hold] = await repo.list("agenda_blocks");
+  assert.equal(hold.booking.eventId, "bk1");
+  assert.equal(hold.saas, "leverads");
+  assert.equal(hold.booking.who, "Ana Prado");
+});
+
+test("pré-bloqueio acompanha a remarcação e é liberado quando o cliente cancela", async () => {
+  const { repo, cal, sync, eryk } = await setup();
+  cal.queue.push([orphanOf()]);
+  await sync.syncUser(eryk, NOW);
+  const aviso = (await repo.list("notifications"))[0];
+
+  // Remarcou na página do Google (evento antigo editado): o bloqueio vai junto.
+  cal.queue.push([orphanOf({ start: { dateTime: "2026-10-12T14:30:00-03:00" }, end: { dateTime: "2026-10-12T15:30:00-03:00" } })]);
+  await sync.syncUser(eryk, new Date(NOW.getTime() + 3600_000));
+  const [hold] = await repo.list("agenda_blocks");
+  assert.equal(hold.date, "2026-10-12");
+  assert.equal(hold.fromHour, 14.5);
+  assert.equal(hold.toHour, 15.5);
+  assert.equal(hold.weekday, 1);
+  assert.equal(hold.booking.at, "2026-10-12T14:30");
+  assert.equal((await repo.get("notifications", aviso.id)).link.until, "2026-10-12T17:30:00.000Z");
+  const moved = (await repo.list("notifications")).find((n) => /remarcou/.test(n.text));
+  assert.match(moved.text, /Lukas remarcou pelo seu link para .*12\/10.*14:30/);
+  assert.equal(moved.link.booking, "orf", "o aviso de remarcação também abre a escolha do card");
+
+  // Cancelou (ou apagou o evento): libera a agenda e o aviso sai do topo.
+  cal.queue.push([{ id: "orf", status: "cancelled" }]);
+  await sync.syncUser(eryk, new Date(NOW.getTime() + 7200_000));
+  assert.equal((await repo.list("agenda_blocks")).length, 0);
+  assert.equal((await repo.get("notifications", aviso.id)).settled, "cancelled");
+  const list = await listNotifications(repo, "eryk");
+  assert.ok(!list.items.some((n) => n.pinned), "nada fixo no topo");
+  assert.ok(list.items.some((n) => /Lukas cancelou a marcação de .*12\/10.* o horário foi liberado/.test(n.text)));
+});
+
+test("removido na Agenda, o pré-bloqueio não volta (nem quando o cliente remarca)", async () => {
+  const { repo, cal, sync, eryk } = await setup();
+  cal.queue.push([orphanOf()]);
+  await sync.syncUser(eryk, NOW);
+  const [hold] = await repo.list("agenda_blocks");
+  await repo.remove("agenda_blocks", hold.id);
+  cal.queue.push([orphanOf({ start: { dateTime: "2026-10-12T14:00:00-03:00" }, end: { dateTime: "2026-10-12T15:00:00-03:00" } })]);
+  await sync.syncUser(eryk, new Date(NOW.getTime() + 3600_000));
+  assert.equal((await repo.list("agenda_blocks")).length, 0);
+  // E se o cliente cancela depois, o aviso fixo sai do topo mesmo sem bloqueio.
+  cal.queue.push([{ id: "orf", status: "cancelled" }]);
+  await sync.syncUser(eryk, new Date(NOW.getTime() + 7200_000));
+  assert.ok(!(await listNotifications(repo, "eryk")).items.some((n) => n.pinned));
+});
+
+test("limpar do sino: some da lista e do não lido, só os da própria pessoa, e a chave não repete o aviso", async () => {
+  const { repo, cal, sync, eryk } = await setup();
+  cal.queue.push([orphanOf()]);
+  await sync.syncUser(eryk, NOW);
+  const aviso = (await repo.list("notifications"))[0];
+  await upsertNotification(repo, { user: "eryk", type: "overdue", task: "t1", text: "tarefa 1" });
+  await upsertNotification(repo, { user: "vitor", type: "overdue", task: "t2", text: "tarefa 2" });
+  assert.equal((await listNotifications(repo, "eryk")).unread, 2);
+  const vitorId = (await repo.list("notifications")).find((n) => n.user === "vitor").id;
+  assert.equal(await clearNotifications(repo, "eryk", { ids: [aviso.id, vitorId] }), 1, "o da outra pessoa não é limpo");
+  const list = await listNotifications(repo, "eryk");
+  assert.equal(list.unread, 1);
+  assert.deepEqual(list.items.map((n) => n.text), ["tarefa 1"], "o aviso fixo limpo sai do topo");
+  assert.equal((await repo.list("agenda_blocks")).length, 1, "a marcação continua pré-bloqueada na Agenda");
+  cal.queue.push([orphanOf()]);
+  await sync.syncUser(eryk, NOW);
+  assert.equal((await listNotifications(repo, "eryk")).items.length, 1, "a mesma marcação não volta pro sino");
+  assert.equal(await markNotificationsRead(repo, "eryk", { all: true }), 1);
+});
+
+test("horário do pré-bloqueio: sem fim vale 1h; passando da meia-noite fecha o dia", () => {
+  assert.deepEqual(holdSlot({ start: { dateTime: "2026-10-09T13:00:00Z" } }), { date: "2026-10-09", fromHour: 10, toHour: 11, weekday: 5 });
+  assert.deepEqual(holdSlot({ start: { dateTime: "2026-10-09T23:30:00-03:00" }, end: { dateTime: "2026-10-10T00:30:00-03:00" } }), { date: "2026-10-09", fromHour: 23.5, toHour: 24, weekday: 5 });
 });

@@ -844,6 +844,7 @@ export const api = {
   supportAgentSave: (id, body) => req("PUT", `/api/support/agents/${encodeURIComponent(id)}`, body),
   notifications: (unread = false) => req("GET", `/api/notifications${unread ? "?unread=1" : ""}`),
   notificationsRead: (body) => req("POST", "/api/notifications/read", body),
+  notificationsClear: (body) => req("POST", "/api/notifications/clear", body),
   // Foto anexada a uma TAREFA → asset servido em /public/tasks/:id; a URL vai
   // no campo task.photo. Mesmo desenho do activityAsset abaixo.
   taskAsset: async (blob, name = "anexo.png") => {

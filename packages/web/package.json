@@ -28,6 +28,7 @@
     "test:review:agenda-people": "node scripts/review/agenda-people.mjs",
     "test:review:agenda-timezone": "node scripts/review/agenda-timezone.mjs",
     "test:review:agenda-lead-phone": "node scripts/review/agenda-lead-phone.mjs",
+    "test:review:agenda-booking-hold": "node scripts/review/agenda-booking-hold.mjs",
     "test:review:intform": "node scripts/review/intform.mjs",
     "test:review:quick-replies": "node scripts/review/quick-replies.mjs",
     "test:review:sla": "node scripts/review/sla.mjs",

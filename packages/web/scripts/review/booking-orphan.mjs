@@ -9,13 +9,22 @@ try {
   for (const width of [1440, 390]) {
     const page = await h.open(width, '&closing&orphan');
     await page.getByRole('button', {name:/^Notificações/}).click();
-    await page.getByRole('button', {name:/não achei o card/}).click();
+    // 12/11/2026: a marcação fixa vem no topo, antes do aviso mais novo.
+    const rows0 = await page.locator('.notification-item').allTextContents();
+    assert.match(rows0[0], /não achei o card.*fixo até ligar/, 'marcação sem card no topo');
+    // × discreto: limpa o aviso de tarefa, a marcação fica.
+    await page.locator('.notification-row').nth(1).hover();
+    await page.getByRole('button', {name:/^Limpar notificação: A tarefa "Revisar proposta"/}).click();
+    await page.waitForFunction(() => document.querySelectorAll('.notification-item').length === 1);
+    assert.deepEqual(await page.evaluate(() => window.__reviewMutations.find((x) => x.method === 'notificationsClear')), { method: 'notificationsClear', ids: ['no_task'] });
+    await h.capture(page, `booking-orphan-sino-${width}`);
+    await page.getByRole('button', {name:/^Rita M\. marcou .*não achei o card/}).click();
     const dialog = page.getByRole('dialog', {name:'ligar marcação a um card'});
     await dialog.waitFor();
     const rows = await dialog.getByRole('listitem').allTextContents();
     assert.match(rows[0], /^Rita Moura.*aguardando marcar/, 'quem está aguardando marcar vem primeiro');
     assert.ok(rows.some((r) => /^Paulo Dias/.test(r)));
-    await dialog.getByRole('searchbox', {name:'Buscar card'}).fill('dias');
+    await dialog.getByRole('searchbox', {name:'Buscar card'}).fill('dias pneus');
     assert.equal(await dialog.getByRole('listitem').count(), 1, 'busca filtra');
     await dialog.getByRole('searchbox', {name:'Buscar card'}).fill('');
     await h.capture(page, `booking-orphan-${width}`);
@@ -27,5 +36,5 @@ try {
     await page.close();
   }
   assert.deepEqual(h.errors, []);
-  console.log('Marcação sem card: o aviso abre a escolha do card, aguardando primeiro, busca e ligar com o evento; desktop e mobile aprovados.');
+  console.log('Marcação sem card: fixa no topo do sino, × limpa outro aviso, o aviso abre a escolha do card, aguardando primeiro, busca e ligar com o evento; desktop e mobile aprovados.');
 } finally { await h.close(); }

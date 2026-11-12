@@ -12,7 +12,8 @@ import { openCustomer, openLeadById, openOnboarding } from "../lib/open-record.j
 // comentário, prazo). Badge de não lidas; abas Todas / Menções / Atribuídas;
 // clicar abre a tarefa (#tasks/<id>, trocando o workspace se for de outro
 // produto) e marca como lida. Atualiza pelo cockpit-change (notifications) e
-// a cada 60s com a aba visível.
+// a cada 60s com a aba visível. O × discreto de cada linha (12/11/2026) limpa o
+// aviso do sino (POST /api/notifications/clear: some sem apagar do banco).
 
 const { useState, useEffect, useRef, useCallback } = React;
 
@@ -67,6 +68,18 @@ export function NotificationsBell() {
     try { await api.notificationsRead({ all: true }); setItems((l) => (l || []).map((n) => ({ ...n, read: true }))); setUnread(0); }
     catch (err) { toast(`Não deu pra marcar como lidas · ${err.message}`, "neg"); }
     finally { setMarking(false); }
+  };
+  const clearItem = async (n) => {
+    setItems((l) => (l || []).filter((x) => x.id !== n.id));
+    if (!n.read) setUnread((u) => Math.max(0, u - 1));
+    try {
+      await api.notificationsClear({ ids: [n.id] });
+      // A marcação sem card segue pré-bloqueada na Agenda, onde ainda dá pra ligar.
+      if (n.link?.booking && n.pinned) toast("Aviso limpo. A marcação continua bloqueada na Agenda: clique nela pra ligar a um card", "neutral", 6000);
+    } catch (err) {
+      toast(`Não deu pra limpar a notificação · ${err.message}`, "neg");
+      load(true);
+    }
   };
   const openItem = async (n) => {
     if (!n.read) {
@@ -132,8 +145,10 @@ export function NotificationsBell() {
               </div>
             )}
             {list.map((n) => (
-              // Marcação sem card (pinned, tasks-core.js) segue acesa no topo até ser ligada.
-              <button key={n.id} type="button" onClick={() => openItem(n)} className="notification-item" data-read={(n.read && !n.pinned) || undefined}>
+              // Marcação sem card (pinned, tasks-core.js) segue acesa no topo até
+              // ser ligada, cancelada ou limpa. O × fica fora do botão da linha.
+              <div key={n.id} className="notification-row">
+              <button type="button" onClick={() => openItem(n)} className="notification-item" data-read={(n.read && !n.pinned) || undefined}>
                 <span className="notification-dot" style={{ background: n.read && !n.pinned ? "var(--line-2)" : DOT[n.type] || "var(--accent)" }} />
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span className="notification-text">{n.text}</span>
@@ -145,6 +160,10 @@ export function NotificationsBell() {
                   </span>
                 </span>
               </button>
+              <button type="button" className="notification-clear" onClick={() => clearItem(n)} title="Limpar do sino" aria-label={`Limpar notificação: ${n.text}`}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+              </button>
+              </div>
             ))}
           </div>
         </Popover>

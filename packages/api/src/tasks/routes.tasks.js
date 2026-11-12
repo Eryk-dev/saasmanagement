@@ -11,7 +11,7 @@ import { isAdmin } from "../auth/roles.js";
 import {
   ACTOR_API, ASSET_PREFIX, moveTask, completeTask, addComment, editComment, deleteComment, toggleCommentLike, toggleLike,
   setFollower, setBlocker, addAttachment, removeAttachment, setCover, convertTask, duplicateTask, followUpTask,
-  createTask, activityOf, bulkTasks, listNotifications, markNotificationsRead, httpError,
+  createTask, activityOf, bulkTasks, listNotifications, markNotificationsRead, clearNotifications, httpError,
 } from "./tasks-core.js";
 
 const MAX_ASSET = 5 * 1024 * 1024;
@@ -190,5 +190,11 @@ export function registerTaskRoutes(app, repo) {
     const b = req.body || {};
     const marked = await markNotificationsRead(repo, inboxUser(req), { ids: Array.isArray(b.ids) ? b.ids : [], all: b.all === true });
     return { ok: true, marked };
+  }));
+  // Ícone de limpar na linha do aviso (12/11/2026): tira do sino sem apagar.
+  app.post("/api/notifications/clear", guarded(async (req) => {
+    const b = req.body || {};
+    const cleared = await clearNotifications(repo, inboxUser(req), { ids: Array.isArray(b.ids) ? b.ids : [] });
+    return { ok: true, cleared };
   }));
 }

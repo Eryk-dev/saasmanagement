@@ -25,6 +25,15 @@
 // marcação que casar com os contatos do cliente entra em `meetings[]` dele,
 // com a sala da marcação, em vez de virar integração no lead da venda. Esses
 // registros são procurados ANTES dos cards (o link foi mandado pra eles).
+//
+// Pré-bloqueio (12/11/2026): marcação que a rotina não liga a card nenhum (sem
+// card ou card com outra integração por vir) vira um compromisso na Agenda do
+// cockpit (agenda_blocks com `booking`), no horário da marcação e na agenda de
+// quem recebeu. Assim a grade do cockpit (calls, integrações, SDR) não oferece
+// esse horário enquanto ninguém liga a marcação a um card. Remarcar na página
+// do Google move o bloqueio; ele só sai quando liga a um card (a integração do
+// card passa a ocupar o horário), quando o cliente cancela ou apaga o evento,
+// ou quando alguém remove o compromisso na Agenda.
 
 import { randomUUID } from "node:crypto";
 import { toNaiveBrt } from "../crm/agenda-slots.js";
@@ -105,6 +114,21 @@ const whenLabel = (naive) => {
     ? d.toLocaleString("pt-BR", { timeZone: TZ, weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
     : naive;
 };
+// Horário da marcação no formato do agenda_blocks: dia e horas de Brasília
+// (fromHour/toHour fracionários). Sem fim, 1h; passando da meia-noite, fecha o dia.
+const holdId = (eventId) => `ab_booking_${String(eventId).replace(/[^A-Za-z0-9_-]/g, "")}`;
+export function holdSlot(ev) {
+  const start = toNaiveBrt(ev.start?.dateTime);
+  const end = ev.end?.dateTime ? toNaiveBrt(ev.end.dateTime) : "";
+  const date = start.slice(0, 10);
+  const hourOf = (naive) => Number(naive.slice(11, 13)) + Number(naive.slice(14, 16)) / 60;
+  const fromHour = hourOf(start);
+  let toHour = !end ? fromHour + 1 : end.slice(0, 10) === date ? hourOf(end) : 24;
+  if (!(toHour > fromHour)) toHour = fromHour + 1;
+  const [y, m, d] = date.split("-").map(Number);
+  return { date, fromHour, toHour: Math.min(24, toHour), weekday: new Date(Date.UTC(y, m - 1, d)).getUTCDay() };
+}
+
 const meetOf = (ev) => ev.hangoutLink || (ev.conferenceData?.entryPoints || []).find((e) => e.entryPointType === "video")?.uri || "";
 
 export function makeBookingSync({ repo, googleUser: gu, google = null, fetch: f = globalThis.fetch, log = console } = {}) {
@@ -131,8 +155,47 @@ export function makeBookingSync({ repo, googleUser: gu, google = null, fetch: f 
 
   async function notify(user, key, text, link, saas = "") {
     const dup = await repo.listWhere("notifications", { key }, { fields: [] }).catch(() => []);
-    if (dup.length) return;
-    await upsertNotification(repo, { user, task: "", taskTitle: "", saas, by: "api", key, type: "integration_booking", text, link });
+    if (dup.length) return false;
+    return upsertNotification(repo, { user, task: "", taskTitle: "", saas, by: "api", key, type: "integration_booking", text, link });
+  }
+
+  // ── Pré-bloqueio da marcação sem card (ver o cabeçalho) ───────────────────
+  async function holdBooking(user, ev, who, saas = "", now = new Date()) {
+    const id = holdId(ev.id);
+    const fields = {
+      saas, user: user.id, users: [user.id], kind: "event", recur: "once", allDay: false, ...holdSlot(ev),
+      title: `${who} marcou pelo link · ligar a um card`, reason: "",
+      booking: { eventId: ev.id, user: user.id, who, at: toNaiveBrt(ev.start.dateTime) },
+    };
+    const cur = await repo.get("agenda_blocks", id).catch(() => null);
+    if (cur) return repo.update("agenda_blocks", id, fields);
+    return repo.create("agenda_blocks", { id, ...fields, createdAt: now.toISOString(), by: "cockpit" });
+  }
+  // Ligada a um card (a integração dele passa a ocupar o horário) ou cancelada.
+  async function releaseHold(eventId) {
+    const hold = await repo.get("agenda_blocks", holdId(eventId)).catch(() => null);
+    if (hold) await repo.remove("agenda_blocks", hold.id).catch(() => {});
+  }
+  // Marcação sem card que o cliente remarcou ou cancelou na página do Google.
+  async function followHold(user, hold, ev, now) {
+    const who = hold.booking?.who || "O cliente";
+    const orphans = await repo.listWhere("notifications", { key: `booking-orphan:${ev.id}` }).catch(() => []);
+    if (ev.status === "cancelled") {
+      await releaseHold(ev.id);
+      // O aviso sai do topo do sino: não há mais o que ligar.
+      for (const n of orphans) await repo.update("notifications", n.id, { settled: "cancelled", read: true, readAt: n.readAt || now.toISOString() });
+      const when = hold.booking?.at ? ` de ${whenLabel(hold.booking.at)}` : "";
+      await notify(user.id, `booking-cancel:${ev.id}`, `${who} cancelou a marcação${when} feita pelo seu link: o horário foi liberado na agenda`, { screen: "agenda" }, hold.saas || "");
+      return;
+    }
+    if (!ev.start?.dateTime) return;
+    const slot = holdSlot(ev);
+    if (slot.date === hold.date && slot.fromHour === Number(hold.fromHour) && slot.toHour === Number(hold.toHour)) return;
+    const naive = toNaiveBrt(ev.start.dateTime);
+    await repo.update("agenda_blocks", hold.id, { ...slot, booking: { ...hold.booking, at: naive } });
+    for (const n of orphans) if (n.link?.booking) await repo.update("notifications", n.id, { link: { ...n.link, until: new Date(ev.start.dateTime).toISOString() } });
+    await notify(user.id, `booking-move:${ev.id}:${naive}`, `${who} remarcou pelo seu link para ${whenLabel(naive)} (ainda sem card): o pré-bloqueio na agenda acompanhou`,
+      { screen: "today", booking: ev.id, bookingUser: user.id }, hold.saas || "");
   }
 
   // O que o cockpit já conhece (eventos que ELE criou): nunca são marcação.
@@ -148,6 +211,9 @@ export function makeBookingSync({ repo, googleUser: gu, google = null, fetch: f 
   }
 
   async function applyBooking(user, lead, ev, why, now) {
+    // O pré-bloqueio da marcação sai antes: a integração do card ocupa o horário
+    // (e o bloqueio daria "conflito" com a própria marcação).
+    await releaseHold(ev.id);
     const when = toNaiveBrt(ev.start.dateTime);
     const meetUrl = meetOf(ev);
     const product = lead.saas ? await repo.get("products", lead.saas).catch(() => null) : null;
@@ -310,6 +376,7 @@ export function makeBookingSync({ repo, googleUser: gu, google = null, fetch: f 
     const inDelivery = (l) => ["integracao", "posvenda"].includes(kind(l));
     const pools = [leads.filter(inDelivery), leads.filter((l) => kind(l) === "ganho")];
     const hosts = await recordHosts();
+    const holds = (await repo.list("agenda_blocks").catch(() => [])).filter((b) => b.booking?.eventId && b.booking.user === user.id);
     let known = null;
     let done = 0;
     for (const ev of items) {
@@ -317,6 +384,15 @@ export function makeBookingSync({ repo, googleUser: gu, google = null, fetch: f 
       if (booked) { await followBooked(user, booked, ev); done++; continue; }
       const bookedRecord = hosts.map((h) => ({ h, m: (h.r.meetings || []).find((m) => m.bookedVia === "link" && m.eventId === ev.id && m.organizer === user.id) })).find((x) => x.m);
       if (bookedRecord) { await followRecordBooked(user, bookedRecord.h, bookedRecord.m, ev); done++; continue; }
+      const hold = holds.find((b) => b.booking.eventId === ev.id);
+      if (hold) { await followHold(user, hold, ev, now); done++; continue; }
+      if (ev.status === "cancelled") {
+        // Sem o pré-bloqueio (removido na Agenda), o aviso fixo ainda sai do topo.
+        for (const n of await repo.listWhere("notifications", { key: `booking-orphan:${ev.id}` }).catch(() => [])) {
+          if (!n.settled) await repo.update("notifications", n.id, { settled: "cancelled", read: true, readAt: n.readAt || now.toISOString() });
+        }
+        continue;
+      }
       if (ev.status === "cancelled" || !ev.start?.dateTime) continue;
       const created = Date.parse(ev.created || "");
       if (!Number.isFinite(created) || created <= since) continue;            // evento antigo editado
@@ -361,7 +437,12 @@ ${ev.description || ""}`)) continue;
       // `until` = início da marcação: até lá o aviso fica no topo do sino
       // (listNotifications, tasks-core.js).
       const link = busy ? { screen: "today", lead: lead.id } : { screen: "today", booking: ev.id, bookingUser: user.id, until: new Date(ev.start.dateTime).toISOString() };
-      await notify(user.id, `booking-orphan:${ev.id}`, text, link, lead?.saas || "");
+      // O pré-bloqueio nasce junto com o aviso, uma vez: a rotina revê como
+      // "nova" toda edição de um evento criado depois da 1ª leitura, e o
+      // bloqueio que alguém removeu na Agenda não pode voltar.
+      if (await notify(user.id, `booking-orphan:${ev.id}`, text, link, lead?.saas || "")) {
+        await holdBooking(user, ev, busy ? lead.name || who : who, lead?.saas || "", now);
+      }
       done++;
     }
     return done;

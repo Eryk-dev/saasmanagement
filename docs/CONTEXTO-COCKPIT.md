@@ -66,8 +66,9 @@ Para reproduzir Visão geral com dados fixos e testes no navegador, usar
 `npm run test:review:agenda-drag -w packages/web` (arrastar) e
 `npm run test:review:agenda-people -w packages/web` (filtro de pessoas),
 `npm run test:review:agenda-timezone -w packages/web` (relógio de Brasília em
-outros fusos) e `npm run test:review:agenda-lead-phone -w packages/web`
-(telefone no card); para Inbox,
+outros fusos), `npm run test:review:agenda-lead-phone -w packages/web`
+(telefone no card) e `npm run test:review:agenda-booking-hold -w packages/web`
+(pré-bloqueio da marcação pelo link); para Inbox,
 `npm run test:review:whatsapp -w packages/web`; para Tickets,
 `npm run test:review:tickets -w packages/web`; para Carteira (e o
 acompanhamento de CS na fila de Atividades),
@@ -1509,6 +1510,22 @@ de quem recebeu, "aguardando marcar" primeiro, com busca. "Ligar" chama
 lê o evento ao vivo pelo `googleUser.getEvent`) e liga igual à automática: sala
 da marcação, atividade, aviso marcado como lido. Recusa marcação cancelada (410),
 já ligada a outro card ou card com outra integração por vir (409).
+
+**Marcação sem card: fixa no sino, limpar e pré-bloqueio (12/11/2026).** O
+aviso `booking-orphan:<evento>` fica no TOPO do sino (`pendingBookingNotices` em
+`tasks/tasks-core.js`) até um card ter a marcação, o cliente cancelar
+(`settled`) ou a pessoa limpar o aviso; o horário passar não tira mais (a
+marcação de 10/11 caiu atrás de ~900 avisos de tarefa antes de ser ligada).
+Cada linha do sino tem um × discreto: `POST /api/notifications/clear` grava
+`cleared` (some da lista e do não lido, mas fica no banco porque as rotinas usam
+a chave do aviso pra não repetir). Junto com o primeiro aviso, `booking-sync.js`
+cria um compromisso `agenda_blocks` com `booking: { eventId, user, who, at }`
+(id `ab_booking_<evento>`, `kind: "event"`) na agenda de quem recebeu: a grade
+do cockpit, o SDR e Minhas atividades tratam o horário como ocupado. Remarcar
+no Google move o bloqueio; ligar a um card (automática ou à mão), cancelar ou
+apagar o evento no Google, ou remover na Agenda tira o bloqueio, que não volta.
+Na Agenda ele não se arrasta e o clique abre o `BookingLinkModal` com
+"liberar horário" (confirmação; o evento do Google não muda).
 Prévia com o funil atual e um lead por etapa: `?shell&etapas#today` ou
 `#pipeline` (`preview/etapas-mock.js`); revisão:
 `node scripts/review/lead-stage.mjs` em `packages/web`.
