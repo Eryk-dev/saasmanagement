@@ -3,7 +3,7 @@
 GERADO de `packages/api/src/sdr/sdr-rules.js` (`node src/sdr/sdr-rules.js --write`). Não edite à mão: o
 teste `sdr-rulebook.test.js` recusa o arquivo quando ele difere do registro.
 
-86 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
+87 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
 origem (data, quem pediu, PR ou print), o enunciado, os estados da conversa e o roteiro em que vale, a camada
 que a executa e as exceções. Toda regra ativa tem pelo menos um teste ou cena com a tag `#R-nnn`.
 
@@ -415,6 +415,12 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 - Origem: 2026-10-23, time comercial (aba Robô da Inbox (sdrBot.humanMuteOffHours))
 - Regra: Com a opção ligada na aba Robô, fora do horário comercial do robô (seg a sex, das humanMuteHourStart às humanMuteHourEnd; padrão o expediente do fluxo de ligação; fim de semana sempre fora) a fala recente de alguém do time não cala o robô e ele responde dentro do prazo da pausa. Handoff pendente continua calando (R-080). Nasce desligada.
 - Vale em: estados todos; roteiro todos; executada por state
+
+### R-122 · Resposta a disparo com retorno automático: sim recebe o retorno, depois o robô para
+
+- Origem: 2026-11-13, Leo (disparo do webinário de 11/11 (workshop_11_10_26): o robô respondia "Sim, gostaria de participar" com o pitch e dois horários de call; o time mandava o link do grupo na mão)
+- Regra: Broadcast de WhatsApp pode carregar um retorno automático (campaign.reply: texto, validade). Lead que recebeu esse disparo e responde a ELE (a última fala nossa é o próprio disparo) dizendo que quer (sim, quero, pode mandar, ok, 👍) recebe o texto do retorno uma vez, pelo robô, com as variáveis do lead; a partir daí QUALQUER mensagem dele para o robô nessa conversa (lead.sdrOff, o botão "parar robô") e avisa o Inbox. Quem responde sem confirmar ("Oi", "do que se trata?") ou dizendo não fica com o robô calado e vira alerta no Inbox pra gente responder. A mensagem pronta do formulário não é resposta ao disparo. Vale até reply.until (ou 14 dias depois do envio); robô ou gente que já falou depois do disparo devolve a conversa ao fluxo normal. Vale também pra lead fora da região do cérebro (Nutrição, desqualificado).
+- Vale em: estados todos; roteiro todos; executada por intent, effects, alerta
 
 ## Quando o robô fala
 

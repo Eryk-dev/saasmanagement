@@ -252,6 +252,9 @@ function BroadcastEditor({ initial, product, leads, stageOptions, defaultStages,
     status: initial.status || "draft", pauseReason: initial.pauseReason || "", sent: initial.sent || {},
     email: { subject: initial.email?.subject || "", body: initial.email?.body || "" },
     wa: { template: initial.wa?.template || null, text: initial.wa?.text || "" },
+    // Retorno automático do robô (R-122): quem responder ao disparo dizendo que
+    // quer recebe este texto uma vez; a mensagem seguinte dele para o robô.
+    reply: { enabled: !!initial.reply?.enabled, text: initial.reply?.text || "", until: initial.reply?.until || "" },
     createdAt: initial.createdAt || "", createdBy: initial.createdBy || me,
   }));
   const [stagesSel, setStagesSel] = useS(() => new Set(initial.stages?.length ? initial.stages : defaultStages));
@@ -370,6 +373,7 @@ function BroadcastEditor({ initial, product, leads, stageOptions, defaultStages,
     name: camp.name.trim() || "Broadcast sem nome", saas: pid, channel: ch, status: camp.status || "draft", stages: [...stagesSel], audience: [...selected],
     channels: { email: hasEmail, whatsapp: hasWa },
     email: camp.email, wa: { ...(camp.wa.text ? { text: camp.wa.text } : {}), template: hasWa ? camp.wa.template : null },
+    reply: { enabled: hasWa && !!camp.reply.enabled && !!camp.reply.text.trim(), text: camp.reply.text, until: camp.reply.until || "" },
     createdAt: camp.createdAt || new Date().toISOString(), createdBy: camp.createdBy || me,
   });
   async function persist() {
@@ -539,6 +543,17 @@ function BroadcastEditor({ initial, product, leads, stageOptions, defaultStages,
             {subhead("WhatsApp")}
             <WaTemplateFields tpl={tpl} approved={approved} listError={!!tplRes.error} disabled={locked} onChange={(t) => setCamp((c) => ({ ...c, wa: { ...c.wa, template: t } }))} />
             <div className="dim" style={{ fontSize: 12 }}>Não achou? <button type="button" onClick={() => goTab("modelos")} style={{ textDecoration: "underline" }}>crie ou acompanhe modelos em Modelos</button> (a Meta aprova em minutos ou horas).</div>
+            {/* Retorno automático do robô (R-122): editável mesmo depois do envio, pra
+                ligar num broadcast que já saiu e ainda recebe respostas. */}
+            <label className="disparos-label" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+              <input type="checkbox" aria-label="Robô responde quem disser que quer participar" checked={camp.reply.enabled} onChange={(e) => setCamp((c) => ({ ...c, reply: { ...c.reply, enabled: e.target.checked } }))} />
+              Robô responde quem disser que quer participar
+            </label>
+            {camp.reply.enabled && <>
+              <label className="disparos-label">Retorno do robô<textarea aria-label="Retorno do robô" rows={6} value={camp.reply.text} onChange={(e) => setCamp((c) => ({ ...c, reply: { ...c.reply, text: e.target.value } }))} placeholder={"Maravilha! Será um prazer ter você com a gente! 😊\n\nEntre no nosso grupo pelo link abaixo:\n👉 https://chat.whatsapp.com/…"} style={{ resize: "vertical", fontFamily: "inherit" }} /></label>
+              <label className="disparos-label" style={{ maxWidth: 260 }}>Vale até (horário de Brasília)<input type="datetime-local" aria-label="Retorno vale até" value={camp.reply.until} onChange={(e) => setCamp((c) => ({ ...c, reply: { ...c.reply, until: e.target.value } }))} /></label>
+              <div className="dim" style={{ fontSize: 12 }}>Quem responder a este disparo dizendo que quer (sim, quero, pode mandar, ok, 👍) recebe o retorno uma vez, pelo robô; {"{{nome}}"} e as outras variáveis viram dados do lead. Qualquer mensagem do lead depois do retorno para o robô nessa conversa (o mesmo "parar robô" do Inbox) e avisa o time. Quem responder sem confirmar ou dizendo não fica sem resposta do robô e vira alerta no Inbox. Sem data, vale 14 dias depois do envio.</div>
+            </>}
           </>}
           {hasEmail && <>
             {subhead("E-mail")}
