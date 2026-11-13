@@ -483,6 +483,11 @@ export const RULES = [
     prompt: "Lead que reenviou o formulário depois de já ter conversado com você: não repita a apresentação nem a descoberta; reconheça que ele voltou e convide direto (oferecer=true), salvo conversa já marcada.",
     layers: ["state", "prompt", "guard"], guard: "noPitchForReturning" }),
 
+  R({ id: "R-122", cat: "handoff", title: "Resposta a disparo com retorno automático: sim recebe o retorno, depois o robô para",
+    origin: { date: "2026-11-13", by: "Leo", ref: "disparo do webinário de 11/11 (workshop_11_10_26): o robô respondia \"Sim, gostaria de participar\" com o pitch e dois horários de call; o time mandava o link do grupo na mão" },
+    statement: "Broadcast de WhatsApp pode carregar um retorno automático (campaign.reply: texto, validade). Lead que recebeu esse disparo e responde a ELE (a última fala nossa é o próprio disparo) dizendo que quer (sim, quero, pode mandar, ok, 👍) recebe o texto do retorno uma vez, pelo robô, com as variáveis do lead; a partir daí QUALQUER mensagem dele para o robô nessa conversa (lead.sdrOff, o botão \"parar robô\") e avisa o Inbox. Quem responde sem confirmar (\"Oi\", \"do que se trata?\") ou dizendo não fica com o robô calado e vira alerta no Inbox pra gente responder. A mensagem pronta do formulário não é resposta ao disparo. Vale até reply.until (ou 14 dias depois do envio); robô ou gente que já falou depois do disparo devolve a conversa ao fluxo normal. Vale também pra lead fora da região do cérebro (Nutrição, desqualificado).",
+    layers: ["intent", "effects", "alerta"] }),
+
   // ── Portão de mudança ────────────────────────────────────────────────────
   R({ id: "R-120", cat: "portao", title: "Mudança no robô passa pelo portão",
     origin: { date: "2026-08-22", by: "Leo", ref: "#736 (bateria de replay); test:sdr e rulebook em 15/10/2026" },

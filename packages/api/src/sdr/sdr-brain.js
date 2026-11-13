@@ -37,6 +37,8 @@ import { resolveWabaId } from "../whatsapp/wa-health.js";
 import { stateOf, humanMuteHolds, GREETING_GAP_MS, DAILY_CAP, botTalkLast24h, handoffHolds, isReturningByForm, callbackPending } from "./sdr-state.js";
 import { PRICE_RX, REDIRECT_RX, DRY_REFUSAL_RX, FAKE_OFFER_RX, PROMISE_RX, CALLBACK_PROMISE_RX, SCHEDULE_ASK_Q_RX, DEVICE_ASK_RX, stripDuration, stripDeviceAsk, sameSentence, alreadySaid, isFreshOffer, realOfferOf, discoveryQuestionFor, GREETING_Q_RX, isRealQuestion, nextQuestionFor, DAY_PROPOSAL_RX, makeDraft, validateDraft } from "./sdr-guards.js";
 import { reofferText, offerLine, NO_SLOT_TEXT } from "./sdr-offer.js";
+import { replyCampaignFor, broadcastReplyDecision } from "./sdr-broadcast-reply.js";
+import { campaignTokens, interpolate } from "../shared/campaign-tokens.js";
 // Compat: quem importava daqui continua funcionando (replay, testes).
 export { bareHour, DEMO_RX, PITCH_RX, PRICE_RX, stripDuration, stripDeviceAsk, sameSentence };
 // Sombra do estado (15/10): divergências entre stateOf e a conta do cérebro,
@@ -605,6 +607,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
 
     // Elegibilidade — as mesmas cercas da Fase 1 + região do funil. Walk-in
     // (sem lead) pula as cercas: o card nasce limpo logo adiante.
+    let broadcastHit = null, broadcastOnly = false;
     if (lead) {
       if (lead.whatsappOptOut || lead.whatsappInvalid) return null;
       // Botão "parar robô" do inbox (lead.sdrOff): a conversa é 100% humana.
@@ -623,9 +626,13 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
         await repo.update("leads", lead.id, { stage, stageSince: now().toISOString(), cadenciaDesde: now().toISOString(), disqualified: false, lostReason: "", lostNote: "", sdrLog: { ...(lead.sdrLog || {}), reopenedAt: now().toISOString(), reopenedFrom: lead.stage || "" } });
         lead = (await repo.get("leads", lead.id)) || { ...lead, stage, disqualified: false };
         await raiseAlert(repo, thread, { text: `Lead antigo voltou pelo formulário (estava em ${lead.sdrLog?.reopenedFrom || "?"}) · card reaberto em ${stage}, robô atendendo` });
-      } else {
-        if (lead.formExit || lead.disqualified) return null;
-        if (!BRAIN_KINDS.has(kind)) return null;
+      } else if (lead.formExit || lead.disqualified || !BRAIN_KINDS.has(kind)) {
+        // Fora da região do cérebro (desqualificado, saída lateral, etapa de
+        // closer…): só a RESPOSTA A DISPARO com retorno automático (R-122)
+        // ainda é tratada; o resto segue fora, como antes.
+        broadcastHit = await replyCampaignFor(repo, lead, { nowMs: at.getTime() });
+        if (!broadcastHit && !lead.sdrLog?.broadcastReply?.linkAt) return null;
+        broadcastOnly = true;
       }
     }
 
@@ -659,6 +666,45 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     // O lead pode ter chegado agora (walk-in/vínculo pelo telefone): o botão
     // "parar robô" vale pra ele também.
     if (lead.sdrOff) return "off";
+    // ── RESPOSTA A DISPARO COM RETORNO AUTOMÁTICO (R-122, Leo 13/11) ──────
+    // Lead que recebeu um broadcast com `reply` (webinário) e respondeu a ELE:
+    // disse sim → o robô manda o retorno (link do grupo) uma vez e carimba;
+    // qualquer mensagem depois desse retorno → robô PARADO na conversa
+    // (sdrOff) + alerta; sem confirmar ou dizendo não → calado + alerta.
+    {
+      const nowIso = new Date(at.getTime()).toISOString();
+      if (!broadcastHit && !broadcastOnly) broadcastHit = await replyCampaignFor(repo, lead, { nowMs: at.getTime() });
+      const br = broadcastReplyDecision({ lead, msgs, hit: broadcastHit, nowMs: at.getTime() });
+      const said = `"${String(burstInboundText(msgs) || message?.text || "").slice(0, 140)}"`;
+      const campName = (c) => `"${String(c?.name || "disparo").slice(0, 60)}"`;
+      if (br?.kind === "off") {
+        await repo.update("leads", lead.id, { sdrOff: true });
+        await stamp(lead, { broadcastReply: { ...(lead.sdrLog?.broadcastReply || {}), offAt: nowIso } });
+        await raiseAlert(repo, thread, { text: `Lead respondeu DEPOIS do retorno do disparo (link do grupo) · robô parado nesta conversa, responde na mão: ${said}` });
+        return "broadcast-off";
+      }
+      if (br?.kind === "link") {
+        const camp = broadcastHit.campaign;
+        const text = interpolate(br.text, campaignTokens(lead, product)).trim().slice(0, 900);
+        const phoneId = thread.waPhoneId || product?.waPhoneId || undefined;
+        const to = thread.phone || digits(lead.waPhone || lead.phone);
+        if (message?.id && wa.sendTyping) wa.sendTyping(message.id, { phoneId }).catch(() => {});
+        await sleep(replyDelayMs);
+        const { messageId } = await wa.sendText(to, text, { phoneId });
+        await recordMessage(repo, { id: messageId, phone: to, direction: "out", text, status: "sent", author: SDR_AUTHOR, waPhoneId: phoneId || "", saas: product?.id || lead.saas || "", leadId: lead.id, at: nowIso });
+        await logActivity(repo, { saas: product?.id || lead.saas || "", lead: lead.id, type: "whatsapp", text: `Robô mandou o retorno do disparo ${campName(camp)} (lead disse que quer participar)`, meta: { campaign: camp.id, broadcastReply: true }, author: SDR_AUTHOR, at: nowIso }).catch(() => null);
+        await stamp(lead, { broadcastReply: { campaign: camp.id, linkAt: nowIso, messageId } });
+        return "broadcast-link";
+      }
+      if (br?.kind === "no" || br?.kind === "other") {
+        const camp = broadcastHit.campaign;
+        await raiseAlert(repo, thread, { text: br.kind === "no"
+          ? `Respondeu ao disparo ${campName(camp)} dizendo que NÃO quer · robô calado, decide (nutrição/opt-out): ${said}`
+          : `Respondeu ao disparo ${campName(camp)} sem confirmar se quer participar · robô calado, responde na mão: ${said}` });
+        return "broadcast-" + br.kind;
+      }
+      if (broadcastOnly) return null;
+    }
     const humanIds = new Set((await repo.list("users")).map((u) => u.id));
     const nowMs = at.getTime();
     const lastHumanOut = [...msgs].reverse().find((m) => m.direction === "out" && humanIds.has(m.author));
