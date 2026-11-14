@@ -113,7 +113,7 @@ export const openapi = {
   ],
   components: {
     securitySchemes: {
-      ApiKeyAuth: { type: "apiKey", in: "header", name: "x-api-key" },
+      ApiKeyAuth: { type: "apiKey", in: "header", name: "x-api-key", description: "Chave mestre ou token de sessão. Com a chave mestre, `x-act-as: <id do usuário>` faz a pessoa ser o autor das escritas (o acesso continua o da chave; id desconhecido é ignorado)." },
     },
     schemas: {
       BlogPost: {

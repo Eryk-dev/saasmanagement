@@ -10,6 +10,7 @@
 
 import { ticketScope, inScope, isAdminUser, sanitizeSupportSaas } from "../auth/support-scope.js";
 import { canScreen } from "../auth/screens.js";
+import { isMasterKey } from "../auth/roles.js";
 import {
   BUILTIN_VARIABLES, listQuickReplies, createQuickReply, updateQuickReply, deleteQuickReply,
   canEdit as canEditQuickReply, visibleTo as quickReplyVisible, variableValues, renderTemplate,
@@ -84,7 +85,7 @@ export function registerTicketRoutes(app, repo, { mailer = null, linear = defaul
     const t = await repo.get("tickets", req.params.id);
     return t && inScope(scopeOf(req), t.saas) ? t : null;
   };
-  const canAdmin = (req) => !req.authUser || isAdminUser(req.authUser);
+  const canAdmin = (req) => isMasterKey(req.authUser) || isAdminUser(req.authUser);
 
   // Vocabulário do módulo (SPA e MCP não duplicam a lista).
   app.get("/api/tickets/meta", async () => ({

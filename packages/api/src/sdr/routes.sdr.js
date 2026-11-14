@@ -8,7 +8,7 @@ import { resolveWabaId, getWaHealth } from "../whatsapp/wa-health.js";
 import { sdrBotConfig } from "./sdr-flow.js";
 import { makeSdrReplay } from "./sdr-replay.js";
 import { NOT_CONFIGURED } from "../platform/http-status.js";
-import { isAdmin } from "../auth/roles.js";
+import { isAdmin, isMasterKey } from "../auth/roles.js";
 import { SDR_ADMIN_KEYS, sanitizeSdrAdmin } from "./sdr-admin-config.js";
 import { AI_PROVIDERS } from "./sdr-ai.js";
 import { ruleById } from "./sdr-rules.js";
@@ -19,7 +19,7 @@ export function registerSdrRoutes(app, repo, { whatsapp: wa, anthropic = null, s
   const replay = makeSdrReplay({ repo, anthropic, log: app.log });
   // Aba Robô da Inbox: ver e salvar é de admin (`!authUser` = chave mestre).
   const denyNonAdmin = (req, reply) => {
-    if (!req.authUser || isAdmin(req.authUser)) return false;
+    if (isMasterKey(req.authUser) || isAdmin(req.authUser)) return false;
     reply.code(403).send({ error: "Só admin vê e muda a configuração do robô" });
     return true;
   };

@@ -7,7 +7,7 @@ import { brtToday, createTask, deleteTask, patchTask, sanitizeBoardPatch } from 
 import { applyTemplateCatalogEdit, catalogConfigSaas, isPlanV2, newPlanDoc, nextPlan, planReferences, plansOf, syncPlanCatalogProjection, templateCatalogChange } from "../billing/plan-catalog.js";
 import { FOLLOWUP_CONTACTS_KEY, followupDayOf } from "../shared/followup-contacts.js";
 import { canEditIcp, canScreen } from "../auth/screens.js";
-import { isAdmin } from "../auth/roles.js";
+import { isAdmin, isMasterKey } from "../auth/roles.js";
 import { sdrAdminKeysChanged } from "../sdr/sdr-admin-config.js";
 import { randomUUID } from "node:crypto";
 import { formKind } from "../forms/integration-form.js";
@@ -89,7 +89,7 @@ const PRIVATE = new Set(["users", "icp_versions", "integration_secrets", "produc
 const isExposed = (c) => COLLECTION_NAMES.includes(c) && !PRIVATE.has(c);
 
 // Sem sessão = key mestre (MCP/integrações), que nunca é restringida.
-const isAdminSession = (u) => !u || (u.roles || []).includes("admin");
+const isAdminSession = (u) => isMasterKey(u) || (u.roles || []).includes("admin");
 
 // Collections external SaaS are allowed to write to via REST/MCP.
 const WRITABLE = new Set(COLLECTION_NAMES.filter((c) => !PRIVATE.has(c)));
@@ -209,7 +209,7 @@ async function syncLeadQuestions(repo, form) {
 // IA e ajustes avançados do robô SDR (aba Robô da Inbox) são de admin. O
 // `!user` é a chave mestre, como em canEditIcp.
 function sdrAdminBlocked(user, prevSdrBot, nextSdrBot) {
-  if (!user || isAdmin(user)) return "";
+  if (isMasterKey(user) || isAdmin(user)) return "";
   const changed = sdrAdminKeysChanged(prevSdrBot || {}, nextSdrBot || {});
   return changed.length ? `Só admin muda a IA e os ajustes avançados do robô (${changed.join(", ")})` : "";
 }
@@ -576,7 +576,7 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
     // dedicadas — regras de coluna, comentários carimbados, eventos, avisos.
     if (collection === "tasks") {
       try {
-        const r = await patchTask(repo, id, req.body, { by: req.authUser?.id || "api" });
+        const r = await patchTask(repo, id, req.body, { by: req.authUser?.id || "api", master: isMasterKey(req.authUser) });
         if (!r) return reply.code(404).send({ error: "Not found" });
         return r.task;
       } catch (err) {

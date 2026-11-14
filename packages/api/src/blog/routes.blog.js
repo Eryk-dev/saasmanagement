@@ -7,7 +7,7 @@
 //
 // As páginas PÚBLICAS (/public/blog/*) ficam em routes.blog-public.js.
 
-import { isAdmin } from "../auth/roles.js";
+import { isAdmin, isMasterKey } from "../auth/roles.js";
 import { NOT_CONFIGURED, UPSTREAM_FAILED } from "../platform/http-status.js";
 import { loadBlogCfg, saveBlogCfg, mergeBlogRules } from "./blog-config.js";
 import { lintPost, lintOk } from "./blog-lint.js";
@@ -22,7 +22,7 @@ const LIST_FIELDS = [
 
 // Chave mestre (MCP/integração) não tem authUser e vale como admin, igual ao
 // PUT dos flashcards.
-const adminReq = (req) => !req.authUser || isAdmin(req.authUser);
+const adminReq = (req) => isMasterKey(req.authUser) || isAdmin(req.authUser);
 const byOf = (req) => req.authUser?.id || req.authUser?.email || "api";
 const defaultPublicBase = () => process.env.COCKPIT_PUBLIC_URL || "http://localhost:8787";
 

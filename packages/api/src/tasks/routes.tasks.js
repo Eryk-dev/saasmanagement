@@ -7,7 +7,7 @@
 // engole 5xx e mostra "Service is not reachable" no lugar do motivo).
 
 import { randomUUID } from "node:crypto";
-import { isAdmin } from "../auth/roles.js";
+import { isAdmin, isMasterKey } from "../auth/roles.js";
 import {
   ACTOR_API, ASSET_PREFIX, moveTask, completeTask, addComment, editComment, deleteComment, toggleCommentLike, toggleLike,
   setFollower, setBlocker, addAttachment, removeAttachment, setCover, convertTask, duplicateTask, followUpTask,
@@ -96,12 +96,12 @@ export function registerTaskRoutes(app, repo) {
     return r ? reply.code(201).send(r) : notFound(reply);
   }));
   app.patch("/api/tasks/:id/comments/:cid", guarded(async (req, reply) => {
-    const r = await editComment(repo, req.params.id, req.params.cid, req.body?.text, { by: actorOf(req), admin: isAdmin(req.authUser) });
+    const r = await editComment(repo, req.params.id, req.params.cid, req.body?.text, { by: actorOf(req), admin: isAdmin(req.authUser) || isMasterKey(req.authUser) });
     if (!r) return notFound(reply);
     return { comment: (r.task.comments || []).find((c) => String(c.id) === String(req.params.cid)), task: r.task };
   }));
   app.delete("/api/tasks/:id/comments/:cid", guarded(async (req, reply) => {
-    const r = await deleteComment(repo, req.params.id, req.params.cid, { by: actorOf(req), admin: isAdmin(req.authUser) });
+    const r = await deleteComment(repo, req.params.id, req.params.cid, { by: actorOf(req), admin: isAdmin(req.authUser) || isMasterKey(req.authUser) });
     return r ? { ok: true, task: r.task } : notFound(reply);
   }));
   app.post("/api/tasks/:id/comments/:cid/like", guarded(async (req, reply) => {
@@ -177,8 +177,10 @@ export function registerTaskRoutes(app, repo) {
 
   // ── Caixa de entrada (fora do guard de telas) ─────────────────────────────
   const inboxUser = (req) => {
-    if (req.authUser?.id) return req.authUser.id;
     const u = String(req.query?.user || req.body?.user || "").trim();
+    // Chave mestre (também em nome de alguém, `x-act-as`) escolhe a caixa pelo ?user=.
+    if (u && isMasterKey(req.authUser)) return u;
+    if (req.authUser?.id) return req.authUser.id;
     if (!u) throw httpError(400, "com a chave mestre, informe ?user=", "user_required");
     return u;
   };

@@ -2,13 +2,15 @@
 // contrário de `user.saas` (só escopo de picker) e de `user.screens` (lista
 // vazia = vê tudo).
 //
-//   chave mestre (sem authUser) → todos os produtos (MCP/integrações)
+//   chave mestre (sem authUser, ou em nome de alguém) → todos os produtos (MCP/integrações)
 //   etiqueta `admin`            → todos os produtos
 //   demais sessões              → só `user.supportSaas` (lista VAZIA = nenhum)
 //
 // Ticket fora do escopo não existe pra quem pergunta (404); criar num produto
 // fora do escopo é 403. A lista de cada atendente é editada na tela de
 // Configurações de SLA (PUT /api/support/agents/:id).
+
+import { isMasterKey } from "./roles.js";
 
 const uniq = (arr) => [...new Set(arr)];
 
@@ -19,7 +21,7 @@ export const isAdminUser = (user) => (Array.isArray(user?.roles) ? user.roles : 
 
 // null = sem restrição; array = produtos permitidos.
 export function ticketScope(user) {
-  if (!user) return null;
+  if (isMasterKey(user)) return null;
   if (isAdminUser(user)) return null;
   return sanitizeSupportSaas(user.supportSaas);
 }

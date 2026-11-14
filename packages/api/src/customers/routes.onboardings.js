@@ -15,9 +15,10 @@ import { ONBOARDINGS, backfillOnboardings, createOnboarding, onboardingsOf, prog
 import { saveTemplates, templatesOf } from "./onboarding-templates.js";
 import { onboardingKit } from "./onboarding-kit.js";
 import { canEditGuides } from "../guides/guides.js";
+import { isMasterKey } from "../auth/roles.js";
 
 // Modelos de checklist: admin ou Editor de guias (os itens apontam para os guias).
-const canEditTemplates = (u) => !u || (u.roles || []).includes("admin") || (u.roles || []).includes("guias");
+const canEditTemplates = (u) => isMasterKey(u) || (u.roles || []).includes("admin") || (u.roles || []).includes("guias");
 
 const withProgress = (o) => ({ ...o, progress: progressOf(o) });
 const OPEN = (o) => !["concluida", "cancelada"].includes(o.stage);

@@ -17,13 +17,13 @@
 import { enrichPaymentLinks, filterPaymentLinks, groupPaymentLinks, validateManualPaid, GROUP_TABS, GATEWAY_PAID } from "./payment-links.js";
 import { gatewayLabel } from "./gateways.js";
 import { logActivity } from "../crm/lead-flow.js";
-import { isAdmin } from "../auth/roles.js";
+import { isAdmin, isMasterKey } from "../auth/roles.js";
 import { syncCustomerArr } from "../billing/billing.js";
 
 // Quem vê o quê (Leo, 10/09/2026): closer vê SÓ os links que ele mesmo gerou;
 // admin vê todos e filtra por closer. Sessão sem usuário (key mestre: MCP,
 // integrações) conta como admin. A régua mora aqui, não na tela.
-const seesAll = (req) => !req.authUser || isAdmin(req.authUser);
+const seesAll = (req) => isMasterKey(req.authUser) || isAdmin(req.authUser);
 const ownsLink = (req, link) => seesAll(req) || String(link.createdBy || "") === String(req.authUser.id);
 
 const brl = (v) => `R$ ${(Math.round((Number(v) || 0) * 100) / 100).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;

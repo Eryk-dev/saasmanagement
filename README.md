@@ -240,6 +240,13 @@ Autenticação (quando `COCKPIT_API_KEY` está definida): `x-api-key: <chave>` o
 `Authorization: Bearer <chave>`, com a chave mestre ou com o token de sessão
 devolvido por `POST /api/auth/login`.
 
+Agir em nome de alguém: com a **chave mestre**, o cabeçalho `x-act-as: <id do
+usuário>` (ex.: `leonardo`) faz a pessoa ser o autor das escritas (movimento de
+etapa, comentário, envio) em vez de `api`, e `GET /api/auth/me` devolve ela. O
+acesso continua o da chave: tela restrita, etiqueta admin e escopo do Suporte da
+pessoa não fecham nada. Id que não existe é ignorado (segue como chave pura);
+sessão e JWT ignoram o cabeçalho.
+
 | Método | Rota | Notas |
 |---|---|---|
 | `GET` | `/api/health` | liveness + build + coleções (aberta) |

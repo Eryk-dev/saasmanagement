@@ -15,7 +15,7 @@ import { sanitizeBookingUrl, bookingPreview, bookingPageHtml, bookingMissingHtml
 import { publicBase } from "../platform/request.js";
 import { recordBookingClick } from "../google/booking-sync.js";
 import { sanitizeWorkHours } from "../shared/work-hours.js";
-import { trainingRequired } from "./roles.js";
+import { trainingRequired, markViaMasterKey, isMasterKey } from "./roles.js";
 
 const SESSION_TTL_MS = 7 * 24 * 3600 * 1000;
 
@@ -163,6 +163,21 @@ async function lookupSessionUser(repo, token) {
   return user ? publicUser(user) : null;
 }
 
+// Usuário do `x-act-as` (null = cabeçalho ausente, inválido ou de ninguém).
+// Existir basta, como na sessão: `active`/`awayUntil` só tiram do rodízio de
+// leads. Nunca derruba a requisição.
+const ACT_AS_RE = /^[A-Za-z0-9_.@-]{1,80}$/;
+async function actAsUser(repo, header) {
+  const id = String((Array.isArray(header) ? header[0] : header) || "").trim();
+  if (!ACT_AS_RE.test(id)) return null;
+  try {
+    const user = await repo.get("users", id);
+    return user ? publicUser(user) : null;
+  } catch {
+    return null;
+  }
+}
+
 // Hook de autenticação (substitui a comparação crua da key no index.js):
 // aceita a COCKPIT_API_KEY OU um token de sessão válido OU (AUTH_MODE dual ou
 // gotrue, auth-jwt.js) o JWT da identidade central. Sem COCKPIT_API_KEY a API
@@ -175,7 +190,17 @@ export function makeAuthHook({ apiKey, repo, openPaths, openPrefixes, providedKe
     if (openPaths.has(path)) return;
     if (openPrefixes.some((p) => path.startsWith(p))) return;
     const key = providedKey(req);
-    if (apiKey && key === apiKey) return;
+    if (apiKey && key === apiKey) {
+      // `x-act-as: <id>`: a chave age em nome de uma pessoa do time (a Ponte do
+      // CRM novo), para a autoria sair dela e não "api". Só a chave mestre pode;
+      // id desconhecido ou inválido é ignorado e segue como chave pura.
+      const asUser = await actAsUser(repo, req.headers["x-act-as"]);
+      if (asUser) {
+        req.authUser = markViaMasterKey(asUser);
+        req.authVia = "key-as";
+      }
+      return;
+    }
     let user = null;
     if (authMode !== "legacy" && jwtUser && looksLikeJwt(key)) {
       user = await jwtUser(key);
@@ -521,7 +546,7 @@ export function registerAuthRoutes(app, repo, { identity = makeIdentityAdmin() }
     const id = req.params.id;
     const user = await repo.get("users", id);
     if (!user) return reply.code(404).send({ error: "Not found" });
-    if (req.authUser?.id === id) return reply.code(400).send({ error: "você não pode remover a si mesmo" });
+    if (req.authUser?.id === id && !isMasterKey(req.authUser)) return reply.code(400).send({ error: "você não pode remover a si mesmo" });
     const force = req.query.force === "1" || req.query.force === "true";
     const owned = (await repo.list("leads")).filter((l) => l.owner === id || l.closer === id || l.integrator === id).length;
     if (owned > 0 && !force) {

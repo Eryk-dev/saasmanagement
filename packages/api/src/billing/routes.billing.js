@@ -5,6 +5,7 @@
 import { computeChange, runBilling, syncCustomerArr, initSubscription, annualized, createInstallmentSchedule } from "./billing.js";
 import { closedPlanToCycle, CYCLE_MONTHS } from "../shared/plan-cycles.js";
 import { PLAN_PRODUCTS } from "../shared/plan-resources.js";
+import { isMasterKey } from "../auth/roles.js";
 import { kindOf, stageByKind, firstStage } from "../crm/stages.js";
 import { applyStageMove, revertWonLead } from "../crm/lead-flow.js";
 import { mirrorSubscriptionToMp, createCustomerCharge } from "../payments/mp-charges.js";
@@ -272,7 +273,7 @@ export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
   // `none` (sem plano), pra dar pra ver o que falta classificar.
   // Tem receita por cliente: só admin (a key mestre passa).
   app.get("/api/plans/stats/:saas", async (req, reply) => {
-    if (req.authUser && !(req.authUser.roles || []).includes("admin")) {
+    if (!isMasterKey(req.authUser) && !(req.authUser.roles || []).includes("admin")) {
       return reply.code(403).send({ error: "Os números por plano são restritos a administradores" });
     }
     const saas = req.params.saas;

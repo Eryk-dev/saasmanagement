@@ -11,7 +11,7 @@
 //                         da equipe e a matéria-prima pra otimizar o FSRS depois.
 
 import { applyRating, previewIntervals, dayKey, dayEnd, CARD_STATE } from "./fsrs.js";
-import { isAdmin } from "../auth/roles.js";
+import { isAdmin, isMasterKey } from "../auth/roles.js";
 import { CLOZE_RE, DEFAULTS, EMPTY_STATES, ROLES, ROLE_LABELS, cardEntries, rolesForUser, stateDocId, teamSnapshot } from "./flashcards.js";
 
 // Tipos de card: basic (frente/verso), cloze (deleções {{c1::...}} no texto —
@@ -71,7 +71,7 @@ function sanitizeSettings(input, existing = {}) {
 // prova de checkpoint sai do mesmo texto). Sessão de usuário sem etiqueta
 // admin toma 403; key mestre (sem authUser: MCP/integração) segue passando.
 function requireAdmin(req, reply) {
-  if (!req.authUser || isAdmin(req.authUser)) return true;
+  if (isMasterKey(req.authUser) || isAdmin(req.authUser)) return true;
   reply.code(403).send({ error: "só admin edita os flashcards" });
   return false;
 }
