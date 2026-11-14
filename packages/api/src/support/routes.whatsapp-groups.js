@@ -7,11 +7,12 @@
 //   PATCH /api/support/whatsapp-groups/:jid    { customerId } escolhe à mão; "" volta ao automático
 
 import { ticketScope } from "../auth/support-scope.js";
+import { isMasterKey } from "../auth/roles.js";
 import { GROUP_JID, hermesServiceKeyOk, listGroups, registerGroups, sanitizeGroups, setGroupCustomer } from "./whatsapp-groups.js";
 
 // Quem atende algum produto do suporte (admin incluso).
 const canSupport = (req) => {
-  if (!req.authUser) return true; // chave mestre (MCP/integrações)
+  if (isMasterKey(req.authUser)) return true; // chave mestre (MCP/integrações; também em nome de alguém)
   const scope = ticketScope(req.authUser);
   return scope === null || scope.length > 0;
 };

@@ -194,6 +194,41 @@ test("POST /meet: e-mail do body entra nos convidados", async () => {
   await app.close();
 });
 
+test("POST /meet/cancel: call desmarcada apaga o evento e zera a sala; call marcada não apaga (409)", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "uniquekids", name: "UniqueKids", funnel: [] });
+  await repo.create("leads", { id: "le3", saas: "uniquekids", name: "Caio", callAt: "2026-07-14T15:00", email: "caio@x.com" });
+  const f = makeGoogleFetch();
+  const g = makeGoogle({ fetch: f, clientId: "cid", clientSecret: "sec", repo });
+  const app = Fastify();
+  registerRoutes(app, repo, { google: g });
+  const state = new URL((await app.inject({ url: "/api/google/auth-url" })).json().url).searchParams.get("state");
+  await app.inject({ url: `/api/google/callback?code=c&state=${state}` });
+  await app.inject({ method: "POST", url: "/api/leads/le3/meet" });
+  assert.equal((await repo.get("leads", "le3")).meetEventId, "ev1");
+
+  // call ainda marcada: nada é apagado
+  const marcada = await app.inject({ method: "POST", url: "/api/leads/le3/meet/cancel" });
+  assert.equal(marcada.statusCode, 409);
+  assert.equal((await repo.get("leads", "le3")).meetEventId, "ev1");
+  assert.equal(f.calls.some((c) => c.init?.method === "DELETE"), false);
+
+  // horário limpo: o evento morre (com aviso ao convidado) e a sala zera
+  await repo.update("leads", "le3", { callAt: "" });
+  const feita = await app.inject({ method: "POST", url: "/api/leads/le3/meet/cancel" });
+  assert.deepEqual(feita.json(), { ok: true, eventRemoved: true });
+  const apagou = f.calls.find((c) => c.init?.method === "DELETE");
+  assert.ok(apagou.url.includes("/events/ev1") && apagou.url.includes("sendUpdates=all"));
+  const lead = await repo.get("leads", "le3");
+  assert.equal(lead.callUrl, "");
+  assert.equal(lead.meetEventId, "");
+
+  // repetir é seguro; lead que não existe é 404
+  assert.deepEqual((await app.inject({ method: "POST", url: "/api/leads/le3/meet/cancel" })).json(), { ok: true, eventRemoved: false });
+  assert.equal((await app.inject({ method: "POST", url: "/api/leads/nao-existe/meet/cancel" })).statusCode, 404);
+  await app.close();
+});
+
 test("sem GOOGLE_CLIENT_ID/SECRET: auth-url e meet respondem 503 com instrução", async () => {
   const repo = makeMemRepo();
   await repo.create("leads", { id: "le1", saas: "leverads", name: "Ana" });

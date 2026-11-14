@@ -12,6 +12,7 @@
 
 import { withTaskLock } from "../tasks/tasks-core.js";
 import { canHandleSaas } from "../auth/support-scope.js";
+import { isMasterKey } from "../auth/roles.js";
 import { httpError, loadSettings, recordTicketEvents, STATUS_KIND } from "./tickets-core.js";
 import { applyLinearIssue, rememberPosted, syncTicketToLinear, teamStates } from "./ticket-linear.js";
 import { commentFor, hermesView, stateForPhase } from "./ticket-hermes.js";
@@ -39,7 +40,7 @@ export function actionAllowed(action, h = {}, cfg = {}) {
 
 // O que a tela precisa pra desenhar os botões (sem chamar o Linear).
 export function hermesPermissions(ticket, cfg, user) {
-  const master = !user;
+  const master = isMasterKey(user);
   const approver = master || (cfg?.approvers || []).includes(user.id);
   const handles = master || canHandleSaas(user, ticket.saas);
   const h = ticket.hermes || {};

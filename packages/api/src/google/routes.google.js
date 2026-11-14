@@ -692,6 +692,18 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     }
   });
 
+  // Cancela o convite da call DESMARCADA: é o cancelCallMeet do robô por HTTP,
+  // pra quem desmarca de fora (a Ponte do CRM novo limpa o horário pelo PATCH e
+  // chama aqui). Com a call ainda marcada não apaga nada (409): convite de pé
+  // nunca some por engano. Sem evento, responde ok com eventRemoved: false.
+  app.post("/api/leads/:id/meet/cancel", async (req, reply) => {
+    const lead = await repo.get("leads", req.params.id);
+    if (!lead) return reply.code(404).send({ error: "Not found" });
+    if (lead.callAt) return reply.code(409).send({ error: "a call ainda está marcada: desmarque o horário antes de cancelar o convite" });
+    const r = await cancelCallMeet(lead.id);
+    return { ok: true, eventRemoved: !!r?.eventRemoved };
+  });
+
   // Encerra a conferência que ficou ABERTA na sala do lead. Sala esquecida
   // aberta trava gravação/transcrição (o Google só fecha quando o último sai),
   // e sem isso alguém tinha que entrar no Meet pra clicar em encerrar.

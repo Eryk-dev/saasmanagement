@@ -4,6 +4,7 @@
 import { repo as defaultRepo } from "../platform/db.js";
 import { currentRev } from "../platform/changes.js";
 import { canScreen } from "../auth/screens.js";
+import { isMasterKey } from "../auth/roles.js";
 import { computePortfolio, rollupProducts } from "./portfolio.js";
 import { inScope, ticketScope } from "../auth/support-scope.js";
 import { normalizeBoard } from "../tasks/tasks-core.js";
@@ -115,7 +116,8 @@ export function registerBootstrapRoutes(app, repo, { googleClient, mpClient, asa
       ]);
       const hoje = new Date().toISOString().slice(0, 10);
       const agora = new Date().toISOString();
-      const meuId = req.authUser?.id || "";
+      // Chave em nome de alguém (`x-act-as`) conta como a chave: tudo.
+      const meuId = isMasterKey(req.authUser) ? "" : req.authUser?.id || "";
       // Hermes: casos que esperam um aprovador (Validar / Aguardando resposta).
       // Conta só pra quem aprova no produto (ticket_settings.linear.hermes).
       const hermesPend = tickets.filter((t) => t.hermes?.needsHuman && STATUS_KIND[t.status] !== "done");

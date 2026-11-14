@@ -7,11 +7,14 @@
 //
 // A chave mestre (COCKPIT_API_KEY) NUNCA é restringida: MCP e integrações
 // (forms externos, Levercopy) continuam com acesso total — `req.authUser` só
-// existe em sessão de usuário (auth.js/makeAuthHook).
+// existe em sessão de usuário (auth.js/makeAuthHook) ou na chave em nome de
+// alguém (`x-act-as`), que segue com o acesso da chave (`isMasterKey`).
 //
 // O guard é um hook único por PREFIXO de URL (makeScreenGuardHook), registrado
 // logo após o hook de auth no index.js — rota nova que sirva uma tela restrita
 // deve entrar no mapa abaixo.
+
+import { isMasterKey } from "./roles.js";
 
 export const SCREEN_IDS = [
   "overview", "today", "pipeline", "customers", "metrics", "expenses",
@@ -66,7 +69,7 @@ const roleScreens = (user) => {
 // Usuário pode acessar a tela? Sem authUser (key mestre) ou lista vazia = sim;
 // senão, a lista dele OU o piso do papel.
 export function canScreen(user, screen) {
-  if (!user) return true;
+  if (isMasterKey(user)) return true;
   if (UNIVERSAL_SCREENS.has(screen)) return true;
   const s = Array.isArray(user.screens) ? user.screens : [];
   if (s.length === 0 || s.includes(screen)) return true;
@@ -287,7 +290,7 @@ export const ADMIN_ONLY_SCREENS = new Set(["expenses"]);
 // (`icp_versions`) é coleção privada: só a rota dedicada escreve.
 export const ICP_EDIT_PATH = /^\/api\/products\/[^/]+\/icp(\/|$)/;
 export function canEditIcp(user) {
-  if (!user) return true; // key mestre
+  if (isMasterKey(user)) return true; // key mestre (também em nome de alguém)
   const roles = user.roles || [];
   return roles.includes("admin") || roles.includes("icp");
 }
@@ -296,7 +299,7 @@ export function canEditIcp(user) {
 export function makeScreenGuardHook() {
   return async (req, reply) => {
     const user = req.authUser;
-    if (!user) return; // key mestre ou rota aberta — auth já decidiu
+    if (isMasterKey(user)) return; // key mestre (também em nome de alguém) ou rota aberta — auth já decidiu
     const path = req.url.split("?")[0];
     if (ADMIN_PREFIXES.some((p) => path.startsWith(p))) {
       const admin = (user.roles || []).includes("admin");

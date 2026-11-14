@@ -17,6 +17,7 @@
 // abre o guia naquele passo.
 
 import { randomUUID } from "node:crypto";
+import { isMasterKey } from "../auth/roles.js";
 import { saveTemplates, templatesOf } from "../customers/onboarding-templates.js";
 import { STARTER_GUIDE, STARTER_ID, STARTER_LINKS } from "./guide-starter.js";
 
@@ -36,7 +37,7 @@ const text = (v, max) => (typeof v === "string" ? v.replace(/\r\n/g, "\n").repla
 const shortId = (p) => `${p}_${randomUUID().replace(/-/g, "").slice(0, 10)}`;
 
 export function canEditGuides(user) {
-  if (!user) return true; // chave mestre (MCP, integrações)
+  if (isMasterKey(user)) return true; // chave mestre (MCP, integrações; também em nome de alguém)
   const roles = Array.isArray(user.roles) ? user.roles : [];
   return roles.includes("admin") || roles.includes("guias");
 }

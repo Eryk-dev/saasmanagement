@@ -7,6 +7,19 @@ export function isAdmin(user) {
   return (user?.roles || []).includes("admin");
 }
 
+// Chave mestre agindo em nome de alguém (cabeçalho `x-act-as`, auth.js): a
+// pessoa entra em `req.authUser` só para a AUTORIA (quem moveu o card, quem
+// logou o toque); o ACESSO continua o da chave. Símbolo: não sai no JSON e
+// sobrevive a `{ ...user }`.
+const VIA_MASTER_KEY = Symbol("chave-mestre");
+export function markViaMasterKey(user) {
+  user[VIA_MASTER_KEY] = true;
+  return user;
+}
+// Acesso total: sem usuário (chave mestre) ou a chave mestre em nome de alguém.
+// É o teste que as checagens de permissão usam no lugar do `!user`.
+export const isMasterKey = (user) => !user || user[VIA_MASTER_KEY] === true;
+
 // Vagas operacionais: quem tem uma delas é cobrado no treinamento por padrão.
 export const TRAINING_ROLES = ["sdr", "closer", "integrator", "social"];
 

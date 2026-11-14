@@ -242,7 +242,7 @@ export function mergeComments(current, incoming, ctx) {
     const old = c.id != null ? byId.get(String(c.id)) : null;
     if (!old) return normalizeComment(c, ctx);
     const text = c.text == null ? old.text : String(c.text);
-    const canEdit = old.author === ctx.by || ctx.by === ACTOR_API;
+    const canEdit = old.author === ctx.by || ctx.by === ACTOR_API || ctx.master === true;
     const changed = canEdit && text !== old.text;
     return { ...old, text: changed ? text : old.text, editedAt: changed ? ctx.now : (old.editedAt || ""), mentions: changed ? parseMentions(text, ctx.users || []) : (old.mentions || []) };
   });
@@ -701,7 +701,7 @@ export async function createTask(repo, input, { by = ACTOR_API, now = nowIso() }
   return saved;
 }
 
-export async function patchTask(repo, id, body, { by = ACTOR_API, now = nowIso() } = {}) {
+export async function patchTask(repo, id, body, { by = ACTOR_API, now = nowIso(), master = false } = {}) {
   return withTaskLock(id, async () => {
     const cur = await repo.get("tasks", id);
     if (!cur) return null;
@@ -713,7 +713,7 @@ export async function patchTask(repo, id, body, { by = ACTOR_API, now = nowIso()
     let applied = [];
     const newCommenters = [], mentioned = [];
     if ("comments" in p) {
-      next.comments = mergeComments(cur.comments, p.comments, { by, now, users });
+      next.comments = mergeComments(cur.comments, p.comments, { by, now, users, master });
       const oldIds = new Set((cur.comments || []).map((c) => c.id));
       for (const c of next.comments) if (!oldIds.has(c.id)) { if (users.some((u) => u.id === c.author)) newCommenters.push(c.author); mentioned.push(...(c.mentions || [])); }
     }
