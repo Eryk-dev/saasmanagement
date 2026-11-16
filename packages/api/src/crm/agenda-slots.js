@@ -142,17 +142,20 @@ export function closerPools(users, saas) {
   };
 }
 
-// Equipe do SDR LeverAds (Leonardo, 20/09/2026). IDs legados são nomes;
-// cadastros com UUID usam o primeiro nome completo, sem correspondência parcial.
-// A atribuição explícita também vale para Vitor cadastrado como integrador.
+// Pessoa citada pelo PRIMEIRO NOME. IDs legados são nomes; cadastros com UUID
+// usam o primeiro nome completo, sem correspondência parcial.
+const normalizeName = (v) => String(v || "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+export const namedAs = (u, names) => names.includes(normalizeName(u?.id)) || names.includes(normalizeName(u?.name).split(/\s+/)[0]);
+
+// Equipe do SDR LeverAds (Leonardo, 20/09/2026). A atribuição explícita também
+// vale para Vitor cadastrado como integrador.
+export const UPPER_NAMES = ["leonardo", "jonan", "jonathan"];
 export function sdrCloserPools(users, saas) {
-  const normalize = (v) => String(v || "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const members = (users || []).filter((u) => !u.saas || u.saas === saas);
-  const named = (u, names) => names.includes(normalize(u.id)) || names.includes(normalize(u.name).split(/\s+/)[0]);
-  const upper = members.filter((u) => u.roles?.includes("closer") && named(u, ["leonardo", "jonan", "jonathan"]));
-  const junior = members.filter((u) => named(u, ["vitor"]));
+  const upper = members.filter((u) => u.roles?.includes("closer") && namedAs(u, UPPER_NAMES));
+  const junior = members.filter((u) => namedAs(u, ["vitor"]));
   // Ricardo (Leo, 08/11/2026): só lead de Lever Price com nota D ou E.
-  const priceJunior = members.filter((u) => u.roles?.includes("closer") && named(u, ["ricardo"]));
+  const priceJunior = members.filter((u) => u.roles?.includes("closer") && namedAs(u, ["ricardo"]));
   return { upper, junior, priceJunior, all: [...upper, ...junior, ...priceJunior] };
 }
 
@@ -167,7 +170,11 @@ export const PRICE_JUNIOR_GRADES = new Set(["D", "E"]);
 // Varre os próximos `days` DIAS ÚTEIS e devolve, por slot livre, o closer com
 // MENOS calls no dia (balanceamento; empate = ordem estável). Um item por
 // horário: [{ at: "YYYY-MM-DDTHH:MM", closer, level }...], em ordem cronológica.
-export function freeSlotsForPool({ pool, now, startDate, days = 5, minNoticeMin = 120, limit = 0, busyFns, callCountOf, fromHour = CALL_H0, toHour = CALL_H1, lunchFrom = null, lunchTo = null }) {
+// `windowOf(user)` (opcional) devolve a faixa de horas DAQUELA pessoa
+// ({ fromHour, toHour }); fromHour/toHour seguem sendo o envelope da varredura
+// (e o filtro que o pedido do lead aperta). Sem windowOf, todo mundo cobre o
+// envelope inteiro — é o caso da grade manual.
+export function freeSlotsForPool({ pool, now, startDate, days = 5, minNoticeMin = 120, limit = 0, busyFns, callCountOf, fromHour = CALL_H0, toHour = CALL_H1, lunchFrom = null, lunchTo = null, windowOf = null }) {
   if (!pool.length) return [];
   const out = [];
   const floor = new Date(now.getTime() + minNoticeMin * 60_000);
@@ -184,7 +191,13 @@ export function freeSlotsForPool({ pool, now, startDate, days = 5, minNoticeMin 
         w.setUTCHours(Math.floor(total / 60), total % 60, 0, 0);
         if (w.getTime() < floor.getTime()) continue;
         const cells = occupyCells(w, CALL_MIN);
-        const free = pool.filter((u) => cells.every((k) => !busyFns.get(u.id)(k)));
+        // A call precisa caber INTEIRA na faixa da pessoa (mesma régua do
+        // envelope: começa dentro e termina dentro).
+        const inWindow = (u) => {
+          const win = windowOf?.(u);
+          return !win || (total >= win.fromHour * 60 && total + CALL_MIN <= win.toHour * 60);
+        };
+        const free = pool.filter((u) => inWindow(u) && cells.every((k) => !busyFns.get(u.id)(k)));
         if (!free.length) continue;
         const dayStr = wallYmd(w);
         free.sort((a, b) => (callCountOf(a.id, dayStr) - callCountOf(b.id, dayStr)));
@@ -219,7 +232,17 @@ export function addBusinessDaysNaive(at, n) {
 // de 22/08) — oferta automática fica no horário comercial confortável.
 // Das 9h às 19h, com a ÚLTIMA call começando 19h (Leo, 23/08): a varredura
 // exige a call TERMINANDO dentro da janela, por isso o teto é 20.
-export const OFFER_HOURS = { fromHour: 9, toHour: 20, lunchFrom: 12, lunchTo: 13 };
+//
+// JANELA POR PESSOA (Leo, 16/11/2026): Leonardo, Jonan e Jonathan atendem das
+// 8h às 21h (última call começando 20h, teto 21); Vitor e Ricardo seguem em
+// 9h às 19h. Por isso são DUAS coisas: OFFER_HOURS é o ENVELOPE da varredura
+// (a faixa mais larga do time, mais o almoço) e offerWindowOf é a faixa de
+// cada pessoa, aplicada slot por slot dentro do envelope. Quem narra a janela
+// pro lead continua lendo OFFER_HOURS: é o que o time cobre no total.
+export const OFFER_WINDOW_WIDE = { fromHour: 8, toHour: 21 };
+export const OFFER_WINDOW_DEFAULT = { fromHour: 9, toHour: 20 };
+export const offerWindowOf = (user) => (namedAs(user, UPPER_NAMES) ? OFFER_WINDOW_WIDE : OFFER_WINDOW_DEFAULT);
+export const OFFER_HOURS = { fromHour: 8, toHour: 21, lunchFrom: 12, lunchTo: 13, windowOf: offerWindowOf };
 
 // Dia do slot no relógio de parede ("YYYY-MM-DDTHH:MM" → "YYYY-MM-DD"). É a
 // unidade do overflow: "a agenda do júnior encheu" é uma pergunta sobre o DIA,
@@ -229,7 +252,7 @@ const dayOfSlot = (at) => String(at || "").slice(0, 10);
 // ── A régua completa: horários pro LEAD ─────────────────────────────────────
 // Nota do lead (matriz S-E) → pool elegível → próximos horários. Devolve
 // { slots, pool: "upper"|"junior"|"junior+upper"|"all", grade }.
-export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wallNow(), startDate, days = 5, minNoticeMin = 120, limit = 6, fromHour, toHour, lunchFrom, lunchTo, sdr = false, holds = [] } = {}) {
+export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wallNow(), startDate, days = 5, minNoticeMin = 120, limit = 6, fromHour, toHour, lunchFrom, lunchTo, windowOf, sdr = false, holds = [] } = {}) {
   const sid = saas || lead?.saas || "";
   const [users, leads, blocks, consultations, products] = await Promise.all([
     repo.list("users"),
@@ -258,7 +281,7 @@ export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wal
   };
   const compute = (pool, lim, janela) => {
     ensureBusy(pool);
-    const slots = freeSlotsForPool({ pool, now, startDate, days: janela, minNoticeMin, limit: holds.length ? 0 : lim, busyFns, callCountOf, ...(fromHour != null ? { fromHour } : {}), ...(toHour != null ? { toHour } : {}), ...(lunchFrom != null ? { lunchFrom } : {}), ...(lunchTo != null ? { lunchTo } : {}) });
+    const slots = freeSlotsForPool({ pool, now, startDate, days: janela, minNoticeMin, limit: holds.length ? 0 : lim, busyFns, callCountOf, ...(fromHour != null ? { fromHour } : {}), ...(toHour != null ? { toHour } : {}), ...(lunchFrom != null ? { lunchFrom } : {}), ...(lunchTo != null ? { lunchTo } : {}), ...(windowOf ? { windowOf } : {}) });
     return withoutHeld(slots, holds, lead?.id).slice(0, lim || undefined);
   };
 

@@ -15,7 +15,7 @@ export default [
     world: after(pitched),
     ai: [{ acao: "responder", mensagens: ["Que bom Rafael, o especialista te mostra ao vivo"], oferecer: true, slotIds: [], slots: [] }],
     inbounds: ["Opa sim"],
-    expect: { result: "responder", sent: [/^Que bom Rafael, o especialista te mostra ao vivo$/, /^Consigo amanhã às 9h ou às 11h, qual fica melhor pra você\?$/], shadowSame: true,
+    expect: { result: "responder", sent: [/^Que bom Rafael, o especialista te mostra ao vivo$/, /^Consigo amanhã às 8h ou às 10h, qual fica melhor pra você\?$/], shadowSame: true,
       lead: {} },
   },
   {
@@ -24,7 +24,7 @@ export default [
     world: after(pitched),
     ai: [{ acao: "responder", mensagens: ["Perfeito"], oferecer: true, slotIds: ["s5", "s9"], slots: [{ at: "2026-08-20T11:00", label: "amanhã às 11h" }, { at: "2026-08-20T14:00", label: "amanhã às 14h" }] }],
     inbounds: ["Opa sim"],
-    expect: { result: "responder", sent: [/^Consigo amanhã às 9h ou às 11h, qual fica melhor pra você\?$/], notSent: [/14h/], shadowSame: true },
+    expect: { result: "responder", sent: [/^Consigo amanhã às 8h ou às 10h, qual fica melhor pra você\?$/], notSent: [/14h/], shadowSame: true },
   },
   {
     id: "C-V2-03", title: "lead pediu quinta: os ids escolhidos valem e o motor escreve a oferta de quinta",
@@ -56,7 +56,7 @@ export default [
     world: after([...pitched, { direction: "in", text: "sim", at: ISO("2026-08-19T12:30:00Z") }, { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?", at: ISO("2026-08-19T12:31:00Z") }]),
     ai: [{ acao: "agendar", mensagens: [], horario: "", slotIds: [], slots: [] }],
     inbounds: ["o primeiro"],
-    expect: { result: "reoferta", sent: [/^Consigo amanhã às 9h ou às 11h, qual fica melhor pra você\?$/], notSent: [/me desculpa/], lead: { callAt: undefined } },
+    expect: { result: "reoferta", sent: [/^Consigo amanhã às 8h ou às 10h, qual fica melhor pra você\?$/], notSent: [/me desculpa/], lead: { callAt: undefined } },
   },
   {
     id: "C-V2-06", title: "IA escreveu dia/hora nas partes mesmo assim: a parte cai e fica só a oferta do motor (uma oferta por resposta)",
@@ -64,7 +64,7 @@ export default [
     world: after(pitched),
     ai: [{ acao: "responder", mensagens: ["Consigo sexta às 15h ou às 17h, qual fica melhor pra você?"], oferecer: true, slotIds: [], slots: [] }],
     inbounds: ["Opa sim"],
-    expect: { result: "responder", sent: [/^Consigo amanhã às 9h ou às 11h, qual fica melhor pra você\?$/], notSent: [/sexta/] },
+    expect: { result: "responder", sent: [/^Consigo amanhã às 8h ou às 10h, qual fica melhor pra você\?$/], notSent: [/sexta/] },
   },
   {
     id: "C-V2-07", title: "oferecer=true com a parte do modelo terminando em pergunta: a pergunta cai e fica só a da oferta (uma pergunta por resposta)",
@@ -72,7 +72,7 @@ export default [
     world: after(pitched),
     ai: [{ acao: "responder", mensagens: ["Que bom Rafael, o especialista mostra ao vivo", "Quer ver funcionando?"], oferecer: true, slotIds: [], slots: [] }],
     inbounds: ["Opa sim"],
-    expect: { result: "responder", sent: [/^Que bom Rafael, o especialista mostra ao vivo$/, /^Consigo amanhã às 9h ou às 11h, qual fica melhor pra você\?$/], notSent: [/Quer ver funcionando/], audit: { notRules: ["R-003"] } },
+    expect: { result: "responder", sent: [/^Que bom Rafael, o especialista mostra ao vivo$/, /^Consigo amanhã às 8h ou às 10h, qual fica melhor pra você\?$/], notSent: [/Quer ver funcionando/], audit: { notRules: ["R-003"] } },
   },
   {
     id: "C-V2-08", title: "oferecer=true com uma parte só, em pergunta: fica (o lead precisa de texto antes da oferta)",
@@ -80,6 +80,6 @@ export default [
     world: after(pitched),
     ai: [{ acao: "responder", mensagens: ["Quer ver funcionando ao vivo?"], oferecer: true, slotIds: [], slots: [] }],
     inbounds: ["Opa sim"],
-    expect: { result: "responder", sent: [/^Quer ver funcionando ao vivo\?$/, /^Consigo amanhã às 9h ou às 11h, qual fica melhor pra você\?$/] },
+    expect: { result: "responder", sent: [/^Quer ver funcionando ao vivo\?$/, /^Consigo amanhã às 8h ou às 10h, qual fica melhor pra você\?$/] },
   },
 ];

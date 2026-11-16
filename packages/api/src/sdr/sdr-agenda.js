@@ -9,7 +9,7 @@
 // quarta", "Amanhã eu não consigo. Teria que ser quarta", "Consigo no período
 // da tarde", "Mais sim na terça feira", "Poderíamos passar amanhã?"), e cada
 // uma virava handoff pra gente marcar na mão no dia seguinte.
-import { slotsForLead, wallNow, wallFromNaive, addBusinessDaysNaive, OFFER_HOURS } from "../crm/agenda-slots.js";
+import { slotsForLead, wallNow, wallFromNaive, addBusinessDaysNaive, OFFER_HOURS, OFFER_WINDOW_DEFAULT } from "../crm/agenda-slots.js";
 import { isOfferMsg, expandSameDay, offeredSlotsIn } from "./sdr-signals.js";
 
 const ymd = (d) => d.toISOString().slice(0, 10);
@@ -92,7 +92,10 @@ function periodOf(t, negIdx, offer = null) {
     const h = Number(until[1] ?? until[2] ?? until[3]);
     if (h >= 0 && h <= 23) return { fromHour: null, toHour: h + 1 };
   }
-  if (EARLIEST_RX.test(t)) return { fromHour: null, toHour: OFFER_HOURS.fromHour + 2 };
+  // Teto do "primeiro horário": as duas primeiras horas da janela ESTREITA
+  // (9h + 2 = 11), e não do envelope — a faixa de 8h do pleno/sênior entra
+  // junto sem encolher a oferta de quem começa às 9h.
+  if (EARLIEST_RX.test(t)) return { fromHour: null, toHour: OFFER_WINDOW_DEFAULT.fromHour + 2 };
   const bound = t.match(HOUR_BOUND_RX);
   if (bound) {
     const h = Number(bound[2]);

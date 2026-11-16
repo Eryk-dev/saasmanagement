@@ -4,10 +4,14 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 import { makeSdrBrain, bookCall, stripDuration, stripDeviceAsk, PRICE_RX , shadowStats } from "../src/sdr/sdr-brain.js";
 
 // Relógio dos testes: quarta 19/08/2026, 10h BRT (13h UTC). Com o closer livre
-// o primeiro horário OFERTÁVEL é 09:00 do próximo dia útil.
+// o primeiro horário OFERTÁVEL é 08:00 do próximo dia útil: o closer do mundo
+// padrão é o Jonathan e a faixa dele vai das 8h às 21h (R-123). SLOT1 é a hora
+// cheia que a IA escolhe nos casos de agendamento; FIRST_SLOT é a primeira da
+// lista que o motor monta.
 const NOW = new Date("2026-08-19T13:00:00Z");
 const ISO = (s) => new Date(s).toISOString();
 const SLOT1 = "2026-08-20T09:00";
+const FIRST_SLOT = "2026-08-20T08:00";
 
 const FUNNEL = [
   { stage: "Novo lead", kind: "novo" },
@@ -95,7 +99,7 @@ test("responder: manda o texto da IA com autoria sdr-bot e contexto completo (ag
   assert.equal(out[0].author, "sdr-bot");
   // A IA recebeu a agenda real e a conversa.
   const ctx = fakes.calls[0];
-  assert.equal(ctx.slots[0].at, SLOT1);
+  assert.equal(ctx.slots[0].at, FIRST_SLOT);
   assert.equal(ctx.conversation.at(-1).who, "LEAD");
   assert.equal(ctx.sdrName, "Manuela");
 });
@@ -206,7 +210,7 @@ test("trava de beco: interesse respondido sem pergunta ganha a oferta do par; ad
   const fakes2 = makeFakes({ decisions: [{ acao: "responder", mensagem: "Maravilha, vai ser uma ótima conversa" }] });
   await brainOf(repo2, fakes2).handleInbound({ message: { from: "5541999990000", text: "pode ser sim" } });
   // Sem "algum dos horários que te passei" (frase proibida, Leo 17/09): os horários vão escritos.
-  assert.match(fakes2.sent.at(-1).text, /^Fica melhor amanhã às 9h ou às 11h\?$/);
+  assert.match(fakes2.sent.at(-1).text, /^Fica melhor amanhã às 8h ou às 10h\?$/);
 
   // Lead ADIANDO ("vou pensar e te falo"): resposta sem pergunta passa sem empurrão.
   const repo3 = await world({ messages: [
@@ -268,7 +272,7 @@ test("dia solto sem hora vira oferta concreta (o mais cedo primeiro) #R-031", as
   const ultima = fakes.sent.at(-1).text;
   assert.match(ultima, /às \d/, "sai com hora escrita");
   // Hoje está bloqueado no mundo padrão do teste: a oferta começa amanhã às 9h.
-  assert.match(fakes.sent.map((x) => x.text).join(" "), /amanhã às 9h/);
+  assert.match(fakes.sent.map((x) => x.text).join(" "), /amanhã às 8h/);
 });
 
 test("resposta que já traz hora não é mexida #R-031", async () => {
@@ -278,7 +282,7 @@ test("resposta que já traz hora não é mexida #R-031", async () => {
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Perfeito! Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?" }] });
   await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "sim, quero" } });
   assert.equal(fakes.sent.length, 1);
-  assert.match(fakes.sent[0].text, /amanhã às 9h ou às 11h/);
+  assert.match(fakes.sent[0].text, /amanhã às 8h ou às 10h/);
 });
 
 test("afiliado da Shopee: robô não agenda, desmarca o que estava marcado e chama gente #R-016", async () => {
@@ -340,14 +344,14 @@ test("hora pedida que nunca esteve na lista: 'às 15h não tenho vaga' + o par r
   await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "as 15h fica melhor" } });
   const texto = fakes.sent.map((x) => x.text).join(" ");
   assert.ok(!/preenchido por outro cliente/.test(texto), "sem desculpa inventada");
-  assert.match(texto, /Às 15h não tenho vaga\. Consigo amanhã às 9h ou às 11h/);
+  assert.match(texto, /Às 15h não tenho vaga\. Consigo amanhã às 8h ou às 10h/);
 });
 
 test("re-oferta determinística (hora pedida sem vaga no dia): a verdade com o dia, sem a desculpa de outro cliente #R-020 #R-028", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "pode ser 9h", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: "2026-08-19T09:00" }] });
   assert.equal(await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "pode ser 9h" } }), "reoferta");
-  assert.match(fakes.sent[0].text, /^Hoje às 9h não tenho vaga\. Consigo amanhã às 9h/);
+  assert.match(fakes.sent[0].text, /^Hoje às 9h não tenho vaga\. Consigo amanhã às 8h/);
   assert.doesNotMatch(fakes.sent[0].text, /preenchido por outro cliente/);
 });
 
@@ -507,7 +511,7 @@ test("agendar com horário INVENTADO: nada é marcado, re-oferta determinística
   const lead = await repo.get("leads", "L1");
   assert.equal(lead.stage, "Qualificando");
   assert.equal(lead.callAt || "", "");
-  assert.match(fakes.sent[0].text, /amanhã às 9h/);
+  assert.match(fakes.sent[0].text, /amanhã às 8h/);
 });
 
 test("humano: alerta quente + transição curta, e o robô fica calado até gente falar #R-080", async () => {
@@ -1043,7 +1047,7 @@ test("descoberta antes do horário: a mensagem do form não é interesse; oferta
   const fakes3 = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Perfeito", "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?"] }] });
   await brainOf(repo3, fakes3).handleInbound({ message: { from: "5541999990000", text: "Ajudaria sim" } });
   assert.equal(fakes3.calls[0].engaged, true);
-  assert.equal(fakes3.sent.at(-1).text, "Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?");
+  assert.equal(fakes3.sent.at(-1).text, "Consigo amanhã às 8h ou às 10h, qual fica melhor pra você?");
 });
 
 test("mais cedo primeiro: oferta que pula a primeira vaga de amanhã sem o lead pedir é reescrita com o par sugerido #R-022", async () => {
@@ -1054,11 +1058,11 @@ test("mais cedo primeiro: oferta que pula a primeira vaga de amanhã sem o lead 
   const repo = await world({ messages: msgs });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Perfeito Leonardo, nosso especialista pode te mostrar isso na prática", "Consigo amanhã às 11h ou amanhã às 13h, qual fica melhor pra você?"] }] });
   await brainOf(repo, fakes).handleInbound({ message: { id: "m2", from: "5541999990000", text: "Ajudaria sim" } });
-  assert.equal(fakes.sent[1].text, "Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?");
+  assert.equal(fakes.sent[1].text, "Consigo amanhã às 8h ou às 10h, qual fica melhor pra você?");
   assert.ok((await repo.get("leads", "L1")).sdrLog.earliestGuardAt);
   const thread = await repo.get("wa_threads", "5541999990000");
-  assert.deepEqual(thread.brain.pair, ["amanhã às 9h", "amanhã às 11h"]);
-  assert.equal(thread.brain.slots[0], "amanhã às 9h");
+  assert.deepEqual(thread.brain.pair, ["amanhã às 8h", "amanhã às 10h"]);
+  assert.equal(thread.brain.slots[0], "amanhã às 8h");
 
   // Lead pediu período/dia: a oferta da IA fica como está.
   const repo2 = await world({ messages: [
@@ -1192,7 +1196,7 @@ test("sim à remarcação oferece horários atuais e não confirma uma nova call
   const lead = await repo.get("leads", "L1");
   assert.ok(!lead.callAt);
   assert.equal(lead.sdrLog.reschedule.status, "offered");
-  assert.match(fakes.sent.at(-1).text, /Consigo amanhã às 9h ou às 11h/);
+  assert.match(fakes.sent.at(-1).text, /Consigo amanhã às 8h ou às 10h/);
   assert.doesNotMatch(fakes.sent.at(-1).text, /agendado|sexta/);
   assert.deepEqual(fakes.meets, []);
   const holds = (await repo.get("app_config", "sdr_slot_holds_leverads")).holds;
@@ -1222,7 +1226,7 @@ test("consentimento por áudio oferece horários e guarda estado mesmo em outra 
     now: () => NOW, sleep: async () => {}, replyDelayMs: 0, log: { warn() {} },
   });
   assert.equal(await brain.handleInbound(INBOUND), "remarcacao-oferta");
-  assert.match(fakes.sent.at(-1).text, /amanhã às 9h/);
+  assert.match(fakes.sent.at(-1).text, /amanhã às 8h/);
   assert.ok(!(await repo.get("leads", "L1")).callAt);
 });
 
@@ -1269,7 +1273,7 @@ test("recusa persistida continua sem oferta até o cliente pedir para remarcar #
   const repo2 = await world({ lead: { sdrLog: { reschedule: declined } }, messages: rescheduleMessages("Quero remarcar, tem sexta?") });
   const fakes2 = makeFakes({ decisions: [{ acao: "responder", mensagem: "Certo" }] });
   assert.equal(await brainOf(repo2, fakes2).handleInbound(INBOUND), "remarcacao-oferta");
-  assert.match(fakes2.sent.at(-1).text, /sexta às 9h/);
+  assert.match(fakes2.sent.at(-1).text, /sexta às 8h/);
   assert.ok(!(await repo2.get("leads", "L1")).callAt);
 });
 
@@ -1508,7 +1512,7 @@ test("roteiro OEM · M2: 'sim' à abordagem vira convite + par de horários, sem
   assert.equal(fakes.calls.length, 0, "passo coberto pelo roteiro não chama a IA");
   assert.equal(fakes.sent.length, 2);
   assert.equal(fakes.sent[0].text, "Maravilha Rafael. Pelo que você me passou no formulário, faz sentido te mostrar a plataforma. A demonstração é focada na operação de autopeças e principalmente em ganhar escala na criação dos anúncios com compatibilidade através do OEM.");
-  assert.match(fakes.sent[1].text, /^Tenho agenda para amanhã às 9h ou às \d{1,2}h\. Qual funciona melhor para você\?$/);
+  assert.match(fakes.sent[1].text, /^Tenho agenda para amanhã às 8h ou às \d{1,2}h\. Qual funciona melhor para você\?$/);
   assert.ok((await repo.get("leads", "L1")).sdrLog.oemScriptAt);
   // Lead multi-contas com o mesmo "sim" segue pela IA (o roteiro é só do OEM).
   const repo2 = await world({ lead: { sourcePain: "B" }, messages: [
@@ -1585,7 +1589,7 @@ test("roteiro OEM · preço depois da abordagem: resposta oficial + o par de hor
   assert.equal(fakes.calls.length, 0);
   assert.equal(fakes.sent.length, 2);
   assert.equal(fakes.sent[0].text, "O investimento depende da sua operação e das suas necessidades. Na demonstração, nosso especialista entende melhor o seu cenário e apresenta os planos e valores mais adequados para o momento da sua empresa.");
-  assert.match(fakes.sent[1].text, /^Tenho agenda para amanhã às 9h ou às \d{1,2}h\. Qual funciona melhor para você\?$/);
+  assert.match(fakes.sent[1].text, /^Tenho agenda para amanhã às 8h ou às \d{1,2}h\. Qual funciona melhor para você\?$/);
   assert.ok((await repo.get("leads", "L1")).sdrLog.priceGuardAt);
   // Aceite + preço na mesma mensagem com horários já na mesa: o horário trava primeiro.
   const repo2 = await world({ lead: { sourcePain: "OEM" }, messages: [
@@ -1620,7 +1624,7 @@ test("roteiro PRICE · M2: 'sim' à abordagem vira convite com o DRE + par de ho
   assert.equal(fakes.sent.length, 2);
   assert.equal(fakes.sent[0].text, "Maravilha Rafael. Pelo que você me passou no formulário, faz sentido te mostrar isso rodando na prática, inclusive o DRE que a plataforma gera a partir das suas vendas.");
   assert.ok(!/margem|promoç|24 horas/.test(fakes.sent[0].text), "a M2 não repete o pitch da M1");
-  assert.match(fakes.sent[1].text, /^Tenho agenda para amanhã às 9h ou às \d{1,2}h\. Qual funciona melhor para você\?$/);
+  assert.match(fakes.sent[1].text, /^Tenho agenda para amanhã às 8h ou às \d{1,2}h\. Qual funciona melhor para você\?$/);
   const log = (await repo.get("leads", "L1")).sdrLog;
   assert.ok(log.priceScriptAt);
   assert.equal(log.oemScriptAt, undefined);
@@ -1671,7 +1675,7 @@ test("roteiro PRICE · preço depois da abordagem: fala do volume de anúncios, 
   assert.equal(fakes.sent.length, 2);
   assert.equal(fakes.sent[0].text, "O investimento depende do volume de anúncios da sua operação. Na demonstração, nosso especialista entende melhor o seu cenário e apresenta o plano mais adequado para o momento da sua empresa.");
   assert.ok(!/R\$|\d/.test(fakes.sent[0].text), "sem valor");
-  assert.match(fakes.sent[1].text, /^Tenho agenda para amanhã às 9h ou às \d{1,2}h\. Qual funciona melhor para você\?$/);
+  assert.match(fakes.sent[1].text, /^Tenho agenda para amanhã às 8h ou às \d{1,2}h\. Qual funciona melhor para você\?$/);
   assert.ok((await repo.get("leads", "L1")).sdrLog.priceGuardAt);
   // Aceite + preço na mesma mensagem: o horário trava e a resposta de preço é a do Price.
   const repo2 = await world({ lead: { sourcePain: "PRICE" }, messages: [
@@ -1751,7 +1755,7 @@ test("uma oferta por resposta: a trava que emenda a oferta real não deixa dois 
   const offers = fakes.sent.filter((s) => /Consigo .*às \d{1,2}h/.test(s.text));
   assert.equal(offers.length, 1, `uma oferta só: ${fakes.sent.map((s) => s.text).join(" | ")}`);
   // Mesmo dia, dia uma vez.
-  assert.equal(offers[0].text, "Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?");
+  assert.equal(offers[0].text, "Consigo amanhã às 8h ou às 10h, qual fica melhor pra você?");
   assert.equal(fakes.sent.length, 2);
 });
 
@@ -1793,7 +1797,7 @@ test("número solto depois da oferta é hora: '11' agenda às 11h; hora que não
   const r2 = await brainOf(repo2, fakes2).handleInbound({ message: { from: "5541999990000", text: "21", id: "m2" } });
   assert.equal(r2, "responder");
   assert.equal(fakes2.sent.length, 1);
-  assert.equal(fakes2.sent[0].text, "Às 21h não tenho vaga. Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?");
+  assert.equal(fakes2.sent[0].text, "Às 21h não tenho vaga. Consigo amanhã às 8h ou às 10h, qual fica melhor pra você?");
   assert.equal((await repo2.get("leads", "L1")).callAt, undefined);
 });
 
@@ -1817,7 +1821,7 @@ test("trava da promessa: 'te confirmo em minutos' vira a agenda real; dia pedido
   assert.equal(r, "responder");
   assert.equal(fakes.sent.length, 1);
   assert.doesNotMatch(fakes.sent[0].text, /te confirmo|em minutos|ver um horário/);
-  assert.equal(fakes.sent[0].text, "Consigo quarta 26/08 às 9h ou às 11h, qual fica melhor pra você?");
+  assert.equal(fakes.sent[0].text, "Consigo quarta 26/08 às 8h ou às 10h, qual fica melhor pra você?");
   assert.ok((await repo.get("leads", "L1")).sdrLog.promiseGuardAt);
 
   // Quarta que vem lotada: o pedido não tem vaga, a resposta diz isso e dá as alternativas.
@@ -1826,7 +1830,7 @@ test("trava da promessa: 'te confirmo em minutos' vira a agenda real; dia pedido
   const fakes2 = makeFakes({ decisions: [promise] });
   await brainOf(repo2, fakes2).handleInbound({ message: { from: "5541999990000", text: ask.text, id: "m1" } });
   assert.equal(fakes2.sent.length, 1);
-  assert.equal(fakes2.sent[0].text, "Quarta 26/08 já lotou, consigo amanhã às 9h ou às 11h, qual fica melhor pra você?");
+  assert.equal(fakes2.sent[0].text, "Quarta 26/08 já lotou, consigo amanhã às 8h ou às 10h, qual fica melhor pra você?");
 });
 
 // As cenas deste arquivo rodam em ordem; se stateOf tivesse calculado engaged,

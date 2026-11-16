@@ -58,7 +58,7 @@ export default [
     world: { sdrBot: V2, lead: RINALDO, messages: RINALDO_MSGS },
     ai: [{ acao: "responder", mensagens: ["Oi Rafael! Nossa conversa acabou não acontecendo, vamos remarcar"], oferecer: true }],
     inbounds: [FORM_OEM],
-    expect: { result: "responder", state: "pos_call", sent: [/^Oi Rafael! Nossa conversa acabou não acontecendo, vamos remarcar$/, /^Consigo amanhã às 9h ou às 11h, qual fica melhor pra você\?$/], notSent: [/segue marcada/] },
+    expect: { result: "responder", state: "pos_call", sent: [/^Oi Rafael! Nossa conversa acabou não acontecendo, vamos remarcar$/, /^Consigo amanhã às 8h ou às 10h, qual fica melhor pra você\?$/], notSent: [/segue marcada/] },
   },
   {
     id: "C-R117-02", title: "Rinaldo (05/11): 'esse horário já passou' com a call vencida no card: reconhece e oferece o par, sem 'pode ser sim' vazio",
@@ -66,7 +66,7 @@ export default [
     world: { sdrBot: V2, lead: RINALDO, messages: [...RINALDO_MSGS, { direction: "in", text: FORM_OEM, at: ISO("2026-08-19T12:16:00Z") }, { direction: "out", author: "sdr-bot", text: "Oi Rafael! Nossa conversa acabou não acontecendo, vamos remarcar", at: ISO("2026-08-19T12:16:30Z") }] },
     ai: [{ acao: "responder", mensagens: ["Verdade Rafael, esse horário já passou"], oferecer: true }],
     inbounds: ["Boa tarde, o dia 03/08 já passou"],
-    expect: { result: "responder", state: "pos_call", sent: [/^Verdade Rafael, esse horário já passou$/, /^Consigo amanhã às 9h ou às 11h, qual fica melhor pra você\?$/], notSent: [/segue marcada/, /pode ser sim$/] },
+    expect: { result: "responder", state: "pos_call", sent: [/^Verdade Rafael, esse horário já passou$/, /^Consigo amanhã às 8h ou às 10h, qual fica melhor pra você\?$/], notSent: [/segue marcada/, /pode ser sim$/] },
   },
   {
     id: "C-R117-03", title: "call vencida: aceite do horário remarca pelo id e a antiga vai pro histórico; o card não se move",
@@ -101,7 +101,7 @@ export default [
     },
     ai: [{ acao: "responder", mensagens: ["Oiii Rafael, claro", "Com o Lever OEM você digita o código e recebe o anúncio completo, com fotos, título de 200 caracteres, descrição e compatibilidade"], oferecer: true }],
     inbounds: [FORM_OEM],
-    expect: { result: "responder", state: "engajado", sent: [/^Oiii Rafael, claro$/, /^Consigo amanhã às 9h ou às 11h, qual fica melhor pra você\?$/], notSent: [/título de 200/] },
+    expect: { result: "responder", state: "engajado", sent: [/^Oiii Rafael, claro$/, /^Consigo amanhã às 8h ou às 10h, qual fica melhor pra você\?$/], notSent: [/título de 200/] },
   },
   {
     id: "C-R118-02", title: "primeira mensagem do form logo depois do 1º toque NÃO é volta: a descoberta segue normal (R-101)",
@@ -155,7 +155,7 @@ export default [
     },
     ai: [{ acao: "responder", mensagens: ["Claro Rafael"], oferecer: true }],
     inbounds: ["Na verdade, quais horários você tem amanhã?"],
-    expect: { result: "responder", sent: [/^Claro Rafael$/, /^Consigo amanhã às 9h ou às 11h, qual fica melhor pra você\?$/] },
+    expect: { result: "responder", sent: [/^Claro Rafael$/, /^Consigo amanhã às 8h ou às 10h, qual fica melhor pra você\?$/] },
   },
   {
     id: "C-R121-04", title: "retorno combinado pendente + fala substantiva sem pedir horário: responde sem oferta e o retorno segue",
