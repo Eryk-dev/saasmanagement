@@ -212,6 +212,39 @@ test("OFFER_HOURS: última call ofertável começa às 19h (teto 20 porque a cal
   assert.ok(!doDia.includes("19:30") && !doDia.includes("20:00"), "depois das 19h não oferece");
 });
 
+// A hora ofertada é a DAQUELE closer: OFFER_HOURS é o envelope (8h-21h) e
+// cada pessoa entra só nas horas da faixa dela (offerWindowOf).
+test("janela de oferta por closer: Leonardo/Jonan/Jonathan das 8h às 20h, o júnior segue em 9h-19h #R-123", async () => {
+  const LEO = { id: "leonardo", name: "Leonardo", roles: ["closer"], compLevel: 3 };
+  const VITOR = { id: "us_vitor", name: "Vitor Hugo", roles: ["closer"], compLevel: 1 };
+  const { repo, fill } = seedRepo({ users: [LEO, VITOR] });
+  await fill();
+  const madrugada = wallFromNaive("2026-08-19T05:00"); // 5h BRT + 2h de aviso = 7h livre
+  const horasDoDia = (slots) => slots.filter((s) => s.at.startsWith("2026-08-19T")).map((s) => s.at.slice(11));
+
+  // Nota A → pool nominal de cima (Leonardo): abre às 8h e a última começa às 20h.
+  const cima = await slotsForLead(repo, {
+    lead: { id: "la", saas: "leverads", accounts: "10+" }, saas: "leverads",
+    now: madrugada, limit: 50, sdr: true, ...OFFER_HOURS,
+  });
+  assert.equal(cima.pool, "upper");
+  const dele = horasDoDia(cima.slots);
+  assert.equal(dele[0], "08:00", "o pleno/sênior nominal abre às 8h");
+  assert.equal(dele.at(-1), "20:00", "a última conversa dele começa às 20h e termina às 21h");
+  assert.ok(!dele.includes("07:00"), "7h segue fora da oferta automática");
+  assert.ok(!dele.includes("12:00") && !dele.includes("12:30"), "o almoço continua fora pra todo mundo");
+
+  // Nota D → Vitor, que não ganhou a faixa larga.
+  const junior = await slotsForLead(repo, {
+    lead: { id: "ld", saas: "leverads", accounts: "2" }, saas: "leverads",
+    now: madrugada, limit: 50, sdr: true, ...OFFER_HOURS,
+  });
+  assert.equal(junior.pool, "junior");
+  const doVitor = horasDoDia(junior.slots);
+  assert.equal(doVitor[0], "09:00", "o júnior segue abrindo às 9h");
+  assert.equal(doVitor.at(-1), "19:00", "e a última dele continua às 19h");
+});
+
 test("janela de oferta do robô bloqueia o almoço (12h-13h) e o par sugerido tem 2h de respiro #R-023", async () => {
   const { repo, fill } = seedRepo({ users: [PL] });
   await fill();

@@ -220,7 +220,7 @@ test("reservas não abrem dias posteriores nem escondem vagas após o limite ant
   const holds = available.slots.slice(0, -1).map((s) => ({ at: s.at, leadId: "other" }));
   const last = await sdrSlotsForLead(repo, { ...options, grade: "A", holds, lead: { id: "new" } });
   assert.equal(last.slots.length, 1);
-  assert.equal(last.slots[0].at, "2026-09-22T19:00");
+  assert.equal(last.slots[0].at, "2026-09-22T20:00"); // a última do pleno/sênior nominal começa 20h (R-123)
   holds.push({ at: last.slots[0].at, leadId: "other" });
   assert.deepEqual((await sdrSlotsForLead(repo, { ...options, grade: "A", holds })).slots, []);
 });

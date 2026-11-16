@@ -77,6 +77,6 @@ export default [
     world: { messages: [{ direction: "out", author: "sdr-bot", text: PITCH, at: ISO("2026-08-19T12:00:00Z") }] },
     ai: [{ acao: "responder", mensagens: ["Que bom que ajuda Rafael"] }],
     inbounds: ["Opa sim"],
-    expect: { result: "responder", sent: [/Que bom que ajuda Rafael/, /^Consigo amanhã às 9h ou às 11h, qual fica melhor pra você\?$/], state: "engajado", intent: "yes", shadowSame: true },
+    expect: { result: "responder", sent: [/Que bom que ajuda Rafael/, /^Consigo amanhã às 8h ou às 10h, qual fica melhor pra você\?$/], state: "engajado", intent: "yes", shadowSame: true },
   },
 ];

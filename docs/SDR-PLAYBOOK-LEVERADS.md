@@ -3,7 +3,7 @@
 GERADO de `packages/api/src/sdr/sdr-rules.js` (`node src/sdr/sdr-rules.js --write`). Não edite à mão: o
 teste `sdr-rulebook.test.js` recusa o arquivo quando ele difere do registro.
 
-87 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
+88 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
 origem (data, quem pediu, PR ou print), o enunciado, os estados da conversa e o roteiro em que vale, a camada
 que a executa e as exceções. Toda regra ativa tem pelo menos um teste ou cena com a tag `#R-nnn`.
 
@@ -181,8 +181,14 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-023 · Par com 2h de respiro, em hora cheia
 
 - Origem: 2026-08-25, Leo (oferta só em hora cheia)
-- Regra: Duas opções têm pelo menos 2h entre si e saem em hora cheia (9h, 14h). Hora quebrada (9h30) só entra quando o lead pede ("10h30", "e meia"); aí ele é agendado nela. A IA só recebe os :30 na lista quando o lead pediu, e horário quebrado escolhido sem pedido vira a hora cheia do mesmo horário ou re-oferta (Leo, 29/10; Alonso foi remarcado pra 10h30 sem pedir). A oferta espontânea nunca cai nas :30 nem quando a janela só tem hora quebrada: anda um dia útil (06/11, Caio levou "amanhã às 9h30" e, ao aceitar, "acabou de ser preenchido" com o mesmo 9h30). Hora quebrada que o robô ofereceu e o lead aceitou marca nela. A janela de oferta vai das 9h às 19h e pula o almoço.
+- Regra: Duas opções têm pelo menos 2h entre si e saem em hora cheia (9h, 14h). Hora quebrada (9h30) só entra quando o lead pede ("10h30", "e meia"); aí ele é agendado nela. A IA só recebe os :30 na lista quando o lead pediu, e horário quebrado escolhido sem pedido vira a hora cheia do mesmo horário ou re-oferta (Leo, 29/10; Alonso foi remarcado pra 10h30 sem pedir). A oferta espontânea nunca cai nas :30 nem quando a janela só tem hora quebrada: anda um dia útil (06/11, Caio levou "amanhã às 9h30" e, ao aceitar, "acabou de ser preenchido" com o mesmo 9h30). Hora quebrada que o robô ofereceu e o lead aceitou marca nela. A janela de oferta pula o almoço e vai da hora de cada closer (R-123).
 - Vale em: estados todos; roteiro todos; executada por agenda, prompt, effects
+
+### R-123 · Janela de oferta por closer: Leonardo, Jonan e Jonathan das 8h às 21h
+
+- Origem: 2026-11-16, Leo ("permita a agenda do Jonan, Leonardo e Jonathan para marcar call das 8 até as 21")
+- Regra: A hora que o robô oferece é a DAQUELE closer: Leonardo, Jonan e Jonathan recebem call começando das 8h às 20h (a última termina 21h); Vitor e Ricardo seguem das 9h às 19h. O almoço (12h às 13h) continua fora pra todo mundo e a varredura cobre a faixa mais larga do time, com cada pessoa entrando só nas horas que são dela. Pedido do lead (dia, período, faixa) aperta a janela por cima, nunca abre: "de manhã" pode cair às 8h com o pleno/sênior e nunca antes das 9h com o júnior; "primeiro horário do dia" segue com teto às 11h. A grade manual do cockpit continua das 7h às 21h pra todos, e o horário de atendimento de cada um (Ajustes → Equipe) e os bloqueios da Agenda continuam valendo por cima.
+- Vale em: estados todos; roteiro todos; executada por agenda
 
 ### R-024 · Horário ofertado fica reservado 30 minutos
 
@@ -551,7 +557,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-116 · Resgate de no-show só de furo real
 
 - Origem: 2026-08-22, Leo (#733; furo real #1112/#1114 (30/09-01/10); 2ª tentativa #802)
-- Regra: Card em No show recebe "passei no horário e não te encontrei" uma vez por movimento, só depois de 20 minutos do horário, e nunca quando: a call aconteceu (resumo), o lead disse que entrou, o card foi movido mais de 24h depois, o lead avisou antes que não vinha (aí o texto não diz "não te encontrei") ou o lead disse não / sem interesse depois do furo (gente decide; 28/10, Sirlene). Sem resposta em 24h, 2ª tentativa com horários concretos (9h às 19h, dia útil); quem respondeu ou remarcou não recebe.
+- Regra: Card em No show recebe "passei no horário e não te encontrei" uma vez por movimento, só depois de 20 minutos do horário, e nunca quando: a call aconteceu (resumo), o lead disse que entrou, o card foi movido mais de 24h depois, o lead avisou antes que não vinha (aí o texto não diz "não te encontrei") ou o lead disse não / sem interesse depois do furo (gente decide; 28/10, Sirlene). Sem resposta em 24h, 2ª tentativa com horários concretos (dia útil, na janela do closer — R-123); quem respondeu ou remarcou não recebe.
 - Vale em: estados todos; roteiro todos; executada por flow, alerta
 
 ### R-117 · Call vencida com o lead de volta: agenda e remarca

@@ -39,7 +39,7 @@ export default [
     },
     ai: [{ acao: "responder", mensagens: ["Tranquilo Rafael, hoje não dá então"], oferecer: true }],
     inbounds: ["Minha agenda hj tá cheia 🙈"],
-    expect: { result: "responder", sent: [/Tranquilo Rafael, hoje não dá então/, /^Consigo segunda às 9h ou às 11h, qual fica melhor pra você\?$/], notSent: [/hoje às 14h/], shadowSame: true },
+    expect: { result: "responder", sent: [/Tranquilo Rafael, hoje não dá então/, /^Consigo segunda às 8h ou às 10h, qual fica melhor pra você\?$/], notSent: [/hoje às 14h/], shadowSame: true },
   },
   {
     id: "C-R041-01", title: "Claudenilson (20/10): 'Hoje não conseguirei! / Na sexta feira estarei livre' oferece a SEXTA, e 'na sexta já lotou' da IA não sai",
@@ -55,7 +55,7 @@ export default [
     },
     ai: [{ acao: "responder", mensagens: ["Na sexta já lotou Rafael"], oferecer: true }],
     inbounds: ["Na sexta feira estarei livre"],
-    expect: { result: "responder", sent: [/^Consigo sexta às 9h ou às 11h, qual fica melhor pra você\?$/], notSent: [/lotou/, /hoje às 14h/], shadowSame: true },
+    expect: { result: "responder", sent: [/^Consigo sexta às 8h ou às 10h, qual fica melhor pra você\?$/], notSent: [/lotou/, /hoje às 14h/], shadowSame: true },
   },
   {
     id: "C-R041-02", title: "Alberto (23/10): 'hj só consigo depois das 1800' com nada livre à noite: o motor diz que o pedido lotou (com prova), a IA não inventa",
@@ -69,7 +69,7 @@ export default [
     },
     ai: [{ acao: "responder", mensagens: ["Hoje depois das 18h já lotou Rafael"], oferecer: true }],
     inbounds: ["Hj só consigo depois das 1800"],
-    expect: { result: "responder", sent: [/^Consigo hoje às 18h ou às 19h, qual fica melhor pra você\?$/], notSent: [/lotou/], shadowSame: true },
+    expect: { result: "responder", sent: [/^Consigo hoje às 18h ou às 20h, qual fica melhor pra você\?$/], notSent: [/lotou/], shadowSame: true },
   },
   {
     id: "C-R029-02", title: "Alberto (16→23/10): oferta de 7 dias atrás não é oferta; 'qual dos dois horários?' vira par novo por extenso",
@@ -100,7 +100,7 @@ export default [
     },
     ai: [{ acao: "responder", mensagens: ["Claro Rafael, tranquilo", "Te passo as próximas opções disponíveis para remarcar"], oferecer: false }],
     inbounds: ["Podemos deixar pra outra semana?"],
-    expect: { result: "remarcar-direto", sent: [/^Claro Rafael, já liberei hoje \(19\/08\) às 13h aqui$/, /^Consigo segunda às 9h ou às 11h, qual fica melhor pra você\?$/], notSent: [/link/, /te passo/i, /Te espero/], lead: { callAt: "" } },
+    expect: { result: "remarcar-direto", sent: [/^Claro Rafael, já liberei hoje \(19\/08\) às 13h aqui$/, /^Consigo segunda às 8h ou às 10h, qual fica melhor pra você\?$/], notSent: [/link/, /te passo/i, /Te espero/], lead: { callAt: "" } },
   },
   {
     id: "C-R046-01", title: "Janaina (23/10): 'Não consigo participar da reunião' + 'me explica por áudio?' em dois balões: o cancelamento é lido da rajada inteira",
@@ -309,7 +309,7 @@ export default [
     },
     ai: [{ acao: "responder", mensagens: ["O investimento é de acordo com as necessidades da sua operação"], oferecer: false }],
     inbounds: ["tem algum custo ?"],
-    expect: { result: "custo-demo", sent: [/^Rafael, a demonstração não tem custo nenhum/, /^Fica melhor amanhã às 9h ou às 11h\?$/], notSent: [/investimento/], sdrLog: { priceGuardAt: undefined } },
+    expect: { result: "custo-demo", sent: [/^Rafael, a demonstração não tem custo nenhum/, /^Fica melhor amanhã às 8h ou às 10h\?$/], notSent: [/investimento/], sdrLog: { priceGuardAt: undefined } },
   },
   {
     id: "C-R040-03", title: "Gustavo (29/10): 'Pode ser amanhã?' + 'Hoje no período da tarde vou estar ocupado' recebe AMANHÃ, nunca o par de hoje de novo",
@@ -325,7 +325,7 @@ export default [
     },
     ai: [{ acao: "responder", mensagens: ["Tranquilo Rafael, vamos ajustar então"], oferecer: true }],
     inbounds: ["Hoje no período da tarde vou estar ocupado"],
-    expect: { result: "responder", sent: [/Tranquilo Rafael/, /^Consigo amanhã às 9h ou às 11h, qual fica melhor pra você\?$/], notSent: [/hoje às 15h/] },
+    expect: { result: "responder", sent: [/Tranquilo Rafael/, /^Consigo amanhã às 8h ou às 10h, qual fica melhor pra você\?$/], notSent: [/hoje às 15h/] },
   },
   {
     id: "C-R084-02", title: "Ariel (29/10): 'Estou em viagem' é adiamento: 'me chama quando voltar' sem oferta de horário",

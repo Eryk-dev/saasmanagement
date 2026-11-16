@@ -33,7 +33,7 @@
 import { meta as defaultMeta } from "./meta.js";
 import { kindOf } from "../crm/stages.js";
 import { leadOrigin, dayKey } from "../metrics/metrics-core.js";
-import { wallNow, wallFromNaive, occupyCells, blockHits, closerPools, CALL_MIN, OFFER_HOURS } from "../crm/agenda-slots.js";
+import { wallNow, wallFromNaive, occupyCells, blockHits, closerPools, CALL_MIN, OFFER_HOURS, offerWindowOf } from "../crm/agenda-slots.js";
 
 const pad2 = (n) => String(n).padStart(2, "0");
 const ymdOf = (w) => `${w.getUTCFullYear()}-${pad2(w.getUTCMonth() + 1)}-${pad2(w.getUTCDate())}`;
@@ -128,19 +128,22 @@ function logFailure(cfg, rule, detail) {
 
 // ── Agenda: quanto cabe e quanto já tem ─────────────────────────────────────
 // "Horário desbloqueado" na régua do Leo = início de call em HORA CHEIA dentro
-// da janela de oferta do robô (9h às 19h, almoço fora — OFFER_HOURS), livre de
-// agenda_blocks. Call já marcada NÃO desconta: ela é exatamente o que enche o
-// horário. Capacity por closer; closer sem nenhum horário no dia não é "ativo".
+// da janela de oferta do robô (almoço fora — OFFER_HOURS), livre de
+// agenda_blocks. A faixa é a DAQUELA pessoa (offerWindowOf: 8h às 20h pro
+// pleno/sênior, 9h às 19h pro resto), por isso a conta roda por closer. Call
+// já marcada NÃO desconta: ela é exatamente o que enche o horário. Capacity
+// por closer; closer sem nenhum horário no dia não é "ativo".
 export function dayCapacity({ users, blocks, saas, dayStr }) {
   const wall = wallFromNaive(dayStr);
   if (!wall) return { capacity: 0, closersAtivos: 0, closers: 0 };
   const dow = wall.getUTCDay();
   const pool = closerPools(users, saas).all;
   if (dow === 0 || dow === 6) return { capacity: 0, closersAtivos: 0, closers: pool.length };
-  const { fromHour, toHour, lunchFrom, lunchTo } = OFFER_HOURS;
+  const { lunchFrom, lunchTo } = OFFER_HOURS;
   let capacity = 0, closersAtivos = 0;
   for (const u of pool) {
     const mine = (blocks || []).filter((b) => b.user === u.id || (Array.isArray(b.users) && b.users.includes(u.id)));
+    const { fromHour, toHour } = offerWindowOf(u);
     let slots = 0;
     for (let h = fromHour; h * 60 + CALL_MIN <= toHour * 60; h++) {
       if (lunchFrom != null && h < lunchTo && h + CALL_MIN / 60 > lunchFrom) continue;
