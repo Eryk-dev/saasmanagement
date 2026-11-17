@@ -11,6 +11,8 @@ const TEAM = [
   { id: "jonathan", name: "Jonathan", roles: ["closer"], compLevel: 1 },
   { id: "vit", name: "Vitor Silva", roles: ["integrator"], compLevel: 3 },
   { id: "us_ric", name: "Ricardo", roles: ["closer"], compLevel: 3, saas: "leverads" },
+  { id: "us_edu", name: "Eduardo Lima", roles: ["closer"], saas: "leverads" },
+  { id: "us_vini", name: "Vinicius Alves", roles: ["closer"], saas: "leverads" },
   { id: "other", name: "Outro", roles: ["closer"], compLevel: 3 },
   { id: "wrong-product", name: "Leonardo", roles: ["closer"], saas: "uniquekids" },
 ];
@@ -27,7 +29,7 @@ test("equipe SDR é nominal e respeita produto, independente de compLevel #R-033
   const pools = sdrCloserPools(TEAM, "leverads");
   assert.deepEqual(pools.upper.map((u) => u.id), ["leo", "jonan", "jonathan"]);
   assert.deepEqual(pools.junior.map((u) => u.id), ["vit"]);
-  assert.deepEqual(pools.priceJunior.map((u) => u.id), ["us_ric"]);
+  assert.deepEqual(pools.priceJunior.map((u) => u.id), ["us_ric", "us_edu", "us_vini"]);
 });
 
 // Oferta espontânea (Leo, 30/09): HOJE com 2h de folga + o próximo dia útil.
@@ -42,6 +44,7 @@ test("S/A/B somente Leonardo/Jonan/Jonathan; C/D/E e sem nota priorizam Vitor; o
     assert.ok(slots.some((s) => s.at.startsWith("2026-09-22T")), "amanhã entra");
     assert.ok(slots.every((s) => s.at.startsWith("2026-09-21T") || s.at.startsWith("2026-09-22T")), "sem D+2");
     assert.ok(slots.every((s) => ["S", "A", "B"].includes(grade) ? ["leo", "jonan", "jonathan"].includes(s.closer) : s.closer === "vit"));
+    assert.ok(slots.every((s) => !["us_ric", "us_edu", "us_vini"].includes(s.closer)), "time de Price fora do lead sem dor PRICE");
   }
   // Fim do expediente: hoje já não tem vaga, sobra só amanhã.
   const late = await sdrSlotsForLead(repo, { ...options, now: wallFromNaive("2026-09-21T19:00"), grade: "B" });
@@ -50,38 +53,67 @@ test("S/A/B somente Leonardo/Jonan/Jonathan; C/D/E e sem nota priorizam Vitor; o
 
 // Leo, 23/10/2026: Price é call de Leonardo/Jonan/Jonathan, mesmo pra lead C/D/E.
 // Leo, 08/11/2026: Price com nota D ou E vai pro Ricardo primeiro.
-test("lead de Lever Price nunca vai pro Vitor; C e sem nota ficam com os de cima, D/E com o Ricardo #R-033", async () => {
+// Leo, 17/11/2026: Eduardo e Vinicius entram junto com o Ricardo, e a nota C
+// desce pros três — OEM/Ads continua fora pra todos eles.
+const PRICE_JR = ["us_ric", "us_edu", "us_vini"];
+test("lead de Lever Price nunca vai pro Vitor; S/A/B e sem nota ficam com os de cima, C/D/E com Ricardo/Eduardo/Vinicius #R-033", async () => {
   const repo = await world();
   for (const grade of ["S", "A", "B", "C", "D", "E", null]) {
     const price = await sdrSlotsForLead(repo, { ...options, grade, lead: { id: "p1", saas: "leverads", sourcePain: "PRICE" } });
     assert.ok(price.slots.length);
     assert.ok(price.slots.every((s) => s.closer !== "vit"), `Price nota ${grade} fora do Vitor`);
-    if (["D", "E"].includes(grade)) {
+    if (["C", "D", "E"].includes(grade)) {
       assert.equal(price.pool, "price-junior");
-      assert.ok(price.slots.every((s) => s.closer === "us_ric"), `Price nota ${grade} vai pro Ricardo`);
+      assert.ok(price.slots.every((s) => PRICE_JR.includes(s.closer)), `Price nota ${grade} vai pro time júnior de Price`);
     } else {
       assert.equal(price.pool, "upper");
       assert.ok(price.slots.every((s) => ["leo", "jonan", "jonathan"].includes(s.closer)), `Price nota ${grade} com os de cima`);
     }
     const oem = await sdrSlotsForLead(repo, { ...options, grade, lead: { id: "o1", saas: "leverads", sourcePain: "OEM" } });
-    assert.ok(oem.slots.every((s) => s.closer !== "us_ric"), `OEM nota ${grade} nunca vai pro Ricardo`);
+    assert.ok(oem.slots.every((s) => !PRICE_JR.includes(s.closer)), `OEM nota ${grade} nunca vai pro time de Price`);
     if (!["S", "A", "B"].includes(grade)) assert.ok(oem.slots.every((s) => s.closer === "vit"), `OEM nota ${grade} segue no Vitor`);
   }
 });
 
-test("Price D/E só sobe pros de cima no dia em que o Ricardo lota; sem Ricardo cadastrado volta pros de cima #R-033", async () => {
+test("Price C/D/E só sobe pros de cima no dia em que os três lotam; sem eles cadastrados volta pros de cima #R-033", async () => {
   const repo = await world();
   const lead = { id: "p2", saas: "leverads", sourcePain: "PRICE" };
-  await repo.create("agenda_blocks", { id: "r", user: "us_ric", recur: "once", date: "2026-09-22", allDay: true });
-  const result = await sdrSlotsForLead(repo, { ...options, grade: "D", lead });
-  assert.equal(result.pool, "price-junior+upper");
-  assert.ok(result.slots.filter((s) => s.at.startsWith("2026-09-21T")).every((s) => s.closer === "us_ric"), "hoje segue do Ricardo");
-  const amanha = result.slots.filter((s) => s.at.startsWith("2026-09-22T"));
-  assert.ok(amanha.length && amanha.every((s) => ["leo", "jonan", "jonathan"].includes(s.closer)), "amanhã lotado do Ricardo sobe pros de cima");
-  await repo.remove("users", "us_ric");
-  const semRicardo = await sdrSlotsForLead(repo, { ...options, grade: "E", lead });
-  assert.equal(semRicardo.pool, "upper");
-  assert.ok(semRicardo.slots.length && semRicardo.slots.every((s) => ["leo", "jonan", "jonathan"].includes(s.closer)));
+  await repo.create("agenda_blocks", { id: "r", users: PRICE_JR, recur: "once", date: "2026-09-22", allDay: true });
+  for (const grade of ["C", "D", "E"]) {
+    const result = await sdrSlotsForLead(repo, { ...options, grade, lead });
+    assert.equal(result.pool, "price-junior+upper");
+    assert.ok(result.slots.filter((s) => s.at.startsWith("2026-09-21T")).every((s) => PRICE_JR.includes(s.closer)), "hoje segue do time de Price");
+    const amanha = result.slots.filter((s) => s.at.startsWith("2026-09-22T"));
+    assert.ok(amanha.length && amanha.every((s) => ["leo", "jonan", "jonathan"].includes(s.closer)), "amanhã lotado dos três sobe pros de cima");
+  }
+  // Um sozinho segura o dia: com Eduardo e Vinicius livres, o bloqueio do
+  // Ricardo não chama os de cima.
+  await repo.update("agenda_blocks", "r", { users: ["us_ric"] });
+  const soRicardoLotado = await sdrSlotsForLead(repo, { ...options, grade: "C", lead });
+  assert.equal(soRicardoLotado.pool, "price-junior");
+  for (const id of PRICE_JR) await repo.remove("users", id);
+  const semTime = await sdrSlotsForLead(repo, { ...options, grade: "E", lead });
+  assert.equal(semTime.pool, "upper");
+  assert.ok(semTime.slots.length && semTime.slots.every((s) => ["leo", "jonan", "jonathan"].includes(s.closer)));
+});
+
+// Carga do dia desempata dentro do pool: a call do Ricardo empurra a oferta
+// seguinte pro Eduardo (Leo, 17/11/2026).
+test("Price C/D/E balanceia entre Ricardo, Eduardo e Vinicius pela carga do dia #R-033", async () => {
+  const repo = await world();
+  const lead = { id: "p3", saas: "leverads", sourcePain: "PRICE" };
+  // Cada call do dia tira a pessoa da frente da fila: três ofertas seguidas
+  // caem em três closers diferentes (quem é o primeiro depende da ordem do
+  // cadastro, por isso o teste olha a rotação, não o nome).
+  const vistos = [];
+  for (let i = 0; i < 3; i++) {
+    const { slots } = await sdrSlotsForLead(repo, { ...options, grade: "C", lead });
+    const quem = slots[0].closer;
+    assert.ok(PRICE_JR.includes(quem));
+    vistos.push(quem);
+    await repo.create("leads", { id: `b${i}`, saas: "leverads", stage: "Call", closer: quem, callAt: `2026-09-21T1${5 + i}:00` });
+  }
+  assert.equal(new Set(vistos).size, 3, `rotação entre os três: ${vistos.join(", ")}`);
 });
 
 test("S/A/B balanceia entre os três; não desce ao Vitor com pool ausente #R-033", async () => {

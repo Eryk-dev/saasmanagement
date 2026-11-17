@@ -25,9 +25,10 @@
 // primeiro na mistura). S/A/B nunca desce. Pool vazio cai pra todos os
 // closers — agendamento nunca trava.
 // Robô SDR do Leverads (sdrCloserPools): equipe nominal. S/A/B e todo Price
-// com Leonardo/Jonan/Jonathan; C/D/E dos demais com Vitor primeiro; Price D/E
-// com Ricardo primeiro (Leo, 08/11/2026). "Primeiro" = o dia é dele enquanto
-// ele tiver horário; os de cima só entram nos dias em que ele não tem.
+// com Leonardo/Jonan/Jonathan; C/D/E dos demais com Vitor primeiro; Price
+// C/D/E com Ricardo, Eduardo e Vinicius primeiro (Leo, 08/11 e 17/11/2026).
+// "Primeiro" = o dia é deles enquanto tiverem horário; os de cima só entram
+// nos dias em que nenhum deles tem.
 import { kindOf } from "./stages.js";
 import { gradeRulesOf, leadGrade, ICP_GRADES } from "../metrics/metrics-core.js";
 import { isIcpGrade } from "../shared/lead-grade.js";
@@ -150,12 +151,15 @@ export const namedAs = (u, names) => names.includes(normalizeName(u?.id)) || nam
 // Equipe do SDR LeverAds (Leonardo, 20/09/2026). A atribuição explícita também
 // vale para Vitor cadastrado como integrador.
 export const UPPER_NAMES = ["leonardo", "jonan", "jonathan"];
+// Time de Lever Price com nota baixa: Ricardo (Leo, 08/11/2026) mais Eduardo e
+// Vinicius (Leo, 17/11/2026). Os três só recebem lead de Lever Price, e só com
+// nota C, D ou E — OEM/Ads nunca vai pra eles.
+export const PRICE_JUNIOR_NAMES = ["ricardo", "eduardo", "vinicius"];
 export function sdrCloserPools(users, saas) {
   const members = (users || []).filter((u) => !u.saas || u.saas === saas);
   const upper = members.filter((u) => u.roles?.includes("closer") && namedAs(u, UPPER_NAMES));
   const junior = members.filter((u) => namedAs(u, ["vitor"]));
-  // Ricardo (Leo, 08/11/2026): só lead de Lever Price com nota D ou E.
-  const priceJunior = members.filter((u) => u.roles?.includes("closer") && namedAs(u, ["ricardo"]));
+  const priceJunior = members.filter((u) => u.roles?.includes("closer") && namedAs(u, PRICE_JUNIOR_NAMES));
   return { upper, junior, priceJunior, all: [...upper, ...junior, ...priceJunior] };
 }
 
@@ -163,8 +167,9 @@ export function sdrCloserPools(users, saas) {
 // form). É o mesmo critério do modo "price" do leadPainFocus (sdr-flow.js),
 // repetido aqui porque o sdr-flow importa este arquivo.
 export const isPriceLead = (lead) => String(lead?.sourcePain || "").toUpperCase().trim() === "PRICE";
-// Notas de Price que o robô manda pro Ricardo (sdrCloserPools.priceJunior).
-export const PRICE_JUNIOR_GRADES = new Set(["D", "E"]);
+// Notas de Price que o robô manda pro time júnior de Price
+// (sdrCloserPools.priceJunior). Era só D/E; o C entrou em 17/11/2026 (Leo).
+export const PRICE_JUNIOR_GRADES = new Set(["C", "D", "E"]);
 
 // ── Horários livres de um pool ──────────────────────────────────────────────
 // Varre os próximos `days` DIAS ÚTEIS e devolve, por slot livre, o closer com
@@ -234,8 +239,8 @@ export function addBusinessDaysNaive(at, n) {
 // exige a call TERMINANDO dentro da janela, por isso o teto é 20.
 //
 // JANELA POR PESSOA (Leo, 16/11/2026): Leonardo, Jonan e Jonathan atendem das
-// 8h às 21h (última call começando 20h, teto 21); Vitor e Ricardo seguem em
-// 9h às 19h. Por isso são DUAS coisas: OFFER_HOURS é o ENVELOPE da varredura
+// 8h às 21h (última call começando 20h, teto 21); os demais closers (Vitor,
+// Ricardo, Eduardo, Vinicius) seguem em 9h às 19h. Por isso são DUAS coisas: OFFER_HOURS é o ENVELOPE da varredura
 // (a faixa mais larga do time, mais o almoço) e offerWindowOf é a faixa de
 // cada pessoa, aplicada slot por slot dentro do envelope. Quem narra a janela
 // pro lead continua lendo OFFER_HOURS: é o que o time cobre no total.
@@ -289,9 +294,10 @@ export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wal
   // é por DIA, inclusive quando o cliente pede uma semana inteira.
   // Lead de Lever Price (Leo, 23/10/2026): nunca marca com o Vitor, qualquer
   // que seja a nota. A call de Price fica com Leonardo/Jonan/Jonathan, salvo
-  // Price com nota D ou E (Leo, 08/11/2026): esse vai pro Ricardo primeiro,
-  // com a mesma régua de dia do Vitor (os de cima só entram no dia em que o
-  // Ricardo não tem horário). Price sem nota segue com os de cima.
+  // Price com nota C, D ou E (Leo, 08/11 e 17/11/2026): esse vai primeiro pro
+  // time júnior de Price (Ricardo, Eduardo, Vinicius), com a mesma régua de
+  // dia do Vitor — os de cima só entram no dia em que nenhum deles tem
+  // horário. Price sem nota segue com os de cima.
   if (sdr && sid === "leverads") {
     // `first` leva o dia inteiro; o pool de cima só completa os dias em que
     // `first` não tem nenhum horário livre.

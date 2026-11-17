@@ -187,7 +187,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-123 · Janela de oferta por closer: Leonardo, Jonan e Jonathan das 8h às 21h
 
 - Origem: 2026-11-16, Leo ("permita a agenda do Jonan, Leonardo e Jonathan para marcar call das 8 até as 21")
-- Regra: A hora que o robô oferece é a DAQUELE closer: Leonardo, Jonan e Jonathan recebem call começando das 8h às 20h (a última termina 21h); Vitor e Ricardo seguem das 9h às 19h. O almoço (12h às 13h) continua fora pra todo mundo e a varredura cobre a faixa mais larga do time, com cada pessoa entrando só nas horas que são dela. Pedido do lead (dia, período, faixa) aperta a janela por cima, nunca abre: "de manhã" pode cair às 8h com o pleno/sênior e nunca antes das 9h com o júnior; "primeiro horário do dia" segue com teto às 11h. A grade manual do cockpit continua das 7h às 21h pra todos, e o horário de atendimento de cada um (Ajustes → Equipe) e os bloqueios da Agenda continuam valendo por cima.
+- Regra: A hora que o robô oferece é a DAQUELE closer: Leonardo, Jonan e Jonathan recebem call começando das 8h às 20h (a última termina 21h); os demais closers (Vitor, Ricardo, Eduardo e Vinicius) seguem das 9h às 19h. O almoço (12h às 13h) continua fora pra todo mundo e a varredura cobre a faixa mais larga do time, com cada pessoa entrando só nas horas que são dela. Pedido do lead (dia, período, faixa) aperta a janela por cima, nunca abre: "de manhã" pode cair às 8h com o pleno/sênior e nunca antes das 9h com o júnior; "primeiro horário do dia" segue com teto às 11h. A grade manual do cockpit continua das 7h às 21h pra todos, e o horário de atendimento de cada um (Ajustes → Equipe) e os bloqueios da Agenda continuam valendo por cima.
 - Vale em: estados todos; roteiro todos; executada por agenda
 
 ### R-024 · Horário ofertado fica reservado 30 minutos
@@ -270,8 +270,8 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 
 ### R-033 · Pool do closer pela nota do lead
 
-- Origem: 2026-08-22, Leo (régua S-E; equipe nominal 20/09; Price nunca pro Vitor 23/10)
-- Regra: S/A/B vai pro closer pleno ou sênior; C/D/E e sem nota vão pro júnior; C/D sobe pro pleno quando o dia do júnior lota; S/A/B nunca desce; pool vazio cai pra todos. Lead de Lever Price (dor de origem PRICE) nunca vai pro júnior (Vitor), qualquer que seja a nota. O closer só recebe oferta dentro do horário de atendimento dele.
+- Origem: 2026-08-22, Leo (régua S-E; equipe nominal 20/09; Price nunca pro Vitor 23/10; Price C/D/E com Ricardo, Eduardo e Vinicius 17/11)
+- Regra: S/A/B vai pro closer pleno ou sênior; C/D/E e sem nota vão pro júnior; C/D sobe pro pleno quando o dia do júnior lota; S/A/B nunca desce; pool vazio cai pra todos. Lead de Lever Price (dor de origem PRICE) nunca vai pro júnior (Vitor), qualquer que seja a nota: Price com nota C, D ou E vai primeiro pro time júnior de Price (Ricardo, Eduardo e Vinicius), que só atende Price e só essas notas — OEM e Ads nunca vão pra eles; os de cima só entram nos dias em que nenhum dos três tem horário. Price S/A/B e Price sem nota ficam com Leonardo, Jonan e Jonathan. O closer só recebe oferta dentro do horário de atendimento dele.
 - Vale em: estados todos; roteiro todos; executada por agenda
 
 ### R-034 · Aceite e preço na mesma mensagem: o horário trava primeiro
