@@ -134,7 +134,8 @@ test("os três formulários compartilham o mesmo núcleo, e só ele", () => {
   const nucleo = ["niche", "accounts", "listings", "trigger", "orders", "ticket", "nome", "empresa", "whatsapp", "email"];
   // O corte de CNPJ abre e o ramo da Mentoria fecha os três (Leo, 18/11/2026):
   // o núcleo de qualificação continua sendo o mesmo no meio.
-  const corte = "tem_empresa", ramo = ["aprender_verba"];
+  const corte = "tem_empresa";
+  const ramo = ["aprender_quando", "aprender_produto", "aprender_tempo", "aprender_motivo", "aprender_verba"];
   for (const l of ["ads", "price"]) {
     assert.deepEqual(formV2(l).questions.map((q) => q.key), [corte, ...nucleo, ...ramo]);
   }
