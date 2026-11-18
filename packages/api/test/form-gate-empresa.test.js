@@ -13,7 +13,10 @@ import {
   leadFromSubmission, submissionSummary, publicForm,
 } from "../src/forms/forms.js";
 import { formPageHtml } from "../src/forms/form-page.js";
-import { withGateEmpresa, ensureFormGateEmpresa, withRamoSemRecusa, ensureFormRamoSemRecusa } from "../src/platform/migrations.js";
+import {
+  withGateEmpresa, ensureFormGateEmpresa, withRamoSemRecusa, ensureFormRamoSemRecusa,
+  withRamoIntencao, ensureFormRamoIntencao,
+} from "../src/platform/migrations.js";
 import { LEAD_QUESTIONS_UNIAO, questionsFor } from "../src/forms/lead-questions.produtos.js";
 
 const ads = () => FORMS_V2.find((f) => f.id === FORM_IDS.ads);
@@ -23,8 +26,11 @@ const vendaOk = {
   trigger: "Quero escalar", orders: "500-1000", ticket: "150-300",
   nome: "Leonardo", empresa: "Lever", whatsapp: "41999999999", email: "leo@lever.com",
 };
+const RAMO = ["aprender_quando", "aprender_produto", "aprender_tempo", "aprender_motivo", "aprender_verba"];
 const ramoOk = {
-  tem_empresa: "nao", aprender_verba: "5k-20k",
+  tem_empresa: "nao", aprender_quando: "30d", aprender_produto: "ajuda",
+  aprender_tempo: "10-20h", aprender_motivo: "Fui demitido e quero viver disso",
+  aprender_verba: "5k-20k",
   nome: "Leonardo", whatsapp: "41999999999", email: "leo@lever.com",
 };
 
@@ -34,15 +40,17 @@ test("o corte abre os três formulários e as duas saídas existem", () => {
     assert.equal(f.questions[0].required, true, f.id);
     const nao = f.questions[0].options.find((o) => o.value === "nao");
     assert.equal(nao.exit, "mentoria", f.id);
-    assert.equal(nao.to, "aprender_verba", f.id);
+    assert.equal(nao.to, "aprender_quando", f.id);
     // Uma saída só: a recusa de interesse saiu em 18/11, e com ela a saída que
     // deixava a pessoa ir embora sem deixar contato.
     assert.deepEqual(Object.keys(f.exits), ["mentoria"], f.id);
     assert.equal(f.exits.mentoria.stage, "Mentoria", f.id);
     // O ramo fica no FIM: o fluxo de venda termina na última pergunta de contato.
     const keys = f.questions.map((q) => q.key);
-    assert.deepEqual(keys.slice(-1), ["aprender_verba"], f.id);
+    assert.deepEqual(keys.slice(-RAMO.length), RAMO, f.id);
     assert.ok(!keys.includes("aprender_interesse"), f.id);
+    // Dinheiro por último no ramo, logo antes do contato.
+    assert.equal(keys[keys.length - 1], "aprender_verba", f.id);
     assert.equal(f.questions.find((q) => q.key === "email").to, "_end", f.id);
     assert.equal(f.questions.find((q) => q.key === "aprender_verba").to, "nome", f.id);
   }
@@ -53,7 +61,7 @@ test("quem tem CNPJ segue o fluxo de venda inteiro, sem passar pelo ramo", () =>
   const caminho = computePath(f.questions, vendaOk).map((q) => q.key);
   assert.equal(caminho[0], GATE_KEY);
   assert.ok(caminho.includes("empresa"), "a empresa continua sendo perguntada na venda");
-  assert.ok(!caminho.includes("aprender_verba"));
+  for (const k of RAMO) assert.ok(!caminho.includes(k), k);
   assert.equal(submissionExit(f.questions, vendaOk), "");
   assert.equal(submissionTerminal(f.questions, vendaOk), "_end");
   assert.deepEqual(validateAnswers(f, vendaOk), []);
@@ -62,7 +70,7 @@ test("quem tem CNPJ segue o fluxo de venda inteiro, sem passar pelo ramo", () =>
 test("quem não tem empresa sai pela Mentoria e NÃO é perguntado pelo nome da empresa", () => {
   const f = ads();
   const caminho = computePath(f.questions, ramoOk).map((q) => q.key);
-  assert.deepEqual(caminho, [GATE_KEY, "aprender_verba", "nome", "whatsapp", "email"]);
+  assert.deepEqual(caminho, [GATE_KEY, ...RAMO, "nome", "whatsapp", "email"]);
   assert.ok(!caminho.includes("empresa"));
   assert.equal(submissionExit(f.questions, ramoOk), "mentoria");
   // Sem a empresa no caminho, a obrigatoriedade dela não cobra ninguém.
@@ -89,11 +97,11 @@ test("não existe mais saída sem deixar contato (Leo, 18/11)", () => {
   // existe mais resposta que encerre o formulário antes de pedir o contato.
   const so = { tem_empresa: "nao" };
   assert.deepEqual(computePath(f.questions, so).map((q) => q.key),
-    [GATE_KEY, "aprender_verba", "nome", "whatsapp", "email"]);
+    [GATE_KEY, ...RAMO, "nome", "whatsapp", "email"]);
   assert.equal(submissionExit(f.questions, so), "mentoria");
   // E tudo isso é obrigatório: ninguém sai sem deixar contato.
   assert.deepEqual(validateAnswers(f, so).sort(),
-    ["aprender_verba: obrigatória", "email: obrigatória", "nome: obrigatória", "whatsapp: obrigatória"]);
+    [...RAMO, "nome", "whatsapp", "email"].map((k) => `${k}: obrigatória`).sort());
   // Nenhuma opção de nenhum formulário manda pra uma saída que não existe.
   for (const form of FORMS_V2) {
     for (const q of form.questions) {
@@ -123,7 +131,7 @@ test("a página pública leva hideOnExit e o renderer respeita a saída", () => 
 test("o corte não vira pergunta do card; o ramo vira", () => {
   const chaves = LEAD_QUESTIONS_UNIAO.map((q) => q.key);
   assert.ok(!chaves.includes(GATE_KEY));
-  assert.ok(chaves.includes("aprender_verba"));
+  for (const k of RAMO) assert.ok(chaves.includes(k), k);
   assert.ok(!questionsFor("oem").some((q) => q.key === GATE_KEY));
 });
 
@@ -158,7 +166,7 @@ test("migração: formulário publicado ganha o corte, o ramo e as saídas", asy
   assert.equal(await ensureFormGateEmpresa(repo), 1);
   const form = await repo.get("forms", "fo_ads_v2");
   assert.deepEqual(form.questions.map((q) => q.key),
-    [GATE_KEY, "niche", "nome", "empresa", "whatsapp", "email", "aprender_verba"]);
+    [GATE_KEY, "niche", "nome", "empresa", "whatsapp", "email", ...RAMO]);
   assert.deepEqual(form.questions.find((q) => q.key === "empresa").hideOnExit, ["mentoria"]);
   assert.equal(form.questions.find((q) => q.key === "email").to, "_end");
   assert.equal(form.exits.mentoria.stage, "Mentoria");
@@ -218,4 +226,47 @@ test("migração tira a recusa de interesse de quem já estava no ar", async () 
   // Idempotente e sem tocar o formulário antigo.
   assert.equal(await ensureFormRamoSemRecusa(repo), 0);
   assert.equal(withRamoSemRecusa(await repo.get("forms", "fo_diagnostico_leverads")), null);
+});
+
+test("migração: ramo enxuto (só verba) ganha as quatro perguntas de intenção", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", leadQuestions: [] }, "leverads");
+  // Estado da tarde de 18/11: corte + ramo com uma pergunta só, e o rótulo da
+  // verba editado na tela (a migração tem que preservar).
+  await repo.create("forms", {
+    id: "fo_ads_v2", saas: "leverads", status: "published",
+    mapping: { name: "nome", company: "empresa", email: "email", phone: "whatsapp" },
+    questions: [
+      { key: GATE_KEY, type: "select", required: true, options: [
+        { value: "sim", label: "Sim, tenho CNPJ" },
+        { value: "nao", label: "Ainda não tenho empresa", to: "aprender_verba", exit: "mentoria" },
+      ] },
+      { key: "nome", type: "text", required: true },
+      { key: "empresa", type: "text", required: true, stack: true, hideOnExit: ["mentoria"] },
+      { key: "whatsapp", type: "phone", required: true },
+      { key: "email", type: "email", required: true, stack: true, to: "_end" },
+      { key: "aprender_verba", label: "Verba (editado na tela)", type: "select", required: true, to: "nome", options: [{ value: "5k-20k", label: "R$ 5 mil a R$ 20 mil" }] },
+    ],
+    exits: { mentoria: { stage: "Mentoria" } },
+  }, "fo_ads_v2");
+
+  assert.equal(await ensureFormRamoIntencao(repo), 1);
+  const form = await repo.get("forms", "fo_ads_v2");
+  assert.deepEqual(form.questions.map((q) => q.key),
+    [GATE_KEY, "nome", "empresa", "whatsapp", "email", ...RAMO]);
+  // O corte abre o ramo pela primeira pergunta nova.
+  assert.equal(form.questions[0].options.find((o) => o.value === "nao").to, "aprender_quando");
+  // Rótulo que o time editou na tela sobrevive, e a verba segue voltando pro contato.
+  const verba = form.questions.find((q) => q.key === "aprender_verba");
+  assert.equal(verba.label, "Verba (editado na tela)");
+  assert.equal(verba.to, "nome");
+  // Caminho completo do ramo, sem passar pela empresa.
+  assert.deepEqual(computePath(form.questions, ramoOk).map((q) => q.key),
+    [GATE_KEY, ...RAMO, "nome", "whatsapp", "email"]);
+  // O card ganhou as perguntas novas.
+  const produto = await repo.get("products", "leverads");
+  for (const k of RAMO) assert.ok(produto.leadQuestions.some((q) => q.key === k), k);
+  // Idempotente.
+  assert.equal(await ensureFormRamoIntencao(repo), 0);
+  assert.equal(withRamoIntencao(await repo.get("forms", "fo_ads_v2")), null);
 });

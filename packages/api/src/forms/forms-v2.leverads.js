@@ -224,19 +224,75 @@ export const GATE = Object.freeze({
     { value: "sim", label: "Sim, tenho CNPJ" },
     // Sai do fluxo de venda e carrega a saída "mentoria" até o fim, o que deixa
     // reusar as MESMAS perguntas de contato (o mapping continua valendo).
-    { value: "nao", label: "Ainda não tenho empresa", to: "aprender_verba", exit: "mentoria" },
+    { value: "nao", label: "Ainda não tenho empresa", to: "aprender_quando", exit: "mentoria" },
   ],
 });
 
 // Ramo de quem ainda não tem empresa. Fica no FIM da lista de perguntas: o
 // fluxo de quem é do perfil não muda em nada, só ganha a tela do corte.
-// O ramo é uma pergunta só. A de interesse ("quer aprender e começar a vender?")
-// existia com a recusa como segunda resposta; o Leo tirou a recusa em 18/11, e
-// pergunta de resposta única não é pergunta: era um clique a mais e um dado
-// constante. Quem não tem empresa agora vai direto pra verba, que é o que
-// decide a oferta, e ninguém mais sai do formulário sem deixar contato.
+//
+// Nasceu com duas perguntas (interesse + verba), perdeu a de interesse quando o
+// Leo tirou a recusa e ganhou quatro em 18/11/2026 ("achei meio enxuto, cria
+// mais intenção"). A escolha é pelo que a pergunta COBRA de quem responde, não
+// pelo que a gente quer saber: prazo, produto e tempo são a pessoa montando o
+// plano dela em voz alta, e é isso que faz intenção. Mesma doutrina dos
+// formulários de venda: cliques baratos primeiro, a aberta no meio (depois de
+// três respostas investidas) e dinheiro por último, antes do contato.
+//
+// Custa abandono (o ramo foi de 4 pra 8 telas), e aqui abandono é barato: a
+// saída lateral não é conversão paga e não entra no CPL. Quem termina oito
+// telas sem ter empresa aberta quer de verdade.
 export function ramoMentoria(mapping = MAPPING) {
   return [
+    {
+      // Vontade com prazo. Também ordena a fila por quem está pronto AGORA, que
+      // hoje é ordenada só pela verba declarada.
+      key: "aprender_quando",
+      label: "Quando você quer fazer sua *primeira venda*?",
+      type: "select", required: true,
+      options: [
+        { value: "30d", label: "Nos próximos 30 dias" },
+        { value: "2-3m", label: "Em 2 a 3 meses" },
+        { value: "pesquisando", label: "Só estou pesquisando por enquanto" },
+      ],
+    },
+    {
+      // A pergunta que encosta na oferta: a Mentoria coloca um produto NOSSO,
+      // que já vende, na conta nova dele enquanto ele escolhe o estoque. Quem
+      // marca "tenho ideias" ou "quero ajuda" se reconhece no problema antes de
+      // falar com a gente, e é por aí que o closer abre a conversa.
+      key: "aprender_produto",
+      label: "Você já sabe *o que vai vender*?",
+      type: "select", required: true,
+      options: [
+        { value: "sei", label: "Já sei exatamente" },
+        { value: "ideias", label: "Tenho algumas ideias" },
+        { value: "ajuda", label: "Não sei ainda, quero ajuda pra escolher" },
+      ],
+    },
+    {
+      // Compromisso declarado e previsão de execução: o Assistido são 4
+      // encontros mais WhatsApp por 90 dias, e quem tem 3h por semana não faz.
+      key: "aprender_tempo",
+      label: "Quanto *tempo por semana* você tem pra cuidar do negócio?",
+      type: "select", required: true,
+      options: [
+        { value: "ate-5h", label: "Menos de 5 horas" },
+        { value: "5-10h", label: "5 a 10 horas" },
+        { value: "10-20h", label: "10 a 20 horas" },
+        { value: "total", label: "Dedicação total" },
+      ],
+    },
+    {
+      // Única aberta do ramo, o equivalente do `trigger` do fluxo de venda: é a
+      // pessoa se vendendo a ideia pra si mesma, e é a frase com que o closer
+      // abre a call. Vem depois de três cliques, não antes.
+      key: "aprender_motivo",
+      label: "O que faz você querer *começar a vender agora*?",
+      type: "textarea", required: true,
+      placeholder: "Pode ser direto, o que mudou ou o que você quer mudar.",
+      help: "Quanto mais específico, melhor a gente consegue te ajudar.",
+    },
     {
       key: "aprender_verba",
       label: "Qual é sua *verba pra começar*?",

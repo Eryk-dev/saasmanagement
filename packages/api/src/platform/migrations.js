@@ -1448,6 +1448,61 @@ export async function ensureFormRamoSemRecusa(repo) {
   return n;
 }
 
+// ── Form: ramo da Mentoria com as perguntas de intenção (Leo, 18/11/2026) ───
+// "Pra quem não tem empresa, achei meio enxuto o formulário" — o ramo tinha uma
+// pergunta (verba) e ganhou quatro: prazo da primeira venda, se já sabe o que
+// vender, tempo por semana e a aberta do "por que agora". Ver ramoMentoria em
+// forms-v2.leverads.js pro raciocínio de cada uma.
+//
+// Reconstrói o ramo na ordem canônica PRESERVANDO as perguntas que já estão no
+// ar (rótulo editado na tela continua valendo) e insere só as que faltam. O
+// corte passa a apontar pra primeira pergunta do ramo. Idempotente por chave, e
+// só mexe em formulário que tem o corte de CNPJ.
+export function withRamoIntencao(form) {
+  if (!form || form.saas !== "leverads") return null;
+  const qs = form.questions || [];
+  if (!qs.some((q) => q?.key === GATE_EMPRESA.GATE_KEY)) return null;
+  const canonico = GATE_EMPRESA.ramoMentoria(form.mapping || {});
+  const faltando = canonico.filter((c) => !qs.some((q) => q?.key === c.key));
+  if (!faltando.length) return null;
+
+  const doRamo = new Set(canonico.map((c) => c.key));
+  const naoRamo = qs.filter((q) => !doRamo.has(q?.key));
+  const byKey = new Map(qs.filter((q) => doRamo.has(q?.key)).map((q) => [q.key, q]));
+  // Ramo sempre no FIM e na ordem canônica; o que já existia vem como está.
+  const ramo = canonico.map((c) => byKey.get(c.key) || c);
+
+  return {
+    questions: [...naoRamo, ...ramo].map((q) => (q?.key !== GATE_EMPRESA.GATE_KEY ? q : {
+      ...q,
+      options: (q.options || []).map((o) => (o?.exit === "mentoria" ? { ...o, to: canonico[0].key } : o)),
+    })),
+  };
+}
+
+export async function ensureFormRamoIntencao(repo) {
+  let n = 0;
+  for (const form of await repo.list("forms")) {
+    const patch = withRamoIntencao(form);
+    if (!patch) continue;
+    await repo.update("forms", form.id, patch);
+    n++;
+  }
+  // As perguntas novas precisam existir no painel do card, senão o closer abre
+  // o lead da Mentoria e não vê o que a pessoa respondeu.
+  if (n) {
+    const { LEAD_QUESTIONS_UNIAO } = await import("../forms/lead-questions.produtos.js");
+    const produto = await repo.get("products", "leverads");
+    if (produto) {
+      const depois = mergeLeadQuestions(produto.leadQuestions || [], { questions: LEAD_QUESTIONS_UNIAO });
+      if (JSON.stringify(depois) !== JSON.stringify(produto.leadQuestions || [])) {
+        await repo.update("products", "leverads", { leadQuestions: depois });
+      }
+    }
+  }
+  return n;
+}
+
 // ── Contratos: campos de preenchimento (ago/2026) ───────────────────────────
 // Os 4 modelos de contrato nasceram com espaços em branco desenhados no HTML
 // (______). A tela Contratos ganhou formulário de preenchimento que interpola
@@ -2555,6 +2610,12 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] ramo da Mentoria sem a recusa de interesse em ${n} formulário(s)`);
   } catch (err) {
     console.error("[migration] ensureFormRamoSemRecusa falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureFormRamoIntencao(repo);
+    if (n) console.log(`[migration] ramo da Mentoria com as perguntas de intenção em ${n} formulário(s)`);
+  } catch (err) {
+    console.error("[migration] ensureFormRamoIntencao falhou:", err?.message || err);
   }
   try {
     const n = await ensureContractsNoAdDeletionClause(repo);
