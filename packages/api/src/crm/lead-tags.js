@@ -1,9 +1,10 @@
 // Tags do lead e tipo de negócio (Lever CRM, Fase 2). Tags são etiquetas
 // livres do time ("evento-x", "indicação-bia"): minúsculas, sem repetir, até 12
 // por lead e 30 caracteres cada. O tipo de negócio separa a primeira venda do
-// upsell, da renovação e da reativação no mesmo cliente.
+// upsell e da renovação no mesmo cliente. Reativação saiu do fluxo dos closers
+// e do CS (Leo, 18/11/2026): tipo fora da lista vira nova_venda no PATCH.
 
-export const DEAL_TYPES = ["nova_venda", "upsell", "renovacao", "reativacao"];
+export const DEAL_TYPES = ["nova_venda", "upsell", "renovacao"];
 
 export function cleanTags(list) {
   if (!Array.isArray(list)) return [];

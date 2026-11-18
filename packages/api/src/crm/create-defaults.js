@@ -44,7 +44,7 @@ export const CREATE_DEFAULTS = {
   // referredByCustomer/referralCollectedBy/referralAt = indicação (referrals.js):
   // quem indicou (cliente), quem colheu (o prêmio é do coletor) e o carimbo
   // imutável que define a janela da comissão.
-  // dealType (Lever CRM, Fase 2): nova_venda | upsell | renovacao | reativacao.
+  // dealType (Lever CRM, Fase 2): nova_venda | upsell | renovacao.
   // Upsell e renovação nascem pelo card do cliente, já com customerId.
   leads: { dealType: "nova_venda", priority: "P2", score: 0, icp: 0, value: "", amount: 0, owner: "", closer: "", reason: "", source: "Form", age: "agora", stage: "", stageSince: "", comments: [], callAt: "", callSetAt: "", followupAt: "", followupStep: 0, proposalValue: "", proposalPeriod: "", integrationAt: "", nextActionAt: "", nextActionNote: "", lostReason: "", lostNote: "", lastActivityAt: "", lastActivityType: "", stageAttempts: 0, sdrOff: false, referredByCustomer: "", referralCollectedBy: "", referralAt: "" },
   // `current`/`projected` saem do form (leitura ao vivo da meta) — default 0 até serem alimentados.
