@@ -623,13 +623,12 @@ const ADS_COLS = [
   { key: "budget", label: "Orçamento/dia", width: "150px", on: true, hint: "orçamento diário · editar e confirmar ✓ replica no Gerenciador" },
   { key: "spend", label: "Investido", width: "95px", on: true },
   { key: "leads", label: "Leads", width: "55px", on: true },
-  { key: "abc", label: "Clientes ABC", width: "150px", on: true, hint: "clientes A/B/C atribuídos (UTM) · custo por cada" },
+  { key: "abc", label: "Clientes ABC", width: "150px", on: true, hint: "clientes A/B/C atribuídos (UTM) · custo por cada · por último, quantos foram pro fluxo da Mentoria (sem nota, fora de Leads/CPL)" },
   { key: "cpl", label: "CPL", width: "80px", on: true, hint: "investimento ÷ leads reais do cockpit (UTM)" },
   { key: "calls", label: "Calls agendadas", width: "105px", on: true, hint: "leads atribuídos (UTM) que marcaram ou sentaram em call" },
   { key: "bookRate", label: "Tx. agendamento", width: "115px", on: true, hint: "calls agendadas ÷ leads do período (mesma base do CPL)" },
   { key: "showRate", label: "Tx. comparecimento", width: "130px", on: true, hint: "compareceram ÷ calls já vencidas (marcada pro futuro fica fora) · régua do placar: o resumo da call decide furo" },
   { key: "convRate", label: "Tx. conversão", width: "115px", on: true, hint: "conversões ÷ leads do período (mesma base do CPL) · % de lead que virou cliente; passa de 100% quando o ganho da janela veio de lead mais antigo" },
-  { key: "mentoria", label: "Fluxo Mentoria", width: "120px", on: true, hint: "envios atribuídos que caíram na saída lateral da Mentoria (ainda não tem CNPJ) · ficam FORA de Leads/CPL" },
   { key: "ctr", label: "CTR link", width: "70px", on: true, hint: "cliques no link ÷ impressões" },
   { key: "cpc", label: "CPC link", width: "85px", on: true, hint: "investido ÷ cliques no link" },
   { key: "won", label: "Conversões", width: "85px", on: true, hint: "conversões: negócios FECHADOS no período (data da venda), atribuídos ao anúncio por UTM" },
@@ -703,10 +702,10 @@ function CompactAdsCard({ saas, objects, metrics, gradeBasis, money, busyIds, on
           localStorage.setItem("cockpit_ads_cols_callsV1", "1");
           localStorage.setItem("cockpit_ads_cols", JSON.stringify(known));
         }
-        // Mesma régua pras colunas de 18/11 (conversão pra cliente e fluxo
-        // Mentoria): entram LIGADAS uma vez; desligar depois é respeitado.
+        // Mesma régua pra Tx. conversão (18/11): entra LIGADA uma vez; desligar
+        // depois é respeitado. (A Mentoria não é coluna: vive na Clientes ABC.)
         if (!localStorage.getItem("cockpit_ads_cols_convV1")) {
-          known = [...new Set([...known, "convRate", "mentoria"])];
+          known = [...new Set([...known, "convRate"])];
           localStorage.setItem("cockpit_ads_cols_convV1", "1");
           localStorage.setItem("cockpit_ads_cols", JSON.stringify(known));
         }
@@ -788,7 +787,7 @@ function CompactAdsCard({ saas, objects, metrics, gradeBasis, money, busyIds, on
     if (key === "budget") { const b = object?.dailyBudget ?? object?.lifetimeBudget; return b == null ? -Infinity : Number(b); }
     if (key === "cpc") return numOr(m?.costPerLinkClick);
     if (key === "play3s") { const imp = Number(m?.impressions) || 0; return imp > 0 && m?.video3s != null ? Number(m.video3s) / imp : -Infinity; }
-    if (key === "abc") { const a = m?.abc; return a ? (a.A + a.B + a.C + a.D + a.E) : -Infinity; }
+    if (key === "abc") { const a = m?.abc; return a ? (a.A + a.B + a.C + a.D + a.E + (Number(m?.mentoria) || 0)) : -Infinity; }
     return numOr(m?.[key]);
   };
   const sortedRows = sort.key
@@ -925,7 +924,7 @@ function CompactAdsCard({ saas, objects, metrics, gradeBasis, money, busyIds, on
         );
       case "spend": return <span key={col.key} className="tnum" style={right}>{money(spend)}</span>;
       case "leads": return <span key={col.key} className="tnum" style={right}>{window.fmt.int(leads)}</span>;
-      case "abc": return <AbcCell key={col.key} abc={m?.abc} abcCost={m?.abcCost} money={money} />;
+      case "abc": return <AbcCell key={col.key} abc={m?.abc} abcCost={m?.abcCost} money={money} mentoria={m?.mentoria} />;
       case "cpl": {
         const cpl = m?.cpl != null ? m.cpl : leads ? spend / leads : null;
         return <span key={col.key} className="tnum" style={right}>{cpl != null ? money(cpl) : "—"}</span>;
@@ -942,12 +941,6 @@ function CompactAdsCard({ saas, objects, metrics, gradeBasis, money, busyIds, on
         <span key={col.key} className="tnum" style={right}
           title={leads > 0 && m?.won != null ? `${m.won} de ${window.fmt.int(leads)} leads viraram cliente` : undefined}>
           {pct(m?.convRate)}
-        </span>
-      );
-      case "mentoria": return (
-        <span key={col.key} className="tnum" style={{ ...right, color: m?.mentoria > 0 ? "var(--fg-2)" : "var(--fg-4)" }}
-          title={m?.mentoria > 0 ? "envios sem CNPJ: foram pro fluxo da Mentoria, fora do funil de venda e do CPL" : undefined}>
-          {m?.mentoria != null ? window.fmt.int(m.mentoria) : "—"}
         </span>
       );
       case "ctr": return <span key={col.key} className="tnum" style={right}>{pct(m?.ctr)}</span>;
@@ -1423,7 +1416,7 @@ function PainTable({ pains, money }) {
       <div className="kicker" style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 24px", fontWeight: 600, borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
         <span>Dor</span><span style={{ textAlign: "right" }}>Investido</span><span style={{ textAlign: "right" }}>Leads</span><span style={{ textAlign: "right" }}>CPL</span>
         <span title="leads da dor que marcaram call" style={{ textAlign: "right" }}>Calls</span>
-        <span title="clientes A/B/C que a dor trouxe · custo por cada" style={{ textAlign: "right" }}>Clientes ABC</span>
+        <span title="clientes A/B/C que a dor trouxe · custo por cada · por último, quantos foram pro fluxo da Mentoria" style={{ textAlign: "right" }}>Clientes ABC</span>
         <span title="ganhos da dor · com a grade A/B/C de cada cliente fechado" style={{ textAlign: "right" }}>Ganhos</span><span style={{ textAlign: "right" }}>ROAS</span>
       </div>
       {pains.filter((p) => p.code).map((p) => (
@@ -1433,7 +1426,7 @@ function PainTable({ pains, money }) {
           <span className="tnum" style={{ textAlign: "right" }}>{window.fmt.int(p.leads)}</span>
           <span className="tnum" style={{ textAlign: "right" }}>{p.cpl != null ? money(p.cpl) : "—"}</span>
           <span className="tnum" style={{ textAlign: "right" }}>{p.calls > 0 ? window.fmt.int(p.calls) : "—"}</span>
-          <AbcCell abc={p.abc} abcCost={p.abcCost} money={money} />
+          <AbcCell abc={p.abc} abcCost={p.abcCost} money={money} mentoria={p.mentoria} />
           <WonAbcCell won={p.won} wonAbc={p.wonAbc} />
           <span className="tnum" style={{ textAlign: "right", fontWeight: 600, color: p.roas == null ? "var(--fg-4)" : p.roas >= 3 ? "var(--pos)" : "var(--warn)" }}>{p.roas != null ? String(p.roas).replace(".", ",") + "x" : "—"}</span>
         </div>
