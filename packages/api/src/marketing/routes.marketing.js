@@ -21,6 +21,7 @@ import { stagePassCounts } from "../metrics/funnel-metrics.js";
 import { kindOf } from "../crm/stages.js";
 import { isRealLead, isSaleLead, winsIn, customerStartMap, leadOrigin, LEAD_ORIGINS, callOutcome, upsellSalesIn, upsellContractedOf, leadGrade, gradeBasis, gradeRulesOf } from "../metrics/metrics-core.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "../platform/http-status.js";
+import { isMentoriaLead } from "../customers/mentoria.js";
 import { painCode } from "./attribution.js";
 import { placementFromHint } from "./meta.js";
 import { metaAdAccounts } from "./meta-accounts.js";
@@ -606,9 +607,15 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     // Quem saiu por uma saída lateral do form (ex.: ainda não vende) fica FORA
     // das contagens acima (senão o CPL fica barato por encher de quem não
     // compra) e vira um número próprio: é o diagnóstico do anúncio, não do form.
-    const foraDoPerfil = leadsAll.filter(
+    const saidaLateral = leadsAll.filter(
       (l) => l.saas === product.id && !l.internal && l.formExit && l.createdAt && dayStr(l.createdAt) >= since && dayStr(l.createdAt) <= until,
-    ).length;
+    );
+    const foraDoPerfil = saidaLateral.length;
+    // Quem caiu no fluxo da MENTORIA (saída lateral `mentoria`: ainda não tem
+    // CNPJ/empresa aberta) é um recorte dessa saída — o anúncio trouxe gente que
+    // não pode comprar a plataforma hoje, mas que a Mentoria atende. Fica fora
+    // do CPL (não é lead do funil) e vira coluna própria do gerenciador.
+    const mentoriaLeads = saidaLateral.filter(isMentoriaLead);
 
     // Visitas no form (páginas públicas do produto, sessões únicas no período):
     // o topo REAL do funil de aquisição, antes do lead existir.
@@ -745,6 +752,10 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       // call marcada pro futuro (pending) fica fora — não é furo, é agenda.
       const out = callOutcome(product, callLeads, callActsOf, today);
       const callsDue = out.shown + out.noShow;
+      // Fluxo Mentoria: envios do grupo que caíram na saída lateral `mentoria`
+      // (sem CNPJ). NÃO entram em `leads`/CPL — é um número ao lado, pra ver
+      // qual anúncio está trazendo quem ainda não pode comprar a plataforma.
+      const mentoria = utmMatch(mentoriaLeads, key, g).length;
       return {
         ...g,
         abc,
@@ -755,12 +766,18 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         callsDue,
         bookRate: n > 0 ? Math.round((calls / n) * 1000) / 10 : null, // % de lead que marca call
         showRate: callsDue > 0 ? Math.round((out.shown / callsDue) * 1000) / 10 : null, // % que compareceu
+        mentoria,
         spend: Math.round(g.spend * 100) / 100,
         cplMeta: g.metaLeads > 0 ? Math.round((g.spend / g.metaLeads) * 100) / 100 : null,
         leads: n,
         cpl: n > 0 ? Math.round((g.spend / n) * 100) / 100 : null,
         won,
         costPerWin: won > 0 ? Math.round((g.spend / won) * 100) / 100 : null,
+        // Tx. conversão pra cliente = conversões ÷ leads do grupo — a MESMA
+        // régua do card "clientes" da tela (convRate de routes.metrics). Pode
+        // passar de 100% num grupo pequeno: o ganho é datado pela VENDA e o lead
+        // pode ter entrado antes da janela (o denominador é a coorte da janela).
+        convRate: n > 0 ? Math.round((won / n) * 1000) / 10 : null,
         revenue: Math.round(revenue * 100) / 100,
         roas: g.spend > 0 && revenue > 0 ? Math.round((revenue / g.spend) * 100) / 100 : null,
         // CTR de CLIQUE NO LINK (inline_link_clicks / impressões) — o CTR "all"
@@ -801,7 +818,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       const k = code || "_sem";
       const p = byPain[k] || (byPain[k] = {
         code, label: code ? (product.painMap || {})[code] || code : "Sem código",
-        spend: 0, leads: 0, calls: 0, won: 0, revenue: 0, adsCount: 0,
+        spend: 0, leads: 0, calls: 0, won: 0, revenue: 0, adsCount: 0, mentoria: 0,
         abc: { S: 0, A: 0, B: 0, C: 0, D: 0, E: 0 }, wonAbc: { S: 0, A: 0, B: 0, C: 0, D: 0, E: 0 },
       });
       p.spend += a.spend;
@@ -809,6 +826,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       p.adsCount += 1;
       p.calls += a.calls; // já calculado por anúncio no finishGroup
       p.won += a.won;
+      p.mentoria += a.mentoria;
       p.revenue += a.revenue;
       for (const grade of GRADES) { p.abc[grade] += a.abc[grade]; p.wonAbc[grade] += a.wonAbc[grade]; }
     }
@@ -818,6 +836,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         spend: Math.round(p.spend * 100) / 100,
         cpl: p.leads > 0 ? Math.round((p.spend / p.leads) * 100) / 100 : null,
         costPerWin: p.won > 0 ? Math.round((p.spend / p.won) * 100) / 100 : null,
+        convRate: p.leads > 0 ? Math.round((p.won / p.leads) * 1000) / 10 : null,
         revenue: Math.round(p.revenue * 100) / 100,
         roas: p.spend > 0 && p.revenue > 0 ? Math.round((p.revenue / p.spend) * 100) / 100 : null,
         abcCost: gradeCost(p.spend, p.abc),
@@ -841,6 +860,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         impressions, clicks, metaLeads,
         leads: leads.length,
         foraDoPerfil,   // envios que saíram do funil de venda (ainda não vendem)
+        mentoria: mentoriaLeads.length, // recorte do acima: foram pro fluxo Mentoria
         formViews: formSessions("view"),   // visitas no form no período
         formStarts: formSessions("start"), // clicaram em começar
         gradeBasis: gradeBasis(leads, gradeRules), // de qual método da régua veio a nota dos leads da janela
