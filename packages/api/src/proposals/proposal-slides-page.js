@@ -1530,14 +1530,15 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
       if (descAberto) descLock.setAttribute("data-open", ""); else descLock.removeAttribute("data-open");
       descLock.querySelector("path").setAttribute("d", descAberto ? "M7 11V7a5 5 0 0 1 9.9-1" : "M7 11V7a5 5 0 0 1 10 0v4");
       descLock.disabled = descAberto || !D.salvavel;
-      var rotulo = descAberto ? "Desconto liberado até " + descTeto + "%" : "Liberar desconto acima de " + descTeto + "% com a senha de um admin";
+      // A tela costuma estar aberta com o cliente vendo: nada aqui diz que
+      // existe teto nem que um admin libera mais. A linha de status só
+      // aparece com o retorno de uma tentativa de liberar.
+      var rotulo = descAberto ? "Desconto liberado" : D.salvavel ? "Liberar desconto" : "Salve a proposta para liberar";
       descLock.setAttribute("aria-label", rotulo);
       descLock.title = rotulo;
       if (descAberto) descForm.hidden = true;
       descLock.setAttribute("aria-expanded", String(!descForm.hidden));
-      descMsg.textContent = aviso || (descAberto ? "Liberado até " + descTeto + "% com senha de admin."
-        : D.salvavel ? "Até " + descTeto + "%. O cadeado libera mais com a senha de um admin."
-        : "Até " + descTeto + "%. O cadeado só abre numa proposta salva.");
+      descMsg.textContent = aviso || "";
     }
     descLock.addEventListener("click", function () {
       descForm.hidden = !descForm.hidden;
