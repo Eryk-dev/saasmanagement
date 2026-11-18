@@ -1403,6 +1403,51 @@ export async function ensureFormGateEmpresa(repo) {
   return n;
 }
 
+// ── Form: ramo da Mentoria sem a recusa de interesse (Leo, 18/11/2026) ──────
+// O ramo nasceu (de manhã, no mesmo dia) com duas perguntas: interesse em
+// aprender e verba. O Leo tirou a resposta "Não, só estava olhando" algumas
+// horas depois; sem ela a pergunta de interesse ficava com uma única resposta
+// possível, então ela sai inteira: um clique a mais e um dado constante. Efeito
+// prático: ninguém mais sai do formulário sem deixar contato.
+//
+// Só mexe nos formulários que têm o corte de CNPJ (`tem_empresa`), que são os
+// que ganharam esse ramo hoje. O formulário antigo tem a pergunta de interesse
+// dentro do fluxo DELE (corte por "já vende em marketplace") e fica intacto.
+export function withRamoSemRecusa(form) {
+  if (!form || form.saas !== "leverads") return null;
+  const qs = form.questions || [];
+  if (!qs.some((q) => q?.key === GATE_EMPRESA.GATE_KEY)) return null;
+  const temInteresse = qs.some((q) => q?.key === "aprender_interesse");
+  const temSaidaMorta = !!(form.exits || {}).sem_interesse;
+  if (!temInteresse && !temSaidaMorta) return null;
+  const patch = {};
+  if (temInteresse) {
+    patch.questions = qs
+      .filter((q) => q?.key !== "aprender_interesse")
+      // O corte apontava pra pergunta que saiu: agora vai direto pra verba.
+      .map((q) => (q?.key !== GATE_EMPRESA.GATE_KEY ? q : {
+        ...q,
+        options: (q.options || []).map((o) => (o?.to === "aprender_interesse" ? { ...o, to: "aprender_verba" } : o)),
+      }));
+  }
+  if (temSaidaMorta) {
+    const { sem_interesse, ...resto } = form.exits || {};
+    patch.exits = resto;
+  }
+  return patch;
+}
+
+export async function ensureFormRamoSemRecusa(repo) {
+  let n = 0;
+  for (const form of await repo.list("forms")) {
+    const patch = withRamoSemRecusa(form);
+    if (!patch) continue;
+    await repo.update("forms", form.id, patch);
+    n++;
+  }
+  return n;
+}
+
 // ── Contratos: campos de preenchimento (ago/2026) ───────────────────────────
 // Os 4 modelos de contrato nasceram com espaços em branco desenhados no HTML
 // (______). A tela Contratos ganhou formulário de preenchimento que interpola
@@ -2504,6 +2549,12 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] corte "já tem empresa aberta?" + ramo da Mentoria em ${n} formulário(s)`);
   } catch (err) {
     console.error("[migration] ensureFormGateEmpresa falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureFormRamoSemRecusa(repo);
+    if (n) console.log(`[migration] ramo da Mentoria sem a recusa de interesse em ${n} formulário(s)`);
+  } catch (err) {
+    console.error("[migration] ensureFormRamoSemRecusa falhou:", err?.message || err);
   }
   try {
     const n = await ensureContractsNoAdDeletionClause(repo);

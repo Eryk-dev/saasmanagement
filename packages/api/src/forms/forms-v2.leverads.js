@@ -206,10 +206,10 @@ export function formV2(linha) {
 // aberta vai pro ramo da Mentoria. Quem tem CNPJ segue no funil de venda,
 // inclusive quem ainda não vende em marketplace.
 //
-// As CHAVES são as mesmas de julho de propósito (`aprender_interesse`,
-// `aprender_verba`): a régua de verba → oferta (mentoria.js), a ordenação da
-// coluna, o roteiro de call, o bloco da Mentoria no placar e o tile "Fora do
-// perfil" na Publicidade já leem exatamente essas respostas.
+// A CHAVE do ramo é a mesma de julho de propósito (`aprender_verba`): a régua de
+// verba → oferta (mentoria.js), a ordenação da coluna, o roteiro de call, o
+// bloco da Mentoria no placar e o tile "Fora do perfil" na Publicidade já leem
+// exatamente essa resposta.
 export const GATE_KEY = "tem_empresa";
 
 export const GATE = Object.freeze({
@@ -224,24 +224,19 @@ export const GATE = Object.freeze({
     { value: "sim", label: "Sim, tenho CNPJ" },
     // Sai do fluxo de venda e carrega a saída "mentoria" até o fim, o que deixa
     // reusar as MESMAS perguntas de contato (o mapping continua valendo).
-    { value: "nao", label: "Ainda não tenho empresa", to: "aprender_interesse", exit: "mentoria" },
+    { value: "nao", label: "Ainda não tenho empresa", to: "aprender_verba", exit: "mentoria" },
   ],
 });
 
 // Ramo de quem ainda não tem empresa. Fica no FIM da lista de perguntas: o
 // fluxo de quem é do perfil não muda em nada, só ganha a tela do corte.
+// O ramo é uma pergunta só. A de interesse ("quer aprender e começar a vender?")
+// existia com a recusa como segunda resposta; o Leo tirou a recusa em 18/11, e
+// pergunta de resposta única não é pergunta: era um clique a mais e um dado
+// constante. Quem não tem empresa agora vai direto pra verba, que é o que
+// decide a oferta, e ninguém mais sai do formulário sem deixar contato.
 export function ramoMentoria(mapping = MAPPING) {
   return [
-    {
-      key: "aprender_interesse",
-      label: "Você tem interesse em *aprender e começar a vender*?",
-      type: "select", required: true,
-      options: [
-        { value: "sim", label: "Sim, quero começar", to: "aprender_verba" },
-        // Disse não duas vezes: acaba aqui, sem pedir contato de quem não quer.
-        { value: "nao", label: "Não, só estava olhando", to: "_end", exit: "sem_interesse" },
-      ],
-    },
     {
       key: "aprender_verba",
       label: "Qual é sua *verba pra começar*?",
@@ -261,17 +256,14 @@ export function ramoMentoria(mapping = MAPPING) {
 
 // Telas finais das duas saídas. A da Mentoria guarda o lead na coluna Mentoria;
 // a de quem não quer vender não cria card nenhum (acontece antes do contato).
+// Uma saída só: a de quem não quer começar a vender saiu junto com a recusa
+// (saída sem nenhuma opção apontando pra ela é configuração morta).
 export const EXITS = Object.freeze({
   mentoria: {
     label: "Ainda não tem empresa aberta",
     stage: "Mentoria",
     title: "Recebemos! Você está *no começo da jornada*.",
     subtitle: "A nossa plataforma é pra quem já vende, mas a Mentoria Lever é exatamente pra quem está começando: a gente coloca um produto nosso, que já vende todo dia, na sua conta pra fazer as primeiras vendas enquanto você escolhe e compra o seu estoque com a gente. Vamos te chamar no WhatsApp pra conversar.",
-  },
-  sem_interesse: {
-    label: "Não quer começar a vender",
-    title: "Tudo certo, obrigado por responder.",
-    subtitle: "Se um dia quiser vender em marketplace, a gente está por aqui.",
   },
 });
 
