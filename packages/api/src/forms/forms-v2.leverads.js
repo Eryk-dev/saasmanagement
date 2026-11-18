@@ -170,12 +170,15 @@ export function formV2(linha) {
     theme: { ...TEMA },
     welcome: { ...WELCOME[linha] },
     submitLabel: "Receber meu diagnóstico",
-    questions: [
+    // O corte de CNPJ entra na frente e o ramo da Mentoria no fim (ver
+    // comGateDeEmpresa, no pé do arquivo).
+    questions: comGateDeEmpresa([
       NUCLEO[0],                                        // nicho
       ...(linha === "oem" ? FISICO : []),               // loja física: só no OEM
       ...NUCLEO.slice(1),                               // contas → ticket
       ...CONTATO,
-    ].map((q) => ({ ...q })),
+    ], MAPPING),
+    exits: { ...EXITS },
     thanks: {
       title: "Seu perfil foi *aprovado*.",
       subtitle: "Vamos te levar pro WhatsApp com o resumo do seu perfil. É só enviar a mensagem que já vai pronta que nosso time responde na sequência.",
@@ -190,4 +193,110 @@ export function formV2(linha) {
   };
 }
 
+
+// ── Corte de qualificação: empresa aberta (Leo, 18/11/2026) ─────────────────
+// Recupera nos três formulários v2 a SAÍDA LATERAL que existia desde jul/2026
+// e tinha ficado só no formulário antigo (`fo_diagnostico_leverads`, sem
+// tráfego desde 16/09): quem não é do perfil sai do fluxo de venda em vez de
+// entrar como lead. Entre jul e set isso filtrava 12% a 19% dos envios por
+// mês; de out/2026 em diante a trava não existia e esse público voltou a
+// contar conversão pra Meta e a receber ligação do robô.
+//
+// O corte agora é o CNPJ (decisão do Leo, 18/11): quem ainda não tem empresa
+// aberta vai pro ramo da Mentoria. Quem tem CNPJ segue no funil de venda,
+// inclusive quem ainda não vende em marketplace.
+//
+// As CHAVES são as mesmas de julho de propósito (`aprender_interesse`,
+// `aprender_verba`): a régua de verba → oferta (mentoria.js), a ordenação da
+// coluna, o roteiro de call, o bloco da Mentoria no placar e o tile "Fora do
+// perfil" na Publicidade já leem exatamente essas respostas.
+export const GATE_KEY = "tem_empresa";
+
+export const GATE = Object.freeze({
+  key: GATE_KEY,
+  label: "Antes de tudo: você já tem *empresa aberta* (CNPJ)?",
+  type: "select",
+  required: true,
+  // Resposta constante em todo lead de venda ("Sim, tenho CNPJ"): no resumo do
+  // aviso de lead novo ela roubaria uma das três vagas sem dizer nada.
+  noSummary: true,
+  options: [
+    { value: "sim", label: "Sim, tenho CNPJ" },
+    // Sai do fluxo de venda e carrega a saída "mentoria" até o fim, o que deixa
+    // reusar as MESMAS perguntas de contato (o mapping continua valendo).
+    { value: "nao", label: "Ainda não tenho empresa", to: "aprender_interesse", exit: "mentoria" },
+  ],
+});
+
+// Ramo de quem ainda não tem empresa. Fica no FIM da lista de perguntas: o
+// fluxo de quem é do perfil não muda em nada, só ganha a tela do corte.
+export function ramoMentoria(mapping = MAPPING) {
+  return [
+    {
+      key: "aprender_interesse",
+      label: "Você tem interesse em *aprender e começar a vender*?",
+      type: "select", required: true,
+      options: [
+        { value: "sim", label: "Sim, quero começar", to: "aprender_verba" },
+        // Disse não duas vezes: acaba aqui, sem pedir contato de quem não quer.
+        { value: "nao", label: "Não, só estava olhando", to: "_end", exit: "sem_interesse" },
+      ],
+    },
+    {
+      key: "aprender_verba",
+      label: "Qual é sua *verba pra começar*?",
+      type: "select", required: true,
+      to: mapping.name, // volta pras perguntas de contato do fluxo normal
+      options: [
+        { value: "ate-1k", label: "Até R$ 1 mil" },
+        { value: "1k-5k", label: "R$ 1 mil a R$ 5 mil" },
+        { value: "5k-20k", label: "R$ 5 mil a R$ 20 mil" },
+        { value: "20k+", label: "Mais de R$ 20 mil" },
+        // Sem "ainda não sei" de propósito: a verba é o que qualifica essa fila
+        // e a saída fácil esvaziava a pergunta (decisão do Leo em 22/07).
+      ],
+    },
+  ];
+}
+
+// Telas finais das duas saídas. A da Mentoria guarda o lead na coluna Mentoria;
+// a de quem não quer vender não cria card nenhum (acontece antes do contato).
+export const EXITS = Object.freeze({
+  mentoria: {
+    label: "Ainda não tem empresa aberta",
+    stage: "Mentoria",
+    title: "Recebemos! Você está *no começo da jornada*.",
+    subtitle: "A nossa plataforma é pra quem já vende, mas a Mentoria Lever é exatamente pra quem está começando: a gente coloca um produto nosso, que já vende todo dia, na sua conta pra fazer as primeiras vendas enquanto você escolhe e compra o seu estoque com a gente. Vamos te chamar no WhatsApp pra conversar.",
+  },
+  sem_interesse: {
+    label: "Não quer começar a vender",
+    title: "Tudo certo, obrigado por responder.",
+    subtitle: "Se um dia quiser vender em marketplace, a gente está por aqui.",
+  },
+});
+
+// Monta a lista de perguntas com o corte na frente e o ramo no fim. É a MESMA
+// função que a migração usa nos formulários já publicados, pra não existirem
+// duas versões do mesmo fluxo. Idempotente: lista que já tem o corte volta igual.
+export function comGateDeEmpresa(questions, mapping = MAPPING) {
+  const qs = (questions || []).map((q) => ({ ...q }));
+  if (qs.some((q) => q?.key === GATE_KEY)) return qs;
+
+  // A pergunta do nome da empresa é PULADA no ramo: pedir o nome da empresa de
+  // quem acabou de responder que não tem empresa desmente a própria pergunta.
+  const empresaKey = mapping?.company || "";
+  const iEmpresa = empresaKey ? qs.findIndex((q) => q.key === empresaKey) : -1;
+  if (iEmpresa >= 0) qs[iEmpresa] = { ...qs[iEmpresa], hideOnExit: ["mentoria"] };
+
+  // O último passo do fluxo de venda precisa TERMINAR explicitamente, senão
+  // cairia nas perguntas do ramo, que ficam logo abaixo dele.
+  const contato = new Set([mapping?.name, mapping?.company, mapping?.phone, mapping?.email].filter(Boolean));
+  const iUltimo = qs.map((q, i) => (contato.has(q.key) ? i : -1)).filter((i) => i >= 0).pop();
+  if (iUltimo != null) qs[iUltimo] = { ...qs[iUltimo], to: "_end" };
+
+  const gate = { ...GATE, options: GATE.options.map((o) => ({ ...o })) };
+  return [gate, ...qs, ...ramoMentoria(mapping)];
+}
+
+// Avaliado no load, por isso fica no fim: depende das constantes do corte.
 export const FORMS_V2 = Object.keys(FORM_IDS).map(formV2);

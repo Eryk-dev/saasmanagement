@@ -480,6 +480,11 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
           if (q.placeholder) base.placeholder = q.placeholder;
           if (q.help) base.help = q.help;
           if (q.to) base.to = q.to;
+          // Perguntas que uma SAÍDA lateral não faz (hideOnExit, ex.: o nome da
+          // empresa no ramo de quem não tem empresa). Não tem campo na tela:
+          // vem do formulário e é preservado, senão salvar aqui desfaria o fluxo.
+          if (Array.isArray(q.hideOnExit) && q.hideOnExit.length) base.hideOnExit = q.hideOnExit;
+          if (q.noSummary) base.noSummary = true;
           if (q.type === "insight") {
             base.required = false;
             if (q.stat) base.stat = q.stat;
