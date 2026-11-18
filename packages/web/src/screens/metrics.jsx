@@ -628,6 +628,8 @@ const ADS_COLS = [
   { key: "calls", label: "Calls agendadas", width: "105px", on: true, hint: "leads atribuídos (UTM) que marcaram ou sentaram em call" },
   { key: "bookRate", label: "Tx. agendamento", width: "115px", on: true, hint: "calls agendadas ÷ leads do período (mesma base do CPL)" },
   { key: "showRate", label: "Tx. comparecimento", width: "130px", on: true, hint: "compareceram ÷ calls já vencidas (marcada pro futuro fica fora) · régua do placar: o resumo da call decide furo" },
+  { key: "convRate", label: "Tx. conversão", width: "115px", on: true, hint: "conversões ÷ leads do período (mesma base do CPL) · % de lead que virou cliente; passa de 100% quando o ganho da janela veio de lead mais antigo" },
+  { key: "mentoria", label: "Fluxo Mentoria", width: "120px", on: true, hint: "envios atribuídos que caíram na saída lateral da Mentoria (ainda não tem CNPJ) · ficam FORA de Leads/CPL" },
   { key: "ctr", label: "CTR link", width: "70px", on: true, hint: "cliques no link ÷ impressões" },
   { key: "cpc", label: "CPC link", width: "85px", on: true, hint: "investido ÷ cliques no link" },
   { key: "won", label: "Conversões", width: "85px", on: true, hint: "conversões: negócios FECHADOS no período (data da venda), atribuídos ao anúncio por UTM" },
@@ -699,6 +701,13 @@ function CompactAdsCard({ saas, objects, metrics, gradeBasis, money, busyIds, on
         if (!localStorage.getItem("cockpit_ads_cols_callsV1")) {
           known = [...new Set([...known, "calls", "bookRate", "showRate"])];
           localStorage.setItem("cockpit_ads_cols_callsV1", "1");
+          localStorage.setItem("cockpit_ads_cols", JSON.stringify(known));
+        }
+        // Mesma régua pras colunas de 18/11 (conversão pra cliente e fluxo
+        // Mentoria): entram LIGADAS uma vez; desligar depois é respeitado.
+        if (!localStorage.getItem("cockpit_ads_cols_convV1")) {
+          known = [...new Set([...known, "convRate", "mentoria"])];
+          localStorage.setItem("cockpit_ads_cols_convV1", "1");
           localStorage.setItem("cockpit_ads_cols", JSON.stringify(known));
         }
         if (known.length) return new Set(known);
@@ -855,7 +864,7 @@ function CompactAdsCard({ saas, objects, metrics, gradeBasis, money, busyIds, on
   // contagem/dinheiro soma; taxa e custo são RECALCULADOS do total, porque
   // média de CPL não é o CPL do bloco (linha cara com 1 lead pesaria igual a
   // uma barata com 40).
-  const SUMMABLE = ["spend", "leads", "metaLeads", "won", "revenue", "impressions", "linkClicks", "video3s", "videoP25", "videoP50", "videoP95", "calls", "callsShown", "callsDue"];
+  const SUMMABLE = ["spend", "leads", "metaLeads", "won", "revenue", "impressions", "linkClicks", "video3s", "videoP25", "videoP50", "videoP95", "calls", "callsShown", "callsDue", "mentoria"];
   const round2 = (n) => Math.round(n * 100) / 100;
   const totals = (() => {
     if (!rows.length) return null;
@@ -884,6 +893,7 @@ function CompactAdsCard({ saas, objects, metrics, gradeBasis, money, busyIds, on
     t.roas = spend > 0 && t.revenue > 0 ? round2(t.revenue / spend) : null;
     t.bookRate = t.leads > 0 && t.calls != null ? Math.round((t.calls / t.leads) * 1000) / 10 : null;
     t.showRate = t.callsDue > 0 ? Math.round((t.callsShown / t.callsDue) * 1000) / 10 : null;
+    t.convRate = t.leads > 0 && t.won != null ? Math.round((t.won / t.leads) * 1000) / 10 : null;
     t.abcCost = t.abc ? Object.fromEntries(GRADES.map((g) => [g, t.abc[g] > 0 ? round2(spend / t.abc[g]) : null])) : null;
     return { m: t, dailyBudget: hasBudget ? dailyBudget : null };
   })();
@@ -926,6 +936,18 @@ function CompactAdsCard({ saas, objects, metrics, gradeBasis, money, busyIds, on
         <span key={col.key} className="tnum" style={right}
           title={m?.callsDue > 0 ? `${m.callsShown} de ${m.callsDue} calls já vencidas` : undefined}>
           {pct(m?.showRate)}
+        </span>
+      );
+      case "convRate": return (
+        <span key={col.key} className="tnum" style={right}
+          title={leads > 0 && m?.won != null ? `${m.won} de ${window.fmt.int(leads)} leads viraram cliente` : undefined}>
+          {pct(m?.convRate)}
+        </span>
+      );
+      case "mentoria": return (
+        <span key={col.key} className="tnum" style={{ ...right, color: m?.mentoria > 0 ? "var(--fg-2)" : "var(--fg-4)" }}
+          title={m?.mentoria > 0 ? "envios sem CNPJ: foram pro fluxo da Mentoria, fora do funil de venda e do CPL" : undefined}>
+          {m?.mentoria != null ? window.fmt.int(m.mentoria) : "—"}
         </span>
       );
       case "ctr": return <span key={col.key} className="tnum" style={right}>{pct(m?.ctr)}</span>;

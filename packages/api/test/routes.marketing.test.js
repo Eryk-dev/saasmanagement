@@ -476,6 +476,46 @@ test("métricas por dor: agrupa [X] do nome do anúncio, rotula pelo painMap e c
   await app.close();
 });
 
+test("conversão pra cliente e fluxo Mentoria por nó (mentoria fora do CPL)", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", {
+    id: "leverads", name: "LeverAds", metaAdAccount: "act_123",
+    funnel: [{ stage: "Inbox", conv: 1 }, { stage: "Ganho", conv: 1 }],
+  });
+  const app = Fastify();
+  registerRoutes(app, repo, { meta: makeMeta({ fetch: makePainFetch(), accessToken: "t" }) });
+  await app.inject({ method: "POST", url: "/api/marketing/sync", payload: { since: "2026-06-01", until: "2026-06-02" } });
+
+  const now = "2026-06-02T10:00:00.000Z";
+  const mk = (id, content, stage, extra = {}) => repo.create("leads", { id, saas: "leverads", stage, createdAt: now, utm: { campaign: "c1", term: "s1", content }, ...extra });
+  await mk("l1", "a1", "Ganho", { amount: 600, stageSince: now });
+  await mk("l2", "a1", "Inbox");
+  await mk("l3", "a3", "Inbox");
+  // Saída lateral da Mentoria (sem CNPJ): não é lead do funil nem entra no CPL,
+  // mas o anúncio que trouxe essa pessoa aparece na coluna Fluxo Mentoria.
+  await mk("l4", "a1", "", { formExit: "mentoria" });
+  await mk("l5", "a1", "", { formExit: "nao_vende" }); // outra saída: não é Mentoria
+
+  const m = (await app.inject({ url: "/api/marketing/leverads?since=2026-06-01&until=2026-06-02" })).json();
+  const a1 = m.ads.find((a) => a.id === "a1");
+  assert.equal(a1.leads, 2);          // l4/l5 ficam fora da coorte de lead
+  assert.equal(a1.won, 1);
+  assert.equal(a1.convRate, 50);      // 1 ganho ÷ 2 leads
+  assert.equal(a1.mentoria, 1);       // só o l4
+  const a3 = m.ads.find((a) => a.id === "a3");
+  assert.equal(a3.convRate, 0);       // tem lead e nenhum ganho: 0%, não "—"
+  assert.equal(a3.mentoria, 0);
+  const c1 = m.campaigns.find((c) => c.id === "c1");
+  assert.equal(c1.leads, 3);
+  assert.equal(c1.convRate, 33.3);    // 1 ÷ 3
+  assert.equal(c1.mentoria, 1);
+  const s1 = m.adsets.find((x) => x.id === "s1");
+  assert.equal(s1.mentoria, 1);
+  assert.equal(m.totals.mentoria, 1); // recorte do foraDoPerfil (2: mentoria + nao_vende)
+  assert.equal(m.totals.foraDoPerfil, 2);
+  await app.close();
+});
+
 // ── Gerenciamento por nível (campanha/conjunto/anúncio) ─────────────────────
 
 function makeManageFetch() {
