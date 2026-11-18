@@ -589,7 +589,7 @@ test("backfillWonAt: data do ganho sai do cliente e o lead sem cliente fica into
   await repo.create("leads", { id: "l2", customerId: "cus_sumiu", stageSince: "2026-07-01T00:00:00Z" });
   await repo.create("leads", { id: "l3", stage: "Follow-up" });
   // Negócio extra nasce com customerId e não é venda até ganhar.
-  await repo.create("leads", { id: "l4", customerId: "cus_1", dealType: "reativacao", stage: "Follow-up", stageSince: "2026-10-23T16:30:56Z" });
+  await repo.create("leads", { id: "l4", customerId: "cus_1", dealType: "renovacao", stage: "Follow-up", stageSince: "2026-10-23T16:30:56Z" });
 
   assert.equal(await backfillWonAt(repo), 2);
   assert.equal((await repo.get("leads", "l4")).wonAt, undefined);

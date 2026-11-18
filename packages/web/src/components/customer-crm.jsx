@@ -31,8 +31,11 @@ const ROLE = { decisor: "decisor", financeiro: "financeiro", usuario: "usuário"
 const KIND = { implantacao: "Implantação", novo_produto: "Produto novo", reintegracao: "Reintegração", migracao: "Migração", treinamento: "Treinamento" };
 const STAGE = { aguardando_kickoff: "aguardando kickoff", kickoff: "kickoff feito", configuracao: "configuração", treinamento: "treinamento", go_live: "go-live" };
 const FOLLOWUP = { check_in: "Check-in", qbr: "QBR", renovacao: "Renovação", risco: "Conversa de risco" };
+// DEAL rotula o que já existe (reativação saiu do fluxo em 18/11/2026, mas um
+// negócio antigo com esse tipo continua legível); NEW_DEAL é o que o "+ novo"
+// abre hoje.
 const DEAL = { upsell: "upsell", renovacao: "renovação", reativacao: "reativação" };
-const NEW_DEAL = { upsell: "Novo upsell", renovacao: "Nova renovação", reativacao: "Nova reativação" };
+const NEW_DEAL = { upsell: "Novo upsell", renovacao: "Nova renovação" };
 const day = (iso) => (iso ? new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "");
 const when = (iso) => new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 const hostSegment = (h) => (h?.collection === "onboardings" ? "onboardings" : "followups");

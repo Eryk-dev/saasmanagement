@@ -2,7 +2,7 @@
 // card: uma linha no cabeçalho com o tipo de negócio, as tags e o caminho pro
 // cliente e pra integração (quando o lead já vendeu), e as versões da proposta
 // em uma linha junto dos botões de proposta. `createExtraDeal` abre, a partir
-// do card do cliente, um negócio já ligado a ele (upsell, renovação, reativação).
+// do card do cliente, um negócio já ligado a ele (upsell, renovação).
 
 import React, { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api.js";
@@ -17,9 +17,11 @@ export const DEAL_TYPES = [
   { value: "nova_venda", label: "Nova venda" },
   { value: "upsell", label: "Upsell" },
   { value: "renovacao", label: "Renovação" },
-  { value: "reativacao", label: "Reativação" },
 ];
-const dealLabel = (v) => DEAL_TYPES.find((d) => d.value === v)?.label || "Nova venda";
+// Reativação saiu da lista em 18/11/2026 (fora do fluxo dos closers e do CS);
+// o rótulo fica só pra não mentir no card de um negócio antigo com esse tipo.
+const LEGACY_DEAL_LABELS = { reativacao: "Reativação" };
+const dealLabel = (v) => DEAL_TYPES.find((d) => d.value === v)?.label || LEGACY_DEAL_LABELS[v] || "Nova venda";
 const STATUS_TONE = { aceita: "var(--pos)", expirada: "var(--neg)", aberta: "var(--accent)", enviada: "var(--fg-3)" };
 
 const pill = {
