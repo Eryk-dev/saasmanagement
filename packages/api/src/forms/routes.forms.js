@@ -144,14 +144,14 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // pela cadência do estágio de entrada (SLA de 1º contato).
     const product = form.saas ? await repo.get("products", form.saas) : null;
     const dqStage = stageByKind(product, "desqualificado")?.stage || "disqualified";
-    // Saída lateral não marca próximo toque: a fila é backlog, e um GPS
-    // apontando pra ela encheria a agenda do dia de quem vende. O DONO, porém,
-    // mudou: desde 16/08 a fila da Mentoria é responsabilidade do SDR (o
-    // produto existe e é vendido), então o card nasce com dono igual a um lead
-    // de venda. As outras saídas seguem sem ninguém.
-    const ownedExit = exitKey === "mentoria";
+    // Saída lateral não marca próximo toque e não ganha dono: a fila é backlog,
+    // um GPS apontando pra ela encheria a agenda do dia de quem vende, e o
+    // Leo decidiu em 18/11/2026 que a fila da Mentoria nasce SEM responsável
+    // (ele distribui quando decidir atacar a coluna). Entre 16/08 e 18/11 ela
+    // nascia no SDR, o que com dois SDRs e distribuição desligada já vinha
+    // devolvendo ninguém de qualquer jeito.
     const nextAt = disqualified || exit ? "" : initialNextActionAt(product, "");
-    const owner = disqualified || (exit && !ownedExit) ? null : await autoLeadOwner(repo, form.saas);
+    const owner = disqualified || exit ? null : await autoLeadOwner(repo, form.saas);
     // Saída que acontece ANTES das perguntas de contato (ex.: "não tenho
     // interesse") não gera lead nenhum: seria um card sem nome e sem telefone,
     // que ninguém consegue trabalhar. O envio fica registrado do mesmo jeito

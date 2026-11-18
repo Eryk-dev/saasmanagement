@@ -132,12 +132,15 @@ test("loja física só aparece no formulário de OEM", () => {
 
 test("os três formulários compartilham o mesmo núcleo, e só ele", () => {
   const nucleo = ["niche", "accounts", "listings", "trigger", "orders", "ticket", "nome", "empresa", "whatsapp", "email"];
+  // O corte de CNPJ abre e o ramo da Mentoria fecha os três (Leo, 18/11/2026):
+  // o núcleo de qualificação continua sendo o mesmo no meio.
+  const corte = "tem_empresa", ramo = ["aprender_interesse", "aprender_verba"];
   for (const l of ["ads", "price"]) {
-    assert.deepEqual(formV2(l).questions.map((q) => q.key), nucleo);
+    assert.deepEqual(formV2(l).questions.map((q) => q.key), [corte, ...nucleo, ...ramo]);
   }
   // OEM = núcleo + o bloco de loja física logo depois do nicho.
   assert.deepEqual(formV2("oem").questions.map((q) => q.key),
-    ["niche", "channel", "stores", ...nucleo.slice(1)]);
+    [corte, "niche", "channel", "stores", ...nucleo.slice(1), ...ramo]);
 });
 
 test("o 'só online' pula a pergunta de unidades por branching", () => {

@@ -97,8 +97,12 @@ export const PROGRESS_JS = `
   // melhor prometer o provável do que a soma de todos os ramos).
   function projectedTo(si) {
     var idxs = STEPS[si];
+    // Esta parte é testada ISOLADA (new Function com um conjunto fixo de nomes),
+    // então ela não pode exigir os helpers da página pra funcionar.
+    var ex = typeof exitOfTrail === 'function' ? exitOfTrail() : '';
     for (var k = 0; k < idxs.length; k++) {
       var q = QS[idxs[k]];
+      if (ex && typeof hiddenQ === 'function' && hiddenQ(q, ex)) continue;
       if (q.type === 'select') {
         var opts = q.options || [];
         var opt = null;
@@ -335,8 +339,25 @@ ${metaPixelHead(pixelId)}
     else prev.push(i);
   });
   var stepOfKey = {};
-  STEPS.forEach(function (idxs, si) { idxs.forEach(function (qi) { stepOfKey[QS[qi].key] = si; }); });
+  var QBYKEY = {};
+  STEPS.forEach(function (idxs, si) { idxs.forEach(function (qi) { stepOfKey[QS[qi].key] = si; QBYKEY[QS[qi].key] = QS[qi]; }); });
   var isInsightStep = function (si) { return (QS[STEPS[si][0]].type || 'text') === 'insight'; };
+
+  // Pergunta que a SAÍDA lateral não faz (hideOnExit). Espelha hiddenOnExit do
+  // servidor, que é quem decide de verdade o caminho do envio.
+  function hiddenQ(q, ex) {
+    if (!ex || !q || !q.hideOnExit) return false;
+    for (var i = 0; i < q.hideOnExit.length; i++) if (q.hideOnExit[i] === ex) return true;
+    return false;
+  }
+  // Perguntas visíveis de uma tela, já descontada a saída que o caminho carrega.
+  function visibleOf(si) {
+    var ex = exitOfTrail();
+    var out = [];
+    var idxs = STEPS[si] || [];
+    for (var k = 0; k < idxs.length; k++) if (!hiddenQ(QS[idxs[k]], ex)) out.push(QS[idxs[k]]);
+    return out;
+  }
 ${PROGRESS_JS}
 
   // Telemetria de funil (drop-off por etapa): eventos anônimos por sessão de
@@ -443,9 +464,9 @@ ${PROGRESS_JS}
   // Destino da tela: primeiro 'to' definido entre as perguntas (opção do select
   // respondido, senão o 'to' da pergunta). '' = sem destino explícito.
   function toOf(si) {
-    var idxs = STEPS[si];
-    for (var k = 0; k < idxs.length; k++) {
-      var q = QS[idxs[k]];
+    var qs = visibleOf(si);
+    for (var k = 0; k < qs.length; k++) {
+      var q = qs[k];
       if (q.type === 'select') {
         var a = answers[q.key];
         for (var j = 0; j < (q.options || []).length; j++) {
@@ -480,8 +501,15 @@ ${PROGRESS_JS}
   function nextStep(si) {
     var to = toOf(si);
     if (to === '_end' || to === '_reject') return -1;
-    if (to && stepOfKey[to] != null) return stepOfKey[to];
-    return si + 1 < STEPS.length ? si + 1 : -1;
+    var ni = (to && stepOfKey[to] != null) ? stepOfKey[to] : (si + 1 < STEPS.length ? si + 1 : -1);
+    // Tela cujas perguntas todas somem nesta saída não tem o que mostrar.
+    var guard = 0;
+    while (ni >= 0 && !visibleOf(ni).length && guard++ < STEPS.length) {
+      var t2 = toOf(ni);
+      if (t2 === '_end' || t2 === '_reject') return -1;
+      ni = (t2 && stepOfKey[t2] != null) ? stepOfKey[t2] : (ni + 1 < STEPS.length ? ni + 1 : -1);
+    }
+    return ni;
   }
 
   function validateQ(q, v) {
@@ -687,8 +715,10 @@ ${PROGRESS_JS}
   }
 
   function renderStep() {
-    var idxs = STEPS[cur];
-    var qs = idxs.map(function (i) { return QS[i]; });
+    var qs = visibleOf(cur);
+    // Tela sem nenhuma pergunta nesta saída não tem o que desenhar: segue em
+    // frente (nextStep já pula essas telas; isto é o cinto de segurança).
+    if (!qs.length) return jumpFrom(cur);
     var first = qs[0];
     var single = qs.length === 1;
     var s = el('div', 'fade');
@@ -710,7 +740,9 @@ ${PROGRESS_JS}
       box.appendChild(makeField(first, false, errBox));
       qs.slice(1).forEach(function (q) {
         var g = el('div', 'fgroup');
-        g.appendChild(el('label', null, esc(q.label) + (q.required ? ' <span class="req">*</span>' : '')));
+        // fmt e não esc: a pergunta empilhada usa a mesma ênfase *palavra* das
+        // outras (a do nome da empresa aparecia com os asteriscos crus no ar).
+        g.appendChild(el('label', null, fmt(q.label) + (q.required ? ' <span class="req">*</span>' : '')));
         g.appendChild(makeField(q, false, errBox));
         if (q.help) g.appendChild(el('div', 'fhelp', fmt(q.help)));
         box.appendChild(g);
@@ -739,7 +771,7 @@ ${PROGRESS_JS}
   }
 
   function advance() {
-    var qs = STEPS[cur].map(function (i) { return QS[i]; });
+    var qs = visibleOf(cur);
     var errBox = document.getElementById('err');
     for (var i = 0; i < qs.length; i++) {
       var err = validateQ(qs[i], answers[qs[i].key]);
@@ -794,8 +826,16 @@ ${PROGRESS_JS}
     if (!rejected && !exitKey) {
       try { if (window.fbq) window.fbq('track', 'Lead', { content_name: F.name || '' }, { eventID: eventId }); } catch (e) {}
     }
+    // Resposta de pergunta que esta saída NÃO faz fica fora do envio: quem volta
+    // uma tela e troca a resposta deixaria para trás o dado do outro caminho.
+    var enviadas = {};
+    for (var k in answers) {
+      if (!Object.prototype.hasOwnProperty.call(answers, k)) continue;
+      if (hiddenQ(QBYKEY[k], exitKey)) continue;
+      enviadas[k] = answers[k];
+    }
     var payload = {
-      answers: answers,
+      answers: enviadas,
       _hp: document.getElementById('hp').value || '',
       // Atribuição p/ o CAPI server-side casar com o Pixel e com o clique do anúncio.
       eventId: eventId,
@@ -874,8 +914,8 @@ ${PROGRESS_JS}
   document.addEventListener('keydown', function (e) {
     if (mode === 'welcome' && e.key === 'Enter') { e.preventDefault(); start(); return; }
     if (mode !== 'step' || isInsightStep(cur)) return;
-    var qs = STEPS[cur];
-    var first = QS[qs[0]];
+    var qs = visibleOf(cur);
+    var first = qs[0];
     var single = qs.length === 1;
     if (e.key === 'Enter') {
       if (e.target && e.target.tagName === 'TEXTAREA' && e.shiftKey) return;

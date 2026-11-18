@@ -7,6 +7,9 @@ import { REVENUE_GRADE_VERSION, REVENUE_ICP } from "../shared/lead-grade.js";
 
 import { normalizeFunnel, kindOf, isPostSaleStage, TERMINAL_KINDS } from "../crm/stages.js";
 import { autoLeadOwner } from "../crm/lead-flow.js";
+// O corte de CNPJ e o ramo da Mentoria moram no arquivo dos formulários v2:
+// a migração aplica a MESMA função nos formulários já publicados.
+import * as GATE_EMPRESA from "../forms/forms-v2.leverads.js";
 import { isChurnedCustomer } from "../billing/churn.js";
 import { legacyDoneKey, DEFAULT_COLUMNS as TASK_DEFAULT_COLUMNS, assetIdFromUrl } from "../tasks/tasks-core.js";
 import { catalogAmount } from "../proposals/proposal-catalog.js";
@@ -1345,6 +1348,61 @@ export async function ensureFormCompanyQuestion(repo) {
   return n;
 }
 
+// ── Form: corte de empresa aberta + ramo da Mentoria (Leo, 18/11/2026) ──────
+// A saída lateral de jul/2026 existia só no formulário antigo
+// (`fo_diagnostico_leverads`), que parou de receber lead em 16/09: os três
+// formulários v2 publicados ficaram sem corte nenhum, e com isso o público que
+// não é do perfil (12% a 19% dos envios de jul a set) voltou a entrar como lead
+// de venda, contando conversão pro Pixel/CAPI e recebendo oferta de call do
+// robô. Esta migração devolve o fluxo pros formulários que estão no ar.
+//
+// Migração porque o conteúdo dos formulários publicados vive no banco (deploy
+// não mexe) e porque o dado só faz sentido com o código que entende `exit` e
+// `hideOnExit` — deploy atômico, igual à pergunta da empresa de 22/10.
+// Idempotente: pula formulário que já tem o corte ou que já tem a saída
+// "mentoria" própria (o antigo, com a pergunta de "já vende em marketplace").
+export function withGateEmpresa(form) {
+  if (!form || form.saas !== "leverads") return null;
+  const { GATE_KEY, EXITS, comGateDeEmpresa } = GATE_EMPRESA;
+  const qs = form.questions || [];
+  if (!qs.length) return null;
+  const mapping = form.mapping || {};
+  if (!mapping.name) return null; // sem pergunta de nome o ramo não tem pra onde voltar
+  if (qs.some((q) => q?.key === GATE_KEY)) return null;
+  // Formulário que já manda gente pra Mentoria por outra pergunta fica como
+  // está: dois cortes na mesma jornada perguntariam a mesma coisa duas vezes.
+  const jaTemSaida = qs.some((q) => (q?.options || []).some((o) => o?.exit === "mentoria"));
+  if (jaTemSaida) return null;
+  return {
+    questions: comGateDeEmpresa(qs, mapping),
+    exits: { ...EXITS, ...(form.exits || {}) },
+  };
+}
+
+export async function ensureFormGateEmpresa(repo) {
+  let n = 0;
+  for (const form of await repo.list("forms")) {
+    const patch = withGateEmpresa(form);
+    if (!patch) continue;
+    await repo.update("forms", form.id, patch);
+    n++;
+  }
+  // O painel de respostas do card vem de `product.leadQuestions`, não das
+  // perguntas do form: sem isto quem cai na Mentoria abre o card sem a verba
+  // que declarou, que é justamente o que decide a oferta.
+  if (n) {
+    const { LEAD_QUESTIONS_UNIAO } = await import("../forms/lead-questions.produtos.js");
+    const produto = await repo.get("products", "leverads");
+    if (produto) {
+      const depois = mergeLeadQuestions(produto.leadQuestions || [], { questions: LEAD_QUESTIONS_UNIAO });
+      if (JSON.stringify(depois) !== JSON.stringify(produto.leadQuestions || [])) {
+        await repo.update("products", "leverads", { leadQuestions: depois });
+      }
+    }
+  }
+  return n;
+}
+
 // ── Contratos: campos de preenchimento (ago/2026) ───────────────────────────
 // Os 4 modelos de contrato nasceram com espaços em branco desenhados no HTML
 // (______). A tela Contratos ganhou formulário de preenchimento que interpola
@@ -2440,6 +2498,12 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] pergunta "nome da empresa" entrou em ${n} formulário(s)`);
   } catch (err) {
     console.error("[migration] ensureFormCompanyQuestion falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureFormGateEmpresa(repo);
+    if (n) console.log(`[migration] corte "já tem empresa aberta?" + ramo da Mentoria em ${n} formulário(s)`);
+  } catch (err) {
+    console.error("[migration] ensureFormGateEmpresa falhou:", err?.message || err);
   }
   try {
     const n = await ensureContractsNoAdDeletionClause(repo);

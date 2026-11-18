@@ -9,9 +9,15 @@
 // lead (via `mapping`), não respostas de qualificação — repeti-los no card
 // mostraria o telefone duas vezes.
 
-import { FORMS_V2, formV2 } from "./forms-v2.leverads.js";
+import { FORMS_V2, formV2, GATE_KEY } from "./forms-v2.leverads.js";
 
 const CONTATO_KEYS = new Set(["nome", "whatsapp", "email"]);
+
+// O corte de CNPJ (`tem_empresa`) não vira pergunta do card: pra lead de venda a
+// resposta é sempre "sim" (seria uma linha morta no painel e um campo a mais no
+// cadastro manual) e pra lead do ramo o card já diz Mentoria na etapa. As
+// perguntas do ramo (`aprender_*`) FICAM: é delas que sai a oferta que encaixa.
+const FORA_DO_CARD = new Set([GATE_KEY]);
 
 // O asterisco é ênfase da PÁGINA do formulário ("você *já vende*?"); no card
 // ele apareceria cru. Mesma limpeza que mergeLeadQuestions faz.
@@ -26,7 +32,9 @@ function daPergunta(q) {
 export const PRODUTOS = ["oem", "ads", "price"];
 
 export function questionsFor(produto) {
-  return (formV2(produto).questions || []).filter((q) => !CONTATO_KEYS.has(q.key)).map(daPergunta);
+  return (formV2(produto).questions || [])
+    .filter((q) => !CONTATO_KEYS.has(q.key) && !FORA_DO_CARD.has(q.key))
+    .map(daPergunta);
 }
 
 export const LEAD_QUESTIONS_POR_PRODUTO = Object.fromEntries(
@@ -48,7 +56,7 @@ export const LEAD_QUESTIONS_UNIAO = (() => {
   const out = [];
   for (const f of FORMS_V2) {
     for (const q of f.questions) {
-      if (CONTATO_KEYS.has(q.key) || vistas.has(q.key)) continue;
+      if (CONTATO_KEYS.has(q.key) || FORA_DO_CARD.has(q.key) || vistas.has(q.key)) continue;
       vistas.add(q.key);
       out.push({ ...daPergunta(q), required: OBRIGATORIAS_NO_CARD.has(q.key) });
     }

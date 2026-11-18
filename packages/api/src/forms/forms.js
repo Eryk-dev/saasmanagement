@@ -36,6 +36,9 @@ export function publicForm(form) {
     questions: (form.questions || []).map((q) => ({
       key: q.key, label: q.label, type: q.type || "text", required: !!q.required,
       placeholder: q.placeholder || "", help: q.help || "", stack: !!q.stack,
+      // Perguntas que NÃO são feitas em determinada saída lateral (ex.: o nome
+      // da empresa não é pedido de quem respondeu que ainda não tem empresa).
+      hideOnExit: Array.isArray(q.hideOnExit) ? q.hideOnExit.map(String).filter(Boolean) : [],
       options: (q.options || []).map((o) => ({ value: o.value, label: o.label || o.value, to: o.to || "", exit: o.exit || "" })),
       to: q.to || "",
       stat: q.stat || "", statLabel: q.statLabel || "",
@@ -52,6 +55,12 @@ export function publicForm(form) {
     // normal (mapping de nome/telefone continua valendo).
     exits: form.exits || null,
   };
+}
+
+// Pergunta escondida numa saída lateral: ela sai do CAMINHO dessa pessoa, então
+// não é renderizada, não é obrigatória e a resposta dela não vai pro lead.
+export function hiddenOnExit(q, exit) {
+  return !!exit && Array.isArray(q?.hideOnExit) && q.hideOnExit.includes(exit);
 }
 
 // Agrupa perguntas em telas: nova tela quando a pergunta não tem `stack`, é
@@ -84,7 +93,9 @@ function walkPath(questions, answers) {
   while (s >= 0 && s < steps.length) {
     if (seen.has(s)) break;
     seen.add(s);
-    const qs = steps[s].map((i) => questions[i]);
+    // A saída já carregada pelo caminho tira do ar as perguntas marcadas pra
+    // ela. Tela que fica sem nenhuma pergunta visível é simplesmente pulada.
+    const qs = steps[s].map((i) => questions[i]).filter((q) => !hiddenOnExit(q, exit));
     path.push(...qs);
     let to = "";
     for (const q of qs) {
@@ -233,6 +244,13 @@ export function variantHeadline(form, variantId, pain) {
 
 export function leadFromSubmission(form, answers) {
   const m = form.mapping || {};
+  // Quem volta uma tela e troca a resposta pode deixar no objeto a resposta de
+  // uma pergunta que a saída dele não faz (o nome da empresa, por exemplo).
+  // Ela não entra no lead: o card mostraria um dado que a pessoa não deu.
+  const exit = submissionExit(form.questions || [], answers);
+  const vistas = { ...answers };
+  if (exit) for (const q of form.questions || []) if (hiddenOnExit(q, exit)) delete vistas[q.key];
+  answers = vistas;
   const mapped = (k) => {
     const v = m[k] ? answers[m[k]] : undefined;
     return isBlank(v) ? undefined : v;
@@ -262,7 +280,7 @@ export function submissionSummary(form, answers, { max = 3 } = {}) {
   const out = [];
   for (const q of form?.questions || []) {
     if (out.length >= max) break;
-    if (q.type === "insight" || contact.has(q.key)) continue;
+    if (q.type === "insight" || contact.has(q.key) || q.noSummary) continue;
     const v = answers?.[q.key];
     if (isBlank(v)) continue;
     // Select guarda o VALOR da opção ("3-5"); quem lê quer o rótulo ("3 a 5
