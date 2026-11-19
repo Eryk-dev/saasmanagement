@@ -523,6 +523,7 @@ ${PROGRESS_JS}
       if (/^(.)\\1*$/u.test(nm)) return 'Digite um nome de verdade';
       return '';
     }
+    if (q.key === F.companyKey && String(v).trim().length > 24) return 'No máximo 24 caracteres';
     if (q.type === 'phone' && String(v).replace(/[^0-9]/g, '').length !== 11) return 'Digite os 11 dígitos: DDD + celular';
     if (q.type === 'email' && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(String(v).trim())) return 'Digite um e-mail válido';
     if (q.type === 'number' && !isFinite(Number(v))) return 'Digite um número';
@@ -687,6 +688,7 @@ ${PROGRESS_JS}
       return opts;
     }
     var isName = q.key === F.nameKey;   // campo mapeado como nome: regra de nome
+    var isCompany = q.key === F.companyKey; // empresa: nome fantasia, 24 no máx.
     var isPhone = q.type === 'phone';    // WhatsApp: só dígitos, 11 no total
     var input;
     if (q.type === 'textarea') {
@@ -697,6 +699,7 @@ ${PROGRESS_JS}
       input.type = q.type === 'number' ? 'number' : q.type === 'email' ? 'email' : isPhone ? 'tel' : 'text';
       if (isPhone) { input.inputMode = 'numeric'; input.maxLength = 11; }
       if (isName) input.maxLength = 15;
+      if (isCompany) input.maxLength = 24;
     }
     input.dataset.qkey = q.key;
     input.placeholder = q.placeholder || (isPhone ? 'DDD + número (11 dígitos)' : isName ? 'Seu primeiro nome' : 'Digite sua resposta…');
@@ -704,9 +707,11 @@ ${PROGRESS_JS}
     input.oninput = function () {
       var v = input.value;
       // Filtra ao digitar/colar: nome só letras (sem espaço, no máx. 15);
-      // WhatsApp só dígitos (no máx. 11). Reposiciona o valor limpo.
+      // WhatsApp só dígitos (no máx. 11); empresa corta em 24 (aceita número,
+      // espaço e símbolo). Reposiciona o valor limpo.
       if (isName) v = v.replace(/[^\\p{L}]/gu, '').slice(0, 15);
       else if (isPhone) v = v.replace(/[^0-9]/g, '').slice(0, 11);
+      else if (isCompany) v = v.slice(0, 24);
       if (v !== input.value) input.value = v;
       answers[q.key] = input.value;
       errBox.textContent = '';

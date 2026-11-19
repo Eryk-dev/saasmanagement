@@ -33,6 +33,9 @@ export function publicForm(form) {
     // Qual pergunta é o NOME (mapping.name): a página aplica a regra de nome
     // (só letras, sem espaço, 3-15, sem repetição) sem expor o mapping inteiro.
     nameKey: (form.mapping && form.mapping.name) || "",
+    // Qual pergunta é a EMPRESA (mapping.company): a página corta em 24
+    // caracteres sem expor o mapping inteiro.
+    companyKey: (form.mapping && form.mapping.company) || "",
     questions: (form.questions || []).map((q) => ({
       key: q.key, label: q.label, type: q.type || "text", required: !!q.required,
       placeholder: q.placeholder || "", help: q.help || "", stack: !!q.stack,
@@ -175,6 +178,17 @@ export function nameError(value) {
   return "";
 }
 
+// Regra do campo EMPRESA (compartilhada com a página do form): nome fantasia
+// cabe em 24 caracteres (Leo, 19/11/2026) — o que vem depois é razão social
+// inteira ("LTDA", CNPJ, endereço), que só suja o card e a saudação do SDR.
+// Diferente do nome, aqui vale número, espaço e símbolo: "Loja 3 & Cia" é nome
+// de empresa de verdade. Só o tamanho é limitado.
+export const COMPANY_MAX = 24;
+export function companyError(value) {
+  const s = String(value == null ? "" : value).trim();
+  return s.length > COMPANY_MAX ? `o nome da empresa pode ter no máximo ${COMPANY_MAX} caracteres` : "";
+}
+
 // Regra do WhatsApp: só dígitos, exatamente 11 (2 do DDD + 9 do celular).
 export function phoneError(value) {
   return String(value == null ? "" : value).replace(/\D/g, "").length === 11
@@ -191,6 +205,7 @@ export function validateAnswers(form, answers) {
   const questions = form.questions || [];
   const byKey = new Map(questions.map((q) => [q.key, q]));
   const nameKey = (form.mapping && form.mapping.name) || "";
+  const companyKey = (form.mapping && form.mapping.company) || "";
 
   for (const [key, val] of Object.entries(answers)) {
     const q = byKey.get(key);
@@ -200,6 +215,9 @@ export function validateAnswers(form, answers) {
     if (isBlank(val)) continue;
     if (key === nameKey) {
       const e = nameError(val);
+      if (e) errors.push(`${key}: ${e}`);
+    } else if (key === companyKey) {
+      const e = companyError(val);
       if (e) errors.push(`${key}: ${e}`);
     } else if (type === "phone") {
       const e = phoneError(val);
