@@ -338,14 +338,20 @@ export const GROUP_TABS = {
 // os links que já existem vivem no último carimbo do lead (mpChargeUrl) e na
 // fatura (mpInitPoint). Id determinístico = rodar de novo não duplica.
 export async function backfillPaymentLinks(repo) {
-  const existing = new Set((await repo.list("payment_links")).map((l) => l.id));
+  const all = await repo.list("payment_links");
+  const existing = new Set(all.map((l) => l.id));
+  // URL que JÁ tem recibo próprio (gerada pela rota, com prefId e autor) não
+  // volta como sombra do carimbo: o carimbo do lead/fatura é o MESMO link que
+  // acabou de nascer, e o boot seguinte criava uma segunda linha no histórico
+  // (o modal do link mostrava um "substituído" fantasma do mesmo valor).
+  const recorded = new Set(all.map((l) => l.url).filter(Boolean));
   const customers = await repo.list("customers");
   const nameOfCustomer = (id) => customers.find((c) => c.id === id)?.name || "";
   let n = 0;
 
   for (const lead of await repo.list("leads")) {
     const id = `pl_lead_${lead.id}`;
-    if (!lead.mpChargeUrl || existing.has(id)) continue;
+    if (!lead.mpChargeUrl || existing.has(id) || recorded.has(lead.mpChargeUrl)) continue;
     await recordPaymentLink(repo, {
       id, saas: lead.saas, kind: "lead", origin: "card",
       lead: lead.id, customer: lead.customerId || "",
@@ -361,7 +367,7 @@ export async function backfillPaymentLinks(repo) {
 
   for (const inv of await repo.list("invoices")) {
     const id = `pl_inv_${inv.id}`;
-    if (!inv.mpInitPoint || existing.has(id)) continue;
+    if (!inv.mpInitPoint || existing.has(id) || recorded.has(inv.mpInitPoint)) continue;
     // Cobrança avulsa/upsell nasce na ficha do cliente; o resto é link tirado
     // de uma fatura que já existia (renovação, parcela).
     const fromCustomer = inv.kind === "manual" || inv.kind === "upsell";
