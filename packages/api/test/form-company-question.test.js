@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import { withCompanyQuestion, ensureFormCompanyQuestion, COMPANY_QUESTION } from "../src/platform/migrations.js";
 import { FORMS_V2 } from "../src/forms/forms-v2.leverads.js";
-import { leadFromSubmission, submissionSummary } from "../src/forms/forms.js";
+import { leadFromSubmission, submissionSummary, companyError, COMPANY_MAX, validateAnswers, publicForm } from "../src/forms/forms.js";
+import { formPageHtml } from "../src/forms/form-page.js";
 
 const diagnostico = () => ({
   id: "fo_diagnostico_leverads", name: "Diagnóstico LeverAds", saas: "leverads", status: "published",
@@ -73,4 +74,32 @@ test("resposta da empresa vira lead.company e fica fora do resumo de qualificaç
   assert.equal(lead.name, "Marina");
   assert.equal(lead.company, "Marina Philippi LTDA");
   assert.equal(submissionSummary(form, answers), "Autopeças");
+});
+
+test("empresa é limitada a 24 caracteres: regra, validação do submit e corte na página", () => {
+  assert.equal(COMPANY_MAX, 24);
+  for (const c of ["Marina Philippi", "Loja 3 & Cia", "Auto Peças do Vale S/A", "A".repeat(24)]) {
+    assert.equal(companyError(c), "", `${c} devia valer`);
+  }
+  for (const c of ["Marina Philippi Comércio LTDA", "A".repeat(25)]) {
+    assert.notEqual(companyError(c), "", `${c} devia falhar`);
+  }
+  assert.equal(companyError("  Loja do Zé  "), ""); // espaço nas bordas não conta
+
+  // o submit barra pelo mapping.company, não pelo nome da chave
+  const form = { ...diagnostico(), ...withCompanyQuestion(diagnostico()) };
+  const answers = { niche: "autopecas", nome: "Marina", empresa: "Marina Philippi", whatsapp: "48999990000", email: "m@x.com" };
+  assert.deepEqual(validateAnswers(form, answers), []);
+  assert.ok(validateAnswers(form, { ...answers, empresa: "Marina Philippi Comércio LTDA" })
+    .some((e) => e.startsWith("empresa:")));
+
+  // a página pública recebe a chave e corta ao digitar/colar
+  const pub = publicForm(form);
+  assert.equal(pub.companyKey, "empresa");
+  const html = formPageHtml(pub, {});
+  assert.ok(html.includes('"companyKey":"empresa"'), "companyKey vai inline no __FORM__");
+  const app = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).reduce((a, b) => (b.length > a.length ? b : a), "");
+  assert.match(app, /isCompany\) v = v\.slice\(0, 24\)/, "corte de 24 renderizado");
+  assert.match(app, /isCompany\) input\.maxLength = 24/, "maxLength de 24 renderizado");
+  assert.doesNotThrow(() => new Function(app), "o script servido é JS válido");
 });
