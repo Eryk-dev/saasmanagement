@@ -34,9 +34,11 @@ export const PAYMENT_METHODS = [
   { id: "boleto_vista", label: "Boleto à vista", upfront: true },
   { id: "boleto", label: "Boleto faturado", upfront: false },
   { id: "cartao12x", label: "Cartão de crédito 12x", upfront: true },
-  // Assinatura recorrente (cartão, cobrança mensal): DEIXOU de ser vendida em
-  // 10/09/2026. `legacy` = fora dos selects; segue rotulando quem fechou assim.
-  { id: "cartao_recorrente", label: "Assinatura recorrente (cartão)", upfront: false, recurring: true, legacy: true },
+  // Cobrança recorrente no cartão (mensal, sem fim combinado): saiu de linha em
+  // 10/09/2026 e VOLTOU a ser vendida em 19/11/2026 (Leo) — anda junto do plano
+  // fechado "Recorrente (mensal)", com o valor da mensalidade. Recebe POR MÊS
+  // (upfront false) e nunca tem Nº de parcelas (`recurring`).
+  { id: "cartao_recorrente", label: "Recorrente no cartão (mensal)", upfront: false, recurring: true },
 ];
 // O que o closer pode ESCOLHER hoje (gate de Ganho, modal do link, cadastro).
 export const PAYMENT_METHODS_ACTIVE = PAYMENT_METHODS.filter((p) => !p.legacy);
@@ -81,9 +83,9 @@ export const PAY_STATUS = {
 
 // Plano com que o negócio fechou — também assinalado no gate de fechamento e
 // carregado pro customer no convertWonLead (vira a coluna Plano e a base do arr).
-// "Assinatura mensal" (recorrência) deixou de ser vendida em 10/09/2026:
-// `legacy` tira a opção dos selects, mas cliente antigo continua rotulado,
-// com o acumulado a cada 30 dias (accruedAmountOf) e a cobrança no runBilling.
+// "Recorrente (mensal)" voltou a ser vendido em 19/11/2026 (Leo): o valor
+// lançado é a mensalidade, o acumulado soma outra a cada 30 dias
+// (accruedAmountOf) e a cobrança do mês seguinte nasce no runBilling.
 export const CLOSED_PLANS = CLOSED_PLAN_DEFS.map((p) => ({
   id: p.id, label: p.selectLabel || p.label, ...(p.legacy ? { legacy: true } : {}),
 }));
@@ -96,6 +98,12 @@ export const withLegacyOption = (active, all, value) =>
     : active;
 
 export const closedPlanLabel = (id) => CLOSED_PLANS.find((p) => p.id === id)?.label || "";
+// O que um LINK de pagamento consegue cobrar: só plano com `title` (cobrança
+// única, à vista ou parcelada). Recorrência e teste grátis ficam de fora — a
+// casa não vende assinatura por link desde 10/09/2026 (routes.mp.js recusa o
+// modo recorrente), então oferecer "Recorrente" no modal do link geraria um
+// link que o servidor cobra uma vez e sem plano.
+export const CLOSED_PLANS_LINKABLE = CLOSED_PLANS_ACTIVE.filter((p) => !!CLOSED_PLAN_TITLE[p.id]);
 
 // ── Recorrência: o valor ACUMULADO do fechamento ────────────────────────────
 // Cliente de assinatura fecha pelo valor MENSAL (planClosed "mensal") e cada
@@ -179,10 +187,18 @@ export function plansOf(saas) {
 const RECURRING_CLOSED = CLOSED_PLAN_DEFS.filter((p) => p.cycle && !p.legacy).map((p) => p.id);
 export function closingPlansOf(saas) {
   const deal = new Map(dealProductsOf(saas).map((p) => [p.id, p]));
+  // Recorrente (mensal) não tem preço de tabela — a mensalidade é combinada na
+  // call —, então ele entra em todo plano que vende ciclo (além dos ciclos com
+  // preço). Sem isso o fechamento recorrente só existia no gate do board, e
+  // quem fechava pelo Meu dia lançava anual com condição escrita à mão
+  // (Mega store eletro, 19/11/2026). Teste grátis fica de fora: o produto de
+  // teste só vende o plano "teste".
   const cyclesOf = (oneOff, prices) => {
     if (oneOff) return ["unico"];
     const priced = [...new Set(prices.map((r) => r.plan).filter(Boolean))];
-    return priced.length ? priced : RECURRING_CLOSED;
+    if (!priced.length) return RECURRING_CLOSED;
+    const vendeCiclo = priced.some((p) => RECURRING_CLOSED.includes(p));
+    return vendeCiclo ? [...new Set([...priced, "mensal"])] : priced;
   };
   const productRank = (p) => PLAN_PRODUCTS.findIndex((x) => x.id === planProductOf(p));
   const rows = plansOf(saas)

@@ -21,8 +21,9 @@ test("ciclos da assinatura: meses e rótulos de sempre", () => {
 
 test("planos de fechamento: os mapas derivados batem com os que existiam espalhados", () => {
   assert.deepEqual(CLOSED_PLAN_LABEL, { anual: "Anual", semestral: "Semestral", mensal: "Mensal", unico: "Serviço único", teste: "15 dias" });
-  // Título do link de pagamento: mensal ficou de fora de propósito (não se vende
-  // mais), e é esse mapa que valida o plano aceito em POST /api/leads/:id/mp/link.
+  // Título do link de pagamento: mensal ficou de fora de propósito (recorrência
+  // não se cobra por link, mesmo voltando a ser vendida em 19/11/2026), e é
+  // esse mapa que valida o plano aceito em POST /api/leads/:id/mp/link.
   assert.deepEqual(CLOSED_PLAN_TITLE, { anual: "Plano Anual", semestral: "Plano Semestral", unico: "Serviço único" });
   // Serviço único não é recorrência: sem ciclo nem meses.
   assert.deepEqual(CLOSED_PLAN_CYCLE, { anual: "annual", semestral: "semiannual", mensal: "monthly" });
@@ -33,7 +34,11 @@ test("planos de fechamento: os mapas derivados batem com os que existiam espalha
   assert.deepEqual(CLOSED_PLANS.filter((p) => p.trial).map((p) => [p.id, p.days, p.selectLabel]), [["teste", 15, "Teste grátis (15 dias)"]]);
   assert.deepEqual(CLOSED_PLANS.filter((p) => p.catalogKey).map((p) => [p.catalogKey, p.id, p.label]),
     [["anu", "anual", "Anual"], ["sem", "semestral", "Semestral"]]);
-  assert.deepEqual(CLOSED_PLANS.filter((p) => p.legacy).map((p) => p.id), ["mensal"]);
+  // Nenhum plano legado desde 19/11/2026: "Recorrente (mensal)" voltou a ser
+  // vendido (Leo) e é o que o gate oferece pra quem paga por mês.
+  assert.deepEqual(CLOSED_PLANS.filter((p) => p.legacy).map((p) => p.id), []);
+  assert.deepEqual(CLOSED_PLANS.filter((p) => p.id === "mensal").map((p) => [p.selectLabel, p.title, p.cycle]),
+    [["Recorrente (mensal)", undefined, "monthly"]]);
 });
 
 test("ida e volta entre plano de fechamento e ciclo; trimestral não é plano de fechamento", () => {

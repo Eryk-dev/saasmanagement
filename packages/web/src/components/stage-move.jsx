@@ -147,9 +147,9 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   // entra aqui (gate da Integração confirmando o fechamento).
   const trialProduct = !isKidsWon && !oneOff && isTrialProduct(lead.saas, dealProduct);
   const isTrial = trialProduct || (!isKidsWon && !oneOff && isTrialPlan(planClosed));
-  // Assinatura mensal (recorrência): o valor lançado é o MENSAL — o acumulado
-  // do cliente soma outra mensalidade a cada 30 dias (accruedAmountOf). Não há
-  // Nº de parcelas (a cobrança é indefinida), então o faturado fica fora.
+  // Recorrente (mensal): o valor lançado é o MENSAL — o acumulado do cliente
+  // soma outra mensalidade a cada 30 dias (accruedAmountOf). Não há Nº de
+  // parcelas (a cobrança não tem fim combinado), então o faturado fica fora.
   const isMonthly = !isKidsWon && !oneOff && planClosed === "mensal";
   // Condição personalizada fica fora do "faturado em quantas vezes": o que o
   // closer escreveu não é N parcelas iguais — o recebido entra pelo espelho do
@@ -329,8 +329,10 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
               <>
                 <label className="kicker" style={label}>Plano fechado *</label>
                 {/* Serviço único (pacote de OEM avulso) não tem ciclo: o plano é o
-                    próprio produto. Só os planos ativos; "Assinatura mensal"
-                    (legado) aparece apenas quando já é o plano deste lead. */}
+                    próprio produto. Só os planos ativos (Anual, Semestral,
+                    Recorrente mensal e Serviço único); teste grátis vem do
+                    produto, e plano fora da lista aparece quando já é o deste
+                    lead. */}
                 {oneOff
                   ? <div className="mono" style={{ fontSize: 12.5, color: "var(--fg-2)" }}>Serviço único · o plano é o próprio produto</div>
                   : trialProduct

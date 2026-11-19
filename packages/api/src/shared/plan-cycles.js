@@ -19,15 +19,18 @@ export function annualized(price, cycle) {
   return (Number(price) || 0) * (12 / months);
 }
 
-// `title` é o rótulo do link de pagamento (só existe pro que ainda se vende);
-// `selectLabel` é o texto do select quando difere do rótulo; `catalogKey` é a
-// chave do ciclo no catálogo da proposta (`anu`/`sem`). Serviço único não é
-// recorrência: sem `cycle` nem `months`. "mensal" deixou de ser vendido em
-// 10/09/2026 (`legacy`), mas cliente antigo continua rotulado.
+// `title` é o rótulo do LINK de pagamento (só existe pro que o link cobra: uma
+// cobrança só, à vista ou parcelada); `selectLabel` é o texto do select quando
+// difere do rótulo; `catalogKey` é a chave do ciclo no catálogo da proposta
+// (`anu`/`sem`). Serviço único não é recorrência: sem `cycle` nem `months`.
+// "mensal" saiu de linha em 10/09/2026 e VOLTOU a ser vendido em 19/11/2026
+// (Leo): é o cliente que paga recorrente por mês, sem fim combinado — o valor
+// lançado é a MENSALIDADE e o acumulado soma outra a cada 30 dias. Sem `title`:
+// recorrência não se cobra por link de pagamento (o link é cobrança única).
 export const CLOSED_PLANS = [
   { id: "anual", label: "Anual", title: "Plano Anual", cycle: "annual", months: 12, annualFactor: 1, catalogKey: "anu" },
   { id: "semestral", label: "Semestral", title: "Plano Semestral", cycle: "semiannual", months: 6, annualFactor: 2, catalogKey: "sem" },
-  { id: "mensal", label: "Mensal", selectLabel: "Assinatura mensal", cycle: "monthly", months: 1, annualFactor: 12, legacy: true },
+  { id: "mensal", label: "Mensal", selectLabel: "Recorrente (mensal)", cycle: "monthly", months: 1, annualFactor: 12 },
   // Serviço único NÃO é receita recorrente (12/10/2026): fator 0 — não entra
   // no ARR/MRR; o dinheiro vira fatura avulsa (ensureOneOffInvoice) e conta
   // na meta do mês em que fechou, como sempre.

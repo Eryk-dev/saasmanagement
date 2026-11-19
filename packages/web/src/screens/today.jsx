@@ -2811,9 +2811,10 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const inputStyle = { height: 30, padding: "0 12px", borderRadius: 999, fontSize: 12.5 };
   const userOptions = (users) => users.map((u) => ({ value: u.id, label: u.name || u.id }));
   // Ciclos que dá pra fechar no plano escolhido: os que ele tem preço no
-  // catálogo; compra única é sempre "Serviço único"; produto personalizado ou
-  // plano sob consulta abre os ciclos vendidos hoje. Legado ("Assinatura
-  // mensal") só aparece quando já é o valor do lead.
+  // catálogo MAIS "Recorrente (mensal)" (mensalidade combinada na call, sem
+  // preço de tabela — closingPlansOf monta a lista); compra única é sempre
+  // "Serviço único"; produto personalizado ou plano sob consulta abre os ciclos
+  // vendidos hoje. Plano fora da lista só aparece quando já é o do lead.
   const cycleChoices = (plan, current) => {
     const ids = plan ? plan.cycles : CLOSED_PLANS.filter((p) => !p.legacy).map((p) => p.id);
     const opts = CLOSED_PLANS.filter((p) => ids.includes(p.id));
