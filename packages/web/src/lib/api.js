@@ -725,6 +725,9 @@ export const api = {
   // Histórico dos links gerados (tela Links de pagamento), AGRUPADO por cliente
   // no servidor com o saldo pago × em aberto: cada recibo já cruzado com o
   // espelho do MP. query = { saas, since, until, by, status }.
+  // Com `{ saas, lead }` ou `{ saas, customer }` devolve o histórico de UM alvo
+  // ({ links, totals, counts, target }), sem período nem filtro de vendedor —
+  // é o que o modal do link de pagamento mostra antes de gerar outro.
   paymentLinks: (query = {}) => {
     const q = typeof query === "string" ? { saas: query } : query;
     const qs = new URLSearchParams(Object.fromEntries(Object.entries(q).filter(([, v]) => v))).toString();

@@ -433,3 +433,55 @@ test("closer vê só os links que ele gerou (o servidor filtra) e só dá baixa 
   assert.equal((await app.inject({ method: "POST", url: "/api/payment-links/pl_je/unpay", headers: await H("jonan"), payload: {} })).statusCode, 403);
   assert.equal((await app.inject({ method: "POST", url: "/api/payment-links/pl_je/unpay", headers: await H("leo"), payload: {} })).statusCode, 200);
 });
+
+// ── Histórico de UM alvo (modal do link de pagamento, 19/11/2026) ───────────
+test("GET /api/payment-links?lead=|customer=: histórico do alvo, sem período e sem filtro de vendedor", async () => {
+  const repo = makeMemRepo();
+  await repo.create("leads", { id: "le_1", saas: "leverads", name: "Zé", customerId: "cu_1" });
+  await repo.create("customers", { id: "cu_1", saas: "leverads", name: "Padaria do Zé", leadId: "le_1" });
+  // Do mesmo negócio: um link do card (antes do Ganho) e uma cobrança da ficha.
+  await repo.create("payment_links", link({ id: "pl_velho", lead: "le_1", reference: "le_1", amount: 700, createdAt: "2026-07-20T10:00:00.000Z", createdBy: "u1" }));
+  await repo.create("payment_links", link({ id: "pl_novo", lead: "le_1", reference: "le_1", amount: 1000, createdAt: "2026-08-10T10:00:00.000Z", createdBy: "u1" }));
+  await repo.create("payment_links", link({ id: "pl_ficha", kind: "customer", origin: "cliente", lead: "", customer: "cu_1", reference: "cu_1", amount: 300, createdAt: "2026-08-11T10:00:00.000Z", createdBy: "u2" }));
+  // De outro cliente: nunca entra.
+  await repo.create("payment_links", link({ id: "pl_outro", lead: "le_2", reference: "le_2", amount: 2000, targetName: "Outro", createdAt: "2026-08-12T10:00:00.000Z", createdBy: "u2" }));
+  await repo.create("mp_payments", payment({ mpId: "9", amount: 1000, externalReference: "le_1", lead: "le_1" }));
+  const app = buildApp(repo);
+  const get = async (qs) => (await app.inject({ method: "GET", url: "/api/payment-links?saas=leverads&" + qs })).json();
+
+  const porLead = await get("lead=le_1");
+  assert.deepEqual(porLead.links.map((l) => l.id), ["pl_ficha", "pl_novo", "pl_velho"], "mais novo primeiro, lead + ficha do mesmo negócio");
+  assert.deepEqual(porLead.target, { lead: "le_1", customer: "cu_1" });
+  assert.equal(porLead.links[1].status, "paid", "o de 1.000 casou com o pagamento do MP");
+  assert.deepEqual(porLead.totals, { generated: 2000, paid: 1000, waiting: 1000, failed: 0 });
+  assert.equal(porLead.groups, undefined, "histórico de alvo não agrupa nem manda backlog");
+
+  // Pelo cliente dá no mesmo (o par é resolvido pelos dois lados).
+  const porCliente = await get("customer=cu_1");
+  assert.deepEqual(porCliente.links.map((l) => l.id), ["pl_ficha", "pl_novo", "pl_velho"]);
+  assert.deepEqual(porCliente.target, { lead: "le_1", customer: "cu_1" });
+
+  // Período não recorta o histórico do alvo (o link de julho continua).
+  const comPeriodo = await get("lead=le_1&since=2026-08-01&until=2026-08-31");
+  assert.equal(comPeriodo.links.length, 3);
+
+  const semNada = await get("lead=le_nao_existe");
+  assert.deepEqual(semNada.links, []);
+  assert.deepEqual(semNada.totals, { generated: 0, paid: 0, waiting: 0, failed: 0 });
+});
+
+test("histórico do alvo mostra o link que OUTRA pessoa gerou (quem abre o card precisa saber)", async (t) => {
+  const repo = makeMemRepo();
+  await seedTestAdmins(repo);
+  await repo.create("users", { id: "jonan", name: "Jonan", roles: ["closer"], screens: [], passwordHash: hashPassword("1234") });
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [{ stage: "Novo lead", conv: 1 }] });
+  await repo.create("leads", { id: "le_1", saas: "leverads", name: "Zé" });
+  await repo.create("payment_links", link({ id: "pl_jonan", lead: "le_1", reference: "le_1", amount: 1000, createdBy: "jonan" }));
+  await repo.create("payment_links", link({ id: "pl_jessica", lead: "le_1", reference: "le_1", amount: 900, createdBy: "jessica" }));
+  const app = buildAuthApp(repo);
+  t.after(() => app.close());
+  const token = await loginToken(app, "jonan");
+  const r = (await app.inject({ method: "GET", url: "/api/payment-links?saas=leverads&lead=le_1", headers: { "x-api-key": token } })).json();
+  assert.deepEqual(r.links.map((l) => l.id).sort(), ["pl_jessica", "pl_jonan"]);
+  assert.equal(r.totals.waiting, 1900);
+});
