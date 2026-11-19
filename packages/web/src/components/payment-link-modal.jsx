@@ -2,7 +2,7 @@ import React from "react";
 import { Modal } from "./overlay.jsx";
 import { waLink } from "../lib/ui.js";
 import { api } from "../lib/api.js";
-import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, CLOSED_PLAN_TITLE as PLAN_TITLE, withLegacyOption, DEAL_PRODUCTS_ACTIVE, dealProductLabel, dealProductsOf, paymentPickerValue, paymentPatchOf, gatewaysOn, gatewayLabel } from "../lib/payments.js";
+import { CLOSED_PLANS, CLOSED_PLANS_LINKABLE, CLOSED_PLAN_TITLE as PLAN_TITLE, withLegacyOption, DEAL_PRODUCTS_ACTIVE, dealProductLabel, dealProductsOf, paymentPickerValue, paymentPatchOf, gatewaysOn, gatewayLabel } from "../lib/payments.js";
 import { ProductOptions, PaymentMethodSelect } from "./lead-blocks.jsx";
 import { useConfirmLink } from "./confirm-link-modal.jsx";
 
@@ -332,8 +332,12 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved, onBusyChange
             </label>
             <label style={field}>
               <span className="kicker">Plano · duração</span>
+              {/* Só o que o link cobra (uma vez): recorrência não se cobra por
+                  link — o plano fechado "Recorrente (mensal)" entra pelo gate
+                  de fechamento. Plano do lead fora da lista aparece pro select
+                  não abrir vazio. */}
               <select value={plan} onChange={(e) => pickPlan(e.target.value)} style={inputStyle}>
-                {withLegacyOption(CLOSED_PLANS_ACTIVE, CLOSED_PLANS, plan).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                {withLegacyOption(CLOSED_PLANS_LINKABLE, CLOSED_PLANS, plan).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
               </select>
             </label>
             <label style={field}>
