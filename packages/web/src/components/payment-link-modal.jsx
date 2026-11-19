@@ -2,9 +2,10 @@ import React from "react";
 import { Modal } from "./overlay.jsx";
 import { waLink } from "../lib/ui.js";
 import { api } from "../lib/api.js";
-import { CLOSED_PLANS, CLOSED_PLANS_LINKABLE, CLOSED_PLAN_TITLE as PLAN_TITLE, withLegacyOption, DEAL_PRODUCTS_ACTIVE, dealProductLabel, dealProductsOf, paymentPickerValue, paymentPatchOf, gatewaysOn, gatewayLabel } from "../lib/payments.js";
+import { CLOSED_PLANS, CLOSED_PLANS_LINKABLE, CLOSED_PLAN_TITLE as PLAN_TITLE, withLegacyOption, DEAL_PRODUCTS_ACTIVE, dealProductLabel, dealProductsOf, paymentPickerValue, paymentPatchOf, gatewaysOn, gatewayLabel, gatewayShort, linkStatusOf, linkPaidByLabel, linkOriginLabel } from "../lib/payments.js";
 import { ProductOptions, PaymentMethodSelect } from "./lead-blocks.jsx";
 import { useConfirmLink } from "./confirm-link-modal.jsx";
+import { displayName } from "../lib/users.js";
 
 // Modal do LINK DE PAGAMENTO — o MESMO em todo lugar que gera link: atalho do
 // card do lead (deal.jsx) e tela "Links de pagamento", que abre ele já com o
@@ -30,6 +31,11 @@ import { useConfirmLink } from "./confirm-link-modal.jsx";
 //
 // Só cobrança ÚNICA (checkout): a assinatura recorrente (preapproval) deixou
 // de ser vendida em 10/09/2026. O servidor recusa `mode: "recurring"`.
+//
+// HISTÓRICO (Leo, 19/11/2026): o modal abre com os links que JÁ foram gerados
+// pra esse lead/cliente — valor, se alguém pagou e quem gerou. O card só guarda
+// o ÚLTIMO link (mpChargeUrl), então sem isso ninguém sabia, na hora de gerar
+// outro, o que já estava na mão do cliente.
 
 const inputStyle = { height: 36, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, width: "100%" };
 const field = { display: "flex", flexDirection: "column", gap: 4 };
@@ -147,6 +153,106 @@ function Header({ title, sub, onClose, onBack }) {
   );
 }
 
+const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const Divider = () => <div style={{ height: 1, background: "var(--line-1)" }} />;
+const TONE_COLOR = { pos: "var(--pos)", warn: "var(--warn)", neg: "var(--neg)", mut: "var(--fg-4)" };
+const agoOf = (iso) => {
+  const at = new Date(iso || "").getTime();
+  if (!Number.isFinite(at)) return "";
+  const mins = Math.floor((Date.now() - at) / 60000);
+  if (mins < 60) return mins < 2 ? "agora" : `há ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  return hours < 24 ? `há ${hours}h` : `há ${Math.floor(hours / 24)}d`;
+};
+
+// Links JÁ GERADOS pra este alvo, do mais novo pro mais velho. O status e o
+// saldo vêm do servidor (GET /api/payment-links?lead=…|customer=…), já cruzados
+// com o espelho do gateway: esta lista não decide quem pagou nem soma dinheiro.
+// Lead e cliente do mesmo negócio são o mesmo histórico, então link gerado
+// antes do Ganho continua aparecendo depois.
+function LinkHistory({ target, saas, reloadKey }) {
+  const doc = target.doc;
+  const [state, setState] = React.useState({ loading: true });
+  React.useEffect(() => {
+    let alive = true;
+    setState({ loading: true });
+    api.paymentLinks({
+      saas: doc.saas || saas,
+      ...(target.kind === "lead" ? { lead: doc.id } : { customer: doc.id }),
+    })
+      .then((r) => { if (alive) setState({ links: r.links || [], totals: r.totals || {} }); })
+      .catch((e) => { if (alive) setState({ err: e.message || "não deu pra ler o histórico" }); });
+    return () => { alive = false; };
+  }, [doc.id, doc.saas, target.kind, saas, reloadKey]);
+
+  const [copied, setCopied] = React.useState("");
+  async function copy(link) {
+    try { await navigator.clipboard.writeText(link.url); setCopied(link.id); setTimeout(() => setCopied(""), 1800); }
+    catch { window.prompt("Link:", link.url); }
+  }
+
+  const links = state.links || [];
+  if (state.loading || state.err) {
+    return (
+      <>
+        <Divider />
+        <div className="mono dim" style={{ fontSize: 10.5 }}>
+          {state.err ? `histórico de links: ${state.err}` : "lendo os links já gerados…"}
+        </div>
+      </>
+    );
+  }
+  // Nada gerado ainda: a seção some (o modal já é alto) em vez de mostrar vazio.
+  if (!links.length) return null;
+
+  const waiting = Number(state.totals?.waiting) || 0;
+  const paid = Number(state.totals?.paid) || 0;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <Divider />
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+        <span className="kicker accent">links já gerados · {links.length}</span>
+        <span className="mono dim" style={{ fontSize: 10.5 }}>
+          {[paid > 0 ? `${BRL.format(paid)} pago` : "", waiting > 0 ? `${BRL.format(waiting)} em aberto` : ""].filter(Boolean).join(" · ")}
+        </span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 188, overflowY: "auto" }}>
+        {links.map((l) => {
+          const st = linkStatusOf(l.status);
+          const who = displayName(l.createdBy) || l.createdBy || "";
+          const detail = [
+            agoOf(l.createdAt), who ? `por ${who}` : "",
+            l.gateway && l.gateway !== "mp" ? gatewayShort(l.gateway) : "",
+            linkOriginLabel(l.origin), l.paidBy ? linkPaidByLabel(l.paidBy) : "",
+          ].filter(Boolean).join(" · ");
+          return (
+            <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", minWidth: 0 }}>
+              <span className="mono" title={st.hint || st.label}
+                style={{ fontSize: 10, fontWeight: 700, color: TONE_COLOR[st.tone] || "var(--fg-4)", flexShrink: 0, width: 74, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{st.label}</span>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div className="mono" style={{ fontSize: 12, fontWeight: 600 }}>{BRL.format(Number(l.amount) || 0)}</div>
+                <div className="mono dim" style={{ fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={l.title || ""}>
+                  {l.title || "—"}{detail ? ` · ${detail}` : ""}
+                </div>
+              </div>
+              {l.url && (
+                <>
+                  <button className="mono" onClick={() => copy(l)} title="Copiar este link"
+                    style={{ fontSize: 10.5, flexShrink: 0, color: copied === l.id ? "var(--pos)" : "var(--fg-4)" }}>
+                    {copied === l.id ? "✓" : "copiar"}
+                  </button>
+                  <a className="mono" href={l.url} target="_blank" rel="noopener noreferrer" title="Abrir o checkout"
+                    style={{ fontSize: 10.5, flexShrink: 0, color: "var(--accent)", textDecoration: "none" }}>abrir ↗</a>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function LinkForm({ target, origin, saas, onBack, onClose, onSaved, onBusyChange }) {
   const doc = target.doc;
   const isLead = target.kind === "lead";
@@ -177,6 +283,9 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved, onBusyChange
   const submitting = React.useRef(false);
   const [err, setErr] = React.useState(null);
   const [copied, setCopied] = React.useState(false);
+  // Sobe a cada link gerado: o histórico relê sozinho (o novo link entra na
+  // lista e o anterior do mesmo valor já aparece como "substituído").
+  const [generated, setGenerated] = React.useState(0);
   const wa = waLink(doc.phone);
   // Pop-up com o valor antes de gerar (Leo, 15/10): nada sai sem conferir.
   const [confirmEl, askLink] = useConfirmLink();
@@ -220,6 +329,7 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved, onBusyChange
         });
       setUrl(r.url || "");
       setCopied(false);
+      setGenerated((n) => n + 1);
       onSaved && onSaved(r);
     } catch (e) { setErr(e.message || `${gatewayLabel(gateway)} não respondeu`); }
     finally { submitting.current = false; setBusy(false); onBusyChange(false); }
@@ -384,6 +494,9 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved, onBusyChange
           )}
         </div>
       )}
+
+      {/* O que já foi mandado pra esse cliente (o card guarda só o último). */}
+      <LinkHistory target={target} saas={saas} reloadKey={generated} />
     </>
   );
 }

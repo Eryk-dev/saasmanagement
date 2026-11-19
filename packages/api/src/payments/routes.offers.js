@@ -49,14 +49,58 @@ export function registerOfferRoutes(app, repo) {
     return enrichPaymentLinks([link], payments, invoices)[0];
   }
 
+  // Histórico de UM lead/cliente, do mais novo pro mais velho, com o saldo
+  // pago × em aberto vindo da MESMA conta da tela (groupPaymentLinks): ninguém
+  // soma dinheiro duas vezes. O par lead↔cliente é resolvido pelos dois lados
+  // (lead.customerId, customer.leadId), então o histórico não se perde quando o
+  // lead vira Ganho.
+  async function targetHistory(leadId, customerId, saas) {
+    // Os dois lados do par (o doc serve só pra isso): lead ganho aponta pro
+    // cliente, cliente aponta pro lead de origem.
+    const [lead, customer] = await Promise.all([
+      leadId ? repo.get("leads", leadId).catch(() => null) : null,
+      customerId ? repo.get("customers", customerId).catch(() => null) : null,
+    ]);
+    const ids = {
+      lead: leadId || customer?.leadId || "",
+      customer: customerId || lead?.customerId || "",
+    };
+    const empty = { links: [], totals: { generated: 0, paid: 0, waiting: 0, failed: 0 }, counts: { links: 0, paid: 0, waiting: 0, failed: 0, superseded: 0 }, target: ids };
+    if (!ids.lead && !ids.customer) return empty;
+    const [all, payments, invoices] = await Promise.all([
+      repo.list("payment_links"), repo.list("mp_payments"), repo.list("invoices"),
+    ]);
+    // Enriquecer o histórico INTEIRO antes de recortar, igual à tela: o
+    // "substituído" compara com todos os links do alvo, e o casamento de
+    // pagamento, com todo o espelho. `enrichPaymentLinks` já devolve do mais
+    // novo pro mais velho.
+    const enriched = enrichPaymentLinks(filterPaymentLinks(all, { saas }), payments, invoices);
+    const ofTarget = enriched.filter((l) =>
+      (ids.lead && l.lead === ids.lead) || (ids.customer && l.customer === ids.customer));
+    if (!ofTarget.length) return empty;
+    // Saldo pela MESMA conta da tela (groupPaymentLinks): o total é a soma de
+    // todos os grupos, então não importa se o alvo cai em um grupo (cliente) ou
+    // em dois (lead ainda sem Ganho + cobrança da ficha).
+    const { totals, counts } = groupPaymentLinks(ofTarget);
+    return { links: ofTarget, totals, counts, target: ids };
+  }
+
   // Histórico agrupado por cliente. O enriquecimento roda sobre o histórico
   // INTEIRO do produto antes do recorte de data: "substituído" e o casamento
   // de pagamento dependem do todo (um link antigo não pode virar "aguardando"
   // só porque o novo ficou fora do período). `since/until` = dia do negócio
   // (BRT), o mesmo filtro de período do topo do cockpit; `by` = quem gerou.
+  //
+  // `?lead=` / `?customer=` (19/11/2026) devolve o histórico de UM alvo, pro
+  // modal do link de pagamento mostrar o que já foi gerado pra aquele cliente
+  // antes de gerar outro: sem recorte de período e sem o filtro de vendedor
+  // (quem abre o modal já está dentro do card; a pergunta é "o que já mandei
+  // pra ele", mesmo que outra pessoa tenha gerado). Lead e cliente do mesmo
+  // negócio contam como o mesmo alvo: link gerado antes do Ganho fica no card.
   app.get("/api/payment-links", async (req) => {
     const q = req.query || {};
     const saas = String(q.saas || "");
+    if (q.lead || q.customer) return targetHistory(String(q.lead || ""), String(q.customer || ""), saas);
     const since = String(q.since || "").slice(0, 10);
     const until = String(q.until || "").slice(0, 10);
     const mine = !seesAll(req);
