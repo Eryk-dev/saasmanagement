@@ -196,6 +196,20 @@ test("backfill traz o que já existia (lead e fatura) e não duplica ao rodar de
   assert.equal((await repo.list("payment_links")).length, 2);
 });
 
+test("backfill não duplica o link que JÁ tem recibo próprio (mesma url do carimbo)", async () => {
+  const repo = makeMemRepo();
+  await repo.create("customers", { id: "cu_1", saas: "leverads", name: "Cliente Real" });
+  // O recibo da geração nasceu pela rota (com prefId e autor) e o carimbo do
+  // lead/fatura aponta pro MESMO link: o boot não pode criar a sombra.
+  await repo.create("leads", { id: "le_1", saas: "leverads", name: "Zé", mpChargeUrl: "https://mp.com/pay/pref_1", mpChargeAmount: 1900, mpChargeAt: "2026-08-01T10:00:00.000Z" });
+  await repo.create("invoices", { id: "in_1", customer: "cu_1", saas: "leverads", amount: 300, kind: "manual", status: "open", mpInitPoint: "https://mp.com/pay/fat_1", createdAt: "2026-08-02T10:00:00.000Z" });
+  await repo.create("payment_links", link({ id: "pa_1", lead: "le_1", amount: 1900, url: "https://mp.com/pay/pref_1", prefId: "pref_1", createdBy: "leo" }));
+  await repo.create("payment_links", link({ id: "pa_2", kind: "customer", origin: "cliente", lead: "", customer: "cu_1", invoice: "in_1", amount: 300, url: "https://mp.com/pay/fat_1", prefId: "fat_1", createdBy: "leo" }));
+
+  assert.equal(await backfillPaymentLinks(repo), 0, "url já registrada: nada a trazer");
+  assert.deepEqual((await repo.list("payment_links")).map((r) => r.id), ["pa_1", "pa_2"]);
+});
+
 // ── Baixa manual ─────────────────────────────────────────────────────────────
 test("validateManualPaid: forma obrigatória, dia BRT vira meio-dia, futuro e lixo recusados", () => {
   const now = new Date("2026-09-10T15:00:00.000Z");
