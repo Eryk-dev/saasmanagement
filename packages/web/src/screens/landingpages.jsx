@@ -7,12 +7,40 @@ import { EmptyState } from "../atoms.jsx";
 import { FunilHorizontal, InfoNota } from "../components/story.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { usePeriod } from "../components/period-picker.jsx";
+import { buildFunnelRows, buildPalavraRows, pickLeader, LEADER_MIN_SESSIONS } from "../lib/lp-funnels.js";
 
 // Visitas são sessões anônimas; pedidos e receita vêm do checkout do Elo.
 // A união por origem é agregada: não existe vínculo individual beacon/pedido.
 const centavos = (c) => fmt.money((c || 0) / 100);
 export const LP_GRID = "minmax(160px, 2fr) minmax(80px, 1fr) minmax(90px, 1fr) minmax(110px, 1fr)";
 export const LP_GRID_BUDGET = 524; // pisos 440 + três gaps de 16 + padding 36
+// Funis/palavras da DM: 7 colunas (nome + sessões, CTA, pedidos, pagos, receita, conversão)
+export const FUNIL_GRID = "minmax(150px, 2fr) repeat(5, minmax(64px, 1fr)) minmax(80px, 1fr)";
+export const FUNIL_GRID_BUDGET = 690; // pisos 550 + seis gaps de 16 + padding 36
+const centavosOuTraco = (c) => (c == null ? "—" : centavos(c));
+const intOuTraco = (v) => (v == null ? "—" : fmt.int(v));
+
+function FunilTabela({ head, rows, leaderId, money }) {
+  const grid = { display: "grid", gridTemplateColumns: FUNIL_GRID, gap: 16, padding: "13px 18px", alignItems: "start" };
+  const num = { textAlign: "right" };
+  return <div className="tbl-x"><div style={{ minWidth: FUNIL_GRID_BUDGET }}>
+    <div className="marketing-kicker" style={{ ...grid, marginTop: 14, background: "var(--bg-inset)" }}>
+      <span>{head}</span><span style={num}>Sessões</span><span style={num}>CTA</span><span style={num}>Pedidos</span><span style={num}>Pagos</span><span style={num}>Receita</span><span style={num}>Conversão</span>
+    </div>
+    {rows.map((r) => <div key={r.key} style={{ ...grid, borderTop: "1px solid var(--line-1)", fontSize: 13.5 }}>
+      <div style={{ minWidth: 0 }}>
+        <strong>{r.name}</strong>{r.key === leaderId && <span title="líder do teste" style={{ marginLeft: 6 }}>👑</span>}
+        {r.sub && <div style={{ marginTop: 3, fontSize: 11.5, color: "var(--fg-3)", overflowWrap: "anywhere" }}>{r.sub}</div>}
+      </div>
+      <span className="tnum" style={num}>{fmt.int(r.sessions)}</span>
+      <span className="tnum" style={num}>{fmt.int(r.ctaSessions)}</span>
+      <span className="tnum" style={num}>{money ? intOuTraco(r.created) : "—"}</span>
+      <span className="tnum" style={num}>{money ? intOuTraco(r.approved) : "—"}</span>
+      <strong className="tnum" style={num}>{money ? centavosOuTraco(r.revenue) : "—"}</strong>
+      <span className="tnum" style={num}>{r.conversion == null ? "—" : fmt.pct(r.conversion, 1)}</span>
+    </div>)}
+  </div></div>;
+}
 
 function LandingPagesScreen() {
   const [product] = useActiveSaas();
@@ -58,6 +86,20 @@ function LandingPagesScreen() {
   }
   const rows = [...origins.values()].sort((a, b) => b.revenue - a.revenue || b.sessions - a.sessions);
   const grid = { display: "grid", gridTemplateColumns: LP_GRID, gap: 16, padding: "13px 18px", alignItems: "start" };
+  // Funis da DM (teste A/B/C): sessões na página de entrada × dinheiro do checkout.
+  const funnelMoney = Boolean(conv?.by_funnel);
+  const funnelRows = buildFunnelRows(d);
+  const leader = pickLeader(funnelRows);
+  const funilLinhas = funnelRows.map((r) => ({
+    ...r, key: r.id, name: `${r.label} (${r.id})`,
+    sub: r.id === "app" ? `${fmt.int(r.ctaSessions)} abriram a loja · conversão nas lojas` : r.checkoutSessions ? `${fmt.int(r.checkoutSessions)} chegaram ao checkout` : "",
+  }));
+  const palavraMoney = Boolean(conv?.by_palavra);
+  const palavraLinhas = buildPalavraRows(d).map((r) => ({
+    ...r, key: r.palavra, name: r.palavra,
+    sub: Object.entries(r.byFunnel).map(([f, b]) => `${f}: ${fmt.int(b.sessions || 0)}${b.approved ? ` · ${b.approved} pago${b.approved > 1 ? "s" : ""}` : ""}`).join(" · "),
+    conversion: r.approved == null || !r.sessions ? null : r.approved / r.sessions,
+  }));
   return <div className="marketing-page" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
     <PageHead className="marketing-head" title="Landing pages" sub={`visitas e conversão do checkout por origem · ${win.label}`} />
     <div className="marketing-body">
@@ -71,6 +113,14 @@ function LandingPagesScreen() {
                 ...(conv ? [{ rotulo: "pedidos", valor: created }, { rotulo: "pagos", valor: approved, nota: centavos(revenue) }] : []),
               ]} />
             </div>
+          </Card>
+          <Card title="Funis" hint="teste A/B/C da DM · /go/<palavra>" style={{ overflow: "hidden" }}>
+            <FunilTabela head="Funil" rows={funilLinhas} leaderId={leader?.id} money={funnelMoney} />
+          </Card>
+          <InfoNota>Sessões contam só a página de entrada de cada funil (LP, quiz ou /app). {leader ? `👑 líder por ${leader.metric} (${fmt.pct(leader.rate, 1)}).` : `Líder aparece com ${LEADER_MIN_SESSIONS}+ sessões por funil.`} O funil app não concorre: a conversão dele acontece nas lojas.{!funnelMoney && conv ? " Pedidos por funil aparecem quando o banco do Elo tiver a atribuição de funil." : ""}</InfoNota>
+          <Card title="Palavras" hint="utm_content de cada vídeo" style={{ overflow: "hidden" }}>
+            {!palavraLinhas.length ? <EmptyState title="Nenhuma palavra no período" hint="As palavras aparecem quando chegam visitas pelos links /go/<palavra>." />
+              : <FunilTabela head="Palavra" rows={palavraLinhas} money={palavraMoney} />}
           </Card>
           {!d.pages?.length && <InfoNota>Nenhuma visita registrada no período. Os pedidos e pagamentos continuam disponíveis abaixo quando o checkout está conectado.</InfoNota>}
           {!conv && <InfoNota>A conversão do checkout está indisponível. Pedidos e receita aparecem quando a integração do Elo está conectada.</InfoNota>}

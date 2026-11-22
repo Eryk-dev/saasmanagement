@@ -49,6 +49,15 @@ const clampDays = (q) => Math.min(365, Math.max(7, Number(q) || 30));
 // As funções são as ÚNICAS coisas que a cockpit_reader alcança no banco do Elo.
 const ELO_FNS = new Set(["elo_overview", "elo_lp_conversions"]);
 
+// Página de entrada de cada funil da DM (page normalizada do beacon).
+export function isFunnelEntry(funnel, page) {
+  const p = String(page || "");
+  if (funnel === "lp") return p === "lp" || p === "home" || /^lp\/m\d+$/.test(p);
+  if (funnel === "form") return p === "quiz" || p.startsWith("quiz/");
+  if (funnel === "app") return p === "app";
+  return false;
+}
+
 export function registerEloRoutes(app, repo, opts = {}) {
   // Cache curto por (função, janela): a tela re-pede a cada troca de período e
   // o SSE de escritas do cockpit não invalida nada aqui (dados vêm de fora).
@@ -83,6 +92,13 @@ export function registerEloRoutes(app, repo, opts = {}) {
     windowMs: opts.rateWindowMs ?? 60_000,
   });
   const EVENT_TYPES = new Set(["view", "cta"]);
+  // Funis da DM do Instagram (teste A/B/C, contrato em landing-page/go/README.md
+  // no repo do Elo): f = lp | form | app; utm_content = palavra do vídeo.
+  const FUNNELS = new Set(["lp", "form", "app"]);
+  const cleanPalavra = (v) => {
+    const s = typeof v === "string" ? v.trim().toLowerCase() : "";
+    return /^[a-z0-9_-]{1,64}$/.test(s) ? s : "";
+  };
   app.post("/public/lp/events", async (req, reply) => {
     if (!allowEvent(clientIp(req))) return reply.code(429).send({ error: "Muitos eventos." });
     const body = req.body && typeof req.body === "object" ? req.body : {};
@@ -100,6 +116,13 @@ export function registerEloRoutes(app, repo, opts = {}) {
       const src = referrerSource(String(body.referrer));
       if (src) utm = { ...(utm || {}), source: src };
     }
+    // Palavra da DM: utm_content no topo do body ganha do utm.content; sempre
+    // minúscula e só [a-z0-9_-] (fora disso some — vira "sem palavra").
+    const palavra = cleanPalavra(body.utm_content) || cleanPalavra(utm?.content);
+    if (utm) delete utm.content;
+    if (palavra) utm = { ...(utm || {}), content: palavra };
+    const f = String(body.f || "").trim().toLowerCase();
+    const funnel = FUNNELS.has(f) ? f : "";
     // Id explícito: eventos chegam em rajada e o gerador do repo é por timestamp.
     await repo.create("lp_events", {
       id: `lp_${randomUUID()}`,
@@ -109,6 +132,7 @@ export function registerEloRoutes(app, repo, opts = {}) {
       session,
       ...(label ? { label } : {}),
       ...(utm ? { utm } : {}),
+      ...(funnel ? { funnel } : {}),
       createdAt: new Date().toISOString(),
       ua: String(req.headers["user-agent"] || "").slice(0, 300),
     });
@@ -124,7 +148,7 @@ export function registerEloRoutes(app, repo, opts = {}) {
     const events = await repo.listWhere(
       "lp_events",
       { saas, createdAt: { gte: since } },
-      { fields: ["page", "event", "session", "utm", "label", "createdAt"] },
+      { fields: ["page", "event", "session", "utm", "label", "funnel", "createdAt"] },
     );
 
     // Sessões únicas por página/origem/dia — cada page load é uma sessão nova
@@ -133,6 +157,36 @@ export function registerEloRoutes(app, repo, opts = {}) {
     const sources = new Map(); // source -> { sessions:Set, ctas:Set }
     const daily = new Map();   // yyyy-mm-dd -> { page -> Set(session) }
     const ctaLabels = new Map(); // label -> cliques
+    // Funis da DM: conta só a página de ENTRADA de cada funil (LP, quiz, /app) —
+    // senão a mesma pessoa contaria de novo no checkout/obrigado.
+    const funnels = new Map();  // funil -> { sessions:Set, ctas:Set, checkout:Set }
+    const palavras = new Map(); // palavra -> { sessions:Set, ctas:Set, byFunnel: { f -> {sessions:Set, ctas:Set} } }
+    const bucket = () => ({ sessions: new Set(), ctas: new Set() });
+    for (const e of events) {
+      const fn = e.funnel;
+      if (!fn) continue;
+      const entry = isFunnelEntry(fn, e.page);
+      if (e.page === "checkout") {
+        const b = funnels.get(fn) || { ...bucket(), checkout: new Set() };
+        b.checkout.add(e.session);
+        funnels.set(fn, b);
+      }
+      if (!entry) continue;
+      const b = funnels.get(fn) || { ...bucket(), checkout: new Set() };
+      b.sessions.add(e.session);
+      if (e.event === "cta") b.ctas.add(e.session);
+      funnels.set(fn, b);
+      const palavra = e.utm?.content;
+      if (palavra) {
+        const w = palavras.get(palavra) || { ...bucket(), byFunnel: {} };
+        w.sessions.add(e.session);
+        if (e.event === "cta") w.ctas.add(e.session);
+        const wf = w.byFunnel[fn] || (w.byFunnel[fn] = bucket());
+        wf.sessions.add(e.session);
+        if (e.event === "cta") wf.ctas.add(e.session);
+        palavras.set(palavra, w);
+      }
+    }
     for (const e of events) {
       const p = pages.get(e.page) || { views: new Set(), ctas: new Set(), ctaClicks: 0 };
       if (e.event === "view") p.views.add(e.session);
@@ -187,6 +241,18 @@ export function registerEloRoutes(app, repo, opts = {}) {
         .map(([label, clicks]) => ({ label, clicks }))
         .sort((a, b) => b.clicks - a.clicks)
         .slice(0, 20),
+      funnels: [...funnels.entries()]
+        .map(([funnel, b]) => ({ funnel, sessions: b.sessions.size, ctaSessions: b.ctas.size, checkoutSessions: b.checkout.size }))
+        .sort((a, b) => b.sessions - a.sessions),
+      palavras: [...palavras.entries()]
+        .map(([palavra, w]) => ({
+          palavra,
+          sessions: w.sessions.size,
+          ctaSessions: w.ctas.size,
+          byFunnel: Object.fromEntries(Object.entries(w.byFunnel)
+            .map(([f, b]) => [f, { sessions: b.sessions.size, ctaSessions: b.ctas.size }])),
+        }))
+        .sort((a, b) => b.sessions - a.sessions),
       conversions,
     };
   });

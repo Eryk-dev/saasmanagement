@@ -92,3 +92,41 @@ test("visão do app sem ELO_DB_URL responde configured:false", async () => {
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.json(), { configured: false });
 });
+
+test("beacon grava funil (f) e palavra (utm_content) normalizados", async () => {
+  const { app, repo } = await buildApp();
+  await app.inject({ method: "POST", url: "/public/lp/events", payload: view({ page: "/lp/m3/", f: "LP", utm_content: "Ciume" }) });
+  await app.inject({ method: "POST", url: "/public/lp/events", payload: view({ session: "x", f: "tiktok", utm: { source: "instagram", content: "com espaço" } }) });
+  const [a, b] = await repo.list("lp_events");
+  assert.equal(a.funnel, "lp");
+  assert.equal(a.utm.content, "ciume");
+  assert.equal(b.funnel, undefined, "funil fora do enum é descartado");
+  assert.equal(b.utm.content, undefined, "palavra fora do padrão é descartada");
+  assert.equal(b.utm.source, "instagram");
+});
+
+test("resumo agrega funis (só página de entrada) e palavras", async () => {
+  const { app } = await buildApp();
+  const dm = (over) => view({ utm: { source: "instagram", medium: "dm" }, utm_content: "teste", ...over });
+  const post = (payload) => app.inject({ method: "POST", url: "/public/lp/events", payload });
+  // lp: entrou na LP, clicou no CTA e foi pro checkout (checkout não conta como sessão do funil)
+  await post(dm({ session: "l1", page: "/lp/m2/", f: "lp" }));
+  await post(dm({ session: "l1", page: "/lp/m2/", f: "lp", event: "cta" }));
+  await post(dm({ session: "c1", page: "/checkout/", f: "lp" }));
+  // form: quiz; app: /app com redirect automático (cta)
+  await post(dm({ session: "q1", page: "/quiz/", f: "form" }));
+  await post(dm({ session: "a1", page: "/app", f: "app", utm_content: "mapa" }));
+  await post(dm({ session: "a1", page: "/app", f: "app", utm_content: "mapa", event: "cta" }));
+  // visita sem funil não entra na tabela de funis
+  await post(view({ session: "o1" }));
+
+  const body = (await app.inject({ method: "GET", url: "/api/lp/summary?saas=elo&days=7" })).json();
+  const f = Object.fromEntries(body.funnels.map((x) => [x.funnel, x]));
+  assert.deepEqual(f.lp, { funnel: "lp", sessions: 1, ctaSessions: 1, checkoutSessions: 1 });
+  assert.equal(f.form.sessions, 1);
+  assert.equal(f.app.ctaSessions, 1);
+  const w = Object.fromEntries(body.palavras.map((x) => [x.palavra, x]));
+  assert.equal(w.teste.sessions, 2);
+  assert.equal(w.teste.byFunnel.lp.ctaSessions, 1);
+  assert.equal(w.mapa.byFunnel.app.sessions, 1);
+});
