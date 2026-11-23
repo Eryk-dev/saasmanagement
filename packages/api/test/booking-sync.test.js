@@ -4,7 +4,7 @@
 import test, { afterEach, beforeEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeBookingSync, recordBookingClick, phonesIn, emailKey, holdSlot } from "../src/google/booking-sync.js";
+import { makeBookingSync, recordBookingClick, phonesIn, emailKey, holdSlot, bookerName } from "../src/google/booking-sync.js";
 import { listNotifications, markNotificationsRead, upsertNotification, clearNotifications } from "../src/tasks/tasks-core.js";
 import { blockHits } from "../src/crm/agenda-slots.js";
 
@@ -414,6 +414,35 @@ test("card com outra integração por vir: a marcação também fica pré-bloque
   assert.equal(hold.booking.eventId, "bk1");
   assert.equal(hold.saas, "leverads");
   assert.equal(hold.booking.who, "Ana Prado");
+});
+
+test("clique de quem já tem integração por vir não leva a marcação de outra pessoa (caso Andrea × Gabriel/Ronaldo, 23/11/2026)", async () => {
+  const { repo, cal, sync, eryk } = await setup();
+  // Bia já marcou a integração e clicou de novo no link (ver o horário).
+  await repo.update("leads", "bia", { integrationAt: "2026-10-10T14:00", integrationMeetEventId: "bia-ev", integrationScheduledAt: "2026-10-10T17:00:00.000Z" });
+  await recordBookingClick(repo, { userId: "eryk", leadId: "bia", ua: "Mozilla/5.0 (iPhone)", now: new Date(NOW.getTime() - 60 * 60_000) });
+  // Outra pessoa marca pelo link com um e-mail que não está em card nenhum, sem nome no convidado.
+  cal.queue.push([booking({
+    id: "gab", summary: "Integração (Gabriel Oliveira)",
+    attendees: [{ email: "eryk@leverads.com.br", self: true }, { email: "gabriel@hotmail.com" }],
+    description: "<b>Reservado por</b>\nGabriel Oliveira\ngabriel@hotmail.com",
+  })]);
+  await sync.syncUser(eryk, NOW);
+  const bia = await repo.get("leads", "bia");
+  assert.equal(bia.integrationAt, "2026-10-10T14:00", "o card de quem clicou não muda");
+  const [n] = (await repo.list("notifications")).filter((x) => x.key === "booking-orphan:gab");
+  assert.match(n.text, /^Gabriel Oliveira marcou .* não achei o card/);
+  assert.equal(n.link.booking, "gab", "o sino abre a escolha do card");
+  const [hold] = await repo.list("agenda_blocks");
+  assert.equal(hold.booking.who, "Gabriel Oliveira");
+  assert.match(hold.title, /^Gabriel Oliveira marcou pelo link/);
+});
+
+test("nome de quem marcou: vem da descrição da página do Google", () => {
+  assert.equal(bookerName("<b>Reservado por</b>\nGabriel Oliveira\ngabriel@hotmail.com"), "Gabriel Oliveira");
+  assert.equal(bookerName("Agendado por Bia\nTelefone: 21 97777-6666"), "Bia");
+  assert.equal(bookerName("Booked by\njo@x.com"), "");
+  assert.equal(bookerName("Alinhamento com parceiro"), "");
 });
 
 test("pré-bloqueio acompanha a remarcação e é liberado quando o cliente cancela", async () => {

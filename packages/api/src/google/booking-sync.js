@@ -108,6 +108,17 @@ export function phonesIn(text) {
     .map((d) => waMatchKey(d.length <= 11 ? `55${d}` : d));
 }
 
+// Quem marcou, como a página de agendamento do Google escreve na descrição
+// ("<b>Reservado por</b>\nNome\ne-mail"; o convidado costuma vir sem nome).
+// Vazio se não achar.
+export function bookerName(description) {
+  const text = String(description || "").replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "");
+  const m = text.match(/(?:reservad[oa]|agendad[oa]|marcad[oa]) por|booked by/i);
+  if (!m) return "";
+  const lines = text.slice(m.index + m[0].length).split("\n").map((s) => s.replace(/^[\s:–-]+/, "").trim());
+  return (lines.find((s) => s && !/@/.test(s)) || "").slice(0, 80);
+}
+
 const whenLabel = (naive) => {
   const d = new Date(`${naive}:00-03:00`);
   return Number.isFinite(d.getTime())
@@ -422,10 +433,16 @@ export function makeBookingSync({ repo, googleUser: gu, google = null, fetch: f 
         if (hit.length !== 1) { why = "clique"; hit = pool.filter(clicked); }
         if (hit.length === 1) break;
       }
-      const who = guests.map((a) => a.displayName || a.email).join(", ");
-      const lead = hit.length === 1 ? hit[0] : null;
-      // Card que já tem OUTRA integração por vir: não pisa; avisa quem integra.
-      const busy = lead && lead.integrationMeetEventId && lead.integrationMeetEventId !== ev.id && Date.parse(lead.integrationScheduledAt || "") > now.getTime();
+      const booker = guests.some((a) => a.displayName) ? "" : bookerName(ev.description);
+      const who = booker || guests.map((a) => a.displayName || a.email).join(", ");
+      const ahead = (l) => !!(l && l.integrationMeetEventId && l.integrationMeetEventId !== ev.id && Date.parse(l.integrationScheduledAt || "") > now.getTime());
+      // O clique é o sinal fraco (vale por 48h para qualquer marcação): quem clicou
+      // e já tem outra integração por vir não é quem marcou. Em 23/11/2026 o clique
+      // da Andrea (integração no dia seguinte) levou as marcações do Gabriel e do
+      // Ronaldo, feitas com e-mails fora dos cards, para o nome dela na Agenda.
+      const lead = hit.length === 1 && !(why === "clique" && ahead(hit[0])) ? hit[0] : null;
+      // Card (achado por e-mail/telefone) que já tem OUTRA integração por vir: não pisa; avisa quem integra.
+      const busy = ahead(lead);
       if (lead && !busy) { await applyBooking(user, lead, ev, why, now); done++; continue; }
       if (!busy && !clickedRecently && !BOOKING_TEXT.test(`${ev.summary || ""}
 ${ev.description || ""}`)) continue;
