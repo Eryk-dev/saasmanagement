@@ -1483,6 +1483,11 @@ integração por vir não é sobrescrito pela ligação automática (só avisa);
 mão pelo sino (`linkEvent`) substitui essa integração e apaga a sala antiga
 (24/10/2026); marcação sem card avisa quem integra (só
 com clique recente ou texto de agendamento no evento).
+O clique (48h, sinal fraco) não liga a marcação a um card que já tem outra
+integração por vir: vira marcação sem card (23/11/2026: o clique da Andrea
+levou as marcações do Gabriel e do Ronaldo, com e-mails fora dos cards, para o
+nome dela). O nome de quem marcou, quando o convidado vem sem nome, sai do
+"Reservado por" da descrição (`bookerName`).
 
 **Conflito operador × cliente no horário da integração (07/10/2026).** A grade
 de integração (Próximo passo, Remarcar e o gate do `stage-move`) soma ao que o
