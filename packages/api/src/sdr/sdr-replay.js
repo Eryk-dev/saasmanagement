@@ -134,7 +134,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
       // REVISOR (24/11): com `review: "audit"` cada decisão responder/humano/
       // silencio passa pela segunda leitura; aqui fica o que ela aprovou e o
       // que corrigiria, com o que o time respondeu de verdade ao lado.
-      review: { total: 0, approved: 0, changed: 0, errors: 0, ms: 0, usage: { in: 0, out: 0 }, samples: [] },
+      review: { total: 0, approved: 0, changed: 0, discarded: 0, errors: 0, byReason: {}, ms: 0, usage: { in: 0, out: 0 }, samples: [], discardedSamples: [] },
       usage: { in: 0, out: 0, cacheRead: 0, cacheWrite: 0 }, // tokens somados
       msTotal: 0,                 // latência somada (÷ turns = média)
       samples: [],
@@ -193,8 +193,10 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
           if (d.review) {
             const rv = d.review, R = report.review;
             R.total++; if (rv.error) R.errors++; else if (rv.approved) R.approved++; else R.changed++;
+            if (rv.reason) R.byReason[rv.reason] = (R.byReason[rv.reason] || 0) + 1;
+            if (rv.discarded) { R.discarded++; if (R.discardedSamples.length < 30) R.discardedSamples.push({ motivo: rv.discarded, problem: rv.problem, leadMsg: String(m.transcript || m.text || "").slice(0, 160) }); }
             R.ms += Number(rv.ms) || 0; R.usage.in += Number(rv.usage?.in) || 0; R.usage.out += Number(rv.usage?.out) || 0;
-            if (!rv.approved && R.samples.length < 80) R.samples.push({ lead: lead.name || lead.id, state: st.state, leadMsg: String(m.transcript || m.text || "").slice(0, 260), problem: rv.problem, original: rv.original, fixed: rv.fixed, real: String(realNext.text || "").slice(0, 200), realAuthor: realNext.author === SDR_AUTHOR ? "sdr-bot" : realNext.author || "" });
+            if (!rv.approved && R.samples.length < 80) R.samples.push({ lead: lead.name || lead.id, state: st.state, reason: rv.reason, leadMsg: String(m.transcript || m.text || "").slice(0, 260), problem: rv.problem, original: rv.original, fixed: rv.fixed, real: String(realNext.text || "").slice(0, 200), realAuthor: realNext.author === SDR_AUTHOR ? "sdr-bot" : realNext.author || "" });
           }
           report.actions[d.acao] = (report.actions[d.acao] || 0) + 1;
           if ((d.acao === "agendar" || d.acao === "remarcar")) {

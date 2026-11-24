@@ -2261,7 +2261,7 @@ test("24/11 (medição): resposta que combina esperar o lead não leva oferta de
 // decisão revisada pelo MESMO caminho (aqui: marca o horário) e registra.
 test("24/11 (revisor): com reviewMode ligado o cérebro pede a revisão, executa a decisão revisada e registra o que mudou #R-124", async () => {
   const messages = [...PITCH_2411, { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?", at: ISO("2026-08-19T11:31:00Z") }, { direction: "in", text: "prefiro o das nove, pode marcar", at: ISO("2026-08-19T12:59:00Z") }];
-  const review = { mode: "enforce", approved: false, applied: true, problem: "item 2: ele escolheu as 9h, que está na lista", original: { acao: "responder", partes: ["Perfeito Rafael"], oferecer: true, slotIds: [] }, fixed: { acao: "agendar", partes: [], oferecer: false, slotIds: ["s3"] }, ms: 900, usage: { in: 100, out: 20 } };
+  const review = { mode: "enforce", approved: false, applied: true, reason: "nao_marcou", problem: "ele escolheu as 9h, que está na lista", original: { acao: "responder", partes: ["Perfeito Rafael"], oferecer: true, slotIds: [] }, fixed: { acao: "agendar", partes: [], oferecer: false, slotIds: ["s3"] }, ms: 900, usage: { in: 100, out: 20 } };
   const repo = await world({ sdrBot: { ...V2_ENFORCE, reviewMode: "enforce" }, messages });
   const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: "2026-08-20T09:00", slotIds: ["s3"], review }] });
   const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "prefiro o das nove, pode marcar" } });
@@ -2269,7 +2269,7 @@ test("24/11 (revisor): com reviewMode ligado o cérebro pede a revisão, executa
   assert.equal(r, "agendar");
   assert.equal((await repo.get("leads", "L1")).callAt, "2026-08-20T09:00");
   const doc = (await repo.list("app_config")).find((d) => String(d.id).startsWith("sdr_review_leverads_"));
-  assert.deepEqual([doc.total, doc.changed, doc.applied, doc.approved], [1, 1, 1, 0]);
+  assert.deepEqual([doc.total, doc.changed, doc.applied, doc.approved, doc.byReason], [1, 1, 1, 0, { nao_marcou: 1 }]);
   assert.match(doc.samples[0].problem, /escolheu as 9h/);
   assert.equal(doc.samples[0].leadMsg, "prefiro o das nove, pode marcar");
   // Desligado (padrão): a IA é chamada sem revisão e nada é registrado.

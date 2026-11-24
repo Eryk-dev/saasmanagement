@@ -1034,7 +1034,9 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
         const t1 = Date.now();
         try {
           const rv = await requestJson(buildReviewUser(userV2, first), { system: buildReviewCore(), schema: reviewSchema(slotsV2.map((s) => s.id)), schemaName: "sdr_review_v2" });
-          return applyReview(first, rv.parsed || {}, { mode: review, slots: slotsV2, ms: Date.now() - t1, usage: rv.usage, model: rv.model });
+          // O que o lead disse na mensagem nova (as linhas seguidas dele no fim).
+          const tail = []; for (let k = conversation.length - 1; k >= 0 && !/^VOC/i.test(conversation[k].who || ""); k--) tail.unshift(conversation[k].text || "");
+          return applyReview(first, rv.parsed || {}, { mode: review, slots: slotsV2, ms: Date.now() - t1, usage: rv.usage, model: rv.model, leadText: tail.join(" "), engaged: facts?.engaged !== false, callAt: facts?.callPassed ? "" : callAt });
         } catch (err) {
           return { ...first, review: { mode: review, approved: true, problem: "", applied: false, error: String(err?.message || err).slice(0, 160), ms: Date.now() - t1 } };
         }
