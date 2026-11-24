@@ -54,7 +54,7 @@ test("S/A/B somente Leonardo/Jonan/Jonathan; C/D/E e sem nota priorizam Vitor; o
 // Leo, 23/10/2026: Price é call de Leonardo/Jonan/Jonathan, mesmo pra lead C/D/E.
 // Leo, 08/11/2026: Price com nota D ou E vai pro Ricardo primeiro.
 // Leo, 17/11/2026: Eduardo e Vinicius entram junto com o Ricardo, e a nota C
-// desce pros três — OEM/Ads continua fora pra todos eles.
+// desce pros três — Ads continua fora pra todos eles (OEM C/D/E com o Eduardo: teste abaixo).
 const PRICE_JR = ["us_ric", "us_edu", "us_vini"];
 test("lead de Lever Price nunca vai pro Vitor; S/A/B e sem nota ficam com os de cima, C/D/E com Ricardo/Eduardo/Vinicius #R-033", async () => {
   const repo = await world();
@@ -69,10 +69,44 @@ test("lead de Lever Price nunca vai pro Vitor; S/A/B e sem nota ficam com os de 
       assert.equal(price.pool, "upper");
       assert.ok(price.slots.every((s) => ["leo", "jonan", "jonathan"].includes(s.closer)), `Price nota ${grade} com os de cima`);
     }
-    const oem = await sdrSlotsForLead(repo, { ...options, grade, lead: { id: "o1", saas: "leverads", sourcePain: "OEM" } });
-    assert.ok(oem.slots.every((s) => !PRICE_JR.includes(s.closer)), `OEM nota ${grade} nunca vai pro time de Price`);
-    if (!["S", "A", "B"].includes(grade)) assert.ok(oem.slots.every((s) => s.closer === "vit"), `OEM nota ${grade} segue no Vitor`);
+    const ads = await sdrSlotsForLead(repo, { ...options, grade, lead: { id: "a1", saas: "leverads", sourcePain: "A" } });
+    assert.ok(ads.slots.every((s) => !PRICE_JR.includes(s.closer)), `Ads nota ${grade} nunca vai pro time de Price`);
   }
+});
+
+// Leo, 24/11/2026: OEM com nota C, D ou E abre a agenda do Eduardo junto com a
+// do Vitor. OEM S/A/B segue com os de cima; OEM sem nota, só com o Vitor;
+// Ricardo e Vinicius continuam fora do OEM.
+test("OEM C/D/E vai pro Vitor e pro Eduardo; sem nota só Vitor; S/A/B com os de cima #R-033", async () => {
+  const repo = await world();
+  const lead = { id: "o1", saas: "leverads", sourcePain: "oem" };
+  for (const grade of ["S", "A", "B", "C", "D", "E", null]) {
+    const oem = await sdrSlotsForLead(repo, { ...options, grade, lead });
+    assert.ok(oem.slots.length);
+    assert.ok(oem.slots.every((s) => !["us_ric", "us_vini"].includes(s.closer)), `OEM nota ${grade} fora do Ricardo e do Vinicius`);
+    if (["S", "A", "B"].includes(grade)) assert.ok(oem.slots.every((s) => ["leo", "jonan", "jonathan"].includes(s.closer)), `OEM nota ${grade} com os de cima`);
+    else if (grade) {
+      assert.equal(oem.pool, "junior");
+      assert.ok(oem.slots.every((s) => ["vit", "us_edu"].includes(s.closer)), `OEM nota ${grade} com Vitor ou Eduardo`);
+    } else assert.ok(oem.slots.every((s) => s.closer === "vit"), "OEM sem nota segue só no Vitor");
+  }
+  // Carga do dia desempata: a call do Vitor empurra a oferta pro Eduardo, e vice-versa.
+  const vistos = [];
+  for (let i = 0; i < 2; i++) {
+    const { slots } = await sdrSlotsForLead(repo, { ...options, grade: "D", lead });
+    vistos.push(slots[0].closer);
+    await repo.create("leads", { id: `o-b${i}`, saas: "leverads", stage: "Call", closer: slots[0].closer, callAt: `2026-09-21T1${5 + i}:00` });
+  }
+  assert.deepEqual(new Set(vistos), new Set(["vit", "us_edu"]));
+  // Os de cima só entram no dia em que os dois lotam.
+  await repo.create("agenda_blocks", { id: "ve", users: ["vit"], recur: "once", date: "2026-09-22", allDay: true });
+  const soVitorLotado = await sdrSlotsForLead(repo, { ...options, grade: "C", lead });
+  assert.ok(soVitorLotado.slots.filter((s) => s.at.startsWith("2026-09-22T")).every((s) => s.closer === "us_edu"), "amanhã fica com o Eduardo");
+  await repo.update("agenda_blocks", "ve", { users: ["vit", "us_edu"] });
+  const osDoisLotados = await sdrSlotsForLead(repo, { ...options, grade: "C", lead });
+  assert.equal(osDoisLotados.pool, "junior+upper");
+  const amanha = osDoisLotados.slots.filter((s) => s.at.startsWith("2026-09-22T"));
+  assert.ok(amanha.length && amanha.every((s) => ["leo", "jonan", "jonathan"].includes(s.closer)), "os dois lotados sobe pros de cima");
 });
 
 test("Price C/D/E só sobe pros de cima no dia em que os três lotam; sem eles cadastrados volta pros de cima #R-033", async () => {
