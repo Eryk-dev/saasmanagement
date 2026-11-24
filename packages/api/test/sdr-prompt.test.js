@@ -167,7 +167,8 @@ test("revisor: mesmo núcleo como prefixo e um papel só, não perder agenda; a 
   const core = buildCoreV2(), rev = buildReviewCore();
   assert.ok(rev.startsWith(core), "o núcleo segue byte a byte na frente (prefixo cacheável e regras idênticas)");
   const tail = rev.slice(core.length);
-  assert.match(tail, /MODO REVISÃO[\s\S]*PERDER AGENDA[\s\S]*nao_marcou[\s\S]*humano_sem_precisar[\s\S]*silencio_sem_precisar[\s\S]*nao_convidou[\s\S]*nao_respondeu[\s\S]*Na dúvida, aprove/);
+  assert.match(tail, /MODO REVISÃO[\s\S]*PERDER AGENDA[\s\S]*nao_marcou[\s\S]*humano_sem_precisar[\s\S]*silencio_sem_precisar[\s\S]*nao_convidou[\s\S]*não invente funcionalidade[\s\S]*Na dúvida, aprove/);
+  assert.ok(!tail.includes("nao_respondeu"), "reescrever a resposta não é motivo (2º ensaio)");
   assert.match(tail, /nunca tira a oferta de horário[\s\S]*nunca passa pra gente[\s\S]*nunca silencia[\s\S]*nunca desmarca/);
   for (const f of FORBIDDEN_IN_PROMPT) assert.ok(!tail.includes(f), f);
   const schema = reviewSchema(["s1", "s2"]);
@@ -201,11 +202,8 @@ test("revisor: mesmo núcleo como prefixo e um papel só, não perder agenda; a 
   const seco = d({ acao: "responder", partes: ["Isso Rafael"] });
   const conv = rv({ motivo: "nao_convidou", acao: "responder", partes: ["Isso Rafael"], oferecer: true });
   assert.deepEqual([applyReview(seco, conv, E).oferecer, applyReview(seco, conv, { ...E, engaged: false }).oferecer, applyReview(seco, conv, { ...E, callAt: "2026-08-20T09:00" }).oferecer], [true, false, false]);
-  // nao_respondeu: troca o texto e NUNCA tira a oferta do rascunho.
-  const fix = applyReview(first, rv({ motivo: "nao_respondeu", acao: "responder", partes: ["Pode sim Rafael, pelo celular funciona"], oferecer: false }), E);
-  assert.deepEqual([fix.mensagens, fix.oferecer, fix.review.applied], [["Pode sim Rafael, pelo celular funciona"], true, true]);
   // O que o revisor NUNCA faz, mesmo pedindo: passar pra gente, silenciar, desmarcar, tirar a oferta, reescrever por gosto.
-  for (const bad of [rv({ motivo: "nao_respondeu", acao: "humano", partes: ["Vou passar pro time"] }), rv({ motivo: "silencio_sem_precisar", acao: "silencio" }), rv({ motivo: "nao_marcou", acao: "desmarcar" }), rv({ motivo: "", acao: "responder", partes: ["Perfeito, Rafael."], oferecer: true }), rv({ motivo: "estilo", acao: "responder", partes: ["Outra frase"], oferecer: false })]) {
+  for (const bad of [rv({ motivo: "nao_respondeu", acao: "responder", partes: ["Nos itens sem código o fluxo não gera o anúncio"], oferecer: true }), rv({ motivo: "nao_convidou", acao: "humano", partes: ["Vou passar pro time"] }), rv({ motivo: "silencio_sem_precisar", acao: "silencio" }), rv({ motivo: "nao_marcou", acao: "desmarcar" }), rv({ motivo: "", acao: "responder", partes: ["Perfeito, Rafael."], oferecer: true }), rv({ motivo: "estilo", acao: "responder", partes: ["Outra frase"], oferecer: false })]) {
     const r = applyReview(first, bad, E);
     assert.deepEqual([r.acao, r.mensagens, r.oferecer, r.review.applied, r.review.approved], ["responder", ["Perfeito Rafael"], true, false, true], JSON.stringify(bad));
     assert.ok(r.review.discarded, "a reprovação recusada fica no registro");

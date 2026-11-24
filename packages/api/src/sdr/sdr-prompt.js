@@ -255,20 +255,27 @@ export const REVIEWABLE_ACTIONS = ["responder", "humano", "silencio"];
 // perder agenda; fora deles, aprova. E o código só aceita a correção que bate
 // com o motivo (applyReview): tirar oferta, passar pra gente, silenciar ou
 // desmarcar nunca vêm do revisor.
-export const REVIEW_REASONS = ["nao_marcou", "humano_sem_precisar", "silencio_sem_precisar", "nao_convidou", "nao_respondeu"];
+// 2º ensaio (24/11, mesmas 30 conversas, 129 decisões): 16 correções (12%),
+// nenhuma tirando oferta ou escalando. Convidar (7), não passar pra gente (2) e
+// marcar (1) saíram boas. "nao_respondeu" (6) saiu ruim: reescrevendo a
+// resposta o revisor inventou como uma autorização é feita, afirmou uma
+// limitação do produto e repetiu o pitch pra quem reenviou o formulário; o
+// único acerto (base de preço) o motor já garante. Por isso são quatro
+// motivos, e reescrever resposta não é um deles.
+export const REVIEW_REASONS = ["nao_marcou", "humano_sem_precisar", "silencio_sem_precisar", "nao_convidou"];
 
 const REVIEW_TAIL = `
 
-MODO REVISÃO. Outra SDR do time escreveu o RASCUNHO que vem no fim da mensagem, pra responder a mensagem nova do lead. Você é a revisora, e o seu papel é um só: não deixar o time PERDER AGENDA. Você só reprova quando o rascunho perde uma chance de marcar a conversa, por um destes cinco motivos, e nenhum outro:
+MODO REVISÃO. Outra SDR do time escreveu o RASCUNHO que vem no fim da mensagem, pra responder a mensagem nova do lead. Você é a revisora, e o seu papel é um só: não deixar o time PERDER AGENDA. Você só reprova quando o rascunho perde uma chance de marcar a conversa, por um destes quatro motivos, e nenhum outro:
 - nao_marcou: o lead escolheu, aceitou ou pediu um horário que está na lista de HORÁRIOS LIVRES e o rascunho não marcou. Correção: acao agendar (remarcar, se já existe conversa marcada) com o id desse horário e partes vazia.
 - humano_sem_precisar: o rascunho passou pra gente (acao humano) uma mensagem que dá pra responder com o que está neste prompt (como funciona, estoque, marketplaces atendidos, base de preço, celular, sócio, material, dúvida que vira motivo da demonstração). Não vale quando o lead pediu uma pessoa ou uma ligação, perguntou se é robô, está irritado ou pediu pra parar: nesses casos o rascunho está certo. Correção: acao responder com a resposta.
 - silencio_sem_precisar: o rascunho ficou calado (acao silencio) e o lead fez uma pergunta, citou dia ou hora, ou voltou a falar com algo que pede resposta. Correção: acao responder.
 - nao_convidou: não há conversa marcada, os FATOS dizem que o lead já engajou, ele não adiou nem mostrou desinteresse, e o rascunho respondeu sem convidar (oferecer=false) e sem uma pergunta que leve ao horário. Correção: a mesma resposta, sem pergunta no fim, com oferecer=true.
-- nao_respondeu: o lead fez uma pergunta direta e o rascunho não respondeu, ou a resposta se desmente (concorda e nega na mesma fala). Correção: as partes respondendo, curto, no jeito da Manuela; oferecer igual ao do rascunho.
-Todo o resto NÃO é motivo pra reprovar: estilo, pontuação, tamanho, palavra que você trocaria, pitch repetido, pergunta parecida com outra, oferta que você acha cedo. O sistema tem outras conferências pra isso. Na dúvida, aprove.
+Nas correções em que você escreve a resposta, use só o que está neste prompt: não invente funcionalidade, limitação, prazo nem passo a passo; o que o prompt não diz vira motivo da demonstração.
+Todo o resto NÃO é motivo pra reprovar: estilo, pontuação, tamanho, palavra que você trocaria, pitch repetido, pergunta parecida com outra, oferta que você acha cedo, resposta que você daria de outro jeito. O sistema tem outras conferências pra isso. Na dúvida, aprove.
 Você nunca tira a oferta de horário de um rascunho, nunca passa pra gente, nunca silencia e nunca desmarca: essas correções são descartadas.
 Se aprova: aprovado=true, motivo e problema vazios, os outros campos iguais aos do rascunho.
-Se reprova: aprovado=false, motivo = um dos cinco acima, problema = uma frase curta dizendo o que o lead pediu e o rascunho perdeu, e os outros campos com a decisão corrigida.`;
+Se reprova: aprovado=false, motivo = um dos quatro acima, problema = uma frase curta dizendo o que o lead pediu e o rascunho perdeu, e os outros campos com a decisão corrigida.`;
 
 let reviewCoreCache = "";
 export function buildReviewCore() {
@@ -283,7 +290,7 @@ export function reviewSchema(slotIds = []) {
     required: ["aprovado", "motivo", "problema", ...base.required],
     properties: {
       aprovado: { type: "boolean", description: "true = o rascunho sai como está; false = o rascunho perde agenda e a correção vem nos outros campos." },
-      motivo: { type: "string", enum: ["", ...REVIEW_REASONS], description: "Se reprovou: qual dos cinco jeitos de perder agenda. Se aprovou: vazio." },
+      motivo: { type: "string", enum: ["", ...REVIEW_REASONS], description: "Se reprovou: qual dos quatro jeitos de perder agenda. Se aprovou: vazio." },
       problema: { type: "string", description: "Se reprovou: uma frase curta com o que o lead pediu e o rascunho perdeu. Se aprovou: vazio." },
       ...base.properties,
     },
@@ -321,11 +328,6 @@ function agendaGain(first, fixed, reason, { leadText = "", engaged = true, callA
   if (reason === "nao_convidou") {
     if (first.acao !== "responder" || fixed.acao !== "responder" || first.oferecer || !fixed.oferecer || !hasText || !engaged || callAt) return null;
     return fixed;
-  }
-  if (reason === "nao_respondeu") {
-    if (first.acao !== "responder" || fixed.acao !== "responder" || !hasText) return null;
-    // Nunca tira a oferta nem troca os horários que a 1ª IA escolheu.
-    return { ...fixed, oferecer: first.oferecer || fixed.oferecer, slotIds: first.slotIds?.length ? first.slotIds : fixed.slotIds, slots: first.slots?.length ? first.slots : fixed.slots };
   }
   return null;
 }
