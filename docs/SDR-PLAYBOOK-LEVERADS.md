@@ -149,7 +149,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-043 · Pedido de terceiro vira contato real
 
 - Origem: 2026-10-28, Leo (prints 28/10 (Alexandre: '11998116287 Chama Larissa' → 'vou encaminhar' e nada; Flavio mandou o cartão da gerente). Decisão do Leo: chamar o indicado, com template dizendo quem indicou)
-- Regra: Lead que pede pra falar com outra pessoa (nome + número no texto, ou cartão de contato 👤): o motor cria o card do indicado (dedup por telefone; mesmo produto e dor de origem; origem "Indicação · <lead>"), manda o template sdr_indicacao ("<Indicado>, <Lead> me passou seu contato e pediu pra eu te explicar como funciona o <produto>") e só então responde "acabei de chamar". Template não aprovado ou envio falhou: resposta honesta ("vou pedir pro time chamar") e handoff "terceiro" pro time. Sem número: pede o número. Nunca "vou encaminhar" sem executar.
+- Regra: Lead que pede pra falar com outra pessoa (nome + número no texto, ou cartão de contato 👤): o motor cria o card do indicado (dedup por telefone; mesmo produto e dor de origem; origem "Indicação · <lead>"), manda o template sdr_indicacao ("<Indicado>, <Lead> me passou seu contato e pediu pra eu te explicar como funciona o <produto>") e só então responde "acabei de chamar". Template não aprovado ou envio falhou: resposta honesta ("vou pedir pro time chamar") e handoff "terceiro" pro time. Sem número: pede o número. Nunca "vou encaminhar" sem executar. Pedir um humano, um atendente ou o contato de alguém do NOSSO time ("chama um humano aí", "poderia me passar o contato do Jonathan") não é indicação: segue pra IA, que passa pra gente (24/11, Emerson e Sidclei ouviram "me manda o número dessa pessoa").
 - Vale em: estados todos; roteiro todos; executada por intent, effects, template, alerta, prompt
 
 ### R-118 · Formulário reenviado por quem já conversou é volta, não lead novo
@@ -175,7 +175,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-022 · Oferta espontânea: hoje e o próximo dia útil, mais cedo primeiro
 
 - Origem: 2026-09-13, Leo (D+2 só a pedido (13/09); mais cedo primeiro (#1037, 17/09); hoje com 2h de folga (#1113, 30/09))
-- Regra: Sem pedido do lead, a oferta cobre hoje (só o que ainda cabe com 2h de folga) e o próximo dia útil, mais cedo primeiro: a oferta tem que conter o primeiro horário do par sugerido. Outros dias só entram quando o lead pede. Fim de semana oferece segunda.
+- Regra: Sem pedido do lead, a oferta cobre hoje (só o que ainda cabe com 2h de folga) e o próximo dia útil, mais cedo primeiro: a oferta tem que conter o primeiro horário do par sugerido. Outros dias só entram quando o lead pede. Fim de semana oferece segunda. Feriado nacional (fixos e Sexta-feira Santa) não entra na oferta nem na lista do robô, e a janela espontânea anda pro próximo dia útil (19/11, Fernanda: "amanhã às 9h" na véspera do 20/11); Carnaval e Corpus Christi ficam de fora até decisão.
 - Vale em: estados todos; roteiro todos; executada por agenda, guard, prompt (validador earliestFirst)
 
 ### R-023 · Par com 2h de respiro, em hora cheia
@@ -259,7 +259,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-040 · Recusa do par muda os horários
 
 - Origem: 2026-10-28, Leo (prints 28/10 (Alberto 5 recusas × "hoje às 14h" 2x; Wilian "nesse horário não consigo" → mesmo par; Everton 3x, Alexsandro, Edmundo))
-- Regra: Lead que recusou os horários oferecidos sem pedir outro ("nesse horário não consigo", "não dá") nunca recebe o mesmo par de novo: os horários recusados saem da lista e, se o dia inteiro foi recusado ("hoje não consigo", "minha agenda hoje tá cheia"), a oferta anda pro próximo dia útil. A comparação é por horário, não por texto: trocar a moldura da frase não vale. Sem nada novo pra oferecer, pergunta o período que fica melhor. A rajada do lead (mensagens seguidas, sem fala nossa no meio) é lida inteira: "hoje não conseguirei" + "na sexta estarei livre" é um pedido de sexta.
+- Regra: Lead que recusou os horários oferecidos sem pedir outro ("nesse horário não consigo", "não dá") nunca recebe o mesmo par de novo: os horários recusados saem da lista e, se o dia inteiro foi recusado ("hoje não consigo", "minha agenda hoje tá cheia"), a oferta anda pro próximo dia útil. A comparação é por horário, não por texto: trocar a moldura da frase não vale. Sem nada novo pra oferecer, pergunta o período que fica melhor. A rajada do lead (mensagens seguidas, sem fala nossa no meio) é lida inteira: "hoje não conseguirei" + "na sexta estarei livre" é um pedido de sexta. "Tenho compromisso/reunião/médico" sobre o par oferecido é recusa (17/11, Ézio: "tenho compromisso das 18 às 21" recebeu 18h ou 20h de novo).
 - Vale em: estados todos; roteiro todos; executada por agenda, guard, prompt (validador noSameOfferAfterRefusal)
 
 ### R-041 · Lotou só com prova do motor
@@ -271,7 +271,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-033 · Pool do closer pela nota do lead
 
 - Origem: 2026-08-22, Leo (régua S-E; equipe nominal 20/09; Price nunca pro Vitor 23/10; Price C/D/E com Ricardo, Eduardo e Vinicius 17/11)
-- Regra: S/A/B vai pro closer pleno ou sênior; C/D/E e sem nota vão pro júnior; C/D sobe pro pleno quando o dia do júnior lota; S/A/B nunca desce; pool vazio cai pra todos. Lead de Lever Price (dor de origem PRICE) nunca vai pro júnior (Vitor), qualquer que seja a nota: Price com nota C, D ou E vai primeiro pro time júnior de Price (Ricardo, Eduardo e Vinicius), que só atende Price e só essas notas — OEM e Ads nunca vão pra eles; os de cima só entram nos dias em que nenhum dos três tem horário. Price S/A/B e Price sem nota ficam com Leonardo, Jonan e Jonathan. O closer só recebe oferta dentro do horário de atendimento dele.
+- Regra: S/A/B vai pro closer pleno ou sênior; C/D/E e sem nota vão pro júnior; C/D sobe pro pleno quando o dia do júnior lota; S/A/B nunca desce; pool vazio cai pra todos. Lead de Lever Price (dor de origem PRICE) nunca vai pro júnior (Vitor), qualquer que seja a nota: Price com nota C, D ou E vai primeiro pro time júnior de Price (Ricardo, Eduardo e Vinicius), que só atende Price e só essas notas — OEM e Ads nunca vão pra eles; os de cima só entram nos dias em que nenhum dos três tem horário. Price S/A/B e Price sem nota ficam com Leonardo, Jonan e Jonathan. O closer só recebe oferta dentro do horário de atendimento dele. Encaixe (Leo, 24/11): quando o lead nomeia UMA hora exata e ela não está na lista, só pra essa hora a antecedência cai de 2h pra 1h e os closers de cima entram mesmo no dia em que o time do lead tem agenda (a SDR vinha desfazendo o robô na mão: "consegui um encaixe", Jeverson 16/11 e Joao 23/11). A oferta espontânea não muda.
 - Vale em: estados todos; roteiro todos; executada por agenda
 
 ### R-034 · Aceite e preço na mesma mensagem: o horário trava primeiro
@@ -283,13 +283,13 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-035 · Agendar e remarcar pelo caminho canônico, com confirmação enxuta
 
 - Origem: 2026-08-22, Leo (#736; confirmação enxuta #754 (23/08); Meet automático 01/09)
-- Regra: A hora que o lead escreveu ("17 horas por favor") manda sobre o id escolhido pela IA quando existe horário livre nessa hora (29/10, Alonso foi remarcado pra 10h30). Marcar = applyStageMove pra etapa de call, callHistory, callSetAt, Meet criado sozinho. A confirmação é curta e escrita ("agendado então pra quinta (21/08) às 10h"), sem re-descrever a demonstração, avisa do convite por e-mail só quando o card tem e-mail, e diz que chama antes pra confirmar. Remarcar confirma curto e manda o callAt antigo pro histórico.
+- Regra: A hora que o lead escreveu ("17 horas por favor") manda sobre o id escolhido pela IA quando existe horário livre nessa hora (29/10, Alonso foi remarcado pra 10h30). Marcar = applyStageMove pra etapa de call, callHistory, callSetAt, Meet criado sozinho. A confirmação é curta e escrita ("agendado então pra quinta (21/08) às 10h"), sem re-descrever a demonstração, avisa do convite por e-mail só quando o card tem e-mail, e diz que chama antes pra confirmar. Remarcar confirma curto e manda o callAt antigo pro histórico. Com uma hora só na fala do lead, o robô nunca marca outra: sem vaga nela, re-oferta dizendo a verdade (16/11, Marcio: "preciso mudar para 14:30" virou "remarcado pra hoje às 18h"). Com duas horas na fala ("13h estou almoçando, pode ser 14h?") vale a que a IA entendeu.
 - Vale em: estados todos; roteiro todos; executada por effects, prompt
 
 ### R-036 · Cancelar com consentimento antes de oferecer
 
 - Origem: 2026-08-24, Leo (#796 (ação desmarcar); consentimento 21/09)
-- Regra: Cancelamento explícito: a call sai de verdade (Meet cancelado, time avisado), a resposta confirma e pergunta se quer remarcar, sem horários. "Sim" oferece a agenda atual e espera a escolha; "não" ou resposta ambígua não libera horários e acolhe sem insistir; escolha depois do sim agenda. Não querer cancelar ou dificuldade com o link não cancelam.
+- Regra: Cancelamento explícito: a call sai de verdade (Meet cancelado, time avisado), a resposta confirma e pergunta se quer remarcar, sem horários. "Sim" oferece a agenda atual e espera a escolha; "não" ou resposta ambígua não libera horários e acolhe sem insistir; escolha depois do sim agenda. Não querer cancelar ou dificuldade com o link não cancelam. A frase de espera ("quando quiser remarcar é só me chamar") sai uma vez; qualquer resposta depois dela não a repete, e pergunta do lead chama gente (18/11, Pedroso).
 - Vale em: estados call_marcada, remarcacao_pendente, remarcacao_oferecida; roteiro todos; executada por intent, state, prompt, effects
 
 ### R-037 · Lead que nega a conversa marcada: gente confere
@@ -401,7 +401,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-083 · Desinteresse acolhe e para
 
 - Origem: 2026-10-08, Leo (#1140 (caso Laion: escada de preço respondeu a "não tenho mais interesse"))
-- Regra: Só em fala curta (até ~220 caracteres): explicação longa com "não tenho mais de uma conta" não é despedida (28/10, Matheus foi acolhido e silenciado enquanto pedia 13h). "Não quero começar", "não quero fazer call", "agora não", "ainda não é o momento" também são desinteresse e desligam o engajamento da resposta (28/10, Helano recebeu oferta em cima do "não quero"). Sem call marcada, "não tenho interesse", "agora não" ou pedido de pausa recebe uma frase ("Tranquilo Nome, sem problemas. Se fizer sentido retomar mais pra frente, é só me chamar aqui"), nada de venda, preço, horário ou motivo, e gente é avisada. Com call marcada é objeção (R-038). "Não me interessa", "não estou interessada" e a grafia de quem escreve corrido ("não mim interessa", "enteressada", espaço dobrado) também são desinteresse (17/11, Carmen: "bons estudos por aí" + oferta de horário, duas vezes).
+- Regra: Só em fala curta (até ~220 caracteres): explicação longa com "não tenho mais de uma conta" não é despedida (28/10, Matheus foi acolhido e silenciado enquanto pedia 13h). "Não quero começar", "não quero fazer call", "agora não", "ainda não é o momento" também são desinteresse e desligam o engajamento da resposta (28/10, Helano recebeu oferta em cima do "não quero"). Sem call marcada, "não tenho interesse", "agora não" ou pedido de pausa recebe uma frase ("Tranquilo Nome, sem problemas. Se fizer sentido retomar mais pra frente, é só me chamar aqui"), nada de venda, preço, horário ou motivo, e gente é avisada. Com call marcada é objeção (R-038). "Não me interessa", "não estou interessada" e a grafia de quem escreve corrido ("não mim interessa", "enteressada", espaço dobrado) também são desinteresse (17/11, Carmen: "bons estudos por aí" + oferta de horário, duas vezes). "Não, deixa, obrigada", "não, obrigado" e "deixa quieto" depois da oferta também (17/11, Jurema).
 - Vale em: estados todos; roteiro todos; executada por intent, prompt, alerta
 
 ### R-084 · Silêncio quando não há o que responder
@@ -539,7 +539,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-113 · Respostas ao lembrete
 
 - Origem: 2026-10-01, Leo (#1114)
-- Regra: "Pode", "vou", "confirmado" e a reação de positivo confirmam a call. Pedido de remarcação vence o sim, suspende os lembretes do horário e vira um alerta quente. Saudação, reação sem emoji e auto-resposta não viram alerta nem calam o aviso de ligação. Lead que avisou que entrou na sala carimba os lembretes restantes; "não consigo entrar" precisa de gente.
+- Regra: "Pode", "vou", "confirmado" e a reação de positivo confirmam a call. Pedido de remarcação vence o sim, suspende os lembretes do horário e vira um alerta quente. Saudação, reação sem emoji e auto-resposta não viram alerta nem calam o aviso de ligação. Lead que avisou que entrou na sala carimba os lembretes restantes; "não consigo entrar" precisa de gente. Resposta que desmarca ou pede outro dia ("vou ter que desmarcar", "tive que sair e não sei a hora de voltar", "podemos pensar em amanhã", "surgiu", "tenho um compromisso") é pedido de mudança, não positiva; pergunta do lead ("serve pra rolamentos?") também não confirma, e fala longa só confirma com a positiva no começo (varredura 24/11: Roseli, Suel e Johnny receberam "Perfeito, o link pra entrar é este").
 - Vale em: estados todos; roteiro todos; executada por flow, intent, alerta
 
 ### R-114 · Janela fechada vai de template; sem canal vira alerta

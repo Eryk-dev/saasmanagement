@@ -145,7 +145,7 @@ export const bareHour = (text) => {
 // LEAD SEM INTERESSE / PEDIU PAUSA (Leo, 08/10, caso Laion).
 // 28/10: "não quero começar", "não quero fazer call", "agora não", "ainda não é
 // o momento" também são desinteresse (Helano, Ronaldo, Marcelo, Luciene).
-export const NO_INTEREST_RX = /nao (?:tenho|ha|tem) (?:mais )?[ie]nteresse|sem [ie]nteresse|perdi o [ie]nteresse|nao (?:me|mim|nos) [ie]nteress[ao]u?\b|nao (?:estou|esto|to|tou|estamos|fiquei|sou) (?:mais |muito |nada |tao )?[ie]nteressad[oa]s?|nao (?:quero|preciso|tenho) mais\b(?! (?:de |do |da |dos |das |que |um |uma |nenhum|nenhuma|ninguem|nada|tempo|como))|vamos pausar|pausar por enquanto|deixa pra la|nao (?:vou|vamos) (?:seguir|continuar|prosseguir|fechar|contratar)|pode parar|para de (?:me )?mandar|nao me (?:chame|chama|mande|manda|procure|procura) mais|(?:ainda )?nao (?:e|eh) (?:o )?momento|por enquanto nao|agora nao(?: quero| da| consigo)?\b(?!,? (?:mas|porem|so|apenas))|desisti|nao quero (?:fazer )?(?:agendar|marcar|demonstracao|conversa|call|reuniao|video|comecar|participar|seguir|continuar|contratar|nada)|nao quero\b(?! (?:saber|perder|dizer|falar|que|cancelar|remarcar|mudar|trocar|adiar|desmarcar))/;
+export const NO_INTEREST_RX = /^nao,? obrigad[oa]\b|\bnao,? deixa\b(?! (?:eu|que|de|pra|para|ver|comigo|so))|deixa quieto|nao (?:tenho|ha|tem) (?:mais )?[ie]nteresse|sem [ie]nteresse|perdi o [ie]nteresse|nao (?:me|mim|nos) [ie]nteress[ao]u?\b|nao (?:estou|esto|to|tou|estamos|fiquei|sou) (?:mais |muito |nada |tao )?[ie]nteressad[oa]s?|nao (?:quero|preciso|tenho) mais\b(?! (?:de |do |da |dos |das |que |um |uma |nenhum|nenhuma|ninguem|nada|tempo|como))|vamos pausar|pausar por enquanto|deixa pra la|nao (?:vou|vamos) (?:seguir|continuar|prosseguir|fechar|contratar)|pode parar|para de (?:me )?mandar|nao me (?:chame|chama|mande|manda|procure|procura) mais|(?:ainda )?nao (?:e|eh) (?:o )?momento|por enquanto nao|agora nao(?: quero| da| consigo)?\b(?!,? (?:mas|porem|so|apenas))|desisti|nao quero (?:fazer )?(?:agendar|marcar|demonstracao|conversa|call|reuniao|video|comecar|participar|seguir|continuar|contratar|nada)|nao quero\b(?! (?:saber|perder|dizer|falar|que|cancelar|remarcar|mudar|trocar|adiar|desmarcar))/;
 // Lead na sala do Meet esperando.
 export const WAITING_ROOM_RX = /sozinh|ninguem (?:entrou|apareceu|chegou|na sala)|nao (?:entrou|apareceu|chegou|tem) ninguem|sala (?:esta |ta )?vazia|\bcade\b|\bkd\b|\b(?:estou|to) (?:esperando|aguardando)|aguardando (?:aqui|na sala|voces|o especialista)|esperando (?:aqui|na sala|voces)|me conecte|vai entrar\?|quem (?:vai|ta) (?:entrar|na sala)/;
 // Objeção/desistência depois da call marcada.
@@ -307,10 +307,18 @@ export function classifyInbound(text, { wnow = null, offered = [], slotsOffered 
 export const REFERRAL_RX = /\bchama(?:r)?\s+(?!(?:aqui|ai|depois|amanha|mais|hoje|agora|a gente|voce|vcs|voces|no|na|me|comigo|que|quando|sim|nao|um tempinho|antes)\b)[a-z]+|\bexplica(?:r)? (?:pra|para) (?:ela|ele)\b|\bfal(?:a|ar|e)\s+com\s+(?:a |o |minha |meu |nossa |nosso )(?!mim\b)|\bcontato\s+(?:d[ao]|dela|dele)\s+(?:minha |meu |nossa |nosso )?(?:gerente|socio|socia|responsavel|gestor|gestora|esposa|marido)|\b(?:vou te |te )?pass(?:o|ar)\s+(?:o|um)\s+(?:numero|contato)\b|\bpassa pra (?:ela|ele)\b|\bpedir (?:pra|para) (?:chamar|falar|ligar)\b|\bconversa com (?:ela|ele)\b|\bliga pra (?:ela|ele|minha|meu)\b/;
 const CARD_RX = /👤\s*([^·\n]+?)\s*(?:·|$)/;
 const PHONE_RX = /\+?\d[\d\s().-]{7,}\d/g;
+// PEDIDO DE GENTE NOSSA NÃO É INDICAÇÃO (24/11, Emerson: "se você é uma
+// inteligência artificial, chama um humano aí pra falar comigo" recebeu
+// "Claro Emerson, me manda o número dessa pessoa aqui que eu chamo"; 17/11,
+// Sidclei: "tive reunião com o Jonathan... poderia me passar o contato"). Quem
+// pede um humano, um atendente ou o contato de alguém do NOSSO time quer
+// falar com a gente; segue pra IA, que passa pra pessoa (R-081).
+export const OUR_PERSON_ASK_RX = /\b(?:humano|humana|atendente|pessoa (?:de verdade|real|fisica)|alguem (?:de verdade|real|ai|dai|da empresa|do time|da equipe|responsavel)|inteligencia artificial|robo|\bia\b|\bbot\b|consultor|vendedor|especialista|gerente de voces|responsavel de voces)\b|\b(?:me|nos) pass(?:a|ar|e|em|aria)\b|\bpoderia(?:m)? (?:me |nos )?passar\b|\bpass(?:a|e|ar) (?:o |um )?(?:contato|numero|telefone|whats\w*) (?:d[eo]s? (?:voces|vcs)|dele|do (?:ceo|dono|jonathan|leonardo|jonan))/;
 export function referralIn(text, { ownPhone = "" } = {}) {
   const raw = String(text || "");
   const plain = plainReply(raw);
   const card = raw.match(CARD_RX);
+  if (!card && OUR_PERSON_ASK_RX.test(plain)) return null;
   const asked = REFERRAL_RX.test(plain) || !!card;
   if (!asked) return null;
   const own = String(ownPhone || "").replace(/\D/g, "").slice(-8);

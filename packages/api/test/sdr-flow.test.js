@@ -1084,3 +1084,17 @@ test("10min sem link com janela fechada não repete o template sem link que já 
   assert.equal((await repo.get("leads", "L1")).confirmLog["10min"], "sem-link");
   assert.match((await repo.list("wa_alerts"))[0].text, /sem link do Meet/);
 });
+
+// Varredura de 24/11: respostas reais ao lembrete que viraram "Perfeito, o link
+// pra entrar é este... Te espero hoje às 9h!" quando o lead estava desmarcando
+// (Roseli, 19/11), pedindo outro dia (Suel, 18/11) ou perguntando (Johnny, 19/11).
+test("resposta ao lembrete: desmarcar, pedir outro dia e pergunta não são confirmação #R-113", async () => {
+  const { classifyReminderReply } = await import("../src/sdr/sdr-flow.js");
+  assert.equal(classifyReminderReply("Então vou ter que desmarcar por hj"), "reschedule");
+  assert.equal(classifyReminderReply("Olá, Bom dia ! Agradeço o seu contato desculpas realmente esta manhã tive que sair e não sei o horário de voltar podemos pensar em amanhã à tarde após as 16:00 horas."), "reschedule");
+  assert.equal(classifyReminderReply("Boa tarde .Peco descupa hoje não vou  ta na reunião tenho um compromisso Perto desse horario"), "reschedule");
+  assert.equal(classifyReminderReply("A gente trabalha com rolamentos serve pra vc?"), "other");
+  assert.equal(classifyReminderReply("Sim é via WhatsApp?"), "other");
+  // Positiva de verdade segue confirmando, inclusive com cortesia e pontuação colada.
+  for (const ok of ["Ok tudo certo", "Bom dia. Tudo bem e você? Pode confirmar", "A princípio vou participar sim", "Combinado", "bom dia..ok.", "Sim pode", "Obrigado, pode sim"]) assert.equal(classifyReminderReply(ok), "confirm", ok);
+});

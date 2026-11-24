@@ -576,7 +576,12 @@ function rescueText({ nome, slots = [], now }) {
 // 28/10 (Roberto): "podemos deixar pra outra semana?" não casava aqui e
 // caía no AFFIRM_RX pelo "podemos": virou confirmação, link enviado e os
 // lembretes seguiram em cima de quem pediu pra adiar.
-const RESCHEDULE_RX = /remarc|reagend|mudar|trocar|outro hor|outro dia|outra data|outra hora|outro momento|outra semana|proxima semana|semana que vem|semana seguinte|mais pra frente|(?:deixar|deixa|passar|passa|jogar|joga|empurrar) pra|adiar|cancel|imprevisto|viagem|viajando|nao vou|nao consigo|nao conseguirei|nao vai dar|nao poss/;
+// 24/11 (varredura das conversas em que gente assumiu): "Então vou ter que
+// desmarcar por hj" (Roseli) casava no "vou" e virou confirmação + link;
+// "tive que sair e não sei o horário de voltar, podemos pensar em amanhã à
+// tarde" (Suel) casava no "podemos". O lembrete é do DIA da call: "amanhã",
+// "mais tarde", "surgiu", "compromisso" na resposta são pedido de mudança.
+const RESCHEDULE_RX = /desmarc|tive que sair|nao sei\b|surgiu|compromisso|nao estarei|\bamanha\b|mais tarde|outro horario|remarc|reagend|mudar|trocar|outro hor|outro dia|outra data|outra hora|outro momento|outra semana|proxima semana|semana que vem|semana seguinte|mais pra frente|(?:deixar|deixa|passar|passa|jogar|joga|empurrar) pra|adiar|cancel|imprevisto|viagem|viajando|nao vou|nao consigo|nao conseguirei|nao vai dar|nao poss/;
 // Lead avisando que a conversa JÁ está rolando (ou já rolou): o lembrete que
 // vem depois disso só faz o robô parecer desligado do que está acontecendo.
 const IN_CALL_RX = /\bna sala\b|na (reuniao|chamada)\b|ja (conversamos|conversei|falei|estou|entrei)|estou (conversando|falando com)|entrei na/;
@@ -594,7 +599,18 @@ export function classifyReminderReply(text) {
   if (raw.startsWith("[reaction]")) return REACTION_YES_RX.test(raw) ? "confirm" : "ack";
   if (AUTO_REPLY_RX.test(raw)) return "auto";
   if (RESCHEDULE_RX.test(t)) return "reschedule";
-  if (AFFIRM_RX.test(t) || raw.includes("👍") || raw.includes("✅")) return "confirm";
+  // PERGUNTA NÃO É CONFIRMAÇÃO (19/11, Johnny: "A gente trabalha com
+  // rolamentos serve pra vc?" casava no "serve" e recebeu "Perfeito, o link pra
+  // entrar é este"). A pergunta de cortesia ("tudo bem?", "e você?") não conta.
+  // Fala longa só confirma se a positiva vem logo no começo: positiva perdida
+  // no meio de uma explicação é assunto pra gente (alerta), não um ok.
+  const semCortesia = t.replace(/\b(?:tudo|td) (?:bem|bom|certo|joia)\s*\?|\be (?:voce|vc|vcs|voces|ai|tu)\s*\?|\bcomo (?:vai|esta|vc esta|voce esta)\s*\?|\b(?:bom dia|boa tarde|boa noite)\s*\?/g, " ");
+  if (semCortesia.includes("?")) return "other";
+  const words = semCortesia.trim().split(/\s+/).filter(Boolean);
+  // "bom dia..ok." (23/11, Fabio): pontuação colada não esconde a positiva.
+  const positive = AFFIRM_RX.test(t) || AFFIRM_RX.test(t.replace(/[.,;!]+/g, " ")) || raw.includes("👍") || raw.includes("✅");
+  if (positive && words.length > 14 && !AFFIRM_RX.test(words.slice(0, 8).join(" "))) return "other";
+  if (positive) return "confirm";
   if (GREETING_ONLY_RX.test(t.trim())) return "greeting";
   return "other";
 }

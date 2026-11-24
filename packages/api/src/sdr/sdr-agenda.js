@@ -41,7 +41,7 @@ const ASKED_RX = /\b(?:pode|posso|poderei|poderia|poderiamos|podia|podiamos|pode
 // "agenda" fazia da frase um PEDIDO de hoje.
 // 29/10 (Gustavo): "hoje no período da tarde vou estar ocupado" virava
 // PEDIDO de hoje à tarde; "vou estar/estarei ocupado", "em viagem" são recusa.
-const NEG_RX = /\bnao\s+(?:posso|consigo|conseguimos|conseguirei|conseguiria|da|pode|quero|vou (?:poder|conseguir)|vai (?:dar|rolar)|tenho (?:disponibilidade|como|tempo)|tem como|rola|da pra mim)\b|\b(?:ta|esta|estou|to|tenho a agenda|agenda)\s+(?:bem |muito |super |toda )?(?:cheia|cheio|lotad[ao]|complicad[ao]|corrid[ao]|ocupad[ao]|apertad[ao]|tomad[ao])\b|\b(?:vou estar|estarei|estaremos|vamos estar|fico|ficarei|vou ficar|estou|to|tou)\s+(?:ocupad[ao]s?|fora|viajando|em viagem|em reuniao|trabalhando|sem tempo|atarefad[ao])\b|\b(?:em viagem|viajando)\b|\bsem tempo\b|\bimpossivel\b|\bnao[.!?\s]*$/;
+const NEG_RX = /\btenho (?:um |uma |outro |outra )?(?:compromisso|reuniao|consulta|medico|dentista|aula|audiencia|cliente)\b|\bnao\s+(?:posso|consigo|conseguimos|conseguirei|conseguiria|da|pode|quero|vou (?:poder|conseguir)|vai (?:dar|rolar)|tenho (?:disponibilidade|como|tempo)|tem como|rola|da pra mim)\b|\b(?:ta|esta|estou|to|tenho a agenda|agenda)\s+(?:bem |muito |super |toda )?(?:cheia|cheio|lotad[ao]|complicad[ao]|corrid[ao]|ocupad[ao]|apertad[ao]|tomad[ao])\b|\b(?:vou estar|estarei|estaremos|vamos estar|fico|ficarei|vou ficar|estou|to|tou)\s+(?:ocupad[ao]s?|fora|viajando|em viagem|em reuniao|trabalhando|sem tempo|atarefad[ao])\b|\b(?:em viagem|viajando)\b|\bsem tempo\b|\bimpossivel\b|\bnao[.!?\s]*$/;
 const ALT_CUE_RX = /\b(?:pode|poderia|podemos|poderiamos|teria|tem|so|apenas|prefiro|prefiria|melhor|consigo|conseguimos|da|daria|dava|vamos|deixa|passa|passar|fica|ficar|quem sabe|talvez|entao|seria|ser)\b/;
 const DAY_RX = /depois de amanha|amanha|\bhoje\b|\bhj\b|segunda(?:[- ]feira)?|terca(?:[- ]feira)?|quarta(?:[- ]feira)?|quinta(?:[- ]feira)?|sexta(?:[- ]feira)?|sabado|domingo|\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}(?:\/\d{4})?|\bdia \d{1,2}\b|\b\d{1,2} de [a-z]+|semana que vem|proxima semana|outra semana|semana seguinte|outro dia|outros dias|proximos dias|daqui a \d+ dias?/g;
 const NEXT_WEEK_RX = /semana que vem|proxima semana|outra semana|semana seguinte/;
@@ -386,12 +386,37 @@ export function sdrAgendaWindow(messages = [], now = wallNow(), { callAt = "" } 
   return { ...rest, ...(refused.size ? { refused: [...refused].sort() } : {}), ...(exclude.length ? { exclude } : {}) };
 }
 
+// FERIADO NACIONAL (19/11, Fernanda: o robô ofereceu "amanhã às 9h ou às 11h"
+// na véspera do 20/11 e a SDR teve que desfazer; 03/09, Daniel: "segunda feira
+// por conta do feriado estamos com a agenda fechada"). O robô não oferece nem
+// marca em feriado nacional; quem marca na mão pelo cockpit segue livre.
+// Fixos + Sexta-feira Santa. Carnaval e Corpus Christi são ponto facultativo
+// e ficam de fora até o Leo decidir.
+const FIXED_HOLIDAYS = ["01-01", "04-21", "05-01", "09-07", "10-12", "11-02", "11-15", "11-20", "12-25"];
+function goodFriday(year) {
+  const a = year % 19, b = Math.floor(year / 100), c = year % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31), day = ((h + l - 7 * m + 114) % 31) + 1;
+  return ymd(dayPlus(new Date(Date.UTC(year, month - 1, day)), -2));
+}
+export function isNationalHoliday(day) {
+  const d = String(day || "").slice(0, 10);
+  return FIXED_HOLIDAYS.includes(d.slice(5)) || d === goodFriday(Number(d.slice(0, 4)));
+}
+
 export async function sdrSlotsForLead(repo, { messages = [], now = wallNow(), ...options } = {}) {
   const window = sdrAgendaWindow(messages, now, { callAt: options.lead?.callAt || "" });
-  const { periodOnly, callDay, refused = [], exclude = [], ...winOpts } = window;
+  const { periodOnly, callDay, refused: refusedByLead = [], exclude = [], ...winOpts } = window;
   // O que o lead recusou não volta (R-040): horários da última oferta e dias
-  // inteiros ("hoje não dá").
-  const drop = (slots) => slots.filter((s) => !exclude.includes(s.at) && !refused.includes(String(s.at).slice(0, 10)));
+  // inteiros ("hoje não dá"). Feriado sai junto e, como dia recusado, faz a
+  // oferta espontânea andar pro próximo dia útil.
+  let holidayHit = false;
+  const drop = (slots) => slots.filter((s) => {
+    const day = String(s.at).slice(0, 10);
+    if (isNationalHoliday(day)) { holidayHit = true; return false; }
+    return !exclude.includes(s.at) && !refusedByLead.includes(day);
+  });
+  const anyRefused = () => refusedByLead.length > 0 || holidayHit;
   // Pedido passado ou de fim de semana não vira oferta de outro dia sozinho.
   const day = wallFromNaive(window.startDate).getUTCDay();
   if (window.startDate < ymd(now) || (window.days === 1 && (day === 0 || day === 6))) return { slots: [], ...window };
@@ -402,7 +427,7 @@ export async function sdrSlotsForLead(repo, { messages = [], now = wallNow(), ..
   if (!window.requested) {
     // A recusa (ou uma janela só com :30, R-023) esvaziou a oferta
     // espontânea: próximo dia útil depois dela.
-    if (!exclude.length && !refused.length && !result.slots.length) return { ...result, ...window };
+    if (!exclude.length && !anyRefused() && !result.slots.length) return { ...result, ...window };
     const nextStart = addBusinessDaysNaive(lastDayOf(window), 1).slice(0, 10);
     const more = await slotsForLead(repo, { ...options, now, ...OFFER_HOURS, startDate: nextStart, days: 2, sdr: true });
     more.slots = drop(more.slots);
@@ -413,7 +438,7 @@ export async function sdrSlotsForLead(repo, { messages = [], now = wallNow(), ..
   // próximas na janela normal e diz que o pedido lotou.
   const alt = await slotsForLead(repo, { ...options, now, ...OFFER_HOURS, ...defaultWindow(now), sdr: true });
   alt.slots = drop(alt.slots);
-  if (!alt.slots.length && (exclude.length || refused.length)) {
+  if (!alt.slots.length && (exclude.length || anyRefused())) {
     // "Amanhã não consigo, teria que ser sexta" com a sexta cheia: amanhã
     // foi recusado, então as alternativas vêm dos 5 dias úteis seguintes.
     const wider = await slotsForLead(repo, { ...options, now, ...OFFER_HOURS, ...defaultWindow(now), days: 5, sdr: true });
