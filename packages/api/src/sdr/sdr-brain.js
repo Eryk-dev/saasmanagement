@@ -805,6 +805,34 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
         }
       }
     }
+    // ENCAIXE NA HORA EXATA QUE O LEAD PEDIU (Leo, 24/11: "pode seguir"). Em
+    // 8 dias a SDR desfez o robô na mão três vezes dizendo "consegui um encaixe"
+    // (16/11 Jeverson: "hoje às 11 horas teria horário?" às 9h17 ouviu "às 11h
+    // não tenho vaga"; 23/11 Joao: "as 16 pode ser?" às 14h31). Quando o lead
+    // nomeia UMA hora e ela não está na lista, duas réguas afrouxam só pra essa
+    // hora: a antecedência cai de 2h pra 1h e os closers de cima entram mesmo
+    // no dia em que o time do lead tem agenda. A oferta espontânea não muda, e
+    // a reserva de outro lead continua valendo aqui.
+    {
+      const lastTxt = lastInboundText(msgs);
+      const said = [...new Set([...plainReply(lastTxt).matchAll(/\b(\d{1,2})\s?(?:h\d{0,2}|hs|hrs|horas|:\d{2})\b|\bas\s+(\d{1,2})(?=\s*(?:$|[?.!,]|pode|podemos|da\b|daria|seria|fica|serve|consigo|ta\b|esta\b|ok\b|hoje|amanha))/g)].map((m) => Number(m[1] ?? m[2])).filter((h) => h >= 6 && h <= 22))];
+      const askedHour = said.length === 1 ? said[0] : null;
+      const refusing = /\bnao\s+(?:posso|consigo|da|vou|tenho)|\btenho (?:um |uma )?(?:compromisso|reuniao|consulta|medico|dentista|aula)|\bocupad/.test(plainReply(lastTxt));
+      if (askedHour != null && !refusing && !lead.callAt) {
+        const today = wnow.toISOString().slice(0, 10);
+        const offeredDays = new Set(liveOfferedSlots(agendaMessages, SDR_AUTHOR, wnow).map((o) => o.at.slice(0, 10)));
+        const days = requestedDate && offerDate ? new Set([offerDate]) : offeredDays.size ? offeredDays : new Set([today]);
+        const hasIt = (list) => list.find((x) => days.has(x.at.slice(0, 10)) && Number(x.at.slice(11, 13)) === askedHour && (x.at.endsWith(":00") || asksHalfHour(lastTxt)));
+        if (!hasIt(slots)) {
+          const open = await sdrSlotsForLead(repo, { ...slotArgs, holds, minNoticeMin: 60, anyPool: true }).catch(() => null);
+          const fit = open?.slots ? hasIt(open.slots) : null;
+          if (fit) {
+            slots = [...slots, fit].sort((a, b) => a.at.localeCompare(b.at));
+            log.info?.({ lead: lead.id, horario: fit.at, closer: fit.closer }, "sdr-brain: hora exata pedida pelo lead entrou por encaixe (1h de antecedência, closers de cima)");
+          }
+        }
+      }
+    }
     const slotList = slots.map((s) => ({ ...s, label: slotLabel(s.at, wnow) }));
     // A OFERTA sai só de hora cheia; slotList inteiro (com as quebradas) segue
     // valendo pra AGENDAR quando o lead pede um horário específico.
@@ -1450,9 +1478,16 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       if (reply !== "accepted") {
         // Já acolheu uma vez ("tudo bem, quando quiser remarcar…") e o lead
         // disse não de novo: cala (R-009, 15/10: a frase saía 2 a 4 vezes).
-        const jaAcolheu = reschedule.status === "declined" && msgs.some((m) => m.direction === "out" && m.author === SDR_AUTHOR && /quando quiser remarcar/i.test(m.text || ""));
+        // 17 e 18/11 (Pedroso): a frase saiu 3 vezes, a última em resposta a
+        // "vocês têm Instagram?". Vale pra qualquer resposta depois da primeira
+        // acolhida, não só pro "não" repetido; e pergunta do lead chama gente.
+        const lastBot = [...msgs].reverse().find((m) => m.direction === "out" && m.author === SDR_AUTHOR);
+        const jaAcolheu = /quando quiser remarcar/i.test(lastBot?.text || "") || (reschedule.status === "declined" && msgs.some((m) => m.direction === "out" && m.author === SDR_AUTHOR && /quando quiser remarcar/i.test(m.text || "")));
         if (reply === "declined") await stamp(lead, { reschedule: { ...reschedule, status: "declined" } });
-        if (jaAcolheu) return "remarcacao-aguarda";
+        if (jaAcolheu) {
+          if (burstText.includes("?")) await raiseAlert(repo, thread, { text: `Lead com a call desmarcada fez uma pergunta e o robô ficou calado, responde: "${String(message?.text || "").slice(0, 140)}"` }).catch(() => {});
+          return "remarcacao-aguarda";
+        }
         await send("Tudo bem, quando quiser remarcar é só me chamar", { path: "remarcacao-aguarda" });
         return "remarcacao-aguarda";
       }
@@ -1526,9 +1561,23 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       if (leadHour != null) {
         const chosenHour = Number(String(decision.horario || "").slice(11, 13));
         const offeredDays = new Set(offeredSlotsIn(agendaMessages, SDR_AUTHOR).map((o) => o.at.slice(0, 10)));
-        if (chosenHour !== leadHour && offeredDays.size) {
+        // Com DUAS horas na fala ("13h estou almoçando, pode ser 14h?") a
+        // primeira não é a escolha: aí vale a hora que a IA entendeu.
+        const hoursSaid = [...new Set([...plainReply(lastInText).matchAll(/\b(\d{1,2})\s?(?:h\d{0,2}|hs|hrs|horas|:\d{2})\b/g)].map((m) => Number(m[1])))];
+        if (chosenHour !== leadHour && offeredDays.size && hoursSaid.length <= 1) {
           const best = slotList.find((x) => offeredDays.has(x.at.slice(0, 10)) && Number(x.at.slice(11, 13)) === leadHour && x.at.endsWith(":00"));
           if (best) { log.info?.({ lead: lead.id, de: decision.horario, para: best.at }, "sdr-brain: hora dita pelo lead corrigiu o horário escolhido pela IA"); decision.horario = best.at; }
+        }
+        // NUNCA MARCA HORA DIFERENTE DA ÚNICA QUE O LEAD DISSE (16/11, Marcio:
+        // "Preciso mudar para 14:30" virou "remarcado então pra hoje às 18h" e a
+        // SDR teve que pedir pra desconsiderar). Com uma hora só na mensagem e
+        // sem vaga nela, não marca outra no palpite: cai na re-oferta, que diz
+        // a verdade sobre a hora pedida. Duas horas na fala ("13h estou
+        // almoçando, pode ser 14h?") ficam com a escolha da IA.
+        const finalHour = Number(String(decision.horario || "").slice(11, 13));
+        if (hoursSaid.length === 1 && hoursSaid[0] === leadHour && decision.horario && finalHour !== leadHour) {
+          log.info?.({ lead: lead.id, pediu: leadHour, ia: decision.horario }, "sdr-brain: IA escolheu hora diferente da que o lead disse; não marca");
+          decision.horario = "";
         }
       }
       // Hora quebrada sem o lead ter pedido: cai pra hora cheia do mesmo

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import { slotsForLead, wallFromNaive, sdrCloserPools, wholeHourSlots, OFFER_HOURS } from "../src/crm/agenda-slots.js";
-import { sdrAgendaWindow, sdrSlotsForLead } from "../src/sdr/sdr-agenda.js";
+import { sdrAgendaWindow, sdrSlotsForLead, isNationalHoliday } from "../src/sdr/sdr-agenda.js";
 
 const NOW = wallFromNaive("2026-09-21T08:00"); // segunda-feira
 const TEAM = [
@@ -465,4 +465,38 @@ test("24/11 (Paulo): período ocupado pede o resto do dia; 'outro dia' com faixa
   const r = await sdrSlotsForLead(repo, { ...options, grade: "C", messages: [offer, at("De manhã não consigo", "2026-09-21T11:02:00Z"), at("Pode ser outro dia", "2026-09-21T11:02:03Z"), at("Eu só consigo a partir das 13h", "2026-09-21T11:02:10Z")] });
   assert.equal(r.slots[0].at, "2026-09-22T13:00", JSON.stringify(r.slots.slice(0, 3)));
   assert.ok(r.slots.every((s) => Number(s.at.slice(11, 13)) >= 13));
+});
+
+// Ézio (17/11): oferta "hoje às 18h ou às 20h", "Tenho compromisso das 18 as 21"
+// e o robô repetiu o mesmo par.
+test("17/11 (Ézio): 'tenho compromisso' sobre o par oferecido é recusa: os horários saem da lista #R-040", async () => {
+  const offer = { direction: "out", author: "sdr-bot", text: "Consigo hoje às 18h ou às 20h, qual fica melhor pra você?", at: "2026-09-21T11:00:00Z" };
+  const w = sdrAgendaWindow([offer, { direction: "in", text: "Tenho compromisso das 18 as 21", at: "2026-09-21T11:01:00Z" }], NOW);
+  assert.deepEqual(w.exclude, ["2026-09-21T18:00", "2026-09-21T20:00"]);
+});
+
+// Fernanda (19/11): na véspera do feriado de 20/11 o robô ofereceu "amanhã às
+// 9h ou às 11h" e a SDR desfez ("perdão, amanhã é feriado").
+test("19/11 (Fernanda): feriado nacional não entra na oferta do robô; a janela espontânea anda pro próximo dia útil #R-022", async () => {
+  assert.deepEqual(["2026-09-07", "2026-11-20", "2026-12-25", "2027-01-01", "2027-03-26", "2026-09-08"].map(isNationalHoliday), [true, true, true, true, true, false]);
+  const repo = await world();
+  const sexta = wallFromNaive("2026-09-04T15:00"); // sexta à tarde; segunda 07/09 é feriado
+  const r = await sdrSlotsForLead(repo, { ...options, now: sexta, grade: "C", messages: [] });
+  assert.ok(r.slots.length, "tem oferta");
+  assert.ok(r.slots.every((s) => !s.at.startsWith("2026-09-07")), JSON.stringify(r.slots.map((s) => s.at).slice(0, 6)));
+  const pedido = await sdrSlotsForLead(repo, { ...options, now: sexta, grade: "C", messages: [{ direction: "in", text: "pode ser segunda?", at: "2026-09-04T18:00:00Z" }] });
+  assert.ok(pedido.slots.every((s) => !s.at.startsWith("2026-09-07")), "pedido no feriado recebe alternativas, nunca o feriado");
+});
+
+// Joao (23/11): pediu uma hora exata que o time do lead não tinha; os closers
+// de cima só entravam em dia sem NENHUM horário do júnior.
+test("23/11 (Joao): com anyPool os closers de cima cobrem a hora exata que o júnior não tem; sem ele a régua do dia segue #R-033", async () => {
+  const repo = await world();
+  await repo.create("agenda_blocks", { id: "vit-13", users: ["vit"], recur: "once", date: "2026-09-22", fromHour: 13, toHour: 14 });
+  const base = await sdrSlotsForLead(repo, { ...options, grade: "C", messages: [inbound("pode ser amanhã?")] });
+  assert.ok(base.slots.length && !base.slots.some((s) => s.at === "2026-09-22T13:00"), "o júnior não tem 13h e os de cima não entram no dia dele");
+  const fit = await sdrSlotsForLead(repo, { ...options, grade: "C", anyPool: true, messages: [inbound("pode ser amanhã?")] });
+  const treze = fit.slots.find((s) => s.at === "2026-09-22T13:00");
+  assert.ok(treze && ["leo", "jonan", "jonathan"].includes(treze.closer), JSON.stringify(treze));
+  assert.equal(fit.slots.find((s) => s.at === "2026-09-22T09:00")?.closer, "vit", "onde o júnior tem horário, é dele");
 });

@@ -257,7 +257,7 @@ const dayOfSlot = (at) => String(at || "").slice(0, 10);
 // ── A régua completa: horários pro LEAD ─────────────────────────────────────
 // Nota do lead (matriz S-E) → pool elegível → próximos horários. Devolve
 // { slots, pool: "upper"|"junior"|"junior+upper"|"all", grade }.
-export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wallNow(), startDate, days = 5, minNoticeMin = 120, limit = 6, fromHour, toHour, lunchFrom, lunchTo, windowOf, sdr = false, holds = [] } = {}) {
+export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wallNow(), startDate, days = 5, minNoticeMin = 120, limit = 6, fromHour, toHour, lunchFrom, lunchTo, windowOf, sdr = false, holds = [], anyPool = false } = {}) {
   const sid = saas || lead?.saas || "";
   const [users, leads, blocks, consultations, products] = await Promise.all([
     repo.list("users"),
@@ -301,10 +301,14 @@ export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wal
   if (sdr && sid === "leverads") {
     // `first` leva o dia inteiro; o pool de cima só completa os dias em que
     // `first` não tem nenhum horário livre.
+    // `anyPool` (24/11): o lead pediu uma HORA EXATA que o time dele não tem;
+    // aí os de cima entram em qualquer dia, só pra essa consulta (quem chama
+    // é o encaixe do cérebro; a oferta espontânea segue com a régua do dia).
     const firstThenUpper = (first, label) => {
       const mine = compute(first, 0, days);
       const mineDays = new Set(mine.map((s) => dayOfSlot(s.at)));
-      const upper = compute(pools.upper, 0, days).filter((s) => !mineDays.has(dayOfSlot(s.at)));
+      const mineAt = new Set(mine.map((s) => s.at));
+      const upper = compute(pools.upper, 0, days).filter((s) => (anyPool ? !mineAt.has(s.at) : !mineDays.has(dayOfSlot(s.at))));
       const slots = [...mine, ...upper].sort((a, b) => a.at.localeCompare(b.at)).slice(0, limit || undefined);
       return { slots, pool: mine.length ? (upper.length ? `${label}+upper` : label) : "upper", grade };
     };
