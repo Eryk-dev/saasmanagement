@@ -239,6 +239,9 @@ export function sdrBotConfig(product) {
     // "enforce" o validador manda (mesma semântica, provada pela sombra). Troca
     // e rollback por PATCH, sem deploy.
     guardsMode: cfg.guardsMode === "enforce" ? "enforce" : "audit",
+    // REVISOR da resposta da IA (24/11, sdr-prompt.js): "off" | "audit" (roda e
+    // registra, a original sai) | "enforce" (a decisão revisada sai).
+    reviewMode: ["audit", "enforce"].includes(cfg.reviewMode) ? cfg.reviewMode : "off",
     // Prompt da IA (15/10): "v2" = núcleo estável + bloco por estado gerado do
     // rulebook (implica o contrato v2). Nasce "v1"; vira "v2" por PATCH depois
     // do replay A/B e do canário nos leads internos.

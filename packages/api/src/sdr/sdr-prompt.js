@@ -223,3 +223,86 @@ export function buildUserV2({ sdrName = "", nowLabel = "", lead = {}, digest = "
     "Decida a ação e o texto.",
   ].filter((l) => l !== "").join("\n");
 }
+
+// ── REVISOR (Leo, 24/11/2026: "preciso melhorar a assertividade dele, estamos
+// perdendo muita agenda") ─────────────────────────────────────────────────────
+// Segunda leitura da IA sobre a decisão da primeira, ANTES de qualquer coisa
+// sair: mesmo núcleo (as regras são as mesmas, byte a byte, e o prefixo segue
+// cacheável), mesmo turno do usuário, mais o RASCUNHO e um roteiro de revisão
+// com um critério só: essa é a resposta que mais aproxima o lead da conversa
+// marcada, sem quebrar regra? O revisor devolve a decisão no MESMO contrato
+// v2 (ids da lista, oferta escrita pelo motor), então tudo que vem depois no
+// cérebro (travas, validador, agenda) vale igual pra decisão revisada.
+//
+// Os itens saíram da varredura de 16 a 24/11 (94 conversas em que gente
+// assumiu logo depois do robô): horário pedido que virou conversa, resposta
+// que comenta e não convida, "vou deixar com o time" pra pergunta que o prompt
+// responde, resposta que se desmente.
+//
+// Liga por config (product.sdrBot.reviewMode): "off" (padrão), "audit" (roda
+// e registra, a decisão original sai) e "enforce" (a decisão revisada sai).
+export const REVIEW_MODES = ["off", "audit", "enforce"];
+// Marcar/remarcar/desmarcar têm conferência determinística no motor (horário
+// na lista, hora que o lead disse); o revisor olha onde a agenda se perde.
+export const REVIEWABLE_ACTIONS = ["responder", "humano", "silencio"];
+
+const REVIEW_TAIL = `
+
+MODO REVISÃO. Outra SDR do time escreveu o RASCUNHO que vem no fim da mensagem, pra responder a mensagem nova do lead. Você é a revisora: decide se o rascunho sai como está ou se precisa ser corrigido. O critério é um só: essa é a resposta que mais aproxima o lead da conversa marcada, sem quebrar nenhuma regra acima?
+Confira nesta ordem:
+1. LEU TUDO: a resposta trata o que o lead disse na mensagem nova inteira (todas as linhas seguidas dele no fim da conversa), inclusive pergunta, dia, período e hora que ele citou? Pergunta do lead sem resposta reprova.
+2. HORÁRIO: se ele escolheu, aceitou ou pediu um horário que está na lista de HORÁRIOS LIVRES, o certo é acao agendar (remarcar, se já existe conversa marcada) com o id desse horário; responder sem marcar reprova. Se o que ele pediu não está na lista, a resposta diz isso em uma frase e oferecer=true. Se ele recusou os horários, a resposta não insiste neles.
+3. AVANÇO: sem conversa marcada, lead que já engajou (disse que ajudaria, pediu horário, perguntou como funciona ou o preço) recebe o convite com oferecer=true. Resposta que só comenta e não avança reprova. Exceções: ele adiou ou disse que retorna (aí é "Combinado" e oferecer=false), mostrou desinteresse, ou os FATOS dizem que ele ainda não engajou (aí é uma pergunta de descoberta, sem horário).
+4. GENTE SEM PRECISAR: acao humano só nos casos da regra de quando chamar gente. Se dá pra responder com o que está neste prompt (como funciona, estoque, marketplaces atendidos, base de preço, celular, sócio, material), responder é o certo e passar pra gente reprova.
+5. SILÊNCIO SEM PRECISAR: acao silencio só quando a mensagem dele encerra e não há nada pendente. Lead que fez pergunta, citou horário ou voltou a falar não fica sem resposta.
+6. COERÊNCIA: a resposta não se desmente (concordar e negar na mesma fala; combinar esperar e pedir a oferta de horário; dizer que lotou sem o contexto dizer), não afirma o que este prompt não diz (horário de atendimento, prazo, funcionalidade, valor além da base) e não promete verificar ou retornar depois.
+7. REPETIÇÃO: não repete o pitch, não refaz pergunta que já foi feita e não pede o que ele já respondeu.
+8. FORMA: balões curtos no jeito da Manuela; com oferecer=true nenhuma parte termina em pergunta; nunca dia nem hora escritos nas partes.
+Se o rascunho passa em tudo: aprovado=true, problema vazio e os outros campos iguais aos do rascunho.
+Se não passa: aprovado=false, problema = uma frase curta dizendo qual item falhou e por quê, e os outros campos com a decisão corrigida, a que você mandaria.
+Não reescreva por gosto. Rascunho correto que só poderia ser dito de outro jeito é aprovado.`;
+
+let reviewCoreCache = "";
+export function buildReviewCore() {
+  if (!reviewCoreCache) reviewCoreCache = buildCoreV2() + REVIEW_TAIL;
+  return reviewCoreCache;
+}
+
+export function reviewSchema(slotIds = []) {
+  const base = schemaV2(slotIds);
+  return {
+    ...base,
+    required: ["aprovado", "problema", ...base.required],
+    properties: {
+      aprovado: { type: "boolean", description: "true = o rascunho sai como está; false = precisa da correção que vem nos outros campos." },
+      problema: { type: "string", description: "Se reprovou: uma frase curta com o item que falhou e por quê. Se aprovou: vazio." },
+      ...base.properties,
+    },
+  };
+}
+
+// O rascunho como a primeira IA devolveu, no contrato v2.
+export const draftForReview = (d = {}) => ({
+  acao: d.acao, partes: Array.isArray(d.mensagens) ? d.mensagens : [], oferecer: !!d.oferecer, slotIds: Array.isArray(d.slotIds) ? d.slotIds : [],
+  email: d.email || "", motivoHumano: d.motivoHumano || "",
+});
+
+export function buildReviewUser(userV2, draft) {
+  return `${userV2}\n\nRASCUNHO DA OUTRA SDR (a decisão dela pra mensagem nova do lead):\n${JSON.stringify(draftForReview(draft))}\n\nRevise.`;
+}
+
+// A decisão que sai depois da revisão + o registro do que o revisor fez.
+// `parsed` = resposta crua do revisor; `first` = decisão normalizada da 1ª IA.
+export function applyReview(first, parsed, { mode = "audit", slots = [], ms = 0, usage = null, model = "" } = {}) {
+  const approved = parsed?.aprovado !== false;
+  const fixed = approved ? null : draftFromAi(parsed || {}, { contract: "v2", slots });
+  // Correção vazia ou igual ao rascunho não é correção.
+  const same = !fixed || JSON.stringify(draftForReview(fixed)) === JSON.stringify(draftForReview(first));
+  const changed = !approved && !same && (fixed.acao !== "responder" || fixed.mensagens.length > 0 || fixed.oferecer);
+  const review = {
+    mode, approved: !changed, problem: changed ? String(parsed?.problema || "").slice(0, 240) : "",
+    ...(changed ? { original: draftForReview(first), fixed: draftForReview(fixed) } : {}),
+    applied: changed && mode === "enforce", ms, usage, model,
+  };
+  return changed && mode === "enforce" ? { ...first, ...fixed, review } : { ...first, review };
+}
