@@ -11,6 +11,7 @@
 // uma virava handoff pra gente marcar na mão no dia seguinte.
 import { slotsForLead, wallNow, wallFromNaive, addBusinessDaysNaive, OFFER_HOURS, OFFER_WINDOW_DEFAULT } from "../crm/agenda-slots.js";
 import { isOfferMsg, expandSameDay, offeredSlotsIn } from "./sdr-signals.js";
+import { nationalHoliday, isNationalHoliday } from "../shared/holidays.js";
 
 const ymd = (d) => d.toISOString().slice(0, 10);
 const normalize = (v) => String(v || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -393,31 +394,8 @@ export function sdrAgendaWindow(messages = [], now = wallNow(), { callAt = "" } 
 // Decisão do Leo (24/11): "pode mapear todos os feriados nacionais e remover
 // da agenda": os fixos e os móveis contados da Páscoa (segunda e terça de
 // Carnaval, Sexta-feira Santa e Corpus Christi).
-const FIXED_HOLIDAYS = {
-  "01-01": "Confraternização Universal", "04-21": "Tiradentes", "05-01": "Dia do Trabalho", "09-07": "Independência",
-  "10-12": "Nossa Senhora Aparecida", "11-02": "Finados", "11-15": "Proclamação da República", "11-20": "Consciência Negra", "12-25": "Natal",
-};
-function easter(year) {
-  const a = year % 19, b = Math.floor(year / 100), c = year % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
-  const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
-  const month = Math.floor((h + l - 7 * m + 114) / 31), day = ((h + l - 7 * m + 114) % 31) + 1;
-  return new Date(Date.UTC(year, month - 1, day));
-}
-const movableCache = new Map();
-function movableHolidays(year) {
-  if (!movableCache.has(year)) {
-    const e = easter(year);
-    movableCache.set(year, { [ymd(dayPlus(e, -48))]: "Carnaval", [ymd(dayPlus(e, -47))]: "Carnaval", [ymd(dayPlus(e, -2))]: "Sexta-feira Santa", [ymd(dayPlus(e, 60))]: "Corpus Christi" });
-  }
-  return movableCache.get(year);
-}
-// Nome do feriado nacional do dia ("YYYY-MM-DD…") ou "".
-export function nationalHoliday(day) {
-  const d = String(day || "").slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return "";
-  return FIXED_HOLIDAYS[d.slice(5)] || movableHolidays(Number(d.slice(0, 4)))[d] || "";
-}
-export const isNationalHoliday = (day) => !!nationalHoliday(day);
+// A lista mora em shared/holidays.js (a agenda manual trava os mesmos dias).
+export { nationalHoliday, isNationalHoliday };
 
 export async function sdrSlotsForLead(repo, { messages = [], now = wallNow(), ...options } = {}) {
   const window = sdrAgendaWindow(messages, now, { callAt: options.lead?.callAt || "" });
@@ -425,11 +403,14 @@ export async function sdrSlotsForLead(repo, { messages = [], now = wallNow(), ..
   // O que o lead recusou não volta (R-040): horários da última oferta e dias
   // inteiros ("hoje não dá"). Feriado sai junto e, como dia recusado, faz a
   // oferta espontânea andar pro próximo dia útil.
-  let holidayHit = false;
+  // (Desde a agenda manual travar feriado, o horário nem chega aqui: o robô
+  // sabe que a janela pegou um feriado olhando os DIAS dela.)
+  const windowDays = [];
+  for (let d = wallFromNaive(window.startDate), end = lastDayOf(window), i = 0; d && ymd(d) <= end && i < 40; d = dayPlus(d, 1), i++) windowDays.push(ymd(d));
+  const holidayHit = windowDays.some(isNationalHoliday);
   const drop = (slots) => slots.filter((s) => {
     const day = String(s.at).slice(0, 10);
-    if (isNationalHoliday(day)) { holidayHit = true; return false; }
-    return !exclude.includes(s.at) && !refusedByLead.includes(day);
+    return !isNationalHoliday(day) && !exclude.includes(s.at) && !refusedByLead.includes(day);
   });
   const anyRefused = () => refusedByLead.length > 0 || holidayHit;
   // Pedido passado ou de fim de semana não vira oferta de outro dia sozinho.

@@ -39,6 +39,7 @@ import { mergeLeadQuestions } from "../forms/forms.js";
 import { toNaiveBrt } from "./agenda-slots.js";
 import { COLLECTION_NAMES } from "../platform/db.js";
 import { integrationSlotConflict, integrationConflictMessage } from "./integration-slot.js";
+import { isNationalHoliday, holidayMessage } from "../shared/holidays.js";
 
 // COMPROMISSO SEMPRE NA FORMA CANÔNICA (17/09): callAt/followupAt/integrationAt
 // são "YYYY-MM-DDTHH:MM" no relógio de Brasília. Cliente que manda ISO em UTC
@@ -47,6 +48,18 @@ import { integrationSlotConflict, integrationConflictMessage } from "./integrati
 // Follow-up (05/10/2026) é só DIA ("YYYY-MM-DD"), sem horário: valor com hora
 // (legado ou ISO) vira o dia de Brasília. Ver followup-contacts.js.
 const WHEN_FIELDS = ["callAt", "integrationAt"];
+
+// FERIADO NACIONAL (Leo, 24/11/2026): a agenda não abre. Call ou integração
+// marcada (ou movida) pra um feriado é recusada aqui, pra valer também pra quem
+// grava pela API. Horário que já estava no card e não mudou passa (o card pode
+// ser editado em outro campo), e limpar o campo também.
+function holidayRefusal(body, cur = null) {
+  for (const k of WHEN_FIELDS) {
+    const v = typeof body?.[k] === "string" ? body[k] : "";
+    if (v && v !== (cur?.[k] || "") && isNationalHoliday(v)) return { error: holidayMessage(v), code: "holiday", field: k };
+  }
+  return null;
+}
 
 function canonWhen(body) {
   if (!body || typeof body !== "object") return body;
@@ -315,6 +328,7 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
     const now = new Date().toISOString();
     const stamp = {};
     if (collection === "leads") canonWhen(req.body);
+    if (collection === "leads") { const feriado = holidayRefusal(req.body); if (feriado) return reply.code(409).send(feriado); }
     if ((collection === "leads" || collection === "consultations" || collection === "deliverables") && !req.body.createdAt) stamp.createdAt = now;
     // Consulta nasce com a responsável = quem marcou (a Ana marca as próprias).
     if (collection === "consultations" && !req.body.owner && req.authUser?.id) stamp.owner = req.authUser.id;
@@ -505,6 +519,10 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
       if (blocked) return reply.code(403).send({ error: blocked });
     }
     if (collection === "leads") canonWhen(req.body);
+    if (collection === "leads" && WHEN_FIELDS.some((k) => typeof req.body[k] === "string" && req.body[k])) {
+      const feriado = holidayRefusal(req.body, await repo.get("leads", id));
+      if (feriado) return reply.code(409).send(feriado);
+    }
     // Horário de integração novo: confere de novo no cockpit e na agenda do
     // Google de quem integra (o cliente pode ter marcado pelo link no meio).
     if (collection === "leads" && typeof req.body.integrationAt === "string" && req.body.integrationAt) {

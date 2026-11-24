@@ -33,6 +33,7 @@ import { kindOf } from "./stages.js";
 import { gradeRulesOf, leadGrade, ICP_GRADES } from "../metrics/metrics-core.js";
 import { isIcpGrade } from "../shared/lead-grade.js";
 import { sanitizeWorkHours, offWorkHours } from "../shared/work-hours.js";
+import { isNationalHoliday } from "../shared/holidays.js";
 
 const BRT_MS = 3 * 3_600_000;
 export const SLOT_MIN = 30;
@@ -126,7 +127,8 @@ function busyOf(userId, { leads, blocks, consultations, productById, excludeLead
   }
   const mine = blocks.filter((b) => b.user === userId || (Array.isArray(b.users) && b.users.includes(userId)));
   const workHours = sanitizeWorkHours(users.find((u) => u.id === userId)?.workHours);
-  return (key) => cells.has(key) || offWorkHours(workHours, key) || mine.some((b) => blockHits(b, key));
+  // Feriado nacional trava a agenda de todo mundo (shared/holidays.js), igual o SPA.
+  return (key) => cells.has(key) || isNationalHoliday(key) || offWorkHours(workHours, key) || mine.some((b) => blockHits(b, key));
 }
 
 // ── Pools de closer por nível ───────────────────────────────────────────────
