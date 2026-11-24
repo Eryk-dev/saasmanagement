@@ -31,12 +31,13 @@ import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, greetName,
 import { transcriber as defaultTranscriber } from "../whatsapp/transcribe.js";
 import { FORM_MSG_RX, SLOTS_RX, OFFER_CUE_RX, isOfferMsg, ACCEPT_RX, offeredSlotsIn, liveOfferedSlots, acceptedSlot, AUTO_REPLY_RX, BARE_HOUR_RX, collapseSameDay, expandSameDay, DEMO_RX, PITCH_RX } from "./sdr-signals.js";
 import { transcribeInbound } from "../whatsapp/wa-transcribe.js";
-import { AFFILIATE_RX, DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, NO_INTEREST_RX, LEAD_MOBILE_RX, DENY_CALL_RX, PERIOD_ASK_RX, PRICE_ASK_RX, WAITING_ROOM_RX, OBJECTION_RX, OEM_NO_RX, bareHour, leadEngaged, lastInboundText, plainReply, requestsCancellation, rescheduleReply, classifyInbound, asksReschedule, burstInboundText, callbackDay, statedPainOf, isNonAnswer, CONFUSED_RX, CLOSING_RX, POSTPONE_RX, SCHEDULE_WORDS_RX, referralIn, DEMO_COST_RX, WEAK_PROFILE_RX, EXPLAIN_HERE_RX, ONBOARDING_RX, COMPLAINT_RX, asksHalfHour } from "./sdr-intents.js";
+import { AFFILIATE_RX, DAY_WORD_RX, HAS_HOUR_RX, INTEREST_RX, NO_INTEREST_RX, LEAD_MOBILE_RX, DENY_CALL_RX, PERIOD_ASK_RX, PRICE_ASK_RX, WAITING_ROOM_RX, OBJECTION_RX, OEM_NO_RX, bareHour, leadEngaged, lastInboundText, plainReply, requestsCancellation, rescheduleReply, classifyInbound, asksReschedule, burstInboundText, callbackDay, statedPainOf, isNonAnswer, CONFUSED_RX, CLOSING_RX, POSTPONE_RX, SCHEDULE_WORDS_RX, referralIn, DEMO_COST_RX, WEAK_PROFILE_RX, noBusiness, EXPLAIN_HERE_RX, ONBOARDING_RX, COMPLAINT_RX, asksHalfHour } from "./sdr-intents.js";
 import { SDR_TEMPLATES } from "./sdr-templates.leverads.js";
 import { resolveWabaId } from "../whatsapp/wa-health.js";
 import { stateOf, humanMuteHolds, GREETING_GAP_MS, DAILY_CAP, botTalkLast24h, handoffHolds, isReturningByForm, callbackPending } from "./sdr-state.js";
-import { PRICE_RX, REDIRECT_RX, DRY_REFUSAL_RX, FAKE_OFFER_RX, PROMISE_RX, CALLBACK_PROMISE_RX, SCHEDULE_ASK_Q_RX, DEVICE_ASK_RX, stripDuration, stripDeviceAsk, sameSentence, alreadySaid, isFreshOffer, realOfferOf, discoveryQuestionFor, GREETING_Q_RX, isRealQuestion, nextQuestionFor, DAY_PROPOSAL_RX, makeDraft, validateDraft } from "./sdr-guards.js";
+import { PRICE_RX, PRICE_BASE, leaksPrice, REDIRECT_RX, DRY_REFUSAL_RX, FAKE_OFFER_RX, PROMISE_RX, CALLBACK_PROMISE_RX, SCHEDULE_ASK_Q_RX, DEVICE_ASK_RX, stripDuration, stripDeviceAsk, sameSentence, alreadySaid, isFreshOffer, realOfferOf, discoveryQuestionFor, GREETING_Q_RX, isRealQuestion, nextQuestionFor, DAY_PROPOSAL_RX, makeDraft, validateDraft } from "./sdr-guards.js";
 import { reofferText, offerLine, NO_SLOT_TEXT } from "./sdr-offer.js";
+import { videoFor, videoKindForScript } from "./sdr-video.js";
 import { replyCampaignFor, broadcastReplyDecision } from "./sdr-broadcast-reply.js";
 import { campaignTokens, interpolate } from "../shared/campaign-tokens.js";
 // Compat: quem importava daqui continua funcionando (replay, testes).
@@ -161,7 +162,7 @@ function priceBridgeText(nome) {
 // agenda que acabou de ser respondida.
 function priceAfterBookingText(nome, { script = "" } = {}) {
   if (SCRIPT_PRICE_TEXT[script]) return SCRIPT_PRICE_TEXT[script];
-  return `Sobre o valor${nome ? ` ${nome}` : ""}: são planos diferentes e o certo pra sua operação o especialista te mostra nessa conversa, prefiro não te passar um número solto por aqui`;
+  return `Sobre o valor${nome ? ` ${nome}` : ""}: os planos são variáveis, ${PRICE_BASE}. O ideal pra sua operação o especialista te mostra nessa conversa`;
 }
 // Lead na sala do Meet esperando (texto já normalizado, sem acento).
 // Objeção/desistência (texto normalizado) depois da call marcada.
@@ -174,7 +175,7 @@ function priceAfterBookingText(nome, { script = "" } = {}) {
 // operação sai da escuta das dores.
 function priceExplainText(nome, { callAt, slots, slotsOffered, offered = [], wnow }) {
   const oi = nome ? `Te explico o porquê ${nome}:` : "Te explico o porquê:";
-  const motivo = `${oi} a gente tem planos diferentes, e qual faz sentido pra você depende da sua operação. Por isso o valor a gente só fecha na conversa com o especialista, depois de ouvir o seu cenário, senão eu te passo um número que não é o seu.`;
+  const motivo = `${oi} a gente tem planos diferentes, a partir de R$299 mensais, e qual faz sentido pra você depende da sua operação. Por isso o valor exato a gente só fecha na conversa com o especialista, depois de ouvir o seu cenário, senão eu te passo um número que não é o seu.`;
   // "call" nunca chega ao lead (R-006) e "horários que te passei" é a frase
   // proibida (R-025): a repescagem escreve os horários ofertados (15/10).
   if (callAt) return `${motivo} Na nossa conversa de ${slotLabelFull(callAt, wnow)} o especialista já te mostra o plano certo e o valor.`;
@@ -216,8 +217,11 @@ function nowLabelOf(wnow) {
 // a M2 só acrescenta o DRE e os horários, a M3 só reserva. M4 é a mesma do
 // OEM (não fala de produto). O preço do Price depende do VOLUME de anúncios
 // (é o que define o pacote), e a resposta diz isso sem número nem plano.
-const OEM_PRICE_TEXT = "O investimento depende da sua operação e das suas necessidades. Na demonstração, nosso especialista entende melhor o seu cenário e apresenta os planos e valores mais adequados para o momento da sua empresa.";
-const PRICE_PRICE_TEXT = "O investimento depende do volume de anúncios da sua operação. Na demonstração, nosso especialista entende melhor o seu cenário e apresenta o plano mais adequado para o momento da sua empresa.";
+// 24/11 (Leo): a resposta de preço ganha a base ("a partir de R$299 mensais" +
+// garantia), nos dois roteiros e na resposta geral.
+const PRICE_BASE_SENTENCE = `Pra você ter uma base, ${PRICE_BASE}.`;
+const OEM_PRICE_TEXT = `O investimento depende da sua operação e das suas necessidades. Na demonstração, nosso especialista entende melhor o seu cenário e apresenta os planos e valores mais adequados para o momento da sua empresa. ${PRICE_BASE_SENTENCE}`;
+const PRICE_PRICE_TEXT = `O investimento depende do volume de anúncios da sua operação. Na demonstração, nosso especialista entende melhor o seu cenário e apresenta o plano mais adequado para o momento da sua empresa. ${PRICE_BASE_SENTENCE}`;
 const SCRIPT_PRICE_TEXT = { oem: OEM_PRICE_TEXT, price: PRICE_PRICE_TEXT };
 // Resposta curta e positiva do lead ("sim", "pode ser", "ajudaria", "ok") que
 // move o roteiro; negativa, ressalva ou pedido de mudança fica com a IA.
@@ -266,8 +270,8 @@ function oemCommitParts(nome) {
 // copy do roteiro de 05/10.
 function priceDeferral(nome, { script = "" } = {}) {
   if (SCRIPT_PRICE_TEXT[script]) return SCRIPT_PRICE_TEXT[script];
-  const oi = nome ? `${nome}, o` : "O";
-  return `${oi} investimento é de acordo com as necessidades da sua operação: primeiro a gente entende o seu cenário, e aí te mostra os pontos que dá pra alavancar. É exatamente isso que o especialista faz na demonstração.`;
+  const oi = nome ? `${nome}, os` : "Os";
+  return `${oi} planos são variáveis: é na conversa que o especialista orienta o valor ideal de investimento, de acordo com as necessidades da sua operação. ${PRICE_BASE_SENTENCE}`;
 }
 
 // Confirmação de agendamento ENXUTA (Leo, 23/08), na letra da Manuela
@@ -1206,9 +1210,9 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     // lead não quer call: gente decide. Ponte sem promessa de valor.
     if (!callAtLive && noInterestNow && askingPriceNow && !lead.sdrLog?.priceHandoffAt) {
       const iso = new Date(nowMs).toISOString();
-      await raiseAlert(repo, thread, { text: `Não quer a conversa e pede preço · PREÇO SÓ NA CALL: assume e decide (não manda valor por aqui): "${String(message?.text || "").slice(0, 140)}"` });
-      await stamp(lead, { handoffAt: iso, priceHandoffAt: iso, handoffKind: "preco", handoffWhy: "não quer call e pede preço" });
-      await send(priceBridgeText(nome), { path: "preco-humano" });
+      await raiseAlert(repo, thread, { text: `Não quer a conversa e pede preço · o robô já passou a base (a partir de R$299 mensais + garantia); o valor exato segue só na call, assume e decide: "${String(message?.text || "").slice(0, 140)}"` });
+      await stamp(lead, { handoffAt: iso, priceHandoffAt: iso, priceGuardAt: lead.sdrLog?.priceGuardAt || iso, handoffKind: "preco", handoffWhy: "não quer call e pede preço" });
+      await send([priceDeferral(nome, { script: st.scripted ? st.script : "" }), priceBridgeText(nome)], { path: "preco-humano" });
       return aborted ? "abortado" : "preco-humano";
     }
     // ── EXPLICAÇÃO "POR AQUI" (R-044, 28/10, Janaina "me explica por áudio por
@@ -1222,6 +1226,33 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
           ? "O Lever Price mantém o preço dos seus anúncios pelo custo, margem e imposto que você cadastra, e coloca seus produtos nas promoções do Mercado Livre sem você precisar entrar uma a uma"
           : "A LeverAds espelha e gerencia seus anúncios entre as contas de Mercado Livre e Shopee, com estoque, atendimento e edição num lugar só";
       const amostra = st.script === "oem" ? "um código seu" : "um anúncio seu";
+      // O ROBÔ MESMO ENVIA O VÍDEO (decisão do Leo, 24/11): o mesmo arquivo que
+      // a SDR mandava na mão ("LEVER OEM.mp4" / "LEVER PRICE.mp4", sdr-video.js).
+      // Com o vídeo enviado a conversa SEGUE com o robô, sem alerta nem pausa.
+      // Sem vídeo válido pro roteiro (ou envio recusado), vale o caminho antigo:
+      // promete o vídeo, avisa o time e para.
+      const videoKind = videoKindForScript(st.script);
+      const video = videoKind && wa.sendMedia ? await videoFor(repo, { saas: product.id, kind: videoKind, phoneId: phoneId || "", now: at }).catch(() => null) : null;
+      if (video) {
+        await send(`Claro${nome ? ` ${nome}` : ""}. ${resumo}`, { path: "material-video" });
+        if (aborted) return "abortado";
+        let videoOk = false;
+        try {
+          const { messageId } = await wa.sendMedia(to, { kind: "video", mediaId: video.mediaId, filename: video.filename }, { phoneId });
+          mine.add(messageId);
+          await recordMessage(repo, { id: messageId, phone: to, direction: "out", text: "🎬 vídeo", status: "sent", author: SDR_AUTHOR, waPhoneId: phoneId || "", saas: product.id, leadId: lead.id, media: { kind: "video", id: video.mediaId, mime: video.mime, filename: video.filename } });
+          videoOk = true;
+        } catch (err) { log.warn?.({ lead: lead.id, err: err.message }, "sdr-brain: vídeo explicativo não saiu; cai no aviso ao time"); }
+        if (videoOk) {
+          await stamp(lead, { materialAskedAt: iso, videoSentAt: iso });
+          await send(`Esse vídeo resume como funciona. Na demonstração o especialista mostra isso rodando com ${amostra} na tela. Dá uma olhada e me fala o que achou`, { path: "material-video" });
+          return aborted ? "abortado" : "material-video";
+        }
+        await raiseAlert(repo, thread, { text: `Lead pediu material e o vídeo do robô não saiu · manda o vídeo explicativo e segue por mensagem: "${String(message?.text || "").slice(0, 140)}"` });
+        await stamp(lead, { materialAskedAt: iso, handoffAt: iso, handoffKind: "material", handoffWhy: "pediu explicação por aqui (vídeo falhou)" });
+        await send("Vou pedir pro time te mandar o vídeo por aqui", { path: "material" });
+        return aborted ? "abortado" : "material";
+      }
       await raiseAlert(repo, thread, { text: `Lead pediu explicação por aqui (áudio/texto/material) · manda o vídeo explicativo e segue por mensagem: "${String(message?.text || "").slice(0, 140)}"` });
       await stamp(lead, { materialAskedAt: iso, handoffAt: iso, handoffKind: "material", handoffWhy: "pediu explicação por aqui" });
       await send([`Claro${nome ? ` ${nome}` : ""}. ${resumo}`, `O que faz diferença é ver isso rodando com ${amostra} na tela, por isso a demonstração. Se preferir, peço pro time te mandar um vídeo curto por aqui`], { path: "material" });
@@ -1288,6 +1319,30 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       await releaseHolds(repo, { saas: product.id, leadId: lead.id, now: at }).catch(() => {});
       await send(`Tranquilo${nome ? ` ${nome}` : ""}, sem problemas. Se fizer sentido retomar mais pra frente, é só me chamar aqui`, { path: "desinteresse" });
       return aborted ? "abortado" : "desinteresse";
+    }
+    // ── SEM OPERAÇÃO: NÃO AGENDA (decisão do Leo, 24/11; estreita a R-048) ──
+    // Quem diz que não tem empresa (nem conta) ou que achou que era trabalho
+    // não recebe horário nem call: o robô explica pra quem é a ferramenta,
+    // para e avisa o time, que decide o destino do card. Com call já marcada
+    // o robô não desmarca sozinho: só avisa, e a conversa segue.
+    if (!inCallWindow && !FORM_MSG_RX.test(burstText) && burstText.length <= 400 && noBusiness(burstPlain)) {
+      const trecho = String(burstText).replace(/\s+/g, " ").slice(0, 160);
+      const jobSeeker = /trabalh|emprego|vaga|renda extra/.test(burstPlain);
+      if (callAtLive) {
+        if (!lead.sdrLog?.noBusinessAt) {
+          await raiseAlert(repo, thread, { text: `Lead com call marcada disse que não tem empresa / procurava trabalho · confere se a call segue: "${trecho}"` });
+          await stamp(lead, { noBusinessAt: new Date(nowMs).toISOString(), profileNote: trecho });
+        }
+      } else {
+        const iso = new Date(nowMs).toISOString();
+        await raiseAlert(repo, thread, { text: `Lead disse que não tem empresa / procurava trabalho · o robô NÃO agendou e parou (decisão do Leo, 24/11); confere e desqualifica: "${trecho}"` });
+        await stamp(lead, { handoffAt: iso, handoffKind: "perfil", handoffWhy: "sem empresa ou procurava trabalho", noBusinessAt: iso, profileNote: trecho });
+        await releaseHolds(repo, { saas: product.id, leadId: lead.id, now: at }).catch(() => {});
+        await send(jobSeeker
+          ? `Entendi${nome ? ` ${nome}` : ""}. Aqui é o comercial da LeverAds, uma ferramenta pra quem já vende no Mercado Livre e na Shopee com conta própria, não é vaga de trabalho. Se um dia você tiver uma operação por lá, é só me chamar aqui`
+          : `Entendi${nome ? ` ${nome}` : ""}. A LeverAds é uma ferramenta pra quem já vende no Mercado Livre ou na Shopee com conta própria, então por enquanto não consigo te ajudar por aqui. Quando você estiver vendendo por lá, é só me chamar aqui`, { path: "sem-operacao" });
+        return aborted ? "abortado" : "sem-operacao";
+      }
     }
     // Prompt v2 exige o contrato v2 (a IA escolhe horários por id).
     const offerContract = cfg.promptVersion === "v2" ? "v2" : cfg.offerContract;
@@ -1423,17 +1478,29 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
         await stamp(lead, { priceGuardAt: lead.sdrLog?.priceGuardAt || iso, priceExplainedAt: iso });
         return "preco-explicado";
       }
-      await raiseAlert(repo, thread, { text: `Insistiu no preço ${priceAsks}x · assume a conversa, mas PREÇO SÓ NA CALL (planos diferentes, o certo sai da escuta das dores): não fala valor por aqui, leva pra call: "${String(message?.text || "").slice(0, 140)}"` });
+      await raiseAlert(repo, thread, { text: `Insistiu no preço ${priceAsks}x · assume a conversa: a base já foi dita (a partir de R$299 mensais + garantia); o valor exato segue só na call (planos diferentes, o certo sai da escuta das dores): "${String(message?.text || "").slice(0, 140)}"` });
       await stamp(lead, { handoffAt: iso, priceHandoffAt: iso, handoffKind: "preco" });
       await send(priceBridgeText(nome), { path: "preco-humano" });
       return "preco-humano";
+    }
+
+    // A PRIMEIRA RESPOSTA DE PREÇO LEVA A BASE (Leo, 24/11): se a IA respondeu
+    // o pedido de preço sem citar a base, sai a resposta oficial no lugar (a
+    // oferta de horário, quando houver, continua sendo escrita pelo motor).
+    if (askingNow && !insisting && !inCallWindow && decision.acao === "responder") {
+      const dito = (Array.isArray(decision.mensagens) && decision.mensagens.length ? decision.mensagens : [decision.mensagem]).join(" ");
+      // (valor fora da base cai na trava de preço lá embaixo, que responde sozinha)
+      if (!/299/.test(dito) && !leaksPrice(dito)) {
+        decision.mensagens = [priceDeferral(nome, { script })]; decision.mensagem = decision.mensagens[0];
+        await stamp(lead, { priceGuardAt: lead.sdrLog?.priceGuardAt || new Date(nowMs).toISOString() });
+      }
     }
 
     if (decision.acao === "humano") {
       await raiseAlert(repo, thread, { text: `SDR IA pediu humano: ${decision.motivoHumano || "precisa de gente"} · "${String(message?.text || "").slice(0, 140)}"` });
       await stamp(lead, { handoffAt: new Date(nowMs).toISOString(), handoffKind: "ia", handoffWhy: String(decision.motivoHumano || "").slice(0, 160) });
       const transition = ((Array.isArray(decision.mensagens) && decision.mensagens[0]) || String(decision.mensagem || "")).trim();
-      if (transition && !PRICE_RX.test(transition) && transition.length <= 240) await send(transition, { kind: "ia", path: "humano" });
+      if (transition && !leaksPrice(transition) && transition.length <= 240) await send(transition, { kind: "ia", path: "humano" });
       return "humano";
     }
 
@@ -1685,7 +1752,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     }
     // TRAVA DE PREÇO (1ª vez): a IA citou valor → sai a resposta oficial no
     // lugar. A 2ª e a 3ª insistência já foram tratadas pela escada lá em cima.
-    if (PRICE_RX.test(parts.join(" "))) {
+    if (leaksPrice(parts.join(" "))) {
       await send(priceDeferral(nome, { script }), { kind: "trava", path: "preco-travado" });
       await stamp(lead, { priceGuardAt: new Date(nowMs).toISOString() });
       shadowCompare(sh, rawParts, "preco-travado"); return "preco-travado";

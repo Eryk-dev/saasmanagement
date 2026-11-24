@@ -16,6 +16,7 @@ import { logActivity, onOutboundMessage } from "../crm/lead-flow.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "../platform/http-status.js";
 import { threadOwner, ticketFromThread } from "./thread-owner.js";
 import { makeTtlCache } from "../platform/ttl-cache.js";
+import { rememberVideo } from "../sdr/sdr-video.js";
 
 // Mensagem enviada pelo inbox: lead NOVO ganha o toque de 1º contato e lead
 // em CONTATO vai pra qualificação — quem recebeu mensagem nossa já está sendo
@@ -971,6 +972,9 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
       author: req.authUser?.id || "cockpit", waPhoneId: phoneId || "", saas: thread?.saas || "",
       media: { kind, id: mediaId, mime, filename },
     });
+    // Vídeo explicativo do produto ("LEVER OEM.mp4", "LEVER PRICE.mp4"): o robô
+    // SDR reenvia este mesmo arquivo quando o lead pede material (sdr-video.js).
+    if (kind === "video") await rememberVideo(repo, { saas: thread?.saas || "", filename, mediaId, mime, phoneId: phoneId || "", messageId }).catch(() => {});
     await markFirstContact(repo, thread?.leadId || (await findLeadByPhone(repo, to))?.id, req.authUser?.id);
     // Cacheia o binário sob o id da MENSAGEM pra tocar no nosso inbox (o mediaId
     // da Meta expira; guardamos a cópia como no recebimento).

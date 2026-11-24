@@ -24,6 +24,7 @@
 //
 // O motor é um poller de 60s no molde do drip-runner (single-flight, no-op sem
 // produto ligado), iniciado no index.js.
+import { renewVideos } from "./sdr-video.js";
 import { findThreadByPhone, listMessages, recordMessage, waMatchKey } from "../whatsapp/wa-store.js";
 import { lastRealReply, isOfferMsg, offeredSlotsIn, windowOpenAt, AUTO_REPLY_RX, GREETING_ONLY_RX, collapseSameDay } from "./sdr-signals.js";
 import { NO_INTEREST_RX, plainReply, isNonAnswer } from "./sdr-intents.js";
@@ -682,6 +683,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
     return mediaId;
   }
 
+  let lastVideoRenewMs = 0;
   async function tick() {
     if (!wa?.configured) return null;
     const at = now();
@@ -693,6 +695,12 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
       .map((p) => ({ product: p, cfg: sdrBotConfig(p) }))
       .filter((x) => x.cfg);
     if (!active.length) return null;
+    // Vídeos explicativos que o robô envia (sdr-video.js): renova o media id
+    // antes de a Meta expirar. Uma checagem a cada 6h basta.
+    if (nowMs - lastVideoRenewMs > 6 * HOUR) {
+      lastVideoRenewMs = nowMs;
+      for (const { product } of active) await renewVideos(repo, wa, { saas: product.id, now: at, log }).catch(() => 0);
+    }
 
     const anyPhone = products.some((p) => p.waPhoneId);
     const [users, allLeads] = await Promise.all([repo.list("users"), repo.list("leads")]);
