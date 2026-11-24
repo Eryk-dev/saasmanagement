@@ -783,7 +783,28 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     // o robô oferecer "amanhã às 10h" e, na resposta do lead 27 minutos depois,
     // negar o próprio horário (prod 24/08, Guilherme). Ver agenda-slots.js.
     const holds = await activeHolds(repo, product.id, { now: at }).catch(() => []);
-    const { slots, requested: requestedDate, startDate: offerDate, requestedEmpty = false, refused: refusedDays = [], exclude: excludeSlots = [] } = await sdrSlotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 0, messages: agendaMessages, holds });
+    const slotArgs = { lead, saas: product.id, now: wnow, limit: 0, messages: agendaMessages };
+    const { slots: heldOutSlots, requested: requestedDate, startDate: offerDate, requestedEmpty = false, refused: refusedDays = [], exclude: excludeSlots = [] } = await sdrSlotsForLead(repo, { ...slotArgs, holds });
+    // ACEITE GANHA DA RESERVA (23/11, Daniel: recebeu "hoje às 14h ou às 17h",
+    // respondeu "17h" 69 min depois e ouviu "consigo amanhã às 11h ou às 14h";
+    // o 17h seguia livre na agenda, só estava RESERVADO pela oferta feita a
+    // outro lead meia hora antes). Reserva é de quem ainda está decidindo:
+    // horário que a gente ofereceu a ESTE lead e ele aceitou volta pra lista
+    // se a agenda real ainda o tem. Quem só recebeu a oferta e escolher depois
+    // ouve a desculpa do R-028, que aí é verdade.
+    let slots = heldOutSlots;
+    if (holds.length) {
+      const offeredToHim = liveOfferedSlots(agendaMessages, SDR_AUTHOR, wnow);
+      const acceptedHeld = offeredToHim.length ? acceptedSlot(lastInboundText(msgs), offeredToHim) : null;
+      if (acceptedHeld && !slots.some((s) => s.at === acceptedHeld.at)) {
+        const open = await sdrSlotsForLead(repo, { ...slotArgs, holds: [] }).catch(() => null);
+        const real = open?.slots?.find((s) => s.at === acceptedHeld.at);
+        if (real) {
+          slots = [...slots, real].sort((a, b) => a.at.localeCompare(b.at));
+          log.info?.({ lead: lead.id, horario: real.at }, "sdr-brain: horário aceito estava reservado por outra oferta e voltou pra lista");
+        }
+      }
+    }
     const slotList = slots.map((s) => ({ ...s, label: slotLabel(s.at, wnow) }));
     // A OFERTA sai só de hora cheia; slotList inteiro (com as quebradas) segue
     // valendo pra AGENDAR quando o lead pede um horário específico.
@@ -996,7 +1017,12 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     const acceptedAny = offeredAll.length ? acceptedSlot(lastInText, offeredAll) : null;
     const takenSlot = !!acceptedAny && !slotList.some((s) => s.at === acceptedAny.at);
     const leadHourMatch = plainReply(lastInText).match(/\b(\d{1,2})\s?(?:h\d{0,2}|hs|hrs|horas|:\d{2})\b/);
-    const leadHour = leadHourMatch ? Number(leadHourMatch[1]) : bareHour(lastInText);
+    // "As 16 pode ser?", "Ou amanhã às 13?" (23/11, Joao): hora dita com "às"
+    // e sem "h" também é hora pedida. Só com cara de horário (6 a 22) e no fim
+    // da frase ou seguida de verbo de pedido ("às 2 contas" não é hora).
+    const asHourMatch = leadHourMatch ? null : plainReply(lastInText).match(/\bas\s+(\d{1,2})(?=\s*(?:$|[?.!,]|pode|podemos|da\b|daria|seria|fica|serve|consigo|ta\b|esta\b|ok\b))/);
+    const asHour = asHourMatch && Number(asHourMatch[1]) >= 6 && Number(asHourMatch[1]) <= 22 ? Number(asHourMatch[1]) : null;
+    const leadHour = leadHourMatch ? Number(leadHourMatch[1]) : asHour ?? bareHour(lastInText);
     // CONTEXTO DO VALIDADOR (sdr-guards.js): o que as travas precisam saber.
     // Função porque hourReply muda no caminho do número solto.
     const guardCtx = () => ({
@@ -1458,12 +1484,39 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       const fits = slotList.filter((s) => offeredDays.has(s.at.slice(0, 10)) && Number(s.at.slice(11, 13)) === hourOnly && s.at.endsWith(":00"));
       if (accepted) { decision.acao = "agendar"; decision.horario = accepted.at; }
       else if (fits.length === 1) { decision.acao = "agendar"; decision.horario = fits[0].at; }
+      else if (!fits.length && takenSlot) {
+        // O horário que ELE escolheu entre os nossos caiu de verdade: desculpa
+        // + o par real, nunca a troca muda (23/11, Daniel: "17h" → "consigo
+        // amanhã às 11h ou às 14h", sem uma palavra sobre o 17h).
+        const pool = suggestedPair.length ? suggestedPair : offerPool.slice(0, 1);
+        decision.acao = "responder";
+        decision.mensagens = [reofferText(nome, pool, wnow)];
+        decision.oferecer = false; decision.slotIds = []; decision.slots = [];
+        hourReply = true;
+      }
       else if (!fits.length && !slotList.some((s) => Number(s.at.slice(11, 13)) === hourOnly)) {
         decision.acao = "responder";
         decision.mensagens = [`Às ${hourOnly}h não tenho vaga. ${actualOffer}`];
         hourReply = true;
       }
       if (decision.acao === "agendar") log.info?.({ lead: lead.id, hora: hourOnly }, "sdr-brain: número solto virou hora e agendou");
+    }
+
+    // HORA PEDIDA COM O DIA E SEM VAGA (23/11, Joao: "As 16 pode ser?" + "Ou
+    // amanhã às 13?" recebeu "consigo te atender em outra opção amanhã" + 11h,
+    // sem dizer que as 13h não tinha): a resposta diz a verdade sobre a hora
+    // que ele pediu, com o dia, e só então o par real (R-028).
+    if (hourOnly == null && leadHour != null && !hourReply && !takenSlot && !callAtLive && !awaitingReschedule && decision.acao === "responder") {
+      const askedDays = requestedDate && offerDate ? new Set([offerDate]) : new Set(offeredSlotsIn(agendaMessages, SDR_AUTHOR).map((o) => o.at.slice(0, 10)));
+      const has = slotList.some((s) => (!askedDays.size || askedDays.has(s.at.slice(0, 10))) && Number(s.at.slice(11, 13)) === leadHour);
+      if (!has && (requestedDate || slotsOffered)) {
+        const pool = suggestedPair.length ? suggestedPair : offerPool.slice(0, 1);
+        // Sai pelo mesmo caminho da re-oferta determinística (o validador de
+        // horário fora da lista leria o "amanhã às 13h" da frase como oferta).
+        log.info?.({ lead: lead.id, hora: leadHour }, "sdr-brain: hora pedida sem vaga recebeu a verdade + o par real");
+        await send(offerLine(pool, { style: "sem-vaga-hora", hour: leadHour, day: requestedDate && offerDate ? dayLabelOf(offerDate) : "", wnow }), { path: "reoferta" });
+        return "reoferta";
+      }
     }
 
     if (decision.acao === "agendar" || decision.acao === "remarcar") {

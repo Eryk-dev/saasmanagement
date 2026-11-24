@@ -21,7 +21,9 @@ import { sdrAgendaWindow, firstDayMentioned } from "./sdr-agenda.js";
 import { FORM_MSG_RX, AUTO_REPLY_RX, GREETING_ONLY_RX, ACCEPT_RX, BARE_HOUR_RX, acceptedSlot } from "./sdr-signals.js";
 
 // ── Forma do texto ──────────────────────────────────────────────────────────
-export const plainReply = (text) => String(text || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+// Espaço dobrado vira um só: "Não  mim interessa" (17/11, Carmen) furava toda
+// regex escrita com um espaço.
+export const plainReply = (text) => String(text || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[ \t]{2,}/g, " ").trim();
 export const lastInboundText = (msgs) => {
   const m = [...msgs].reverse().find((x) => x.direction === "in");
   return String(m?.transcript || m?.text || "");
@@ -143,7 +145,7 @@ export const bareHour = (text) => {
 // LEAD SEM INTERESSE / PEDIU PAUSA (Leo, 08/10, caso Laion).
 // 28/10: "não quero começar", "não quero fazer call", "agora não", "ainda não é
 // o momento" também são desinteresse (Helano, Ronaldo, Marcelo, Luciene).
-export const NO_INTEREST_RX = /nao tenho (?:mais )?interesse|sem interesse|perdi o interesse|nao (?:quero|preciso|tenho) mais\b(?! (?:de |do |da |dos |das |que |um |uma |nenhum|nenhuma|ninguem|nada|tempo|como))|vamos pausar|pausar por enquanto|deixa pra la|nao (?:vou|vamos) (?:seguir|continuar|prosseguir|fechar|contratar)|pode parar|para de (?:me )?mandar|nao me (?:chame|chama|mande|manda|procure|procura) mais|(?:ainda )?nao (?:e|eh) (?:o )?momento|por enquanto nao|agora nao(?: quero| da| consigo)?\b(?!,? (?:mas|porem|so|apenas))|desisti|nao quero (?:fazer )?(?:agendar|marcar|demonstracao|conversa|call|reuniao|video|comecar|participar|seguir|continuar|contratar|nada)|nao quero\b(?! (?:saber|perder|dizer|falar|que|cancelar|remarcar|mudar|trocar|adiar|desmarcar))/;
+export const NO_INTEREST_RX = /nao (?:tenho|ha|tem) (?:mais )?[ie]nteresse|sem [ie]nteresse|perdi o [ie]nteresse|nao (?:me|mim|nos) [ie]nteress[ao]u?\b|nao (?:estou|esto|to|tou|estamos|fiquei|sou) (?:mais |muito |nada |tao )?[ie]nteressad[oa]s?|nao (?:quero|preciso|tenho) mais\b(?! (?:de |do |da |dos |das |que |um |uma |nenhum|nenhuma|ninguem|nada|tempo|como))|vamos pausar|pausar por enquanto|deixa pra la|nao (?:vou|vamos) (?:seguir|continuar|prosseguir|fechar|contratar)|pode parar|para de (?:me )?mandar|nao me (?:chame|chama|mande|manda|procure|procura) mais|(?:ainda )?nao (?:e|eh) (?:o )?momento|por enquanto nao|agora nao(?: quero| da| consigo)?\b(?!,? (?:mas|porem|so|apenas))|desisti|nao quero (?:fazer )?(?:agendar|marcar|demonstracao|conversa|call|reuniao|video|comecar|participar|seguir|continuar|contratar|nada)|nao quero\b(?! (?:saber|perder|dizer|falar|que|cancelar|remarcar|mudar|trocar|adiar|desmarcar))/;
 // Lead na sala do Meet esperando.
 export const WAITING_ROOM_RX = /sozinh|ninguem (?:entrou|apareceu|chegou|na sala)|nao (?:entrou|apareceu|chegou|tem) ninguem|sala (?:esta |ta )?vazia|\bcade\b|\bkd\b|\b(?:estou|to) (?:esperando|aguardando)|aguardando (?:aqui|na sala|voces|o especialista)|esperando (?:aqui|na sala|voces)|me conecte|vai entrar\?|quem (?:vai|ta) (?:entrar|na sala)/;
 // Objeção/desistência depois da call marcada.

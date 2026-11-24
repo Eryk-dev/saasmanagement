@@ -1974,3 +1974,93 @@ test("hora pedida sem vaga recebe a verdade + o par dentro da faixa; 'pode ser o
   assert.doesNotMatch(offer, /1[0-9]h/, `outro dia mantém a faixa até as 9h: ${offer}`);
   assert.ok(fakes2.calls[0].slots.every((x) => Number(x.at.slice(11, 13)) <= 9), JSON.stringify(fakes2.calls[0].slots.map((x) => x.at)));
 });
+
+// ── Prints de 23 e 24/11/2026 (Leo: "estamos perdendo muitas oportunidades") ──
+const V2_ENFORCE = { offerContract: "v2", promptVersion: "v2", guardsMode: "enforce" };
+const PITCH_2411 = [
+  { direction: "out", author: "sdr-bot", text: "Oiii Rafael, tudo bem? A LeverAds espelha e gerencia seus anúncios entre as contas de Mercado Livre e Shopee. Isso ajudaria na sua operação?", at: ISO("2026-08-19T11:00:00Z") },
+  { direction: "in", text: "Sim", at: ISO("2026-08-19T11:30:00Z") },
+];
+
+// Daniel (23/11): recebeu "hoje às 14h ou às 17h", respondeu "17h" 69 minutos
+// depois e ouviu "consigo amanhã às 11h ou às 14h". O 17h estava livre na
+// agenda; só estava RESERVADO pela oferta feita a outro lead meia hora antes.
+test("23/11 (Daniel): horário NOSSO aceito marca mesmo reservado pela oferta de outro lead; se caiu de verdade, desculpa + par, nunca a troca muda #R-028 #R-027", async () => {
+  const messages = [...PITCH_2411, { direction: "out", author: "sdr-bot", text: "Consigo hoje às 14h ou às 17h, qual fica melhor pra você?", at: ISO("2026-08-19T11:31:00Z") }, { direction: "in", text: "17h", at: ISO("2026-08-19T12:59:00Z") }];
+  const repo = await world({ sdrBot: V2_ENFORCE, todayFree: true, messages });
+  // Outro lead recebeu a oferta das 17h há 10 min: a reserva dele ainda vale.
+  await repo.create("app_config", { id: "sdr_slot_holds_leverads", holds: [{ at: "2026-08-19T17:00", leadId: "L2", until: ISO("2026-08-19T13:20:00Z") }, { at: "2026-08-19T14:00", leadId: "L2", until: ISO("2026-08-19T13:20:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Perfeito Rafael"], oferecer: true }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "17h" } });
+  assert.equal((await repo.get("leads", "L1")).callAt, "2026-08-19T17:00", `devia ter marcado as 17h; resultado ${r}, enviou ${JSON.stringify(fakes.sent.map((x) => x.text))}`);
+  assert.ok(!fakes.sent.some((x) => /^Consigo amanhã/.test(x.text)), "não troca o horário aceito por outro par");
+  // Agora o 17h caiu de verdade (alguém marcou): desculpa + par real.
+  const repo2 = await world({ sdrBot: V2_ENFORCE, todayFree: true, messages });
+  await repo2.create("agenda_blocks", { id: "dezessete", users: ["pl", "leonardo", "jonan", "jonathan", "vit"], recur: "once", date: "2026-08-19", fromHour: 17, toHour: 18 });
+  const fakes2 = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Perfeito Rafael"], oferecer: true }] });
+  await brainOf(repo2, fakes2).handleInbound({ message: { from: "5541999990000", text: "17h" } });
+  assert.equal((await repo2.get("leads", "L1")).callAt || "", "", "sem vaga não marca");
+  assert.equal(fakes2.sent.length, 1, JSON.stringify(fakes2.sent.map((x) => x.text)));
+  assert.match(fakes2.sent[0].text, /esse horário acabou de ser preenchido por outro cliente, me desculpa! Consigo /);
+});
+
+// Joao (23/11): a oferta era "hoje às 17h ou às 19h"; ele respondeu "Não consigo
+// esses horários" + "As 16 pode ser?" + "Ou amanhã às 13?" e ouviu "Consigo te
+// atender em outra opção amanhã" + "Consigo amanhã às 11h", sem uma palavra
+// sobre as 13h que ele pediu.
+test("23/11 (Joao): hora pedida com 'às' e o dia, sem vaga, recebe a verdade com o dia + o par real #R-028 #R-032", async () => {
+  const repo = await world({ sdrBot: V2_ENFORCE, todayFree: true, messages: [
+    ...PITCH_2411,
+    { direction: "out", author: "sdr-bot", text: "Consigo hoje às 17h ou às 19h, qual fica melhor pra você?", at: ISO("2026-08-19T11:31:00Z") },
+    { direction: "in", text: "Não consigo esses horários", at: ISO("2026-08-19T12:58:50Z") },
+    { direction: "in", text: "As 16 pode ser?", at: ISO("2026-08-19T12:58:55Z") },
+    { direction: "in", text: "Ou amanhã às 13?", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  await repo.create("agenda_blocks", { id: "treze", users: ["pl", "leonardo", "jonan", "jonathan", "vit"], recur: "once", date: "2026-08-20", fromHour: 13, toHour: 14 });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Consigo te atender em outra opção amanhã Rafael"], oferecer: true }] });
+  await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "Ou amanhã às 13?" } });
+  const texts = fakes.sent.map((x) => x.text);
+  assert.ok(texts.some((t) => /^Amanhã às 13h não tenho vaga\. Consigo amanhã às /.test(t)), JSON.stringify(texts));
+  assert.ok(!texts.some((t) => /outra opção/.test(t)), JSON.stringify(texts));
+  assert.equal(texts.filter((t) => /Consigo /.test(t)).length, 1, `uma oferta só: ${JSON.stringify(texts)}`);
+});
+
+// Carmen (09 e 17/11): "Não  mim interessa obrigada" e "maus não estou
+// enteressada" não eram lidos como desinteresse (espaço dobrado, "mim",
+// "enteressada") e o robô respondeu "Bons estudos por aí" + "Consigo hoje às
+// 14h ou amanhã às 9h" duas vezes, até ela mandar parar.
+test("17/11 (Carmen): 'não mim interessa' e 'não estou enteressada' são desinteresse: acolhe, para e não oferece horário #R-083", async () => {
+  for (const fala of ["Não  mim interessa obrigada", "Aí nana mim desculpe, maus não estou enteressada tenho tantas aulas  para assistir  que você  nem imagina, tenha aulas de todos marketing", "não tô interessado", "Não me interessa"]) {
+    const repo = await world({ sdrBot: V2_ENFORCE, messages: [
+      ...PITCH_2411,
+      { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?", at: ISO("2026-08-19T11:31:00Z") },
+      { direction: "in", text: fala, at: ISO("2026-08-19T12:59:00Z") },
+    ] });
+    const fakes = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Bons estudos por aí"], oferecer: true }] });
+    const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: fala } });
+    assert.equal(r, "desinteresse", fala);
+    assert.equal(fakes.calls.length, 0, "nem chama a IA");
+    assert.ok(!fakes.sent.some((x) => /Consigo |Fica melhor |\d{1,2}h/.test(x.text)), `${fala}: ${JSON.stringify(fakes.sent.map((x) => x.text))}`);
+    assert.ok((await repo.get("leads", "L1")).sdrLog?.noInterestAt, "carimba o desinteresse (a retomada automática para)");
+  }
+  // Interesse de verdade não cai no portão.
+  const { NO_INTEREST_RX, plainReply } = await import("../src/sdr/sdr-intents.js");
+  for (const ok of ["isso me interessa", "me interessa sim", "não sei se me interessa, como funciona?"]) assert.equal(NO_INTEREST_RX.test(plainReply(ok)), false, ok);
+});
+
+// Paulo (24/11), de ponta a ponta: a oferta depois de "de manhã preciso ficar
+// na empresa" sai da tarde, e "outro dia" + "a partir das 13h" oferece amanhã.
+test("24/11 (Paulo): manhã ocupada tira a manhã da oferta; 'outro dia' + 'a partir das 13h' oferece AMANHÃ à tarde, não daqui a dois dias #R-032 #R-040", async () => {
+  const base = [...PITCH_2411, { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?", at: ISO("2026-08-19T11:31:00Z") }];
+  const repo = await world({ sdrBot: V2_ENFORCE, messages: [...base, { direction: "in", text: "Consegue de tarde?", at: ISO("2026-08-19T12:58:55Z") }, { direction: "in", text: "De manhã eu preciso ficar na empresa", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Consigo sim Rafael"], oferecer: true }] });
+  await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "De manhã eu preciso ficar na empresa" } });
+  const offer = fakes.sent.map((x) => x.text).find((t) => /Consigo .*\dh/.test(t)) || "";
+  assert.match(offer, /^Consigo amanhã às 1[3-9]h ou às 1[5-9]h/, JSON.stringify(fakes.sent.map((x) => x.text)));
+  assert.ok(fakes.calls[0].slots.every((s) => Number(s.at.slice(11, 13)) >= 12), "a IA só recebe a tarde");
+  const repo2 = await world({ sdrBot: V2_ENFORCE, messages: [...base, { direction: "in", text: "De manhã não consigo", at: ISO("2026-08-19T12:58:50Z") }, { direction: "in", text: "Pode ser outro dia", at: ISO("2026-08-19T12:58:55Z") }, { direction: "in", text: "Eu só consigo a partir das 13h", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes2 = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Consigo sim Rafael, a partir das 13h"], oferecer: true }] });
+  await brainOf(repo2, fakes2).handleInbound({ message: { from: "5541999990000", text: "Eu só consigo a partir das 13h" } });
+  const texts2 = fakes2.sent.map((x) => x.text);
+  assert.ok(texts2.some((t) => /^Consigo amanhã às 13h ou às 15h, qual fica melhor pra você\?$/.test(t)), JSON.stringify(texts2));
+});

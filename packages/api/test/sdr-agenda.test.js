@@ -205,7 +205,9 @@ test("período do dia vira faixa de horas: com dia, no dia; sem dia, 5 dias úte
   const amanhaTarde = sdrAgendaWindow([inbound("Vamos deixar pra amanhã à tarde")], NOW);
   assert.deepEqual([amanhaTarde.startDate, amanhaTarde.days, amanhaTarde.fromHour], ["2026-09-22", 1, 12]);
   assert.equal(sdrAgendaWindow([inbound("Pode ser à tarde?")], NOW).fromHour, 12);
-  assert.equal(sdrAgendaWindow([inbound("de manhã não consigo")], NOW).requested, false, "período recusado não é pedido");
+  // Período recusado pede o RESTO do dia (24/11, Paulo): antes era só recusa e o robô repetia a manhã.
+  const semManha = sdrAgendaWindow([inbound("de manhã não consigo")], NOW);
+  assert.deepEqual([semManha.requested, semManha.fromHour, semManha.toHour], [true, 12, undefined], "período recusado vira o resto do dia");
   // A lista respeita a faixa: só tarde, e só dias úteis.
   const r = await sdrSlotsForLead(repo, { ...options, grade: "C", messages: [inbound("Consigo no período da tarde")] });
   assert.ok(r.slots.length);
@@ -432,4 +434,35 @@ test("janela espontânea só com :30 livres anda um dia útil: a oferta nunca ca
   assert.ok(slots.every((s) => s.at >= "2026-09-23T"), `oferta anda pro dia útil seguinte: ${slots.slice(0, 3).map((s) => s.at)}`);
   assert.equal(extended, true);
   assert.deepEqual(wholeHourSlots([{ at: "2026-09-22T09:30" }, { at: "2026-09-22T10:30" }]), [], "wholeHourSlots nunca devolve :30");
+});
+
+// Paulo (24/11): "Consegue de tarde?" + "De manhã eu preciso ficar na empresa"
+// virou pedido de MANHÃ (o último período citado ganhava) e o robô repetiu
+// "amanhã às 9h ou às 11h". No turno seguinte, "De manhã não consigo" + "Pode
+// ser outro dia" + "Eu só consigo a partir das 13h" pulou a quarta inteira,
+// com a tarde livre, e ofereceu quinta.
+test("24/11 (Paulo): período ocupado pede o resto do dia; 'outro dia' com faixa nova começa no próximo dia útil #R-032 #R-040 #R-119", async () => {
+  const offer = { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?", at: "2026-09-21T11:00:00Z" };
+  const at = (text, iso) => ({ direction: "in", text, at: iso });
+  const tarde = sdrAgendaWindow([offer, at("Consegue de tarde?", "2026-09-21T11:01:00Z"), at("De manhã eu preciso ficar na empresa", "2026-09-21T11:01:05Z")], NOW);
+  assert.deepEqual([tarde.requested, tarde.fromHour, tarde.toHour], [true, 12, 19], "a tarde pedida com todas as letras fica; a manhã ocupada não a derruba");
+  for (const frase of ["De manhã eu preciso ficar na empresa", "de manhã eu trabalho", "De manhã tenho reunião", "de manhã estou na loja", "pela manhã é muito corrido"]) {
+    const w = sdrAgendaWindow([offer, at(frase, "2026-09-21T11:01:00Z")], NOW);
+    assert.deepEqual([w.requested, w.fromHour, w.toHour], [true, 12, undefined], `${frase}: o resto do dia`);
+  }
+  assert.deepEqual([sdrAgendaWindow([at("à tarde eu trabalho", "2026-09-21T11:01:00Z")], NOW).toHour], [12], "tarde ocupada = manhã");
+  // Pedido de período continua pedido, inclusive com "preciso" e "tenho que".
+  for (const pede of ["consigo de manhã", "preciso que seja de manhã", "tem que ser de manhã", "tenho que fazer de manhã", "de manhã fica melhor"]) {
+    const w = sdrAgendaWindow([at(pede, "2026-09-21T11:01:00Z")], NOW);
+    assert.deepEqual([w.requested, w.fromHour, w.toHour], [true, 8, 12], pede);
+  }
+  // "Outro dia" + faixa nova: amanhã (22/09) em diante, a partir das 13h. Sem faixa nova, segue pulando o dia oferecido (Igor).
+  const outro = sdrAgendaWindow([offer, at("De manhã não consigo", "2026-09-21T11:02:00Z"), at("Pode ser outro dia", "2026-09-21T11:02:03Z"), at("Eu só consigo a partir das 13h", "2026-09-21T11:02:10Z")], NOW);
+  assert.deepEqual([outro.requested, outro.startDate, outro.days, outro.fromHour], [true, "2026-09-22", 5, 13]);
+  assert.equal(sdrAgendaWindow([offer, at("Pode ser outro dia", "2026-09-21T11:02:00Z")], NOW).startDate, "2026-09-23");
+  // A lista honra: amanhã à tarde entra, a manhã não.
+  const repo = await world();
+  const r = await sdrSlotsForLead(repo, { ...options, grade: "C", messages: [offer, at("De manhã não consigo", "2026-09-21T11:02:00Z"), at("Pode ser outro dia", "2026-09-21T11:02:03Z"), at("Eu só consigo a partir das 13h", "2026-09-21T11:02:10Z")] });
+  assert.equal(r.slots[0].at, "2026-09-22T13:00", JSON.stringify(r.slots.slice(0, 3)));
+  assert.ok(r.slots.every((s) => Number(s.at.slice(11, 13)) >= 13));
 });
