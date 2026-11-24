@@ -64,6 +64,11 @@ const LATE_RX = /fora do (?:horario )?comercial|(?:depois|apos|fora) do (?:exped
 // robô disse que não tinha horário nenhum).
 const PERIOD_RX = /\b(?:de|pela|a|na|no|de|do|da|no periodo da|no periodo de|periodo da|periodo de)?\s*\b(?<!\bbo[am]\s)(manha|tarde|noite)\b/;
 const PERIODS = { manha: { fromHour: 6, toHour: 12 }, tarde: { fromHour: 12, toHour: 19 }, noite: { fromHour: 18, toHour: 21 } };
+// O resto do dia quando o lead diz que um período NÃO serve.
+const PERIOD_REST = { manha: { fromHour: 12, toHour: null }, tarde: { fromHour: null, toHour: 12 }, noite: { fromHour: null, toHour: 18 } };
+// "De manhã eu preciso ficar na empresa", "à tarde eu trabalho", "de manhã
+// tenho reunião", "de manhã é corrido": o período citado é o que ele NÃO pode.
+const BUSY_PERIOD_RX = /\b(?:(?:preciso|tenho que|tenho de|vou ter que|costumo|sempre)\s+(?:ficar|estar|ir\b|trabalhar|atender|resolver|buscar|levar|sair|abrir|cuidar|viajar)|tenho (?:uma? |umas |uns )?(?:reuniao|reunioes|compromissos?|clientes?|aula|aulas|medico|consulta|entregas?|coleta)|(?:eu )?trabalho\b|(?:estou|to|tou|fico|estarei|vou estar|vou ficar)\s+(?:trabalhando|n[ao]s?\b|em\b|fora\b|sem\b)|e (?:muito |bem |mais )?(?:corrido|complicado|dificil|puxado|impossivel|ruim))/;
 const HAS_HOUR_RX = /\b\d{1,2}\s?h(\d{2})?\b|\b\d{1,2}:\d{2}\b/;
 // Restrição RELATIVA ao par que o robô acabou de oferecer (Leo, 13/10: o lead
 // respondeu "só depois desse horário" a "9h ou 11h" e o robô repetiu 9h ou
@@ -109,8 +114,15 @@ function periodOf(t, negIdx, offer = null) {
   const m = t.match(PERIOD_RX);
   if (!m) return null;
   const idx = t.indexOf(m[1]);
-  if (negIdx >= 0 && idx > negIdx && !ALT_CUE_RX.test(t.slice(negIdx, idx))) return null;
-  if (negIdx >= 0 && idx < negIdx) return null;
+  // PERÍODO OCUPADO (24/11, Paulo: "Consegue de tarde? De manhã eu preciso
+  // ficar na empresa" virou pedido de MANHÃ e o robô repetiu 9h/11h): período
+  // recusado ("de manhã não consigo") ou ocupado ("de manhã preciso ficar na
+  // empresa", "à tarde eu trabalho") pede o RESTO do dia. É faixa derivada:
+  // não derruba a que o lead pediu com todas as letras na mesma rajada. Com
+  // dia na cláusula ("hoje à tarde vou estar ocupado") a recusa é só daquele
+  // dia e segue sendo recusa (29/10, Gustavo).
+  const refusedPeriod = (negIdx >= 0 && idx > negIdx && !ALT_CUE_RX.test(t.slice(negIdx, idx))) || (negIdx >= 0 && idx < negIdx);
+  if (refusedPeriod || BUSY_PERIOD_RX.test(t)) return new RegExp(DAY_RX.source).test(t) ? null : { ...PERIOD_REST[m[1]], derived: true };
   return { ...PERIODS[m[1]] };
 }
 
@@ -157,7 +169,7 @@ function parseClause(t, at, offer = null) {
     const span = last ? Math.round((last.date.getTime() - date.getTime()) / 86_400_000) : 0;
     if (span > 0 && span <= 7) days = span + 1;
   }
-  return { date, days, period, refused };
+  return { date, days, period, refused, ...(/outro dia|outros dias|proximos dias/.test(pick.text) ? { otherDay: true } : {}) };
 }
 
 // Uma menção de dia ("quarta", "amanhã", "dia 30", "15/10") → { date, days }
@@ -220,13 +232,21 @@ function requestedWindow(text, at, offer = null) {
     const r = parseClause(c, at, offer);
     if (!r) continue;
     if (r.date) day = r;
-    if (r.period) period = r.period;
+    if (r.period && !(r.period.derived && period && !period.derived)) period = r.period;
     if (r.refusal) refusal = true;
     for (const d of r.refused || []) refused.add(d);
   }
   if (!day && !period) return refused.size || refusal ? { requested: false, refused: [...refused], refusal: true } : null;
   const out = { requested: true, refused: [...refused] };
-  if (day) { out.startDate = ymd(day.date); out.days = day.days; }
+  if (day) {
+    out.startDate = ymd(day.date); out.days = day.days;
+    // "PODE SER OUTRO DIA" + a faixa nova na mesma rajada (24/11, Paulo: "De
+    // manhã não consigo. Pode ser outro dia. Eu só consigo a partir das 13h"
+    // pulou a quarta inteira, com a tarde livre, e ofereceu quinta): o que
+    // ele recusou foi a HORA, não o dia. Vale do próximo dia útil em diante.
+    // Sem faixa nova, "outro dia" segue pulando o dia oferecido (06/11, Igor).
+    if (day.otherDay && period && !period.relative) out.startDate = addBusinessDaysNaive(ymd(at), 1).slice(0, 10);
+  }
   else if (period.relative && offer?.startDate && offer.startDate >= ymd(at)) {
     // "Depois desse horário": do dia oferecido em diante, dentro da faixa.
     out.startDate = offer.startDate; out.days = 5; out.periodOnly = true;
