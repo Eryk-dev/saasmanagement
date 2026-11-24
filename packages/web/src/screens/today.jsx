@@ -18,6 +18,7 @@ import { useData } from "../data.jsx";
 import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor, nurtureStage, hasDayStages, dayStageNumber, nextActionAfterMove } from "../lib/funnel.js";
 import { allUsers, currentUser, displayName, userById, usersByRole, isAdminUser } from "../lib/users.js";
 import { offWorkHours } from "../../../api/src/shared/work-hours.js";
+import { nationalHoliday } from "../../../api/src/shared/holidays.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { myOpenTasks, taskHash } from "../lib/tasks.js";
 import { useAttribution } from "../lib/pains.js";
@@ -2303,9 +2304,13 @@ export function busyView(concreteKeys, userId) {
   }
   const workHours = userById(userId)?.workHours || [];
   return {
-    has: (key) => concreteKeys.has(key) || consultKeys.has(key) || offWorkHours(workHours, key) || !!matchBlock(blocks, key),
+    // Feriado nacional trava o dia inteiro de todo mundo (shared/holidays.js;
+    // o servidor recusa a gravação com a mesma lista). Leo, 24/11/2026.
+    has: (key) => concreteKeys.has(key) || consultKeys.has(key) || !!nationalHoliday(key) || offWorkHours(workHours, key) || !!matchBlock(blocks, key),
     info: (key) => {
       if (concreteKeys.has(key)) return { kind: "call" };
+      const feriado = nationalHoliday(key);
+      if (feriado) return { kind: "block", reason: `feriado nacional: ${feriado}` };
       if (consultKeys.has(key)) return { kind: "block", reason: "consulta da mentoria" };
       if (offWorkHours(workHours, key)) return { kind: "block", reason: "fora do horário de atendimento" };
       const b = matchBlock(blocks, key);

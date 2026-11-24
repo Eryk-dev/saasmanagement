@@ -34,6 +34,7 @@ import { meta as defaultMeta } from "./meta.js";
 import { kindOf } from "../crm/stages.js";
 import { leadOrigin, dayKey } from "../metrics/metrics-core.js";
 import { wallNow, wallFromNaive, occupyCells, blockHits, closerPools, CALL_MIN, OFFER_HOURS, offerWindowOf } from "../crm/agenda-slots.js";
+import { isNationalHoliday } from "../shared/holidays.js";
 
 const pad2 = (n) => String(n).padStart(2, "0");
 const ymdOf = (w) => `${w.getUTCFullYear()}-${pad2(w.getUTCMonth() + 1)}-${pad2(w.getUTCDate())}`;
@@ -138,7 +139,8 @@ export function dayCapacity({ users, blocks, saas, dayStr }) {
   if (!wall) return { capacity: 0, closersAtivos: 0, closers: 0 };
   const dow = wall.getUTCDay();
   const pool = closerPools(users, saas).all;
-  if (dow === 0 || dow === 6) return { capacity: 0, closersAtivos: 0, closers: pool.length };
+  // Feriado nacional conta como fim de semana: a agenda não abre (shared/holidays.js).
+  if (dow === 0 || dow === 6 || isNationalHoliday(dayStr)) return { capacity: 0, closersAtivos: 0, closers: pool.length };
   const { lunchFrom, lunchTo } = OFFER_HOURS;
   let capacity = 0, closersAtivos = 0;
   for (const u of pool) {

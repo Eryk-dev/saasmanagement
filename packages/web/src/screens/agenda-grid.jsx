@@ -1,5 +1,6 @@
 import React from "react";
 import { Segmented } from "../components/viz.jsx";
+import { nationalHoliday } from "../../../api/src/shared/holidays.js";
 import { usersByRole, userColor, displayName, userById } from "../lib/users.js";
 import { Avatar, SecondaryButton } from "../atoms.jsx";
 import { Popover } from "../components/popover.jsx";
@@ -807,13 +808,17 @@ function AgendaView({ leads, consultations = [], recordMeetings = [], onOpenLead
           {days.map((d, i) => {
             const isToday = d.toDateString() === todayKey;
             const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+            // Feriado nacional (shared/holidays.js): a agenda não abre; o dia
+            // fica acinzentado como o fim de semana e leva o nome (Leo, 24/11).
+            const feriado = nationalHoliday(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
             // HOJE ganha cara de calendário: número no círculo cheio do accent
             // (+ kicker "hoje"); fim de semana fica acinzentado (Leo, 23/08).
             return (
-              <div key={i} style={{ padding: "8px 6px", textAlign: "center", borderLeft: "1px solid var(--line-1)", background: isWeekend && !isToday ? "var(--bg-2)" : undefined }}>
+              <div key={i} title={feriado ? `Feriado nacional: ${feriado}. A agenda não abre nesse dia.` : undefined} style={{ padding: "8px 6px", textAlign: "center", borderLeft: "1px solid var(--line-1)", background: (isWeekend || feriado) && !isToday ? "var(--bg-2)" : undefined }}>
                 <div className="kicker" style={{ color: isToday ? "var(--accent)" : "var(--fg-4)" }}>
                   {isToday ? "hoje · " : ""}{fmtDay(d, { weekday: "short" })}
                 </div>
+                {feriado && <div className="kicker" style={{ color: "var(--warn)", marginTop: 2 }}>feriado · {feriado}</div>}
                 <div style={{ marginTop: 3 }}>
                   <span className="tnum" style={{
                     display: "inline-flex", alignItems: "center", justifyContent: "center",

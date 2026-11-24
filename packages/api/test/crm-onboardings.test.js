@@ -95,7 +95,7 @@ test("pelo app: mover o card para Integração cria cliente e integração; puxa
   const app = Fastify();
   registerRoutes(app, repo);
   await repo.create("leads", { id: "l1", saas: "leverads", name: "Ana", stage: "Follow-up", amount: 1000 });
-  const r = await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { stage: "Integração", integrationAt: "2099-01-01T13:00:00Z" } });
+  const r = await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { stage: "Integração", integrationAt: "2099-01-02T13:00:00Z" } });
   assert.equal(r.statusCode, 200);
   const lead = await repo.get("leads", "l1");
   assert.ok(lead.customerId, "a venda criou o cliente");
