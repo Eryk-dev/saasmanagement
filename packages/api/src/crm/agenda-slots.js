@@ -26,7 +26,8 @@
 // closers — agendamento nunca trava.
 // Robô SDR do Leverads (sdrCloserPools): equipe nominal. S/A/B e todo Price
 // com Leonardo/Jonan/Jonathan; C/D/E dos demais com Vitor primeiro; Price
-// C/D/E com Ricardo, Eduardo e Vinicius primeiro (Leo, 08/11 e 17/11/2026).
+// C/D/E com Ricardo, Eduardo e Vinicius primeiro (Leo, 08/11 e 17/11/2026);
+// OEM C/D/E com Vitor e Eduardo primeiro (Leo, 24/11/2026).
 // "Primeiro" = o dia é deles enquanto tiverem horário; os de cima só entram
 // nos dias em que nenhum deles tem.
 import { kindOf } from "./stages.js";
@@ -154,15 +155,19 @@ export const namedAs = (u, names) => names.includes(normalizeName(u?.id)) || nam
 // vale para Vitor cadastrado como integrador.
 export const UPPER_NAMES = ["leonardo", "jonan", "jonathan"];
 // Time de Lever Price com nota baixa: Ricardo (Leo, 08/11/2026) mais Eduardo e
-// Vinicius (Leo, 17/11/2026). Os três só recebem lead de Lever Price, e só com
-// nota C, D ou E — OEM/Ads nunca vai pra eles.
+// Vinicius (Leo, 17/11/2026). Os três recebem lead de Lever Price com nota C,
+// D ou E; Ads nunca vai pra eles.
 export const PRICE_JUNIOR_NAMES = ["ricardo", "eduardo", "vinicius"];
+// Quem divide com o Vitor o lead de OEM (código OEM) com nota C, D ou E: o
+// Eduardo (Leo, 24/11/2026). OEM sem nota e Ads seguem só com o Vitor.
+export const OEM_JUNIOR_NAMES = ["eduardo"];
 export function sdrCloserPools(users, saas) {
   const members = (users || []).filter((u) => !u.saas || u.saas === saas);
   const upper = members.filter((u) => u.roles?.includes("closer") && namedAs(u, UPPER_NAMES));
   const junior = members.filter((u) => namedAs(u, ["vitor"]));
   const priceJunior = members.filter((u) => u.roles?.includes("closer") && namedAs(u, PRICE_JUNIOR_NAMES));
-  return { upper, junior, priceJunior, all: [...upper, ...junior, ...priceJunior] };
+  const oemJunior = [...junior, ...members.filter((u) => u.roles?.includes("closer") && namedAs(u, OEM_JUNIOR_NAMES) && !junior.includes(u))];
+  return { upper, junior, priceJunior, oemJunior, all: [...upper, ...junior, ...priceJunior] };
 }
 
 // Lead de Lever Price: a dor de origem PRICE (lead.sourcePain, gravada pelo
@@ -172,6 +177,10 @@ export const isPriceLead = (lead) => String(lead?.sourcePain || "").toUpperCase(
 // Notas de Price que o robô manda pro time júnior de Price
 // (sdrCloserPools.priceJunior). Era só D/E; o C entrou em 17/11/2026 (Leo).
 export const PRICE_JUNIOR_GRADES = new Set(["C", "D", "E"]);
+// Lead de OEM: a dor de origem OEM (o anúncio de código OEM). As notas que
+// abrem a agenda do Eduardo junto com a do Vitor (sdrCloserPools.oemJunior).
+export const isOemLead = (lead) => String(lead?.sourcePain || "").toUpperCase().trim() === "OEM";
+export const OEM_JUNIOR_GRADES = new Set(["C", "D", "E"]);
 
 // ── Horários livres de um pool ──────────────────────────────────────────────
 // Varre os próximos `days` DIAS ÚTEIS e devolve, por slot livre, o closer com
@@ -319,6 +328,9 @@ export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wal
       return { slots: compute(pools.upper, limit, days), pool: "upper", grade };
     }
     if (isUpper(grade)) return { slots: compute(pools.upper, limit, days), pool: "upper", grade };
+    // OEM com nota C, D ou E (Leo, 24/11/2026): Vitor e Eduardo dividem o dia
+    // (carga do dia desempata); os de cima só no dia em que os dois lotam.
+    if (isOemLead(lead) && OEM_JUNIOR_GRADES.has(grade)) return firstThenUpper(pools.oemJunior, "junior");
     return firstThenUpper(pools.junior, "junior");
   }
 
