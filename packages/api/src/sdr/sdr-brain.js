@@ -1708,6 +1708,16 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     // renderizador (sdr-offer.js). Daqui em diante a cadeia de travas vê uma
     // oferta real, como sempre viu.
     let offerSlots = suggestedPair;
+    // QUEM COMBINOU ESPERAR NÃO OFERECE (24/11): a IA escreveu "Combinado, fico
+    // no aguardo do seu retorno" ou "te chamo na próxima semana" e pediu a
+    // oferta junto (23/11, Suel: "Te chamo na próxima semana para combinarmos"
+    // + "Consigo hoje às 14h ou às 16h"; 17/11, Luana). As duas coisas se
+    // desmentem; vale o combinado e a oferta não sai.
+    const combinouEsperar = parts.some((t) => CALLBACK_PROMISE_RX.test(t) && !isOfferMsg(t));
+    if (combinouEsperar && (decision.oferecer || decision.slotIds?.length)) {
+      log.info?.({ lead: lead.id }, "sdr-brain: resposta combinou esperar; a oferta pedida pela IA não sai");
+      decision.oferecer = false; decision.slotIds = []; decision.slots = [];
+    }
     if (offerContract === "v2" && decision.acao === "responder" && (decision.oferecer || decision.slotIds?.length)) {
       const chosen = (decision.slots || []).filter((c) => slotList.some((x) => x.at === c.at));
       offerSlots = chosen.length ? chosen : suggestedPair;
@@ -1912,7 +1922,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     // sem o que responder, então o motor emenda a oferta concreta.
     // TODA RESPOSTA AVANÇA (28/10): mesma semântica do guard nextStep (R-031).
     const semSaida = !parts.some((t) => isRealQuestion(t) || isOfferMsg(t) || CALLBACK_PROMISE_RX.test(t));
-    const diaSemHora = DAY_PROPOSAL_RX.test(parts.join(" ")) && !HAS_HOUR_RX.test(parts.join(" "));
+    const diaSemHora = DAY_PROPOSAL_RX.test(parts.join(" ")) && !HAS_HOUR_RX.test(parts.join(" ")) && !parts.some((t) => CALLBACK_PROMISE_RX.test(t));
     if ((semSaida || diaSemHora) && !callAtLive && !inCallWindow && !FORM_MSG_RX.test(lastInText) && !closing && !postponed && !noInterestNow) {
       if (!engaged) {
         const nq = nextQuestionFor(guardCtx());

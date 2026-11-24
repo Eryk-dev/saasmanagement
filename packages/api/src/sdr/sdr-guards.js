@@ -72,7 +72,9 @@ export const LOTOU_CLAIM_RX = /\blot(?:ou|ad[ao]s?|aram)\b|n[ãa]o (?:tenho|temo
 // "quando voltar me chama"): é saída de conversa, não beco (R-031/R-121,
 // 06/11 Caio: a trava de beco emendou "Fica melhor segunda às 9h ou às 11h?"
 // em cima do "Combinado, te chamo semana que vem").
-export const CALLBACK_PROMISE_RX = /\bte (?:chamo|ligo|procuro|retorno)\b|\bme chama\b|\bquando (?:der|voltar|puder|estiver de volta)\b/i;
+// 24/11 (medição em 3.725 mensagens do robô): "Combinado, fico no aguardo do
+// seu retorno" também é saída; em 8 conversas a oferta saiu colada nela.
+export const CALLBACK_PROMISE_RX = /\bte (?:chamo|ligo|procuro|retorno)\b|\bme chama\b|\bquando (?:der|voltar|puder|estiver de volta)\b|\bfic(?:o|amos) no aguardo\b|\bno aguardo d[eoa]s?\b|\baguardo (?:o |a |seu |sua |teu |tua )?(?:retorno|resposta|contato|confirma[çc][ãa]o)\b/i;
 export const PROMISE_RX = /\bte (?:confirmo|retorno|aviso|respondo|passo)\b|\bj[áa] te (?:falo|aviso|confirmo|retorno|respondo|passo)\b|\b(?:vou|deixa eu|vamos|consigo) (?:ver|verificar|checar|confirmar|consultar|olhar|dar uma olhada)\b[^.?!]*\b(?:agenda|hor[áa]rio|especialista|time|aqui|vaga|disponibilidade)|\bem (?:alguns |poucos |uns )?(?:minutos|instantes|minutinhos)\b|\bvou (?:te )?(?:passar|encaminhar|repassar|direcionar|sinalizar)\b|\bvou (?:pedir|avisar|falar com|deixar sinalizado)\b|\bencaminho\b|\brepasso\b|\bpe[çc]o pr[ao]\b|\bdeixo sinalizado\b/i;
 // Pergunta solta de dia ao lado de uma oferta concreta (R-026).
 export const SCHEDULE_ASK_Q_RX = /\bqual (?:dia|data|hor[áa]rio|per[íi]odo|outro dia)\b[^?]*\?/i;
@@ -401,7 +403,8 @@ export const GUARDS = [
     applies: (ctx) => !ctx.callAt && !ctx.inCallWindow && (!FORM_MSG_RX.test(ctx.lastInText || "") || !!ctx.returning) && !ctx.closing && !ctx.postponed && !ctx.noInterest && !ctx.handoff,
     check: (d) => {
       const semSaida = !d.parts.some((p) => isRealQuestion(p.text) || isOfferMsg(p.text) || CALLBACK_PROMISE_RX.test(p.text));
-      const diaSemHora = DAY_PROPOSAL_RX.test(joined(d)) && !HAS_HOUR_RX.test(joined(d));
+      // Dia citado num combinado de retorno ("te chamo na próxima semana") não é proposta de dia.
+      const diaSemHora = DAY_PROPOSAL_RX.test(joined(d)) && !HAS_HOUR_RX.test(joined(d)) && !d.parts.some((p) => CALLBACK_PROMISE_RX.test(p.text));
       return semSaida || diaSemHora ? [{ why: semSaida ? "sem pergunta nem próximo passo" : "dia sem hora" }] : [];
     },
     fix: (d, ctx) => {
