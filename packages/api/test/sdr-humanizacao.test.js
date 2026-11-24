@@ -414,7 +414,7 @@ test("preço pela segunda vez: robô explica os planos e puxa pra call, sem repe
   assert.doesNotMatch(fakes.sent[0].text, /investimento é de acordo/, "não repete a parede");
   assert.match(fakes.sent[0].text, /planos diferentes/);
   assert.match(fakes.sent[0].text, /só fecha na conversa com o especialista/);
-  assert.doesNotMatch(fakes.sent[0].text, /R\$|\d+ reais/, "sem número");
+  assert.doesNotMatch(fakes.sent[0].text.replace(/a partir de R\$299 mensais/, ""), /R\$|\d+ reais/, "nenhum número além da base");
 });
 
 test("resposta que só requenta o que já foi dito não sai: vira handoff #R-009", async () => {

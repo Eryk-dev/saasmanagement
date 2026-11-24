@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import { makeSdrBrain, bookCall, stripDuration, stripDeviceAsk, PRICE_RX , shadowStats } from "../src/sdr/sdr-brain.js";
+import { leaksPrice } from "../src/sdr/sdr-guards.js";
 
 // Relógio dos testes: quarta 19/08/2026, 10h BRT (13h UTC). Com o closer livre
 // o primeiro horário OFERTÁVEL é 08:00 do próximo dia útil: o closer do mundo
@@ -377,14 +378,14 @@ test("lead que pede hora quebrada é agendado nela #R-023", async () => {
   assert.equal((await repo.get("leads", "L1")).callAt, "2026-08-20T13:30");
 });
 
-test("trava de preço: resposta da IA com valor vira o desvio com autoridade (sem número) #R-050", async () => {
+test("trava de preço: resposta da IA com valor fora da base vira a resposta oficial (só a base de R$299) #R-050", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:59:00Z") }] });
-  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "O plano parte de R$ 299 por mês, fechado?" }] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "O plano Escala sai por R$ 497 por mês, fechado?" }] });
   const r = await brainOf(repo, fakes).handleInbound(INBOUND);
   assert.equal(r, "preco-travado");
   assert.equal(fakes.sent.length, 1);
-  assert.ok(!/299|R\$/.test(fakes.sent[0].text));
-  assert.match(fakes.sent[0].text, /necessidades da sua operação/);
+  assert.ok(!/497|Escala/.test(fakes.sent[0].text));
+  assert.match(fakes.sent[0].text, /planos são variáveis.*necessidades da sua operação.*a partir de R\$299 mensais.*garantia agressiva sobre o valor de investimento/);
   assert.ok(!/às \d/.test(fakes.sent[0].text), "resposta de preço não re-oferece horário");
   assert.ok((await repo.get("leads", "L1")).sdrLog.priceGuardAt);
 });
@@ -417,7 +418,7 @@ test("preço pela 2ª vez: robô explica os planos e puxa pra call, sem número,
   const t = fakes.sent[0].text;
   assert.match(t, /planos diferentes/);
   assert.match(t, /só fecha na conversa com o especialista/);
-  assert.ok(!PRICE_RX.test(t), `explicação sem valor: ${t}`);
+  assert.ok(!leaksPrice(t) && /a partir de R\$299 mensais/.test(t), `explicação só com a base: ${t}`);
   assert.match(t, /Consigo .* ou .*, qual fica melhor/, "puxa pra call com os 2 horários reais");
   assert.equal((await repo.list("wa_alerts")).length, 0, "2ª vez não chama gente");
   const lead = await repo.get("leads", "L1");
@@ -457,7 +458,7 @@ test("preço pela 3ª vez: gente assume, o alerta manda levar pra call e o robô
   assert.equal(r, "preco-humano");
   const alerts = await repo.list("wa_alerts");
   assert.equal(alerts.length, 1);
-  assert.match(alerts[0].text, /PREÇO SÓ NA CALL/);
+  assert.match(alerts[0].text, /valor exato segue só na call/);
   assert.ok(!/fala de valor/.test(alerts[0].text));
   assert.equal(fakes.sent.length, 1);
   assert.ok(!/valor|pre[çc]o|te falo/i.test(fakes.sent[0].text), `ponte sem promessa de valor: ${fakes.sent[0].text}`);
@@ -1454,8 +1455,8 @@ test("aceite + pergunta de preço na mesma mensagem: trava o horário primeiro e
   assert.equal(lead.callAt, SLOT1);
   assert.equal(lead.stage, "Call agendada");
   assert.ok(fakes.sent.length >= 2);
-  assert.match(fakes.sent.at(-1).text, /Sobre o valor/);
-  assert.doesNotMatch(fakes.sent.map((s) => s.text).join(" "), /R\$|\d+ reais/);
+  assert.match(fakes.sent.at(-1).text, /Sobre o valor.*a partir de R\$299 mensais/);
+  assert.ok(!leaksPrice(fakes.sent.map((s) => s.text).join(" ")), "nenhum número além da base");
   assert.ok(lead.sdrLog.priceGuardAt);
 });
 
@@ -1588,7 +1589,7 @@ test("roteiro OEM · preço depois da abordagem: resposta oficial + o par de hor
   assert.equal(r, "oem-preco");
   assert.equal(fakes.calls.length, 0);
   assert.equal(fakes.sent.length, 2);
-  assert.equal(fakes.sent[0].text, "O investimento depende da sua operação e das suas necessidades. Na demonstração, nosso especialista entende melhor o seu cenário e apresenta os planos e valores mais adequados para o momento da sua empresa.");
+  assert.equal(fakes.sent[0].text, "O investimento depende da sua operação e das suas necessidades. Na demonstração, nosso especialista entende melhor o seu cenário e apresenta os planos e valores mais adequados para o momento da sua empresa. Pra você ter uma base, nossos planos começam a partir de R$299 mensais e temos uma garantia agressiva sobre o valor de investimento.");
   assert.match(fakes.sent[1].text, /^Tenho agenda para amanhã às 8h ou às \d{1,2}h\. Qual funciona melhor para você\?$/);
   assert.ok((await repo.get("leads", "L1")).sdrLog.priceGuardAt);
   // Aceite + preço na mesma mensagem com horários já na mesa: o horário trava primeiro.
@@ -1673,8 +1674,8 @@ test("roteiro PRICE · preço depois da abordagem: fala do volume de anúncios, 
   assert.equal(r, "price-preco");
   assert.equal(fakes.calls.length, 0);
   assert.equal(fakes.sent.length, 2);
-  assert.equal(fakes.sent[0].text, "O investimento depende do volume de anúncios da sua operação. Na demonstração, nosso especialista entende melhor o seu cenário e apresenta o plano mais adequado para o momento da sua empresa.");
-  assert.ok(!/R\$|\d/.test(fakes.sent[0].text), "sem valor");
+  assert.equal(fakes.sent[0].text, "O investimento depende do volume de anúncios da sua operação. Na demonstração, nosso especialista entende melhor o seu cenário e apresenta o plano mais adequado para o momento da sua empresa. Pra você ter uma base, nossos planos começam a partir de R$299 mensais e temos uma garantia agressiva sobre o valor de investimento.");
+  assert.ok(!leaksPrice(fakes.sent[0].text), "nenhum número além da base");
   assert.match(fakes.sent[1].text, /^Tenho agenda para amanhã às 8h ou às \d{1,2}h\. Qual funciona melhor para você\?$/);
   assert.ok((await repo.get("leads", "L1")).sdrLog.priceGuardAt);
   // Aceite + preço na mesma mensagem: o horário trava e a resposta de preço é a do Price.
@@ -2142,4 +2143,103 @@ test("16/11 (Jeverson): hora exata pedida pelo lead entra por encaixe com 1h de 
   const fakes2 = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Pode sim Rafael"], oferecer: true }] });
   await brainOf(repo2, fakes2).handleInbound({ message: { from: "5541999990000", text: "pode ser hoje?" } });
   assert.ok(fakes2.calls[0].slots.every((x) => x.at >= "2026-08-19T12:00"), JSON.stringify(fakes2.calls[0].slots.slice(0, 3)));
+});
+
+// ── Decisões do Leo de 24/11/2026 ──
+
+// Preço: "pode dizer que os planos são variáveis e que a reunião orienta o
+// valor ideal de investimento; pode dizer que os planos começam a partir de
+// R$299 mensal e que temos garantia agressiva sobre o valor de investimento".
+test("24/11 (decisão): a primeira resposta de preço leva a base de R$299 e a garantia; nenhum outro número sai #R-050", async () => {
+  // A IA respondeu sem a base: sai a resposta oficial, e a oferta continua sendo do motor.
+  const repo = await world({ sdrBot: V2_ENFORCE, messages: [...PITCH_2411, { direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Rafael, o investimento depende da sua operação"], oferecer: true }] });
+  await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "quanto custa?" } });
+  const texts = fakes.sent.map((x) => x.text);
+  assert.match(texts[0], /^Rafael, os planos são variáveis: é na conversa que o especialista orienta o valor ideal de investimento, de acordo com as necessidades da sua operação\. Pra você ter uma base, nossos planos começam a partir de R\$299 mensais e temos uma garantia agressiva sobre o valor de investimento\.$/);
+  assert.ok(texts.some((t) => /^Consigo /.test(t)), `a oferta segue: ${JSON.stringify(texts)}`);
+  // A IA citou a base com as próprias palavras: passa, sem virar "preço travado".
+  const repo2 = await world({ sdrBot: V2_ENFORCE, messages: [...PITCH_2411, { direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes2 = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Rafael, os planos variam conforme a operação e começam a partir de R$299 mensais, com garantia sobre o investimento"], oferecer: false }] });
+  assert.equal(await brainOf(repo2, fakes2).handleInbound({ message: { from: "5541999990000", text: "quanto custa?" } }), "responder");
+  assert.match(fakes2.sent[0].text, /a partir de R\$299 mensais/);
+  // A trava segue valendo pra qualquer outro número.
+  for (const t of ["a partir de R$ 199 mensais", "sai por R$ 497", "12x de 250", "plano Escala", "10% de desconto", "a partir de R$299 mensais ou R$2.990 no ano"]) assert.ok(leaksPrice(t), t);
+  for (const t of ["nossos planos começam a partir de R$299 mensais", "a partir de R$ 299 por mês", "a partir de R$299"]) assert.ok(!leaksPrice(t), t);
+});
+
+// Sem operação: "não quero que agende quem diz que não tem empresa ou achei que
+// era trabalho" (Leo, 24/11). Na varredura o robô marcou call com o Felipe
+// ("Eu não tenho empresa" + "E eu quero trabalhar" + "15h") e ofereceu horário
+// ao Demar ("ainda não tenho uma empresa", "ainda não tenho conta").
+test("24/11 (decisão): quem diz que não tem empresa ou que achou que era trabalho não recebe horário nem call; o robô explica, para e avisa o time #R-048", async () => {
+  const offer = { direction: "out", author: "sdr-bot", text: "Consigo hoje às 20h ou amanhã às 15h, qual fica melhor pra você?", at: ISO("2026-08-19T11:31:00Z") };
+  for (const [falas, rx] of [
+    [["Eu não tenho empresa", "E eu quero trabalhar", "15h"], /não é vaga de trabalho/],
+    [["Mais eu ainda não tenho uma empresa"], /pra quem já vende no Mercado Livre ou na Shopee com conta própria/],
+    [["Eu ainda não tenho conta"], /pra quem já vende/],
+    [["A eu n tenho eu achei que era pra trabalho me desculpe"], /não é vaga de trabalho/],
+  ]) {
+    const repo = await world({ sdrBot: V2_ENFORCE, todayFree: true, messages: [...PITCH_2411, offer, ...falas.map((text, i) => ({ direction: "in", text, at: ISO(`2026-08-19T12:59:0${i}Z`) }))] });
+    const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: "2026-08-20T15:00" }] });
+    const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: falas.at(-1) } });
+    const lead = await repo.get("leads", "L1");
+    assert.equal(r, "sem-operacao", falas.join(" / "));
+    assert.equal(lead.callAt || "", "", "não agenda");
+    assert.equal(fakes.calls.length, 0, "nem chama a IA");
+    assert.equal(fakes.sent.length, 1);
+    assert.match(fakes.sent[0].text, rx);
+    assert.ok(!/\d{1,2}h|Consigo /.test(fakes.sent[0].text), "sem horário");
+    assert.equal(lead.sdrLog.handoffKind, "perfil");
+    assert.match((await repo.list("wa_alerts"))[0].text, /NÃO agendou/);
+  }
+  // Quem vende (CPF, conta em um só marketplace) e quem pede vaga na AGENDA segue normal.
+  const { noBusiness, plainReply } = await import("../src/sdr/sdr-intents.js");
+  for (const ok of ["não tenho empresa, vendo no CPF", "não tenho conta na shopee, só no mercado livre", "tem vaga amanhã às 10?", "quero trabalhar melhor meus anúncios", "não tenho loja física, só online", "ainda não vendo em marketplace"]) assert.equal(noBusiness(plainReply(ok)), false, ok);
+  // Com a call já marcada o robô não desmarca sozinho: avisa e segue.
+  const repo2 = await world({ sdrBot: V2_ENFORCE, lead: { stage: "Call agendada", callAt: "2026-08-20T15:00", closer: "pl" }, messages: [...PITCH_2411, { direction: "in", text: "Eu não tenho empresa não", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes2 = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Entendi Rafael"] }] });
+  await brainOf(repo2, fakes2).handleInbound({ message: { from: "5541999990000", text: "Eu não tenho empresa não" } });
+  assert.equal((await repo2.get("leads", "L1")).callAt, "2026-08-20T15:00");
+  assert.match((await repo2.list("wa_alerts"))[0].text, /com call marcada/);
+});
+
+// Vídeo: "pode o robô mesmo enviar" (Leo, 24/11). A SDR mandava na mão "LEVER
+// OEM.mp4" / "LEVER PRICE.mp4" toda vez que o robô prometia "peço pro time te
+// mandar um vídeo curto".
+test("24/11 (decisão): lead pede material e o robô envia o vídeo do produto, sem parar a conversa; sem vídeo registrado, avisa o time como antes #R-044", async () => {
+  const { rememberVideo, videoFor, renewVideos, videoKindOf } = await import("../src/sdr/sdr-video.js");
+  assert.deepEqual(["LEVER OEM.mp4", "LEVER PRICE.mp4", "lever_price (2).mp4", "WhatsApp Video 2026-10-23.mp4"].map(videoKindOf), ["oem", "price", "price", ""]);
+  const messages = [{ direction: "out", author: "sdr-bot", text: "Oiii Rafael, tudo bem? Com o Lever OEM você digita o código e recebe o anúncio completo. Isso ajudaria na sua operação?", at: ISO("2026-08-19T11:00:00Z") }, { direction: "in", text: "Consegue me passar um material de vcs antes?", at: ISO("2026-08-19T12:59:00Z") }];
+  const withMedia = (fakes) => { fakes.media = []; fakes.wa.sendMedia = async (to, m, opts) => { fakes.media.push({ to, ...m, ...opts }); return { messageId: "wv_" + fakes.media.length }; }; return fakes; };
+  // Com o vídeo registrado (a SDR enviou pelo Inbox há 3 dias): o robô manda.
+  const repo = await world({ sdrBot: V2_ENFORCE, lead: { sourcePain: "OEM", niche: "autopecas" }, messages });
+  await rememberVideo(repo, { saas: "leverads", filename: "LEVER OEM.mp4", mediaId: "934551422955426", messageId: "wamid.X", now: new Date("2026-08-16T13:00:00Z") });
+  const fakes = withMedia(makeFakes());
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "Consegue me passar um material de vcs antes?" } });
+  assert.equal(r, "material-video");
+  assert.deepEqual(fakes.media.map((m) => [m.kind, m.mediaId]), [["video", "934551422955426"]]);
+  assert.match(fakes.sent[0].text, /^Claro Rafael\. Com o Lever OEM/);
+  assert.match(fakes.sent.at(-1).text, /Esse vídeo resume como funciona/);
+  assert.ok(!fakes.sent.some((x) => /peço pro time/.test(x.text)));
+  const lead = await repo.get("leads", "L1");
+  assert.ok(lead.sdrLog.videoSentAt && !lead.sdrLog.handoffAt, "a conversa segue com o robô");
+  assert.equal((await repo.list("wa_alerts")).length, 0);
+  assert.ok((await repo.list("wa_messages")).some((m) => m.author === "sdr-bot" && m.media?.kind === "video" && m.media.filename === "LEVER OEM.mp4"), "o vídeo fica gravado na conversa");
+  // Sem vídeo registrado (ou de outro produto): caminho antigo, com alerta e pausa.
+  const repo2 = await world({ sdrBot: V2_ENFORCE, lead: { sourcePain: "OEM", niche: "autopecas" }, messages });
+  await rememberVideo(repo2, { saas: "leverads", filename: "LEVER PRICE.mp4", mediaId: "986", now: new Date("2026-08-16T13:00:00Z") });
+  const fakes2 = withMedia(makeFakes());
+  assert.equal(await brainOf(repo2, fakes2).handleInbound({ message: { from: "5541999990000", text: "Consegue me passar um material de vcs antes?" } }), "material");
+  assert.equal(fakes2.media.length, 0);
+  assert.equal((await repo2.get("leads", "L1")).sdrLog.handoffKind, "material");
+  // Id vencido não é usado; a renovação baixa da Meta, sobe de novo e, com o id já vencido, usa a cópia do Inbox.
+  assert.equal(await videoFor(repo, { saas: "leverads", kind: "oem", now: new Date("2026-09-20T13:00:00Z") }), null);
+  const wa = { ups: [], fetchMedia: async (id) => ({ buf: Buffer.from("meta:" + id), mime: "video/mp4" }), uploadMedia: async (buf) => { wa.ups.push(String(buf)); return "novo_" + wa.ups.length; } };
+  assert.equal(await renewVideos(repo, wa, { saas: "leverads", now: new Date("2026-08-19T13:00:00Z") }), 0, "com 3 dias não renova");
+  assert.equal(await renewVideos(repo, wa, { saas: "leverads", now: new Date("2026-09-05T13:00:00Z") }), 1);
+  assert.equal((await videoFor(repo, { saas: "leverads", kind: "oem", now: new Date("2026-09-05T13:00:00Z") })).mediaId, "novo_1");
+  await repo.create("wa_media", { id: "wamid.X", mime: "video/mp4", data: Buffer.from("copia do inbox").toString("base64") });
+  assert.equal(await renewVideos(repo, { ...wa, fetchMedia: async () => { throw new Error("id expirado"); } }, { saas: "leverads", now: new Date("2026-10-20T13:00:00Z") }), 1);
+  assert.equal(wa.ups.at(-1), "copia do inbox");
 });

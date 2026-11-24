@@ -128,6 +128,15 @@ export const DEMO_COST_RX = /\b(?:demonstra[çc][ãa]o|reuni[ãa]o|conversa|cons
 // PERFIL FRACO (R-048, decisão do Leo 28/10: manter a call): ainda não vende,
 // só loja física, só TikTok/Instagram, começando/drop. O robô não encerra nem
 // desqualifica; segue a descoberta e avisa o closer.
+// SEM OPERAÇÃO (decisão do Leo, 24/11/2026: "não quero que agende quem diz que
+// não tem empresa ou achei que era trabalho"; estreita a R-048). Na varredura
+// de 16 a 24/11 o robô marcou call com quem disse "eu não tenho empresa e eu
+// quero trabalhar" (Felipe), "ainda não tenho uma empresa... ainda não tenho
+// conta" (Demar) e "achei que era pra trabalho". Quem diz no mesmo fôlego que
+// vende ("não tenho empresa, vendo no CPF") não cai aqui.
+export const NO_BUSINESS_RX = /\bnao tenho (?:uma |nenhuma |minha |ainda )?(?:empresa|negocio)\b|\bnao tenho (?:uma |nenhuma )?conta\b(?! (?:n[ao]s?|em|pj|juridica|d[aeo]s?|bancaria|ativa)\b)|\bachei que (?:era|fosse|seria) (?:(?:pra|para|de|um|uma|algum|alguma)\s+)*(?:trabalh\w*|emprego|vaga|servico)|\b(?:procuro|estou procurando|to procurando|busco|preciso de|estou atras de|to atras de) (?:um |uma |de )?(?:trabalho|emprego|vaga|servico|renda extra)\b|\bquero trabalhar(?=\s*$|\s*[.,!?]|\s+(?:com|pra|para) (?:voces|vcs)\b|\s+de casa\b)|\bvaga (?:de |pra |para )(?:emprego|trabalho)\b/;
+export const SELLS_ANYWAY_RX = /(?<!nao )(?<!nunca )\b(?:vendo|vendemos|ja vendo|estou vendendo|to vendendo)\b|\b(?:cpf|mei)\b|\btenho (?:\d+ |alguns |varios |uns )?anuncios\b|\bminha conta (?:no|na|do|da)\b/;
+export const noBusiness = (plain) => NO_BUSINESS_RX.test(plain) && !SELLS_ANYWAY_RX.test(plain);
 export const WEAK_PROFILE_RX = /\b(?:ainda |no momento |por enquanto )?nao (?:vendo|vendemos|estou vendendo|to vendendo|tenho loja|tenho conta|anuncio|opero|estou operando)\b|\b(?:so|apenas|somente) (?:loja |no )?fisic|\bloja fisica\b|\b(?:so|apenas|somente) (?:na |no |pel[ao] |por )?(?:tiktok|tik tok|instagram|insta|facebook|site proprio|site)\b|\b(?:vou|quero|pretendo|estou querendo|to querendo) (?:comecar|iniciar|entrar|montar)\b|\bcomecando agora\b|\b(?:estou|to) (?:iniciando|comecando|montando)\b|\bdrop ?shipping\b|\bnao sei (?:nem )?como (?:faz|funciona|comecar|comeca)\b|\banalfabeto digital\b/;
 // EXPLICAÇÃO "POR AQUI" (R-044): o lead quer entender por áudio/texto/
 // material em vez da demonstração ao vivo (28/10: Janaina, Edson, Gabriel,

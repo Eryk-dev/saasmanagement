@@ -390,19 +390,34 @@ export function sdrAgendaWindow(messages = [], now = wallNow(), { callAt = "" } 
 // na véspera do 20/11 e a SDR teve que desfazer; 03/09, Daniel: "segunda feira
 // por conta do feriado estamos com a agenda fechada"). O robô não oferece nem
 // marca em feriado nacional; quem marca na mão pelo cockpit segue livre.
-// Fixos + Sexta-feira Santa. Carnaval e Corpus Christi são ponto facultativo
-// e ficam de fora até o Leo decidir.
-const FIXED_HOLIDAYS = ["01-01", "04-21", "05-01", "09-07", "10-12", "11-02", "11-15", "11-20", "12-25"];
-function goodFriday(year) {
+// Decisão do Leo (24/11): "pode mapear todos os feriados nacionais e remover
+// da agenda": os fixos e os móveis contados da Páscoa (segunda e terça de
+// Carnaval, Sexta-feira Santa e Corpus Christi).
+const FIXED_HOLIDAYS = {
+  "01-01": "Confraternização Universal", "04-21": "Tiradentes", "05-01": "Dia do Trabalho", "09-07": "Independência",
+  "10-12": "Nossa Senhora Aparecida", "11-02": "Finados", "11-15": "Proclamação da República", "11-20": "Consciência Negra", "12-25": "Natal",
+};
+function easter(year) {
   const a = year % 19, b = Math.floor(year / 100), c = year % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
   const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
   const month = Math.floor((h + l - 7 * m + 114) / 31), day = ((h + l - 7 * m + 114) % 31) + 1;
-  return ymd(dayPlus(new Date(Date.UTC(year, month - 1, day)), -2));
+  return new Date(Date.UTC(year, month - 1, day));
 }
-export function isNationalHoliday(day) {
+const movableCache = new Map();
+function movableHolidays(year) {
+  if (!movableCache.has(year)) {
+    const e = easter(year);
+    movableCache.set(year, { [ymd(dayPlus(e, -48))]: "Carnaval", [ymd(dayPlus(e, -47))]: "Carnaval", [ymd(dayPlus(e, -2))]: "Sexta-feira Santa", [ymd(dayPlus(e, 60))]: "Corpus Christi" });
+  }
+  return movableCache.get(year);
+}
+// Nome do feriado nacional do dia ("YYYY-MM-DD…") ou "".
+export function nationalHoliday(day) {
   const d = String(day || "").slice(0, 10);
-  return FIXED_HOLIDAYS.includes(d.slice(5)) || d === goodFriday(Number(d.slice(0, 4)));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return "";
+  return FIXED_HOLIDAYS[d.slice(5)] || movableHolidays(Number(d.slice(0, 4)))[d] || "";
 }
+export const isNationalHoliday = (day) => !!nationalHoliday(day);
 
 export async function sdrSlotsForLead(repo, { messages = [], now = wallNow(), ...options } = {}) {
   const window = sdrAgendaWindow(messages, now, { callAt: options.lead?.callAt || "" });

@@ -43,6 +43,15 @@ export const PRICE_RX = new RegExp([
   /\b\d{1,3}\s*%\s*(de\s+)?desconto|\bdesconto\s+de\s+\d/,
   /\bplano\s+(essencial|escala|enterprise)\b/,                                              // nome do plano = escolha da call
 ].map((r) => r.source).join("|"), "i");
+// PREÇO-BASE (decisão do Leo, 24/11/2026; afrouxa o "nunca número" de 18/09):
+// o robô pode dizer que os planos são variáveis, que a conversa orienta o
+// valor ideal de investimento, e dar UMA base: "a partir de R$299 mensais",
+// com a garantia sobre o valor de investimento. Qualquer outro número, faixa,
+// parcela, desconto ou nome de plano continua travado. PRICE_BASE é a frase
+// única que o motor escreve; `leaksPrice` é a trava (PRICE_RX fora da base).
+export const PRICE_BASE = "nossos planos começam a partir de R$299 mensais e temos uma garantia agressiva sobre o valor de investimento";
+const PRICE_BASE_RX = /a partir de\s*r\$\s?299(?:,00)?(?:\s*(?:reais\s*)?(?:mensal|mensais|por m[eê]s|ao m[eê]s|\/m[eê]s))?/gi;
+export const leaksPrice = (text) => PRICE_RX.test(String(text || "").replace(PRICE_BASE_RX, " "));
 // REDIRECIONAMENTO PRA OUTRO CANAL (R-008): o robô É o canal.
 export const REDIRECT_RX = /wa\.me\/|api\.whatsapp\.com|whatsapp\.com\/send|\b\d{4}[-\s.]?\d{4}\b|\+?55\s?\(?\d{2}\)?\s?9?\d{4}/i;
 // Recusa SECA de horário (R-028). Sem \b no fim (o \b do JS é ASCII).
@@ -190,7 +199,7 @@ export function realOfferOf(ctx) {
 export const GUARDS = [
   { id: "priceLeak", rule: "R-050", enforce: true,
     applies: () => true,
-    check: (d) => (PRICE_RX.test(joined(d)) ? [{ why: "valor/plano no texto" }] : []),
+    check: (d) => (leaksPrice(joined(d)) ? [{ why: "valor/plano no texto" }] : []),
     fix: (d, ctx) => ({ draft: { ...d, parts: [part(ctx.priceDeferral, "trava")], stop: { result: "preco-travado" } },
       effects: [{ type: "stamp", patch: { priceGuardAt: ctx.nowIso } }] }) },
   { id: "redirect", rule: "R-008", enforce: true,

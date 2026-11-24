@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import { slotsForLead, wallFromNaive, sdrCloserPools, wholeHourSlots, OFFER_HOURS } from "../src/crm/agenda-slots.js";
-import { sdrAgendaWindow, sdrSlotsForLead, isNationalHoliday } from "../src/sdr/sdr-agenda.js";
+import { sdrAgendaWindow, sdrSlotsForLead, isNationalHoliday, nationalHoliday } from "../src/sdr/sdr-agenda.js";
 
 const NOW = wallFromNaive("2026-09-21T08:00"); // segunda-feira
 const TEAM = [
@@ -479,6 +479,10 @@ test("17/11 (Ézio): 'tenho compromisso' sobre o par oferecido é recusa: os hor
 // 9h ou às 11h" e a SDR desfez ("perdão, amanhã é feriado").
 test("19/11 (Fernanda): feriado nacional não entra na oferta do robô; a janela espontânea anda pro próximo dia útil #R-022", async () => {
   assert.deepEqual(["2026-09-07", "2026-11-20", "2026-12-25", "2027-01-01", "2027-03-26", "2026-09-08"].map(isNationalHoliday), [true, true, true, true, true, false]);
+  // Decisão do Leo (24/11): todos os nacionais, inclusive os móveis. 2027: Páscoa em 28/03.
+  assert.deepEqual(["2027-02-08", "2027-02-09", "2027-03-26", "2027-05-27", "2027-04-21", "2027-05-01", "2027-10-12", "2027-11-02", "2027-11-15"].map(nationalHoliday),
+    ["Carnaval", "Carnaval", "Sexta-feira Santa", "Corpus Christi", "Tiradentes", "Dia do Trabalho", "Nossa Senhora Aparecida", "Finados", "Proclamação da República"]);
+  assert.deepEqual(["2026-02-16", "2026-02-17", "2026-04-03", "2026-06-04", "2027-02-10", "2027-03-29"].map(isNationalHoliday), [true, true, true, true, false, false]);
   const repo = await world();
   const sexta = wallFromNaive("2026-09-04T15:00"); // sexta à tarde; segunda 07/09 é feriado
   const r = await sdrSlotsForLead(repo, { ...options, now: sexta, grade: "C", messages: [] });

@@ -125,7 +125,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-044 · Explicação por aqui: resumo + por que a demonstração + material via gente
 
 - Origem: 2026-10-28, Leo (raio-x 28/10 (Janaina 'me explica por áudio por aqui?' → 'não consigo te mostrar' e silêncio; Edson, Gabriel, VitorMatheus, Deborah, Rodrigo 'não tem pdf?'))
-- Regra: Lead que pede pra entender por áudio, texto ou material em vez da demonstração recebe, uma vez: o resumo oficial do produto em uma frase, o motivo da demonstração (ver rodando com um código/anúncio dele) e a promessa de um vídeo curto pelo time; o time é avisado (handoff "material") e manda o vídeo. Nunca a recusa seca ("por áudio não consigo").
+- Regra: Lead que pede pra entender por áudio, texto ou material em vez da demonstração recebe, uma vez: o resumo oficial do produto em uma frase, o motivo da demonstração (ver rodando com um código/anúncio dele) e a promessa de um vídeo curto pelo time; o time é avisado (handoff "material") e manda o vídeo. Nunca a recusa seca ("por áudio não consigo"). Decisão do Leo de 24/11/2026: o próprio robô envia o vídeo explicativo do produto (o mesmo arquivo que a SDR mandava na mão, "LEVER OEM.mp4" ou "LEVER PRICE.mp4", registrado quando gente o envia pelo Inbox e renovado antes de a Meta expirar) e a conversa SEGUE com o robô, sem alerta nem pausa. Sem vídeo válido pro roteiro (gestão multi-contas ainda não tem) ou com o envio recusado, vale o caminho antigo: avisa o time e para.
 - Vale em: estados todos; roteiro todos; executada por intent, effects, alerta, prompt
 
 ### R-045 · Dor declarada manda no pitch
@@ -137,7 +137,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-048 · Perfil fraco não encerra
 
 - Origem: 2026-10-28, Leo (raio-x 28/10 (24 leads 'ainda não vendo' / só loja física / só TikTok: robô ora agendava, ora cortava seco e chamava gente). Decisão do Leo: manter a call)
-- Regra: Lead que ainda não vende em marketplace, só tem loja física, só vende em TikTok/Instagram ou está começando NÃO é desqualificado nem encerrado pelo robô: ele diz em uma frase que a LeverAds atende quem vende no Mercado Livre e Shopee com conta própria e que a demonstração mostra como começa, segue a descoberta e convida normalmente. O trecho fica carimbado (sdrLog.profileNote) e o closer é avisado quando a call é marcada. Afiliado continua na R-016.
+- Regra: Lead que ainda não vende em marketplace, só tem loja física, só vende em TikTok/Instagram ou está começando NÃO é desqualificado nem encerrado pelo robô: ele diz em uma frase que a LeverAds atende quem vende no Mercado Livre e Shopee com conta própria e que a demonstração mostra como começa, segue a descoberta e convida normalmente. O trecho fica carimbado (sdrLog.profileNote) e o closer é avisado quando a call é marcada. Afiliado continua na R-016. Decisão do Leo de 24/11/2026 estreita a regra: quem diz que NÃO TEM EMPRESA (nem conta) ou que achou que era TRABALHO/emprego não recebe horário nem call; o robô explica pra quem é a ferramenta, para (handoff "perfil") e avisa o time, que decide o card. Quem diz no mesmo fôlego que vende ("não tenho empresa, vendo no CPF") segue normal. Com a call já marcada o robô não desmarca sozinho: avisa e segue.
 - Vale em: estados todos; roteiro todos; executada por intent, prompt, alerta, effects
 
 ### R-019 · Ponte antes da primeira oferta
@@ -175,7 +175,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-022 · Oferta espontânea: hoje e o próximo dia útil, mais cedo primeiro
 
 - Origem: 2026-09-13, Leo (D+2 só a pedido (13/09); mais cedo primeiro (#1037, 17/09); hoje com 2h de folga (#1113, 30/09))
-- Regra: Sem pedido do lead, a oferta cobre hoje (só o que ainda cabe com 2h de folga) e o próximo dia útil, mais cedo primeiro: a oferta tem que conter o primeiro horário do par sugerido. Outros dias só entram quando o lead pede. Fim de semana oferece segunda. Feriado nacional (fixos e Sexta-feira Santa) não entra na oferta nem na lista do robô, e a janela espontânea anda pro próximo dia útil (19/11, Fernanda: "amanhã às 9h" na véspera do 20/11); Carnaval e Corpus Christi ficam de fora até decisão.
+- Regra: Sem pedido do lead, a oferta cobre hoje (só o que ainda cabe com 2h de folga) e o próximo dia útil, mais cedo primeiro: a oferta tem que conter o primeiro horário do par sugerido. Outros dias só entram quando o lead pede. Fim de semana oferece segunda. Feriado nacional (fixos e Sexta-feira Santa) não entra na oferta nem na lista do robô, e a janela espontânea anda pro próximo dia útil (19/11, Fernanda: "amanhã às 9h" na véspera do 20/11). Decisão do Leo de 24/11/2026: todos os feriados nacionais saem da agenda do robô, os fixos e os móveis (segunda e terça de Carnaval, Sexta-feira Santa e Corpus Christi).
 - Vale em: estados todos; roteiro todos; executada por agenda, guard, prompt (validador earliestFirst)
 
 ### R-023 · Par com 2h de respiro, em hora cheia
@@ -318,11 +318,11 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 
 ## Preço
 
-### R-050 · Preço só na call
+### R-050 · Preço: a base pode, o valor exato só na call
 
 - Origem: 2026-09-18, Leo (#1040 ("não quero que o robô fale o preço; essa informação é revelada apenas na call de vendas"))
-- Regra: Pedido de preço é o do SERVIÇO ("qual o valor?", "quanto custa", "os valores"), não qualquer menção a preço ("valores médios de mercado", "preço dos meus produtos" ficam de fora); "tem algum custo?" sobre a demonstração recebe "não tem custo"; "não quero call, quero os valores" vai pra gente na hora com a ponte sem valor (28/10). Nunca número, faixa, "a partir de", parcela, desconto, forma de pagamento nem nome de plano, e nunca "te passo o valor por aqui". Primeira pergunta de preço recebe a resposta oficial: o investimento é de acordo com as necessidades da operação; primeiro a gente entende o cenário e mostra os pontos a alavancar, que é o que o especialista faz na demonstração. Quem assume a conversa também não manda valor pelo WhatsApp.
-- Exemplo: lead "quanto custa?" → "Rafael, o investimento é de acordo com as necessidades da sua operação: primeiro a gente entende o seu cenário, e aí te mostra os pontos que dá pra alavancar. É exatamente isso que o especialista faz na demonstração."
+- Regra: Pedido de preço é o do SERVIÇO ("qual o valor?", "quanto custa", "os valores"), não qualquer menção a preço ("valores médios de mercado", "preço dos meus produtos" ficam de fora); "tem algum custo?" sobre a demonstração recebe "não tem custo". Decisão do Leo de 24/11/2026 (afrouxa o "nunca número" de 18/09: na varredura de 16 a 24/11 lead atrás de lead travava em "antes de tudo, valores" e a SDR entrava por áudio): a primeira resposta diz que os planos são variáveis, que é na conversa que o especialista orienta o valor ideal de investimento de acordo com as necessidades do cliente, e dá a base: nossos planos começam a partir de R$299 mensais e temos uma garantia agressiva sobre o valor de investimento. É o ÚNICO número que sai: nenhum outro valor, faixa, parcela, desconto, forma de pagamento nem nome de plano, e nunca "te passo o valor exato por aqui". "Não quero call, quero os valores" recebe a base e vai pra gente. Quem assume a conversa também não manda o valor exato pelo WhatsApp.
+- Exemplo: lead "quanto custa?" → "Rafael, os planos são variáveis: é na conversa que o especialista orienta o valor ideal de investimento, de acordo com as necessidades da sua operação. Pra você ter uma base, nossos planos começam a partir de R$299 mensais e temos uma garantia agressiva sobre o valor de investimento."
 - Vale em: estados todos; roteiro todos; executada por guard, prompt, intent, alerta (validador priceLeak)
 - Exceção: R-072 · no roteiro OEM/Price a primeira resposta de preço leva o par de horários (doc do Leo)
 - Conflito com R-011: Leo, 28/10/2026: a 1ª resposta de preço sai com a agenda mesmo sem o lead ter dito que a ferramenta ajudaria (R-072 vale no caminho genérico)
@@ -330,7 +330,7 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 ### R-051 · Escada do preço: explica na 2ª, gente na 3ª
 
 - Origem: 2026-09-18, Leo (#1040; só pedido ATUAL conta (#1140, 08/10, caso Laion))
-- Regra: Segunda insistência (pedido de preço na mensagem atual, com uma resposta oficial já dada): explica o porquê (planos diferentes, o certo sai da escuta do cenário, por isso o valor fecha na conversa) e puxa pra call, sem repetir a parede e sem número. Terceira: gente assume com o alerta "PREÇO SÓ NA CALL". Agendar, remarcar e desmarcar vencem a escada. Com call marcada, aponta pra conversa marcada em vez de oferecer horário.
+- Regra: Segunda insistência (pedido de preço na mensagem atual, com uma resposta oficial já dada): explica o porquê (planos diferentes a partir de R$299 mensais, o certo sai da escuta do cenário, por isso o valor exato fecha na conversa) e puxa pra call, sem repetir a primeira resposta e sem outro número. Terceira: gente assume com o alerta de que a base já foi dita e o valor exato segue só na call. Agendar, remarcar e desmarcar vencem a escada. Com call marcada, aponta pra conversa marcada em vez de oferecer horário.
 - Vale em: estados todos; roteiro todos; executada por state, prompt, alerta
 
 ## Texto que não sai
