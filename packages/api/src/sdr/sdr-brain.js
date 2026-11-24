@@ -528,11 +528,12 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     const day = now().toISOString().slice(0, 10);
     const id = `sdr_review_${saas}_${day}`;
     const existing = await repo.get("app_config", id).catch(() => null);
-    const cur = existing || { id, saas, day, total: 0, approved: 0, changed: 0, applied: 0, errors: 0, samples: [] };
+    const cur = existing || { id, saas, day, total: 0, approved: 0, changed: 0, applied: 0, discarded: 0, errors: 0, byReason: {}, samples: [] };
     const changed = !review.approved;
-    const next = { ...cur, total: (cur.total || 0) + 1, approved: (cur.approved || 0) + (changed ? 0 : 1), changed: (cur.changed || 0) + (changed ? 1 : 0), applied: (cur.applied || 0) + (review.applied ? 1 : 0), errors: (cur.errors || 0) + (review.error ? 1 : 0), samples: [...(cur.samples || [])] };
-    if ((changed || review.error) && next.samples.length < 200) {
-      next.samples.push({ at: now().toISOString(), thread: thread?.id || "", state: state || "", mode: review.mode, applied: !!review.applied, leadMsg: String(leadMsg || "").slice(0, 240), problem: review.problem || "", original: review.original || null, fixed: review.fixed || null, ...(review.error ? { error: review.error } : {}) });
+    const next = { ...cur, total: (cur.total || 0) + 1, approved: (cur.approved || 0) + (changed ? 0 : 1), changed: (cur.changed || 0) + (changed ? 1 : 0), applied: (cur.applied || 0) + (review.applied ? 1 : 0), discarded: (cur.discarded || 0) + (review.discarded ? 1 : 0), errors: (cur.errors || 0) + (review.error ? 1 : 0), byReason: { ...(cur.byReason || {}) }, samples: [...(cur.samples || [])] };
+    if (changed && review.reason) next.byReason[review.reason] = (next.byReason[review.reason] || 0) + 1;
+    if ((changed || review.error || review.discarded) && next.samples.length < 200) {
+      next.samples.push({ at: now().toISOString(), thread: thread?.id || "", state: state || "", mode: review.mode, applied: !!review.applied, reason: review.reason || "", ...(review.discarded ? { discarded: review.discarded } : {}), leadMsg: String(leadMsg || "").slice(0, 240), problem: review.problem || "", original: review.original || null, fixed: review.fixed || null, ...(review.error ? { error: review.error } : {}) });
     }
     if (existing) await repo.update("app_config", id, next); else await repo.create("app_config", next);
   }
@@ -1398,7 +1399,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       review: cfg.reviewMode,
     });
     if (decision.review) {
-      meta.review = { mode: decision.review.mode, approved: decision.review.approved, applied: !!decision.review.applied, problem: decision.review.problem || "", ms: decision.review.ms || 0, ...(decision.review.error ? { error: decision.review.error } : {}) };
+      meta.review = { mode: decision.review.mode, approved: decision.review.approved, applied: !!decision.review.applied, reason: decision.review.reason || "", problem: decision.review.problem || "", ms: decision.review.ms || 0, ...(decision.review.error ? { error: decision.review.error } : {}) };
       await bumpReview(product.id, { review: decision.review, thread, state: st.state, leadMsg: burstText }).catch((err) => log.warn?.({ err: err.message }, "sdr-brain: registro da revisão falhou"));
       if (decision.review.applied) log.info?.({ lead: lead.id, problema: decision.review.problem }, "sdr-brain: revisor corrigiu a decisão da IA");
     }

@@ -162,51 +162,69 @@ test("prompt v2: sem pitch na conversa, o bloco manda dizer em uma frase o que o
 });
 
 // ── REVISOR (24/11) ─────────────────────────────────────────────────────────
-test("revisor: mesmo núcleo como prefixo, contrato v2 + aprovado/problema, e a correção só vale se muda a decisão #R-124", async () => {
-  const { buildReviewCore, buildCoreV2, reviewSchema, buildReviewUser, applyReview, draftFromAi, REVIEWABLE_ACTIONS, FORBIDDEN_IN_PROMPT } = await import("../src/sdr/sdr-prompt.js");
+test("revisor: mesmo núcleo como prefixo e um papel só, não perder agenda; a correção só vale se for ganho de agenda do motivo dito #R-124", async () => {
+  const { buildReviewCore, buildCoreV2, reviewSchema, buildReviewUser, applyReview, draftFromAi, REVIEWABLE_ACTIONS, REVIEW_REASONS, FORBIDDEN_IN_PROMPT } = await import("../src/sdr/sdr-prompt.js");
   const core = buildCoreV2(), rev = buildReviewCore();
   assert.ok(rev.startsWith(core), "o núcleo segue byte a byte na frente (prefixo cacheável e regras idênticas)");
-  assert.match(rev.slice(core.length), /MODO REVISÃO[\s\S]*LEU TUDO[\s\S]*HORÁRIO[\s\S]*AVANÇO[\s\S]*GENTE SEM PRECISAR[\s\S]*SILÊNCIO SEM PRECISAR[\s\S]*COERÊNCIA[\s\S]*REPETIÇÃO[\s\S]*FORMA/);
-  for (const f of FORBIDDEN_IN_PROMPT) assert.ok(!rev.slice(core.length).includes(f), f);
+  const tail = rev.slice(core.length);
+  assert.match(tail, /MODO REVISÃO[\s\S]*PERDER AGENDA[\s\S]*nao_marcou[\s\S]*humano_sem_precisar[\s\S]*silencio_sem_precisar[\s\S]*nao_convidou[\s\S]*nao_respondeu[\s\S]*Na dúvida, aprove/);
+  assert.match(tail, /nunca tira a oferta de horário[\s\S]*nunca passa pra gente[\s\S]*nunca silencia[\s\S]*nunca desmarca/);
+  for (const f of FORBIDDEN_IN_PROMPT) assert.ok(!tail.includes(f), f);
   const schema = reviewSchema(["s1", "s2"]);
-  assert.deepEqual(schema.required.slice(0, 2), ["aprovado", "problema"]);
+  assert.deepEqual(schema.required.slice(0, 3), ["aprovado", "motivo", "problema"]);
+  assert.deepEqual(schema.properties.motivo.enum, ["", ...REVIEW_REASONS]);
   assert.deepEqual(schema.properties.slotIds.items.enum, ["s1", "s2"], "o revisor também só escolhe id da lista");
   assert.deepEqual(REVIEWABLE_ACTIONS, ["responder", "humano", "silencio"]);
   const slots = [{ id: "s1", at: "2026-08-20T09:00" }, { id: "s2", at: "2026-08-20T11:00" }];
-  const first = { ...draftFromAi({ acao: "responder", partes: ["Perfeito Rafael"], oferecer: true, slotIds: [] }, { contract: "v2", slots }), model: "m", usage: { in: 1, out: 1 } };
+  const d = (o) => ({ ...draftFromAi({ email: "", motivoHumano: "", slotIds: [], oferecer: false, ...o }, { contract: "v2", slots }), model: "m", usage: { in: 1, out: 1 } });
+  const first = d({ acao: "responder", partes: ["Perfeito Rafael"], oferecer: true });
   assert.match(buildReviewUser("CONVERSA…", first), /RASCUNHO DA OUTRA SDR[\s\S]*"acao":"responder","partes":\["Perfeito Rafael"\],"oferecer":true/);
+  const rv = (o) => ({ aprovado: false, problema: "p", email: "", motivoHumano: "", slotIds: [], oferecer: false, partes: [], ...o });
+  const E = { mode: "enforce", slots };
   // Aprovado: nada muda.
-  const ok = applyReview(first, { aprovado: true, problema: "", acao: "responder", partes: ["outra coisa"], oferecer: false, slotIds: [] }, { mode: "enforce", slots });
+  const ok = applyReview(first, { aprovado: true, motivo: "", problema: "", acao: "responder", partes: ["outra coisa"], oferecer: false, slotIds: [] }, E);
   assert.deepEqual([ok.acao, ok.mensagens, ok.review.approved, ok.review.applied], ["responder", ["Perfeito Rafael"], true, false]);
-  // Reprovado em enforce: a decisão corrigida sai (o lead tinha escolhido as 9h).
-  const fix = { aprovado: false, problema: "item 2: ele escolheu as 9h, que está na lista", acao: "agendar", partes: [], oferecer: false, slotIds: ["s1"], email: "", motivoHumano: "" };
-  const enforced = applyReview(first, fix, { mode: "enforce", slots });
-  assert.deepEqual([enforced.acao, enforced.horario, enforced.review.applied, enforced.review.approved], ["agendar", "2026-08-20T09:00", true, false]);
-  assert.deepEqual(enforced.review.original.partes, ["Perfeito Rafael"]);
-  assert.equal(enforced.model, "m", "modelo e uso da 1ª decisão seguem no carimbo");
+  // nao_marcou: o lead escolheu as 9h → agenda.
+  const marca = applyReview(first, rv({ motivo: "nao_marcou", acao: "agendar", slotIds: ["s1"] }), E);
+  assert.deepEqual([marca.acao, marca.horario, marca.review.applied, marca.review.reason], ["agendar", "2026-08-20T09:00", true, "nao_marcou"]);
+  assert.equal(marca.model, "m", "modelo e uso da 1ª decisão seguem no carimbo");
+  assert.equal(applyReview(first, rv({ motivo: "nao_marcou", acao: "agendar", slotIds: ["s9"] }), E).review.applied, false, "id fora da lista não marca");
   // Em audit a original sai e a correção fica só no registro.
-  const audited = applyReview(first, fix, { mode: "audit", slots });
+  const audited = applyReview(first, rv({ motivo: "nao_marcou", acao: "agendar", slotIds: ["s1"] }), { mode: "audit", slots });
   assert.deepEqual([audited.acao, audited.review.applied, audited.review.approved, audited.review.fixed.acao], ["responder", false, false, "agendar"]);
-  // Reprovação sem correção de verdade (igual ao rascunho, ou responder vazio) não troca nada.
-  assert.equal(applyReview(first, { aprovado: false, problema: "x", acao: "responder", partes: ["Perfeito Rafael"], oferecer: true, slotIds: [] }, { mode: "enforce", slots }).review.approved, true);
-  assert.equal(applyReview(first, { aprovado: false, problema: "x", acao: "responder", partes: [], oferecer: false, slotIds: [] }, { mode: "enforce", slots }).review.applied, false);
-  // Id fora da lista na correção cai (mesma normalização da 1ª decisão).
-  assert.equal(applyReview(first, { ...fix, slotIds: ["s9"] }, { mode: "enforce", slots }).horario, "");
+  // humano/silencio sem precisar → responde; mas não quando o lead pediu gente, ligação ou pra parar.
+  const humano = d({ acao: "humano", partes: ["Vou deixar com o time"], motivoHumano: "dúvida" });
+  const resp = rv({ motivo: "humano_sem_precisar", acao: "responder", partes: ["Sincroniza o estoque pelo SKU Rafael"], oferecer: true });
+  assert.deepEqual([applyReview(humano, resp, { ...E, leadText: "vocês controlam estoque?" }).acao, applyReview(humano, resp, { ...E, leadText: "quero falar com um atendente" }).acao, applyReview(humano, resp, { ...E, leadText: "pode me ligar?" }).acao], ["responder", "humano", "humano"]);
+  assert.equal(applyReview(d({ acao: "silencio" }), rv({ motivo: "silencio_sem_precisar", acao: "responder", partes: ["Tem sim Rafael"] }), { ...E, leadText: "tem horário amanhã?" }).acao, "responder");
+  // nao_convidou: só com lead engajado e sem conversa marcada.
+  const seco = d({ acao: "responder", partes: ["Isso Rafael"] });
+  const conv = rv({ motivo: "nao_convidou", acao: "responder", partes: ["Isso Rafael"], oferecer: true });
+  assert.deepEqual([applyReview(seco, conv, E).oferecer, applyReview(seco, conv, { ...E, engaged: false }).oferecer, applyReview(seco, conv, { ...E, callAt: "2026-08-20T09:00" }).oferecer], [true, false, false]);
+  // nao_respondeu: troca o texto e NUNCA tira a oferta do rascunho.
+  const fix = applyReview(first, rv({ motivo: "nao_respondeu", acao: "responder", partes: ["Pode sim Rafael, pelo celular funciona"], oferecer: false }), E);
+  assert.deepEqual([fix.mensagens, fix.oferecer, fix.review.applied], [["Pode sim Rafael, pelo celular funciona"], true, true]);
+  // O que o revisor NUNCA faz, mesmo pedindo: passar pra gente, silenciar, desmarcar, tirar a oferta, reescrever por gosto.
+  for (const bad of [rv({ motivo: "nao_respondeu", acao: "humano", partes: ["Vou passar pro time"] }), rv({ motivo: "silencio_sem_precisar", acao: "silencio" }), rv({ motivo: "nao_marcou", acao: "desmarcar" }), rv({ motivo: "", acao: "responder", partes: ["Perfeito, Rafael."], oferecer: true }), rv({ motivo: "estilo", acao: "responder", partes: ["Outra frase"], oferecer: false })]) {
+    const r = applyReview(first, bad, E);
+    assert.deepEqual([r.acao, r.mensagens, r.oferecer, r.review.applied, r.review.approved], ["responder", ["Perfeito Rafael"], true, false, true], JSON.stringify(bad));
+    assert.ok(r.review.discarded, "a reprovação recusada fica no registro");
+  }
 });
 
 test("revisor: sdrDecide faz a segunda chamada só em audit/enforce e só pra responder/humano/silencio; falha do revisor não segura a resposta #R-124", async () => {
   const { makeAnthropic } = await import("../src/integrations/anthropic.js");
   const reply = (obj) => ({ status: 200, json: async () => ({ content: [{ type: "text", text: JSON.stringify(obj) }], stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 5 } }) });
   const sysOf = (b) => (typeof b?.system === "string" ? b.system : (Array.isArray(b?.system) ? b.system.map((x) => x?.text || "").join("\n") : ""));
-  const run = async (review, answers) => {
+  const run = async (review, answers, lastLead = "pode ser às 9h") => {
     const bodies = []; const queue = [...answers];
     const fetch = async (url, init) => { bodies.push(JSON.parse(init.body)); const a = queue.shift(); if (a instanceof Error) throw a; return reply(a); };
     const ai = makeAnthropic({ fetch, apiKey: "k" });
-    const d = await ai.sdrDecide({ lead: { name: "Rafael" }, conversation: [{ who: "LEAD", text: "pode ser às 9h" }], slots: [{ at: "2026-08-20T09:00", label: "amanhã às 9h" }], promptVersion: "v2", state: "oferta_feita", facts: { engaged: true }, review });
+    const d = await ai.sdrDecide({ lead: { name: "Rafael" }, conversation: [{ who: "VOCÊ", text: "Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?" }, { who: "LEAD", text: lastLead }], slots: [{ at: "2026-08-20T09:00", label: "amanhã às 9h" }], promptVersion: "v2", state: "oferta_feita", facts: { engaged: true }, review });
     return { d, bodies };
   };
   const draft = { acao: "responder", partes: ["Perfeito Rafael"], oferecer: true, slotIds: [], email: "", motivoHumano: "" };
-  const fix = { aprovado: false, problema: "item 2: escolheu as 9h", acao: "agendar", partes: [], oferecer: false, slotIds: ["s1"], email: "", motivoHumano: "" };
+  const fix = { aprovado: false, motivo: "nao_marcou", problema: "escolheu as 9h e o rascunho não marcou", acao: "agendar", partes: [], oferecer: false, slotIds: ["s1"], email: "", motivoHumano: "" };
   const off = await run("off", [draft]);
   assert.equal(off.bodies.length, 1); assert.equal(off.d.review, undefined);
   const enf = await run("enforce", [draft, fix]);
@@ -219,6 +237,9 @@ test("revisor: sdrDecide faz a segunda chamada só em audit/enforce e só pra re
   // Marcar não passa pelo revisor.
   const booked = await run("enforce", [{ ...draft, acao: "agendar", partes: [], oferecer: false, slotIds: ["s1"] }]);
   assert.equal(booked.bodies.length, 1);
+  // O que o lead disse na mensagem nova chega no filtro: pediu gente, o "humano" fica.
+  const pediu = await run("enforce", [{ ...draft, acao: "humano", partes: ["Vou chamar alguém do time"], oferecer: false }, { aprovado: false, motivo: "humano_sem_precisar", problema: "dava pra responder", acao: "responder", partes: ["Claro Rafael"], oferecer: true, slotIds: [], email: "", motivoHumano: "" }], "quero falar com um atendente");
+  assert.deepEqual([pediu.d.acao, pediu.d.review.applied], ["humano", false]);
   // Revisor fora do ar: a original sai, com o erro no registro.
   const down = await run("enforce", [draft, new Error("timeout"), new Error("timeout"), new Error("timeout"), new Error("timeout")]);
   assert.deepEqual([down.d.acao, down.d.review.applied, down.d.review.approved, !!down.d.review.error], ["responder", false, true, true]);
