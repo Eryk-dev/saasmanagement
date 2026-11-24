@@ -2243,3 +2243,16 @@ test("24/11 (decisão): lead pede material e o robô envia o vídeo do produto, 
   assert.equal(await renewVideos(repo, { ...wa, fetchMedia: async () => { throw new Error("id expirado"); } }, { saas: "leverads", now: new Date("2026-10-20T13:00:00Z") }), 1);
   assert.equal(wa.ups.at(-1), "copia do inbox");
 });
+
+// Medição de 24/11 (3.725 mensagens do robô em 15 dias): em 8 conversas a
+// resposta combinava esperar o lead e, no balão seguinte, oferecia horário.
+test("24/11 (medição): resposta que combina esperar o lead não leva oferta de horário junto #R-031 #R-121", async () => {
+  for (const fala of ["Combinado Rafael, fico no aguardo do seu retorno", "Te chamo na próxima semana para combinarmos", "Combinado Rafael, fico no aguardo de vocês"]) {
+    const repo = await world({ sdrBot: V2_ENFORCE, messages: [...PITCH_2411, { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou às 11h, qual fica melhor pra você?", at: ISO("2026-08-19T11:31:00Z") }, { direction: "in", text: "vou só validar com a Larissa do nosso time e retorno", at: ISO("2026-08-19T12:59:00Z") }] });
+    const fakes = makeFakes({ decisions: [{ acao: "responder", mensagens: [fala], oferecer: true }] });
+    await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "vou só validar com a Larissa do nosso time e retorno" } });
+    const texts = fakes.sent.map((x) => x.text);
+    assert.ok(texts.includes(fala), JSON.stringify(texts));
+    assert.ok(!texts.some((t) => /\d{1,2}h/.test(t)), `${fala}: ${JSON.stringify(texts)}`);
+  }
+});
