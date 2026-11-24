@@ -160,3 +160,66 @@ test("prompt v2: sem pitch na conversa, o bloco manda dizer em uma frase o que o
   assert.match(buildUserV2({ ...base, facts: { demoOffered: false } }), /O PITCH AINDA NÃO SAIU[\s\S]*Lever Price faz/);
   assert.doesNotMatch(buildUserV2({ ...base, facts: { demoOffered: true } }), /O PITCH AINDA NÃO SAIU/);
 });
+
+// ── REVISOR (24/11) ─────────────────────────────────────────────────────────
+test("revisor: mesmo núcleo como prefixo, contrato v2 + aprovado/problema, e a correção só vale se muda a decisão #R-124", async () => {
+  const { buildReviewCore, buildCoreV2, reviewSchema, buildReviewUser, applyReview, draftFromAi, REVIEWABLE_ACTIONS, FORBIDDEN_IN_PROMPT } = await import("../src/sdr/sdr-prompt.js");
+  const core = buildCoreV2(), rev = buildReviewCore();
+  assert.ok(rev.startsWith(core), "o núcleo segue byte a byte na frente (prefixo cacheável e regras idênticas)");
+  assert.match(rev.slice(core.length), /MODO REVISÃO[\s\S]*LEU TUDO[\s\S]*HORÁRIO[\s\S]*AVANÇO[\s\S]*GENTE SEM PRECISAR[\s\S]*SILÊNCIO SEM PRECISAR[\s\S]*COERÊNCIA[\s\S]*REPETIÇÃO[\s\S]*FORMA/);
+  for (const f of FORBIDDEN_IN_PROMPT) assert.ok(!rev.slice(core.length).includes(f), f);
+  const schema = reviewSchema(["s1", "s2"]);
+  assert.deepEqual(schema.required.slice(0, 2), ["aprovado", "problema"]);
+  assert.deepEqual(schema.properties.slotIds.items.enum, ["s1", "s2"], "o revisor também só escolhe id da lista");
+  assert.deepEqual(REVIEWABLE_ACTIONS, ["responder", "humano", "silencio"]);
+  const slots = [{ id: "s1", at: "2026-08-20T09:00" }, { id: "s2", at: "2026-08-20T11:00" }];
+  const first = { ...draftFromAi({ acao: "responder", partes: ["Perfeito Rafael"], oferecer: true, slotIds: [] }, { contract: "v2", slots }), model: "m", usage: { in: 1, out: 1 } };
+  assert.match(buildReviewUser("CONVERSA…", first), /RASCUNHO DA OUTRA SDR[\s\S]*"acao":"responder","partes":\["Perfeito Rafael"\],"oferecer":true/);
+  // Aprovado: nada muda.
+  const ok = applyReview(first, { aprovado: true, problema: "", acao: "responder", partes: ["outra coisa"], oferecer: false, slotIds: [] }, { mode: "enforce", slots });
+  assert.deepEqual([ok.acao, ok.mensagens, ok.review.approved, ok.review.applied], ["responder", ["Perfeito Rafael"], true, false]);
+  // Reprovado em enforce: a decisão corrigida sai (o lead tinha escolhido as 9h).
+  const fix = { aprovado: false, problema: "item 2: ele escolheu as 9h, que está na lista", acao: "agendar", partes: [], oferecer: false, slotIds: ["s1"], email: "", motivoHumano: "" };
+  const enforced = applyReview(first, fix, { mode: "enforce", slots });
+  assert.deepEqual([enforced.acao, enforced.horario, enforced.review.applied, enforced.review.approved], ["agendar", "2026-08-20T09:00", true, false]);
+  assert.deepEqual(enforced.review.original.partes, ["Perfeito Rafael"]);
+  assert.equal(enforced.model, "m", "modelo e uso da 1ª decisão seguem no carimbo");
+  // Em audit a original sai e a correção fica só no registro.
+  const audited = applyReview(first, fix, { mode: "audit", slots });
+  assert.deepEqual([audited.acao, audited.review.applied, audited.review.approved, audited.review.fixed.acao], ["responder", false, false, "agendar"]);
+  // Reprovação sem correção de verdade (igual ao rascunho, ou responder vazio) não troca nada.
+  assert.equal(applyReview(first, { aprovado: false, problema: "x", acao: "responder", partes: ["Perfeito Rafael"], oferecer: true, slotIds: [] }, { mode: "enforce", slots }).review.approved, true);
+  assert.equal(applyReview(first, { aprovado: false, problema: "x", acao: "responder", partes: [], oferecer: false, slotIds: [] }, { mode: "enforce", slots }).review.applied, false);
+  // Id fora da lista na correção cai (mesma normalização da 1ª decisão).
+  assert.equal(applyReview(first, { ...fix, slotIds: ["s9"] }, { mode: "enforce", slots }).horario, "");
+});
+
+test("revisor: sdrDecide faz a segunda chamada só em audit/enforce e só pra responder/humano/silencio; falha do revisor não segura a resposta #R-124", async () => {
+  const { makeAnthropic } = await import("../src/integrations/anthropic.js");
+  const reply = (obj) => ({ status: 200, json: async () => ({ content: [{ type: "text", text: JSON.stringify(obj) }], stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 5 } }) });
+  const sysOf = (b) => (typeof b?.system === "string" ? b.system : (Array.isArray(b?.system) ? b.system.map((x) => x?.text || "").join("\n") : ""));
+  const run = async (review, answers) => {
+    const bodies = []; const queue = [...answers];
+    const fetch = async (url, init) => { bodies.push(JSON.parse(init.body)); const a = queue.shift(); if (a instanceof Error) throw a; return reply(a); };
+    const ai = makeAnthropic({ fetch, apiKey: "k" });
+    const d = await ai.sdrDecide({ lead: { name: "Rafael" }, conversation: [{ who: "LEAD", text: "pode ser às 9h" }], slots: [{ at: "2026-08-20T09:00", label: "amanhã às 9h" }], promptVersion: "v2", state: "oferta_feita", facts: { engaged: true }, review });
+    return { d, bodies };
+  };
+  const draft = { acao: "responder", partes: ["Perfeito Rafael"], oferecer: true, slotIds: [], email: "", motivoHumano: "" };
+  const fix = { aprovado: false, problema: "item 2: escolheu as 9h", acao: "agendar", partes: [], oferecer: false, slotIds: ["s1"], email: "", motivoHumano: "" };
+  const off = await run("off", [draft]);
+  assert.equal(off.bodies.length, 1); assert.equal(off.d.review, undefined);
+  const enf = await run("enforce", [draft, fix]);
+  assert.equal(enf.bodies.length, 2);
+  assert.match(sysOf(enf.bodies[1]), /MODO REVISÃO/);
+  assert.match(JSON.stringify(enf.bodies[1].messages), /RASCUNHO DA OUTRA SDR/);
+  assert.deepEqual([enf.d.acao, enf.d.horario, enf.d.review.applied], ["agendar", "2026-08-20T09:00", true]);
+  const aud = await run("audit", [draft, fix]);
+  assert.deepEqual([aud.d.acao, aud.d.review.applied, aud.d.review.fixed.acao], ["responder", false, "agendar"]);
+  // Marcar não passa pelo revisor.
+  const booked = await run("enforce", [{ ...draft, acao: "agendar", partes: [], oferecer: false, slotIds: ["s1"] }]);
+  assert.equal(booked.bodies.length, 1);
+  // Revisor fora do ar: a original sai, com o erro no registro.
+  const down = await run("enforce", [draft, new Error("timeout"), new Error("timeout"), new Error("timeout"), new Error("timeout")]);
+  assert.deepEqual([down.d.acao, down.d.review.applied, down.d.review.approved, !!down.d.review.error], ["responder", false, true, true]);
+});

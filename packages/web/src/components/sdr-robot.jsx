@@ -255,6 +255,11 @@ function AdvancedCard({ product, cfg, onSaved }) {
             {d.promptVersion === "v2" && <span style={{ fontSize: 11.5, color: "var(--fg-3)" }}>o prompt v2 já usa o contrato v2</span>}
           </div>
           <div style={field}><span style={fieldLabel}>Validador de saída</span><Segmented value={d.guardsMode} options={[{ value: "audit", label: "só audita" }, { value: "enforce", label: "manda" }]} onChange={set("guardsMode")} /></div>
+          <div style={field}>
+            <span style={fieldLabel}>Revisor da resposta</span>
+            <Segmented value={d.reviewMode || "off"} options={[{ value: "off", label: "desligado" }, { value: "audit", label: "só registra" }, { value: "enforce", label: "corrige" }]} onChange={(v) => d.promptVersion === "v2" && set("reviewMode")(v)} />
+            <span style={{ fontSize: 11.5, color: "var(--fg-3)" }}>{d.promptVersion === "v2" ? "segunda leitura da IA antes de enviar (dobra o uso de IA por resposta)" : "precisa do prompt v2"}</span>
+          </div>
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap" }}>

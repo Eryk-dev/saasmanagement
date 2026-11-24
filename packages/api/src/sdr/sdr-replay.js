@@ -93,7 +93,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
   }
 
   // `client`: outro provedor (aba Robô testa o modelo escolhido antes de trocar).
-  async function run({ saas = "leverads", threads: maxThreads = 25, turns: turnsPerThread = 3, model = "", tag = "", contract = "", threadIds = [], promptVersion = "", client = null } = {}) {
+  async function run({ saas = "leverads", threads: maxThreads = 25, turns: turnsPerThread = 3, model = "", tag = "", contract = "", threadIds = [], promptVersion = "", client = null, review = "" } = {}) {
     const baseAi = client || anthropic;
     const ai = model && typeof baseAi?.clone === "function" ? baseAi.clone({ model }) : baseAi;
     const docId = docIdOf(tag);
@@ -131,6 +131,10 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
       bridgeBeforeSlots: 0,       // ponte (o que é a demonstração) junto da oferta
       offersWithSlots: 0,         // respostas que ofereceram horário
       avgChars: 0,                // tamanho médio da resposta (soma / turnos)
+      // REVISOR (24/11): com `review: "audit"` cada decisão responder/humano/
+      // silencio passa pela segunda leitura; aqui fica o que ela aprovou e o
+      // que corrigiria, com o que o time respondeu de verdade ao lado.
+      review: { total: 0, approved: 0, changed: 0, errors: 0, ms: 0, usage: { in: 0, out: 0 }, samples: [] },
       usage: { in: 0, out: 0, cacheRead: 0, cacheWrite: 0 }, // tokens somados
       msTotal: 0,                 // latência somada (÷ turns = média)
       samples: [],
@@ -182,9 +186,16 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
             slotsOffered,
             firstReply: !msgs.slice(0, i).some((x) => x.direction === "out"),
             ...(contract ? { contract } : {}),
+            ...(review ? { review } : {}),
             ...(promptVersion === "v2" ? { promptVersion: "v2", state: st.state, script: st.script, facts: { demoOffered, slotsOffered, engaged: st.facts.engaged, firstReply: st.facts.firstReply, askingNow: PRICE_ASK_RX.test(m.transcript || m.text || "") } } : {}),
           });
           report.byState[st.state] = (report.byState[st.state] || 0) + 1;
+          if (d.review) {
+            const rv = d.review, R = report.review;
+            R.total++; if (rv.error) R.errors++; else if (rv.approved) R.approved++; else R.changed++;
+            R.ms += Number(rv.ms) || 0; R.usage.in += Number(rv.usage?.in) || 0; R.usage.out += Number(rv.usage?.out) || 0;
+            if (!rv.approved && R.samples.length < 80) R.samples.push({ lead: lead.name || lead.id, state: st.state, leadMsg: String(m.transcript || m.text || "").slice(0, 260), problem: rv.problem, original: rv.original, fixed: rv.fixed, real: String(realNext.text || "").slice(0, 200), realAuthor: realNext.author === SDR_AUTHOR ? "sdr-bot" : realNext.author || "" });
+          }
           report.actions[d.acao] = (report.actions[d.acao] || 0) + 1;
           if ((d.acao === "agendar" || d.acao === "remarcar")) {
             if (slotList.some((s) => s.at === d.horario)) bookedHere = true;

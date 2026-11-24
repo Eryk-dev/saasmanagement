@@ -519,6 +519,24 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     if (existing) await repo.update("app_config", id, next); else await repo.create("app_config", next);
   }
 
+  // REVISÕES DO DIA (24/11): o que o revisor aprovou, corrigiu e por quê, em
+  // app_config sdr_review_<saas>_<dia> (thread.brain guarda só a última). É o
+  // que se lê pra decidir passar de "audit" pra "enforce" e pra achar regra
+  // que falta no prompt: correção que se repete vira regra ou trava de código.
+  async function bumpReview(saas, { review, thread, state, leadMsg }) {
+    if (!saas || !review) return;
+    const day = now().toISOString().slice(0, 10);
+    const id = `sdr_review_${saas}_${day}`;
+    const existing = await repo.get("app_config", id).catch(() => null);
+    const cur = existing || { id, saas, day, total: 0, approved: 0, changed: 0, applied: 0, errors: 0, samples: [] };
+    const changed = !review.approved;
+    const next = { ...cur, total: (cur.total || 0) + 1, approved: (cur.approved || 0) + (changed ? 0 : 1), changed: (cur.changed || 0) + (changed ? 1 : 0), applied: (cur.applied || 0) + (review.applied ? 1 : 0), errors: (cur.errors || 0) + (review.error ? 1 : 0), samples: [...(cur.samples || [])] };
+    if ((changed || review.error) && next.samples.length < 200) {
+      next.samples.push({ at: now().toISOString(), thread: thread?.id || "", state: state || "", mode: review.mode, applied: !!review.applied, leadMsg: String(leadMsg || "").slice(0, 240), problem: review.problem || "", original: review.original || null, fixed: review.fixed || null, ...(review.error ? { error: review.error } : {}) });
+    }
+    if (existing) await repo.update("app_config", id, next); else await repo.create("app_config", next);
+  }
+
   async function handleInbound({ message, resumed = false } = {}) {
     if (message?.id && inflight.has(message.id)) return "inflight";
     if (message?.id) inflight.add(message.id);
@@ -552,7 +570,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
         // varredura tentou de novo — uma vez só, nunca em loop.
         const prev = thread?.brain;
         const retried = !!(prev && prev.msgId === message.id && (prev.retried || prev.action === "error"));
-        if (thread) await repo.update("wa_threads", thread.id, { brain: { msgId: message.id, action: action || "gate", at: now().toISOString(), ...(meta.model ? { model: meta.model, usage: meta.usage || null, ms: meta.ms || 0, promptVersion: meta.promptVersion || "v1", contract: meta.contract || "v1" } : {}), ...(meta.slots ? { slots: meta.slots, pair: meta.pair } : {}), ...(meta.state ? { state: meta.state, intent: meta.intent, facts: meta.facts, ...(meta.factsDiff ? { factsDiff: meta.factsDiff } : {}) } : {}), ...(meta.audit ? { audit: meta.audit } : {}), ...(meta.shadow ? { shadow: meta.shadow } : {}), ...(meta.error ? { error: meta.error } : {}), ...(retried ? { retried: true } : {}) } });
+        if (thread) await repo.update("wa_threads", thread.id, { brain: { msgId: message.id, action: action || "gate", at: now().toISOString(), ...(meta.model ? { model: meta.model, usage: meta.usage || null, ms: meta.ms || 0, promptVersion: meta.promptVersion || "v1", contract: meta.contract || "v1" } : {}), ...(meta.review ? { review: meta.review } : {}), ...(meta.slots ? { slots: meta.slots, pair: meta.pair } : {}), ...(meta.state ? { state: meta.state, intent: meta.intent, facts: meta.facts, ...(meta.factsDiff ? { factsDiff: meta.factsDiff } : {}) } : {}), ...(meta.audit ? { audit: meta.audit } : {}), ...(meta.shadow ? { shadow: meta.shadow } : {}), ...(meta.error ? { error: meta.error } : {}), ...(retried ? { retried: true } : {}) } });
         if (meta.model) await bumpAiUsage(thread?.saas || meta.saas || "", meta);
         if (meta.audit) await bumpAudit(thread?.saas || meta.saas || "", { meta, thread, action, msgId: message.id });
       } catch { /* carimbo é best-effort: sem ele a varredura só tenta de novo */ }
@@ -1376,12 +1394,23 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       script: st.script,
       facts: { demoOffered, slotsOffered, engaged, firstReply, askingNow: askingPriceNow, statedPain, pendingQuestion, confused, noInterest: noInterestNow, weakProfile: weakProfile || !!lead.sdrLog?.profileNote, profileNote: lead.sdrLog?.profileNote || "", callPassed, returning,
         callbackDay: cbDay ? dayLabelOf(cbDay) : "", callbackPending: cbPending ? dayLabelOf(String(lead.sdrLog?.callbackAt || "").slice(0, 10)) : "", postponed },
+      // REVISOR (24/11): segunda leitura da IA antes de sair, por config.
+      review: cfg.reviewMode,
     });
+    if (decision.review) {
+      meta.review = { mode: decision.review.mode, approved: decision.review.approved, applied: !!decision.review.applied, problem: decision.review.problem || "", ms: decision.review.ms || 0, ...(decision.review.error ? { error: decision.review.error } : {}) };
+      await bumpReview(product.id, { review: decision.review, thread, state: st.state, leadMsg: burstText }).catch((err) => log.warn?.({ err: err.message }, "sdr-brain: registro da revisão falhou"));
+      if (decision.review.applied) log.info?.({ lead: lead.id, problema: decision.review.problem }, "sdr-brain: revisor corrigiu a decisão da IA");
+    }
     // A IA recebeu a pergunta pendente: conta como refeita (uma vez, R-047).
     // Antes só o motor carimbava, e a pergunta voltava a cada mensagem.
     if (pendingQuestion && lastBotQ) await stamp(lead, { reaskedFor: lastBotQ.id }).catch(() => {});
     // Quem respondeu e quanto custou: vai pro carimbo da thread e pro uso do dia.
-    Object.assign(meta, { model: decision.model || "", usage: decision.usage || null, ms: decision.ms || 0, saas: product.id, promptVersion: decision.promptVersion || cfg.promptVersion, contract: offerContract });
+    // O uso de IA do turno soma a revisão (custo e latência de verdade).
+    const usageWithReview = decision.review?.usage && decision.usage
+      ? Object.fromEntries(["in", "out", "cacheRead", "cacheWrite"].map((k) => [k, (Number(decision.usage[k]) || 0) + (Number(decision.review.usage[k]) || 0)]))
+      : decision.usage || null;
+    Object.assign(meta, { model: decision.model || "", usage: usageWithReview, ms: (decision.ms || 0) + (decision.review?.ms || 0), saas: product.id, promptVersion: decision.promptVersion || cfg.promptVersion, contract: offerContract });
 
     // E-mail capturado na mensagem entra no cadastro (o convite do Meet usa).
     if (decision.email && /.+@.+\..+/.test(decision.email) && !lead.email) {

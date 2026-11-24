@@ -3,7 +3,7 @@
 GERADO de `packages/api/src/sdr/sdr-rules.js` (`node src/sdr/sdr-rules.js --write`). Não edite à mão: o
 teste `sdr-rulebook.test.js` recusa o arquivo quando ele difere do registro.
 
-88 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
+89 regras ativas e 2 revogadas. Cada regra tem id estável (R-nnn), a
 origem (data, quem pediu, PR ou print), o enunciado, os estados da conversa e o roteiro em que vale, a camada
 que a executa e as exceções. Toda regra ativa tem pelo menos um teste ou cena com a tag `#R-nnn`.
 
@@ -483,6 +483,12 @@ A mineração do histórico que deu origem ao tom e aos argumentos (jul-ago/2026
 - Origem: 2026-09-16, Leo (#1022; modelo/uso/slots/par #1029 e #1037 (17/09))
 - Regra: Cada mensagem tratada deixa em thread.brain o id, a ação, o modelo, o uso de tokens, a latência e os horários/par vistos na decisão (inclusive silêncio); disparo superado pela rajada não carimba. O uso de IA soma por dia em app_config.
 - Vale em: estados todos; roteiro todos; executada por effects
+
+### R-124 · Revisor: segunda leitura da IA antes de a resposta sair
+
+- Origem: 2026-11-24, Leo ("revisor por IA quero fazer, preciso melhorar a assertividade dele, estamos perdendo muita agenda"; itens da varredura de 16 a 24/11 (94 conversas em que gente assumiu logo depois do robô))
+- Regra: Toda decisão da IA do tipo responder, humano ou silencio passa por uma segunda leitura antes de sair: o mesmo núcleo de regras, a mesma conversa e o rascunho, com um critério só (essa é a resposta que mais aproxima o lead da conversa marcada, sem quebrar regra?). O revisor confere, nesta ordem: leu tudo o que o lead disse; horário escolhido ou pedido que está na lista vira agendar; lead engajado recebe o convite; humano e silencio só quando cabem; a resposta não se desmente nem afirma o que o prompt não diz; não repete; forma da Manuela. Aprova ou devolve a decisão corrigida no mesmo contrato (ids da lista, oferta escrita pelo motor), e tudo que vem depois (travas, validador, agenda) vale igual pra decisão revisada. Marcar, remarcar e desmarcar não passam por ele (o motor confere). Liga por config (reviewMode): desligado, só registra (a original sai) ou corrige. Falha do revisor nunca segura a resposta: a original sai. Cada correção fica no registro do dia (sdr_review_<produto>_<dia>): correção que se repete vira regra ou trava de código.
+- Vale em: estados todos; roteiro todos; executada por gate
 
 ## Toques e retomada
 

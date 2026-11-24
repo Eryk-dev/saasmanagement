@@ -165,3 +165,12 @@ test("replay com provedor: só admin; provedor desconhecido vira 400", async () 
   assert.equal((await app.inject({ method: "POST", url: "/api/sdr/replay", headers: admin, payload: { saas: "leverads", provider: "gemini" } })).statusCode, 400);
   await app.close();
 });
+
+test("revisor: reviewMode aceita off, audit e enforce; fora disso é erro e o padrão é desligado #R-124", async () => {
+  const { sanitizeSdrAdmin } = await import("../src/sdr/sdr-admin-config.js");
+  const { sdrBotConfig } = await import("../src/sdr/sdr-flow.js");
+  assert.deepEqual(sanitizeSdrAdmin({ reviewMode: "enforce" }).patch, { reviewMode: "enforce" });
+  assert.match(sanitizeSdrAdmin({ reviewMode: "sempre" }).error, /off ou audit ou enforce/);
+  assert.equal(sdrBotConfig({ id: "leverads", sdrBot: { enabled: true } }).reviewMode, "off");
+  assert.equal(sdrBotConfig({ id: "leverads", sdrBot: { enabled: true, reviewMode: "audit" } }).reviewMode, "audit");
+});

@@ -30,6 +30,7 @@ export const SDR_ADMIN_KEYS = {
   promptVersion: oneOf("v1", "v2"),
   offerContract: oneOf("v1", "v2"),
   guardsMode: oneOf("audit", "enforce"),
+  reviewMode: oneOf("off", "audit", "enforce"),
 };
 
 // { patch } com as chaves válidas, ou { error } com a primeira inválida.
