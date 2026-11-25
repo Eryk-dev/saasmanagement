@@ -245,8 +245,12 @@ depende de pedido do cliente por texto ou áudio transcrito; o pedido persiste
 na escolha da hora, mas não libera datas fora do período solicitado. Conversa,
 resgate de no-show e replay usam a mesma política. Horário comercial, almoço,
 ocupação e reservas continuam valendo. A rota manual `/api/agenda/free-slots`
-mantém sua régua existente. Testes: `sdr-agenda.test.js`, `sdr-brain.test.js`,
-`sdr-flow.test.js` e `sdr-humanizacao.test.js`.
+mantém sua régua existente. `GET /api/sdr/agenda?saas=&lead=&from=AAAA-MM-DD&days=`
+devolve, só para leitura, a agenda como o robô a enxerga (times por nota, janela
+de oferta, almoço, feriado e reservas de outro lead fora), sem o corte de 30
+horários: é a consulta do agente SDR que roda fora do cockpit (OpenBot, em
+sombra desde 25/11/2026). Testes: `sdr-agenda.test.js`, `sdr-agenda-route.test.js`,
+`sdr-brain.test.js`, `sdr-flow.test.js` e `sdr-humanizacao.test.js`.
 
 **Cancelamento do SDR (21/09/2026):** quando o lead cancela ou avisa que não
 poderá comparecer, `sdr-brain.js` cancela a call pelo fluxo canônico, libera
