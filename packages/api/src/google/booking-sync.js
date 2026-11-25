@@ -412,6 +412,10 @@ export function makeBookingSync({ repo, googleUser: gu, google = null, fetch: f 
       const guests = (ev.attendees || []).filter((a) => !a.self && !a.resource && a.email);
       if (!guests.length) continue;
       if (/^Lead: /.test(String(ev.description || ""))) continue;              // Meet/espelho do cockpit (id ainda não gravado)
+      // Reunião que o CRM novo marcou (call, integração ou treinamento, com o Lead convidado): leva esta marca
+      // (apps/api/src/agenda/meeting.ts do repo cockpit). Em 25/11/2026 o treinamento da ML3 casou pelo e-mail
+      // do lead e virou "integração marcada pelo link", duplicando a reunião na Agenda.
+      if (ev.extendedProperties?.private?.cockpit === "1") continue;
       known ||= await knownEventIds();
       if (known.has(ev.id)) continue;                                         // criado pelo cockpit
 
@@ -420,9 +424,14 @@ export function makeBookingSync({ repo, googleUser: gu, google = null, fetch: f 
       const rec = await matchRecord(user, hosts, { emails, phones, created });
       if (rec.hit) { await applyRecordBooking(user, rec.hit, ev, rec.why, now); done++; continue; }
       const mine = (list) => (list.length > 1 ? list.filter((l) => l.integrator === user.id) : list);
+      // O clique já gasto não liga mais nada: o card que recebeu uma marcação pelo
+      // link depois de clicar já teve o seu horário. Em 24/11/2026 a integração da
+      // Andrea tinha acabado de passar (a trava do `ahead` não pegou) e o clique de
+      // 23/11, ainda dentro das 48h, levou as marcações do JoãoFernando para o card dela.
       const clicked = (l) => {
         const t = Date.parse(l.bookingClick?.at || "");
-        return l.bookingClick?.user === user.id && Number.isFinite(t) && t <= created + 10 * MIN && created - t <= CLICK_MATCH_MS;
+        const spent = Date.parse(l.integrationBookedAt || "") >= t;
+        return l.bookingClick?.user === user.id && Number.isFinite(t) && !spent && t <= created + 10 * MIN && created - t <= CLICK_MATCH_MS;
       };
       let why = "";
       let hit = [];
