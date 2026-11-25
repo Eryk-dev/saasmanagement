@@ -438,6 +438,28 @@ test("clique de quem já tem integração por vir não leva a marcação de outr
   assert.match(hold.title, /^Gabriel Oliveira marcou pelo link/);
 });
 
+test("clique já gasto (o card marcou pelo link depois de clicar e a integração já passou) não leva a marcação de outra pessoa (caso Andrea × JoãoFernando, 24/11/2026)", async () => {
+  const { repo, cal, sync, eryk } = await setup();
+  // Bia clicou, marcou pelo link e a integração dela já aconteceu hoje de manhã.
+  await recordBookingClick(repo, { userId: "eryk", leadId: "bia", ua: "Mozilla/5.0 (iPhone)", now: new Date(NOW.getTime() - 4 * 3600_000) });
+  await repo.update("leads", "bia", {
+    integrationAt: "2026-10-07T10:00", integrationMeetEventId: "bia-ev", integrationScheduledAt: "2026-10-07T13:00:00.000Z",
+    integrationBookedVia: "link", integrationBookedEventId: "bia-ev", integrationBookedAt: new Date(NOW.getTime() - 3 * 3600_000).toISOString(),
+  });
+  // Outra pessoa marca pelo mesmo link, ainda dentro das 48h do clique, com e-mail fora dos cards.
+  cal.queue.push([booking({
+    id: "joao", summary: "Integração (JoãoFernando)",
+    attendees: [{ email: "eryk@leverads.com.br", self: true }, { email: "joao@gmail.com" }],
+    description: "<b>Reservado por</b>\nJoãoFernando\njoao@gmail.com",
+  })]);
+  await sync.syncUser(eryk, NOW);
+  const bia = await repo.get("leads", "bia");
+  assert.equal(bia.integrationAt, "2026-10-07T10:00", "o card de quem clicou não muda");
+  assert.equal(bia.integrationBookedEventId, "bia-ev");
+  const [n] = (await repo.list("notifications")).filter((x) => x.key === "booking-orphan:joao");
+  assert.match(n.text, /^JoãoFernando marcou .* não achei o card/);
+});
+
 test("nome de quem marcou: vem da descrição da página do Google", () => {
   assert.equal(bookerName("<b>Reservado por</b>\nGabriel Oliveira\ngabriel@hotmail.com"), "Gabriel Oliveira");
   assert.equal(bookerName("Agendado por Bia\nTelefone: 21 97777-6666"), "Bia");
