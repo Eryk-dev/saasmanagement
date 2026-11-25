@@ -425,12 +425,16 @@ export function makeBookingSync({ repo, googleUser: gu, google = null, fetch: f 
       if (rec.hit) { await applyRecordBooking(user, rec.hit, ev, rec.why, now); done++; continue; }
       const mine = (list) => (list.length > 1 ? list.filter((l) => l.integrator === user.id) : list);
       // O clique já gasto não liga mais nada: o card que recebeu uma marcação pelo
-      // link depois de clicar já teve o seu horário. Em 24/11/2026 a integração da
-      // Andrea tinha acabado de passar (a trava do `ahead` não pegou) e o clique de
-      // 23/11, ainda dentro das 48h, levou as marcações do JoãoFernando para o card dela.
+      // link depois de clicar, ou cuja integração aconteceu entre o clique e esta
+      // marcação, já teve o seu horário. Em 24/11/2026 a Andrea marcou (13:33),
+      // clicou de novo no link (19:31), a integração dela aconteceu (24/11 14h) e o
+      // clique, ainda dentro das 48h, levou as marcações do JoãoFernando para o card
+      // dela (a trava do `ahead` só olha integração por vir). Quem clica DEPOIS de
+      // uma integração que passou (não compareceu e vai remarcar) continua valendo.
       const clicked = (l) => {
         const t = Date.parse(l.bookingClick?.at || "");
-        const spent = Date.parse(l.integrationBookedAt || "") >= t;
+        const held = Date.parse(l.integrationScheduledAt || "");
+        const spent = Date.parse(l.integrationBookedAt || "") >= t || (held >= t && held <= created);
         return l.bookingClick?.user === user.id && Number.isFinite(t) && !spent && t <= created + 10 * MIN && created - t <= CLICK_MATCH_MS;
       };
       let why = "";
