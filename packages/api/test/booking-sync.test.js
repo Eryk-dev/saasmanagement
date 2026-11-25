@@ -460,6 +460,37 @@ test("clique já gasto (o card marcou pelo link depois de clicar e a integraçã
   assert.match(n.text, /^JoãoFernando marcou .* não achei o card/);
 });
 
+test("clique ANTES de uma integração que já aconteceu não leva a marcação de outra pessoa (ordem real do caso Andrea: marcou, clicou, integrou)", async () => {
+  const { repo, cal, sync, eryk } = await setup();
+  const ago = (h) => new Date(NOW.getTime() - h * 3600_000);
+  await repo.update("leads", "bia", {
+    integrationAt: "2026-10-07T09:00", integrationMeetEventId: "bia-ev", integrationScheduledAt: ago(3).toISOString(),
+    integrationBookedVia: "link", integrationBookedEventId: "bia-ev", integrationBookedAt: ago(30).toISOString(),
+  });
+  // clicou de novo no link (ver o horário) depois de marcar e antes da integração
+  await recordBookingClick(repo, { userId: "eryk", leadId: "bia", ua: "Mozilla/5.0 (iPhone)", now: ago(24) });
+  cal.queue.push([booking({ id: "joao2", attendees: [{ email: "eryk@leverads.com.br", self: true }, { email: "joao@gmail.com" }], description: "<b>Reservado por</b>\nJoãoFernando" })]);
+  await sync.syncUser(eryk, NOW);
+  const bia = await repo.get("leads", "bia");
+  assert.equal(bia.integrationAt, "2026-10-07T09:00", "o card de quem clicou não muda");
+  assert.ok((await repo.list("notifications")).some((n) => n.key === "booking-orphan:joao2"));
+});
+
+test("clique DEPOIS de uma integração que passou (vai remarcar) ainda liga a marcação ao card", async () => {
+  const { repo, cal, sync, eryk } = await setup();
+  const ago = (h) => new Date(NOW.getTime() - h * 3600_000);
+  await repo.update("leads", "bia", {
+    integrationAt: "2026-10-06T09:00", integrationMeetEventId: "bia-ev", integrationScheduledAt: ago(30).toISOString(),
+    integrationBookedVia: "link", integrationBookedEventId: "bia-ev", integrationBookedAt: ago(40).toISOString(),
+  });
+  await recordBookingClick(repo, { userId: "eryk", leadId: "bia", ua: "Mozilla/5.0 (iPhone)", now: ago(2) });
+  cal.queue.push([booking({ id: "bia2", attendees: [{ email: "eryk@leverads.com.br", self: true }, { email: "outro@mail.com" }], description: "" })]);
+  await sync.syncUser(eryk, NOW);
+  const bia = await repo.get("leads", "bia");
+  assert.equal(bia.integrationAt, "2026-10-09T10:00");
+  assert.equal(bia.integrationBookedEventId, "bia2");
+});
+
 test("reunião que o CRM novo marcou (extendedProperties.private.cockpit) não vira integração marcada pelo link (caso ML3, 25/11/2026)", async () => {
   const { repo, cal, sync, eryk } = await setup();
   cal.queue.push([booking({
