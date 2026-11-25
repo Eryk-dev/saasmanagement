@@ -412,6 +412,10 @@ export function makeBookingSync({ repo, googleUser: gu, google = null, fetch: f 
       const guests = (ev.attendees || []).filter((a) => !a.self && !a.resource && a.email);
       if (!guests.length) continue;
       if (/^Lead: /.test(String(ev.description || ""))) continue;              // Meet/espelho do cockpit (id ainda não gravado)
+      // Reunião que o CRM novo marcou (call, integração ou treinamento, com o Lead convidado): leva esta marca
+      // (apps/api/src/agenda/meeting.ts do repo cockpit). Em 25/11/2026 o treinamento da ML3 casou pelo e-mail
+      // do lead e virou "integração marcada pelo link", duplicando a reunião na Agenda.
+      if (ev.extendedProperties?.private?.cockpit === "1") continue;
       known ||= await knownEventIds();
       if (known.has(ev.id)) continue;                                         // criado pelo cockpit
 

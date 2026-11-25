@@ -460,6 +460,20 @@ test("clique já gasto (o card marcou pelo link depois de clicar e a integraçã
   assert.match(n.text, /^JoãoFernando marcou .* não achei o card/);
 });
 
+test("reunião que o CRM novo marcou (extendedProperties.private.cockpit) não vira integração marcada pelo link (caso ML3, 25/11/2026)", async () => {
+  const { repo, cal, sync, eryk } = await setup();
+  cal.queue.push([booking({
+    id: "cockpitnovo", summary: "Treinamento LeverAds", description: "Reunião online pelo Google Meet. O link da sala está neste convite.",
+    extendedProperties: { private: { cockpit: "1" } },
+  })]);
+  await sync.syncUser(eryk, NOW);
+  const ana = await repo.get("leads", "ana");
+  assert.equal(ana.integrationAt, undefined, "o e-mail da Ana bate, mas a reunião é do CRM novo");
+  assert.equal(ana.integrationBookedEventId, undefined);
+  assert.deepEqual(await repo.list("notifications"), []);
+  assert.deepEqual(await repo.list("agenda_blocks"), []);
+});
+
 test("nome de quem marcou: vem da descrição da página do Google", () => {
   assert.equal(bookerName("<b>Reservado por</b>\nGabriel Oliveira\ngabriel@hotmail.com"), "Gabriel Oliveira");
   assert.equal(bookerName("Agendado por Bia\nTelefone: 21 97777-6666"), "Bia");
