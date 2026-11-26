@@ -11,6 +11,7 @@ import { appmax as defaultAppmaxClient } from "./payments/appmax.js";
 import { meta as defaultMetaClient } from "./marketing/meta.js";
 import { metaCapi as defaultMetaCapi } from "./marketing/meta-capi.js";
 import { discord as defaultDiscord } from "./integrations/discord.js";
+import { crmLever as defaultCrmLever } from "./integrations/crm-lever.js";
 import { makeAnthropic } from "./integrations/anthropic.js";
 import { makeSalesWhatsapp } from "./sdr/sales-whatsapp.js";
 
@@ -20,6 +21,10 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // superfícies que geram eventos: forms (lead), proposals (vista/aceite),
   // billing (baixa manual/dunning) e MP (pagamento/assinatura).
   ctx.discord = opts.discord || defaultDiscord;
+  // Aviso de lead novo pro CRM Lever (o CRM novo): no envio do form que levanta
+  // o pop-up de lead novo daqui, ele é avisado pra copiar na hora e tocar o
+  // "Aeroporto de leads" de lá (fail-open, sem dado; integrations/crm-lever.js).
+  ctx.crmLever = opts.crmLever || defaultCrmLever;
   // Meta CAPI: "Lead" server-side, deduplicado com o Pixel client-side da página
   // pública do form (/f/:id) via event_id compartilhado.
   ctx.metaCapi = opts.metaCapi || defaultMetaCapi;

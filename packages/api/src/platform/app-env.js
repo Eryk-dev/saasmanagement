@@ -44,7 +44,7 @@ export function retiredCockpitDb(env = process.env) {
 }
 // URLs HTTP de outros produtos: produção é o domínio sem o prefixo `dev.`.
 const PROD_APP_DOMAINS = ["leverads.com.br", "leverprice.com.br", "levermoney.com.br"];
-const APP_URL_VARS = ["LEVERADS_API_URL", "LEVERCOPY_API_URL", "AUTH_JWKS_URL", "IDENTITY_AUTH_URL", "IDENTITY_REST_URL"];
+const APP_URL_VARS = ["LEVERADS_API_URL", "LEVERCOPY_API_URL", "AUTH_JWKS_URL", "IDENTITY_AUTH_URL", "IDENTITY_REST_URL", "CRM_LEVER_URL"];
 
 export function resolveAppEnv(env = process.env) {
   const raw = String(env.APP_ENV || "").trim().toLowerCase();
