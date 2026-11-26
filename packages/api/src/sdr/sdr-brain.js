@@ -27,7 +27,7 @@ import { raiseAlert } from "../whatsapp/wa-call-flow.js";
 import { gradeRulesOf, leadGrade } from "../metrics/metrics-core.js";
 import { slotLabel, slotLabelFull, wallNow, spreadPair, wholeHourSlots, activeHolds, holdSlots, releaseHolds } from "../crm/agenda-slots.js";
 import { sdrSlotsForLead, sdrAgendaWindow } from "./sdr-agenda.js";
-import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, greetName, leadGreetName, SDR_AUTHOR, DEVICE_TIP, classifyReminderReply } from "./sdr-flow.js";
+import { sdrBotConfig, leadDigest, conversationActive, agentOwns, leadPainFocus, greetName, leadGreetName, SDR_AUTHOR, DEVICE_TIP, classifyReminderReply } from "./sdr-flow.js";
 import { transcriber as defaultTranscriber } from "../whatsapp/transcribe.js";
 import { FORM_MSG_RX, SLOTS_RX, OFFER_CUE_RX, isOfferMsg, ACCEPT_RX, offeredSlotsIn, liveOfferedSlots, acceptedSlot, AUTO_REPLY_RX, BARE_HOUR_RX, collapseSameDay, expandSameDay, DEMO_RX, PITCH_RX } from "./sdr-signals.js";
 import { transcribeInbound } from "../whatsapp/wa-transcribe.js";
@@ -635,6 +635,8 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
       if (lead.whatsappOptOut || lead.whatsappInvalid) return null;
       // Botão "parar robô" do inbox (lead.sdrOff): a conversa é 100% humana.
       if (lead.sdrOff) return null;
+      // Lead do agente SDR externo (sdr-agent.js): quem conversa é o agente.
+      if (agentOwns(cfg, lead)) return null;
       if (isWonLead(product, lead)) return null;
       const kind = kindOf(product, lead.stage || firstStage(product));
       // FORMULÁRIO NOVO DE LEAD PARADO (R-090, 28/10, Margarete: card
@@ -689,6 +691,8 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, aiFor = () => anth
     // O lead pode ter chegado agora (walk-in/vínculo pelo telefone): o botão
     // "parar robô" vale pra ele também.
     if (lead.sdrOff) return "off";
+    // Walk-in que acabou de ganhar card já nasce do agente SDR externo.
+    if (agentOwns(cfg, lead)) return "agent";
     // ── RESPOSTA A DISPARO COM RETORNO AUTOMÁTICO (R-122, Leo 13/11) ──────
     // Lead que recebeu um broadcast com `reply` (webinário) e respondeu a ELE:
     // disse sim → o robô manda o retorno (link do grupo) uma vez e carimba;

@@ -3,6 +3,8 @@
 // Publica no ctx o cérebro do SDR (sdrBrain).
 
 import { registerSdrRoutes } from "./routes.sdr.js";
+import { registerSdrAgentRoutes } from "./routes.sdr-agent.js";
+import { makeSdrAgent } from "./sdr-agent.js";
 import { makeSdrBrain, startSdrBrainSweep } from "./sdr-brain.js";
 import { startSdrFlow } from "./sdr-flow.js";
 import { startSdrHandoffReminder } from "./sdr-handoff-reminder.js";
@@ -18,6 +20,8 @@ export function register(app, repo, ctx) {
   // bateria de replay (o motor determinístico é o poller startSdrFlow, com o
   // MESMO client).
   registerSdrRoutes(app, repo, { whatsapp: ctx.whatsapp, anthropic: ctx.anthropic, sdrAi });
+  // Agente SDR externo (OpenBot): as mãos dele no cockpit, pros leads que são dele (agentOwns).
+  registerSdrAgentRoutes(app, ctx.opts.sdrAgent || makeSdrAgent({ repo, whatsapp: ctx.whatsapp, autoCallMeet: ctx.autoCallMeet, cancelCallMeet: ctx.cancelCallMeet, log: app.log }));
 }
 
 export function start(repo, { clients, log, jobOn }) {
