@@ -40,6 +40,7 @@ function classificacaoDoLead(form, answers, rules) {
 
 export function registerFormRoutes(app, repo, opts = {}) {
   const discord = opts.discord; // injetado por routes.js (fail-open, pode faltar em teste direto)
+  const crmLever = opts.crmLever; // aviso de lead novo pro CRM Lever (fail-open, pode faltar em teste direto)
   const metaCapi = opts.metaCapi; // CAPI "Lead" server-side (fail-open, pode faltar em teste direto)
   const anthropic = opts.anthropic; // IA da variante de welcome (503 quando falta chave)
   // Número comercial do WhatsApp: o form manda o lead falar com o número
@@ -303,6 +304,11 @@ export function registerFormRoutes(app, repo, opts = {}) {
       try {
         await raiseNewLeadAlert(repo, lead, { text: submissionSummary(form, answers) });
       } catch { /* aviso não pode quebrar o envio do form */ }
+      // Mesmo gatilho, pro CRM Lever (o CRM novo): ele copia este lead na hora
+      // e toca o "Aeroporto de leads" de lá, no CRM e na TV da sala. O aviso
+      // não leva dado (quem busca o lead é a cópia de lá) e NÃO é esperado: o
+      // lead já está gravado, e a resposta do form não depende de outro sistema.
+      if (crmLever?.configured()) void crmLever.leadNew();
     }
 
     return reply.code(201).send({ ok: true, id: submission.id });
