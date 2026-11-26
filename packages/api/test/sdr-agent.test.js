@@ -8,7 +8,7 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 import { makeSdrAgent } from "../src/sdr/sdr-agent.js";
 import { registerSdrAgentRoutes } from "../src/sdr/routes.sdr-agent.js";
 import { makeSdrBrain } from "../src/sdr/sdr-brain.js";
-import { agentOwns, sdrBotConfig, SDR_AUTHOR } from "../src/sdr/sdr-flow.js";
+import { agentOwns, sdrBotConfig, SDR_AUTHOR, makeSdrRunner } from "../src/sdr/sdr-flow.js";
 import { activeHolds, holdSlots, wallNow } from "../src/crm/agenda-slots.js";
 
 const FUNNEL = [{ stage: "Novo lead", kind: "novo" }, { stage: "Qualificando", kind: "qualificacao" }, { stage: "Call agendada", kind: "call" }];
@@ -76,7 +76,8 @@ test("send: resposta que nasceu velha não sai (lead escreveu de novo, gente res
   const novo = await world({ messages: [{ direction: "in", text: "oi", at: ago(9) }, { direction: "in", text: "e o preço?", at: ago(1) }] });
   assert.equal((await novo.agent.send("ana", { parts: ["oi"], replyTo: "m1" })).body.error, "superseded");
   const gente = await world({ messages: [{ direction: "in", text: "oi", at: ago(9) }, { direction: "out", author: "sdr", text: "Oi Ana, é a Manu", at: ago(2) }] });
-  assert.equal((await gente.agent.send("ana", { parts: ["oi"], replyTo: "m1" })).body.error, "human_answered");
+  // gente respondeu depois do lead: pausa de humano ativo em expediente, "respondeu antes" fora dele
+  assert.match((await gente.agent.send("ana", { parts: ["oi"], replyTo: "m1" })).body.error, /^human_(active|answered)$/);
   const fechada = await world({ messages: [{ direction: "in", text: "oi", at: ago(25 * 60) }] });
   assert.equal((await fechada.agent.send("ana", { parts: ["oi"], replyTo: "m1" })).body.error, "window_closed");
   assert.equal((await novo.agent.send("ana", { parts: [] })).status, 400);
@@ -139,6 +140,48 @@ test("handoff, opt-out e callback: carimbos que o resto do cockpit já entende",
   assert.equal((await agent.callback("ana", { day: "2020-01-01" })).status, 400);
   assert.equal((await agent.optOut("ana")).status, 200);
   assert.equal((await repo.get("leads", "ana")).whatsappOptOut, true);
+});
+
+test("as cercas do cérebro nativo valem pro agente: etapa de closer, gente falando há pouco e a positiva ao lembrete", async () => {
+  const closer = await world({ lead: { stage: "Proposta" } });
+  assert.equal((await closer.agent.send("ana", { parts: ["oi"] })).body.error, "out_of_region");
+  assert.equal((await closer.agent.book("ana", { at: `${businessDay(2)}T10:00` })).body.error, "out_of_region");
+  const fora = await world({ lead: { disqualified: true } });
+  assert.equal((await fora.agent.hold("ana", { slots: [`${businessDay(2)}T10:00`] })).body.error, "out_of_region");
+  // a Manu falou há 30 min e o lead respondeu a ela: nenhuma ação do agente, nem marcar
+  const gente = await world({ messages: [{ direction: "out", author: "sdr", text: "Oi Ana, é a Manu", at: ago(30) }, { direction: "in", text: "pode ser amanhã 10h", at: ago(2) }] });
+  for (const run of [() => gente.agent.send("ana", { parts: ["oi"] }), () => gente.agent.book("ana", { at: `${businessDay(2)}T10:00` }), () => gente.agent.hold("ana", { slots: [`${businessDay(2)}T10:00`] })]) {
+    assert.equal((await run()).body.error, "human_active");
+  }
+  assert.equal((await gente.repo.get("leads", "ana")).callAt, undefined);
+  // gente falou há 5 horas: a pausa acabou
+  const antes = await world({ messages: [{ direction: "out", author: "sdr", text: "Oi Ana", at: ago(300) }, { direction: "in", text: "oi", at: ago(2) }] });
+  assert.equal((await antes.agent.send("ana", { parts: ["Oiii Ana"], replyTo: "m2" })).status, 200);
+  // "sim" ao lembrete: a régua da call confirmou nesta mensagem e manda o link; o agente não fala por cima
+  const sim = await world({ lead: { stage: "Call agendada", callAt: `${businessDay(1)}T10:00`, callConfirmed: true, confirmLog: { at: `${businessDay(1)}T10:00`, manha: ago(20), confirmed: ago(3) } },
+    messages: [{ direction: "out", author: SDR_AUTHOR, via: "flow", text: "Bom dia Ana, tudo certo pra hoje?", at: ago(20) }, { direction: "in", text: "sim", at: ago(3) }] });
+  assert.equal((await sim.agent.send("ana", { parts: ["Perfeito Ana, o link é este"], replyTo: "m2" })).body.error, "reminder_confirmed");
+  assert.equal(closer.sent.length + fora.sent.length + gente.sent.length + sim.sent.length, 0);
+});
+
+test("a 1ª resposta do agente carimba o 1º toque, e o fluxo não manda o 1º toque em cima de quem acabou de escrever", async () => {
+  const { repo, agent } = await world();
+  await agent.send("ana", { parts: ["Oiii Ana, tudo bem?"], replyTo: "m1" });
+  const log = (await repo.get("leads", "ana")).sdrLog;
+  assert.equal(log.firstTouchVia, "agent");
+  await agent.send("ana", { parts: ["Você já vende no Mercado Livre?"], replyTo: "m1" });
+  assert.equal((await repo.get("leads", "ana")).sdrLog.firstTouchAt, log.firstTouchAt, "carimba uma vez");
+
+  // fluxo: lead do agente que escreveu há 2 min espera o agente; há 15 min sem resposta, o toque sai
+  const flow = async (lastInMin) => {
+    const w = await world({ lead: { createdAt: ago(40) }, messages: [{ direction: "in", text: "Oi, quero saber mais", at: ago(lastInMin) }] });
+    const sent = [];
+    const wa = { configured: () => true, sendText: async (to, text) => { sent.push(text); return { messageId: "wm_f" + sent.length }; }, sendTemplate: async () => ({ messageId: "wm_t" }), listTemplates: async () => [], tokenWabaIds: async () => [] };
+    await makeSdrRunner({ repo: w.repo, whatsapp: wa, log: { warn: () => {} } }).tick();
+    return sent.length;
+  };
+  assert.equal(await flow(2), 0, "espera o agente");
+  assert.equal(await flow(15), 1, "agente não respondeu em 10 min: o 1º toque sai");
 });
 
 test("o cérebro nativo fica calado no lead do agente e segue respondendo o lead antigo", async () => {

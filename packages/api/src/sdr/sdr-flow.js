@@ -781,6 +781,10 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
             hasOut = msgs.some((m) => m.direction === "out");
             const lastIn = [...msgs].reverse().find((m) => m.direction === "in");
             windowOpen = windowOpenAt(msgs, nowMs);
+            // Lead do agente SDR externo que JÁ escreveu: a resposta dele é do
+            // agente e sai em ~1 min. O 1º toque espera 10 min pra não chegar
+            // junto; se o agente não respondeu até lá, o toque sai como sempre.
+            if (!hasOut && lastIn && agentOwns(cfg, lead) && nowMs - Date.parse(lastIn.at || 0) < 10 * MIN) continue;
           }
           if (hasOut) { // gente (ou o fluxo de ligação) já falou: não fala por cima
             await stampLog(lead, { firstTouchAt: nowIso, firstTouchVia: "human" });
