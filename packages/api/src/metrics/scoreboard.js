@@ -9,7 +9,7 @@
 
 import { careerRuleOf, compGoalFor, compLevelOf, leveledRoleOf, promotionEligibility, teamBonusProducts } from "../comp/comp-plan.js";
 import { RATE_BENCHMARKS, cachedPipelinePace, computeWindowGoal } from "./pipeline-pace.js";
-import { DAY_MS as DAY, REFERRAL_RATES, callCohortIn, callOutcome as coreCallOutcome, callResultOf as coreCallResultOf, cashBucketsIn, churnRateIn, classCounts, contactAttribution, customerStartMap, dayKey, firstResponseAttribution, followupTouches, gradeBasis, gradeRulesOf, isIcpLead, isKeyAccountLead, isKeyAccountUpsell, isRealLead, isReferralLead, isSaleLead, isSocialSellingLead, isWonLead, keyAccountIds, mentoriaScore, npsIndex, rangeFromQuery, referralsByCollector, revenueOf, round2, saleValuer, tcvOf, unansweredContacts, upsellContractedOf, upsellRevenueOf, upsellSalesIn, upsellValuer, winsIn } from "./metrics-core.js";
+import { DAY_MS as DAY, REFERRAL_RATES, callCohortIn, callOutcome as coreCallOutcome, callResultOf as coreCallResultOf, cashBucketsIn, churnRateIn, classCounts, contactAttribution, customerStartMap, dayKey, firstResponseAttribution, followupTouches, gradeBasis, gradeRulesOf, isIcpLead, isKeyAccountLead, isKeyAccountUpsell, isPartnerSaleLead, isRealLead, isReferralLead, isSaleLead, isSocialSellingLead, isWonLead, keyAccountIds, partnerSaleOf, mentoriaScore, npsIndex, rangeFromQuery, referralsByCollector, revenueOf, round2, saleValuer, tcvOf, unansweredContacts, upsellContractedOf, upsellRevenueOf, upsellSalesIn, upsellValuer, winsIn } from "./metrics-core.js";
 import { metricsReader } from "./metrics-reader.js";
 import { META_CATALOG, TEAM_METRICS, deriveGoalsFromPace } from "./metas.js";
 import { isMentoriaLead } from "../customers/mentoria.js";
@@ -113,7 +113,12 @@ export async function computeScoreboard(repo, product, query = {}, { now = () =>
     const customers = allCustomers.filter((c) => c.saas === product.id);
     // Conta grande (Galante, CRGroup): o dinheiro dela conta, a MÉDIA não.
     const keyIds = keyAccountIds(customers);
-    const isKey = (l) => isKeyAccountLead(keyIds, l);
+    // Venda de parceiro (26/11/2026, metrics-core): sai do resultado do time
+    // pela mesma régua da conta grande e volta em balde próprio. Ela vence a
+    // conta grande, pra a mesma venda nunca entrar nos dois baldes.
+    const isPartner = (l) => isPartnerSaleLead(l);
+    const isKey = (l) => !isPartner(l) && isKeyAccountLead(keyIds, l);
+    const isCore = (l) => !isKey(l) && !isPartner(l);
     // R$ da venda pela régua do metrics-core (Leo, 29/08): à vista conta cheio,
     // faturado/recorrente conta só o que ENTROU na janela. Um valuer só pro
     // placar inteiro — SDR, closer, time, mentoria e classes somam pela mesma
@@ -449,8 +454,9 @@ export async function computeScoreboard(repo, product, query = {}, { now = () =>
       // parecerem batidos sem a operação ter rodado. Sai do que é cobrado; o
       // que ela fechou volta em campo próprio (`key*`) pro rodapé da tela.
       const wonMineAll = [...winMineAt.keys()].map((id) => saleById.get(id)).filter(Boolean);
-      const wonMineLeads = wonMineAll.filter((l) => !isKey(l));
+      const wonMineLeads = wonMineAll.filter(isCore);
       const keyMineLeads = wonMineAll.filter(isKey);
+      const partnerMineLeads = wonMineAll.filter(isPartner);
       const wonMine = wonMineLeads.length;
       // Receita RECONHECIDA (faturado/recorrente entra só pelo recebido) — é
       // ela que a meta cobra. O contratado segue ao lado, pro card mostrar
@@ -484,6 +490,7 @@ export async function computeScoreboard(repo, product, query = {}, { now = () =>
         won: wonMine, revenue: revenueMine, // as duas pernas do plano (oportunidades DELE)
         contracted: contractedMine,         // o mesmo em CONTRATO cheio (faturado inteiro)
         keyWon: keyMineLeads.length, keyRevenue: keyRevenueMine, // conta grande fora do placar
+        partnerWon: partnerMineLeads.length, partnerRevenue: revenueOf(partnerMineLeads, valueOf), // venda de parceiro fora do placar
         mentoriaQueue: men.queue, mentoriaContacted: men.contacted,
         mentoriaWon: men.won, mentoriaRevenue: men.revenue,
         leadsNew,
@@ -575,7 +582,8 @@ export async function computeScoreboard(repo, product, query = {}, { now = () =>
       // em `keyWon`/`keyRevenue` pro rodapé, e o dinheiro segue cheio no caixa.
       const wonAll = [...winAt.keys()].map((id) => saleById.get(id)).filter(Boolean);
       const keyWonLeads = wonAll.filter(isKey);
-      const wonLeads = wonAll.filter((l) => !isKey(l));
+      const partnerWonLeads = wonAll.filter(isPartner); // venda de parceiro: fora como a conta grande
+      const wonLeads = wonAll.filter(isCore);
       // Upsells que ELE vendeu na janela: entram no nº e no R$ (só o que caiu),
       // fora das taxas de call. Conta grande vai pro rodapé, como o lead.
       const upsMineAll = upsellsOf(uid);
@@ -635,6 +643,8 @@ export async function computeScoreboard(repo, product, query = {}, { now = () =>
         ticket: coreWonN > 0 ? round2(coreRevenue / coreWonN) : null,
         keyWon: keyWonLeads.length + keyUpsMine.length,                // contas grandes que ELE fechou na janela (upsell incluso)
         keyRevenue: round2(revenueOf(keyWonLeads, valueOf) + upsellRevenueOf(keyUpsMine, upsellValue)),
+        partnerWon: partnerWonLeads.length,                             // vendas de parceiro com ele de closer (fora do placar)
+        partnerRevenue: revenueOf(partnerWonLeads, valueOf),
         cycleDays: median(cycle),
         lossReasons,
         followupNow: fuNow.length,           // leads dele em follow-up agora
@@ -743,7 +753,8 @@ export async function computeScoreboard(repo, product, query = {}, { now = () =>
     // medem se a call converte, não o dinheiro do mês.
     const teamWonAll = [...winTransitionsFor(saleLeads).keys()].map((id) => saleById.get(id)).filter(Boolean);
     const teamKeyLeads = teamWonAll.filter(isKey);
-    const teamWonLeads = teamWonAll.filter((l) => !isKey(l));
+    const teamWonLeads = teamWonAll.filter(isCore);
+    const teamPartner = partnerSaleOf(teamWonAll, valueOf, product);
     const teamWonPlatform = teamWonLeads.filter((l) => isRealLead(l));
     // Contatados = a régua única (contactAttribution, lá em cima): leads
     // DISTINTOS com contato HUMANO na janela, cada um no autor do 1º contato.
@@ -846,6 +857,8 @@ export async function computeScoreboard(repo, product, query = {}, { now = () =>
         revenue: round2(revenueOf(teamKeyLeads, valueOf) + upsellRevenueOf(teamKeyUps, upsellValue)),
         names: [...new Set([...teamKeyLeads.map((l) => l.customerId), ...teamKeyUps.map((i) => i.customer)].map((id) => customers.find((c) => c.id === id)?.name).filter(Boolean))],
       } : null,
+      // Venda de parceiro (vendedor externo): fora do resultado, no rodapé.
+      partnerSale: teamPartner ? { won: teamPartner.count, revenue: teamPartner.revenue, pending: teamPartner.pending, partners: teamPartner.partners, sellers: teamPartner.sellers } : null,
       // Lead → ganho: ganhos no período ÷ leads que entraram no período. Os dois
       // lados são da PLATAFORMA (a mentoria tem funil e bloco próprios).
       leadToWin: leadsNewN > 0 ? round2((teamWonPlatform.length / leadsNewN) * 100) : null,

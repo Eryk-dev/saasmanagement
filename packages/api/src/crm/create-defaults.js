@@ -46,7 +46,10 @@ export const CREATE_DEFAULTS = {
   // imutável que define a janela da comissão.
   // dealType (Lever CRM, Fase 2): nova_venda | upsell | renovacao.
   // Upsell e renovação nascem pelo card do cliente, já com customerId.
-  leads: { dealType: "nova_venda", priority: "P2", score: 0, icp: 0, value: "", amount: 0, owner: "", closer: "", reason: "", source: "Form", age: "agora", stage: "", stageSince: "", comments: [], callAt: "", callSetAt: "", followupAt: "", followupStep: 0, proposalValue: "", proposalPeriod: "", integrationAt: "", nextActionAt: "", nextActionNote: "", lostReason: "", lostNote: "", lastActivityAt: "", lastActivityType: "", stageAttempts: 0, sdrOff: false, referredByCustomer: "", referralCollectedBy: "", referralAt: "" },
+  // partner/partnerSeller = venda de parceiro (lead-partner.js): id de
+  // product.partners e nome do vendedor externo; vazio = venda do time.
+  // paymentPending = venda de parceiro fechada sem meio de pagamento.
+  leads: { dealType: "nova_venda", priority: "P2", score: 0, icp: 0, value: "", amount: 0, owner: "", closer: "", reason: "", source: "Form", age: "agora", stage: "", stageSince: "", comments: [], callAt: "", callSetAt: "", followupAt: "", followupStep: 0, proposalValue: "", proposalPeriod: "", integrationAt: "", nextActionAt: "", nextActionNote: "", lostReason: "", lostNote: "", lastActivityAt: "", lastActivityType: "", stageAttempts: 0, sdrOff: false, referredByCustomer: "", referralCollectedBy: "", referralAt: "", partner: "", partnerSeller: "", paymentPending: false },
   // `current`/`projected` saem do form (leitura ao vivo da meta) — default 0 até serem alimentados.
   goals: { current: 0, projected: 0 },
   forms: { status: "draft", theme: {}, welcome: null, questions: [], thanks: {}, mapping: {} },

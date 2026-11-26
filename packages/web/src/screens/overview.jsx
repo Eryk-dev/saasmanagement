@@ -772,7 +772,8 @@ function FunilPeriodo({ team, win, pLabel, bare = false, onNav, state }) {
     { nm: "Calls realizadas", v: team.shown, m: sMeta(mt?.callsShown), title: `Calls que aconteceram${team.noShow > 0 ? ` · ${int(team.noShow)} não compareceram` : ""}` },
     { nm: "Ganhos", v: team.won, m: sMeta(mt?.won),
       title: `Ganhos no período (= soma dos closers)${team.revenue > 0 ? ` · ${money(team.revenue)}` : ""}${team.upsells > 0 ? ` · ${int(team.upsells)} upsell${team.upsells > 1 ? "s" : ""} (${money(team.upsellRevenue || 0)})` : ""}`
-        + (team.keyAccount ? ` · fora: ${team.keyAccount.won} conta grande (${money(team.keyAccount.revenue)}${team.keyAccount.names?.length ? ` · ${team.keyAccount.names.join(", ")}` : ""})` : "") },
+        + (team.keyAccount ? ` · fora: ${team.keyAccount.won} conta grande (${money(team.keyAccount.revenue)}${team.keyAccount.names?.length ? ` · ${team.keyAccount.names.join(", ")}` : ""})` : "")
+        + (team.partnerSale ? ` · fora: ${team.partnerSale.won} venda${team.partnerSale.won > 1 ? "s" : ""} de parceiro (${money(team.partnerSale.revenue)}${team.partnerSale.partners?.length ? ` · ${team.partnerSale.partners.join(", ")}` : ""}${team.partnerSale.pending ? ` · ${team.partnerSale.pending} com pagamento pendente` : ""})` : "") },
   ];
   const convs = [
     { label: "contato", pct: team.contactRate, metaPct: 80, num: team.reachedCohort ?? team.contactedCohort ?? null, den: team.leadsNew },

@@ -591,6 +591,51 @@ try {
     failed++;
   }
 
+  // Venda de parceiro (26/11/2026): lead com vendedor externo não passa pelo
+  // handoff pro closer (só a call segue pedindo closer), e o gate de
+  // fechamento mostra o controle com o parceiro e o vendedor.
+  try {
+    const { moveGate, MoveLeadModal } = await server.ssrLoadModule("/src/components/stage-move.jsx");
+    const cfg = {
+      funnel: [{ stage: "Novo lead", kind: "novo" }, { stage: "Proposta", kind: "proposta" }, { stage: "Call agendada", kind: "call" }, { stage: "Integração", kind: "integracao" }, { stage: "Ganho", kind: "ganho" }],
+      partners: [{ id: "segunda_venda", label: "Segunda Venda" }],
+    };
+    const base = { id: "lp", saas: "leverads", name: "Loja Parceira", stage: "Novo lead", closer: "" };
+    const parceiro = { ...base, partner: "segunda_venda", partnerSeller: "Marcos" };
+    const gateOf = (lead, to) => moveGate(cfg, lead, to)?.type || null;
+    if (gateOf(base, "Proposta") !== "handoff") throw new Error("sem parceiro, ir pra Proposta pede closer");
+    if (gateOf(parceiro, "Proposta") !== null) throw new Error("venda de parceiro não passa pro closer");
+    if (gateOf(parceiro, "Call agendada") !== "handoff") throw new Error("a call continua pedindo closer");
+    if (gateOf(parceiro, "Integração") !== "won") throw new Error("fechamento abre o gate de ganho");
+    const html = renderToString(wrap(React.createElement(MoveLeadModal, {
+      lead: { ...parceiro, stage: "Proposta" }, toStage: "Ganho", gate: { type: "won", toKind: "ganho" }, saasCfg: cfg, onConfirm() {}, onCancel() {},
+    })));
+    for (const want of ["Venda de parceiro", "Segunda Venda", "Nome do vendedor", "Marcos"]) {
+      if (!html.includes(want)) throw new Error(`o gate de fechamento precisa mostrar "${want}"`);
+    }
+    const semParceiro = renderToString(wrap(React.createElement(MoveLeadModal, {
+      lead: { ...base, stage: "Proposta" }, toStage: "Ganho", gate: { type: "won", toKind: "ganho" }, saasCfg: { funnel: cfg.funnel }, onConfirm() {}, onCancel() {},
+    })));
+    if (semParceiro.includes("Venda de parceiro")) throw new Error("produto sem parceiro cadastrado não mostra o controle");
+    if (!html.includes("Pagamento pendente") || !html.includes("Modo de pagamento")) throw new Error("parceiro sem pendência: opção Pagamento pendente desligada e o modo de pagamento à vista");
+    // Pagamento pendente (26/11/2026): o gate esconde o modo de pagamento e
+    // confirma sem ele (o botão não nasce desabilitado).
+    const pendente = renderToString(wrap(React.createElement(MoveLeadModal, {
+      lead: { ...parceiro, stage: "Proposta", paymentPending: true, amount: 5988, dealProduct: "" }, toStage: "Ganho", gate: { type: "won", toKind: "ganho" }, saasCfg: cfg, onConfirm() {}, onCancel() {},
+    })));
+    if (!pendente.includes("Pagamento pendente")) throw new Error("o gate precisa mostrar a opção Pagamento pendente");
+    if (pendente.includes("Modo de pagamento")) throw new Error("com pagamento pendente o modo de pagamento some");
+    if (!/<button[^>]*disabled=""[^>]*>confirmar movimento/.test(html)) throw new Error("controle: sem valor nem pagamento o fechamento fica travado");
+    if (/<button[^>]*disabled=""[^>]*>confirmar movimento/.test(pendente)) throw new Error("pagamento pendente: o fechamento confirma sem modo de pagamento");
+    const { partnerPatchOf } = await server.ssrLoadModule("/src/components/partner-sale.jsx");
+    const pp = partnerPatchOf({ on: true, partner: "segunda_venda", seller: "Marcos", pending: true });
+    if (pp.paymentPending !== true || pp.paymentMethod !== "" || pp.paymentInstallments !== "") throw new Error("o PATCH do pendente grava paymentPending e limpa meio e parcelas");
+    console.log("✓ venda-de-parceiro");
+  } catch (err) {
+    console.error(`✗ venda-de-parceiro: ${err.message}`);
+    failed++;
+  }
+
   // Filtro de segmento do Pipeline (06/10/2026): lead.niche normalizado, texto
   // livre de autopeças e OEM sem resposta caem na opção de autopeças do produto.
   try {

@@ -28,6 +28,7 @@ import { syncProposalLeadSnapshot } from "../proposals/proposal.js";
 import { convertWonLead, syncWonLeadDeal } from "./won-lead.js";
 import { syncLeadOnboarding } from "../customers/onboardings.js";
 import { leadTagPatch } from "./lead-tags.js";
+import { partnerPatch, touchesPartner } from "./lead-partner.js";
 import { syncLeadMeetings } from "./meetings.js";
 import { completeMilestoneTasks } from "../customers/customer-milestones.js";
 import { CLOSED_PLAN_ANNUAL_FACTOR } from "../shared/plan-cycles.js";
@@ -281,6 +282,13 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
     }
     // Lead: tags normalizadas e tipo de negócio conhecido (lead-tags.js).
     if (collection === "leads") req.body = { ...req.body, ...leadTagPatch(req.body) };
+    // Venda de parceiro (lead-partner.js): parceiro da lista do produto e
+    // vendedor só com parceiro.
+    if (collection === "leads" && touchesPartner(req.body)) {
+      const pp = partnerPatch(req.body, { product: await repo.get("products", req.body.saas || "").catch(() => null) });
+      if (pp.error) return reply.code(400).send({ error: pp.error, code: "invalid_partner" });
+      req.body = { ...req.body, ...pp.patch };
+    }
     // TAREFAS: composição, regras de coluna, seguidores, eventos e notificações
     // vivem em tasks-core.js (mesmo caminho das rotas dedicadas).
     if (collection === "tasks" || collection === "task_boards") {
@@ -534,6 +542,16 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
           const name = (await repo.get("users", integrator).catch(() => null))?.name || integrator;
           return reply.code(409).send({ error: integrationConflictMessage(conflict, name), code: "integration_slot_taken" });
         }
+      }
+    }
+    // Venda de parceiro (lead-partner.js): mesma régua do POST, contra o lead
+    // atual (o parceiro que ele já tinha passa mesmo fora da lista).
+    if (collection === "leads" && touchesPartner(req.body)) {
+      const cur = await repo.get("leads", id);
+      if (cur) {
+        const pp = partnerPatch(req.body, { current: cur, product: await repo.get("products", req.body.saas || cur.saas || "").catch(() => null) });
+        if (pp.error) return reply.code(400).send({ error: pp.error, code: "invalid_partner" });
+        req.body = { ...req.body, ...pp.patch };
       }
     }
     const before = collection === "subscriptions" ? await repo.get(collection, id) : null;

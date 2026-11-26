@@ -270,6 +270,39 @@ lead e Qualificando, e o corte vai pra etapa nomeada Nutrição (o kind
 `docs/SDR-ETAPAS-LEVANTAMENTO-2026-11.md`. Testes: `cadencia-stages.test.js`,
 `sdr-ladder.test.js`, `sdr-second-touch.test.js`.
 
+**Venda de parceiro (26/11/2026):** a Segunda Venda também vende o LeverPrice
+(vendido no produto `leverads`, linha `price` do catálogo). O lead guarda
+`partner` (id de `product.partners`, `[{ id, label }]` no mesmo formato de
+`lossReasons`) e `partnerSeller` (nome do vendedor externo); vazio = venda do
+time. O CRM novo copia esses dois nomes pelo espelho: não renomear. O POST/PATCH
+do lead valida em `crm/lead-partner.js` (parceiro fora da lista → 400, vendedor
+sem parceiro → 400, tirar o parceiro limpa o vendedor). Com parceiro, o card
+não passa pelo handoff pro closer (`moveGate`; só a call segue pedindo closer),
+o follow-up do Próximo passo não exige closer e o fechamento (gate e "A venda"
+da Integração, `components/partner-sale.jsx`) tem o controle "Venda de
+parceiro". O ganho cria cliente, assinatura e integração iguais e entra no
+caixa, ARR e MRR. `isPartnerSaleLead` (metrics-core, espelho em
+`web/src/lib/funnel.js`) tira a venda da meta do mês, do ticket médio, do placar
+(SDR, closer, time) e da remuneração pela mesma porta da conta grande; ela vence
+a conta grande (um balde só) e volta em `team.partnerSale`, `partnerSale` do
+pace/janela/histórico e `partnerWon`/`partnerRevenue` por pessoa. A semente
+`ensurePartnersSeed` (marcador `partnersSeedV1`) põe a Segunda Venda só no
+`leverads`; a lista é editada em Ajustes do produto → Parceiros de venda.
+**Pagamento pendente:** a venda de parceiro pode fechar sem meio de pagamento
+(`lead.paymentPending: true`, também no contrato do espelho; só com `partner`,
+senão 400 `invalid_partner`). O gate e o Próximo passo têm a opção "Pagamento
+pendente", que esconde modo de pagamento e parcelas. No fechamento, cliente,
+assinatura e integração nascem iguais, o cliente fica sem `paymentMethod` e a
+fatura inicial da assinatura (ou a avulsa do serviço único) nasce ABERTA, como
+a condição personalizada, nunca presumida paga (`createClosedSubscription` /
+`ensureOneOffInvoice` com `paymentPending`). `saleValuer` conta da venda
+pendente só o que entrou (`partnerSale.pending` diz quantas). Definir
+`paymentMethod` depois (ficha → ✎ editar → Pagamento) põe `paymentPending:
+false` no servidor e re-espelha no cliente; a fatura aberta continua aberta até o
+MP casar ou alguém dar baixa. Tirar o parceiro também limpa a marca. Testes:
+`venda-de-parceiro.test.js` (API), `web/test/partner-sale.test.js` e o caso
+`venda-de-parceiro` do smoke.
+
 **Rulebook do robô SDR (15/10/2026):** toda regra de comportamento do robô é
 uma entrada em `packages/api/src/sdr/sdr-rules.js` com id estável (R-nnn),
 origem (data, quem pediu, PR ou print), enunciado, estados da conversa e

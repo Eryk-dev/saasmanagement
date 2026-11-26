@@ -33,7 +33,7 @@ const PROTECTED = new Set([
   "nextActionAt", "callAt", "integrationAt", "wonAt", "customerId", "amount",
   "paymentMethod", "planClosed", "proposalUrl", "proposta_id", "proposal_edit_url",
   "createdAt", "shopifyOrderId", "internal", "disqualified", "lostReason",
-  "lostNote", "formExit",
+  "lostNote", "formExit", "partner", "partnerSeller", "paymentPending",
 ]);
 // INDICAÇÃO (referredByCustomer/referralCollectedBy/referralAt) fica de fora
 // dos dois conjuntos de propósito, pra cair na regra "só preenche buraco":

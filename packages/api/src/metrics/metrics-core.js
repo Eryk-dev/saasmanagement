@@ -195,6 +195,34 @@ export function mentoriaScore(product, leads, { inWin, startByLead, contactedIds
 export const keyAccountIds = (customers) => new Set((customers || []).filter((c) => !!c.keyAccount).map((c) => c.id));
 export const isKeyAccountLead = (keyIds, lead) => !!(lead?.customerId && keyIds?.has(lead.customerId));
 
+// ── Venda de parceiro (26/11/2026) ──────────────────────────────────────────
+// Lead vinculado a um VENDEDOR EXTERNO de um parceiro (a Segunda Venda também
+// vende o LeverPrice): `lead.partner` = id da opção em `product.partners`,
+// `lead.partnerSeller` = nome do vendedor. O dinheiro é da Lever (caixa, ARR,
+// MRR, cliente, assinatura e integração seguem normais), mas a venda não é do
+// time: sai da meta de vendas, do placar e da remuneração pela MESMA régua da
+// conta grande e volta num balde próprio (`partnerSale`), pra não sumir.
+// Venda de parceiro que também é conta grande conta só como venda de parceiro
+// (um balde, nunca dois). O CRM novo lê os mesmos dois campos pelo espelho.
+export const isPartnerSaleLead = (lead) => !!String(lead?.partner || "").trim();
+// Rótulo do parceiro pela lista do produto (id solto quando a opção saiu dela).
+export const partnerLabelOf = (product, id) =>
+  (Array.isArray(product?.partners) ? product.partners : []).find((p) => p?.id === id)?.label || String(id || "");
+// O balde: quantas, quanto (pela régua de valor do chamador) e de quem.
+// `pending` = as fechadas com pagamento pendente (lead.paymentPending): o
+// valuer só soma o que entrou delas, nunca o contrato (saleValuer).
+export function partnerSaleOf(leads, valueOf, product) {
+  const list = (leads || []).filter(isPartnerSaleLead);
+  if (!list.length) return null;
+  return {
+    count: list.length,
+    revenue: revenueOf(list, valueOf),
+    pending: list.filter((l) => !!l.paymentPending).length,
+    partners: [...new Set(list.map((l) => partnerLabelOf(product, l.partner)).filter(Boolean))],
+    sellers: [...new Set(list.map((l) => String(l.partnerSeller || "").trim()).filter(Boolean))],
+  };
+}
+
 // ── Indicação (referral) ─────────────────────────────────────────────────────
 // Lead que veio por INDICAÇÃO de um cliente. Duas réguas no mesmo lugar, porque
 // a estruturada nasceu depois (Leo, 12/09/2026) e a de texto não pode morrer:
@@ -509,7 +537,9 @@ export function saleValuer({ invoices, mpPayments, customers, inWin } = {}) {
     // O meio do LEAD é o do fechamento; o do cliente é o fallback (ficha
     // editada depois, fechamento antigo sem o campo).
     const method = lead?.paymentMethod || methodOf.get(lead?.customerId) || "";
-    if (!isPayOnReceipt(method)) return full;
+    // Pagamento pendente (venda de parceiro sem meio, 26/11/2026): ninguém
+    // disse como o cliente paga, então vale só o que ENTROU, como no faturado.
+    if (!lead?.paymentPending && !isPayOnReceipt(method)) return full;
     // Teto no contrato: um pagamento a mais (upsell no mesmo mês) não pode
     // fazer a venda valer mais do que foi vendido.
     return round2(Math.min(full, cash.get(lead?.customerId) || 0));

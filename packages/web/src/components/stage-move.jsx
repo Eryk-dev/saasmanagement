@@ -1,7 +1,7 @@
 import React from "react";
 import { PrimaryButton } from "../atoms.jsx";
 import { Modal } from "./overlay.jsx";
-import { stageKind, phaseOf, isLossKind, isWonKind, lossReasonsOf, hasSaleRecord } from "../lib/funnel.js";
+import { stageKind, phaseOf, isLossKind, isWonKind, lossReasonsOf, hasSaleRecord, isPartnerSaleLead } from "../lib/funnel.js";
 import { usersByRole, currentUser, displayName } from "../lib/users.js";
 import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, CONSULT_PACKAGES, CLOSED_PLAN_MONTHS, dealProductsOf, paymentUpfront, paymentRecurring, paymentCustom, paymentPickerValue, paymentPatchOf, isTrialProduct, isTrialPlan, TRIAL_PLAN, TRIAL_DAYS } from "../lib/payments.js";
 import { DealProductField, isOneOffProduct, PopoverWithCustom, PaymentMethodPicker } from "./lead-blocks.jsx";
@@ -12,6 +12,7 @@ import { SlotGrid, WeekSlotGrid, businessDaysFrom, nextBusinessDays, callBusyKey
 import { DayPicker, defaultFollowupDay } from "./followup-contact.jsx";
 import { followupDayOf, ymdOf } from "../lib/followup.js";
 import { BookingLinkActions, sentAgo } from "./booking-link.jsx";
+import { PartnerSaleField, partnerFieldVisible, partnerPatchOf, partnerReady, partnerStateOf, paymentSkipped } from "./partner-sale.jsx";
 
 // Gate de movimento de estágio — os três momentos do processo que exigem input:
 //   handoff  = card saindo da fase SDR pra fase Closer sem closer marcado
@@ -28,7 +29,10 @@ export function moveGate(saasCfg, lead, toStage) {
   if (isLossKind(toKind)) return { type: "lost", toKind };
   const fromKind = stageKind(saasCfg, lead.stage || saasCfg?.funnel?.[0]?.stage);
   const fromPhase = phaseOf(fromKind);
-  if (fromPhase === "sdr" && phaseOf(toKind) === "closer" && !lead.closer) return { type: "handoff", toKind };
+  // Venda de parceiro (26/11/2026) não passa pro closer: quem vende é o
+  // vendedor externo. Só a call continua pedindo closer (é a agenda dele).
+  const partnerSale = isPartnerSaleLead(lead) && toKind !== "call";
+  if (fromPhase === "sdr" && phaseOf(toKind) === "closer" && !lead.closer && !partnerSale) return { type: "handoff", toKind };
   // Indo pro Follow-up o gate abre SEMPRE: saindo da call registra QUAL
   // proposta ficou na mesa (a oferta que o follow-up vai cobrar) e, de
   // qualquer origem, pede o DIA do Contato 1 (sem horário: follow-up não
@@ -139,6 +143,12 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   // quem tem catálogo — é o escopo que a Integração vai entregar e o que nomeia
   // o Plano do cliente. Já vem preenchido quando o link de pagamento gravou.
   const [dealProduct, setDealProduct] = React.useState(lead.dealProduct || "");
+  // Venda de parceiro: no fechamento dá pra marcar (ou desmarcar) que quem
+  // vendeu foi um vendedor externo. Some quando o produto não tem parceiro.
+  const askPartner = isWonGate && partnerFieldVisible(saasCfg, lead);
+  const [partnerSt, setPartnerSt] = React.useState(() => partnerStateOf(lead, saasCfg));
+  // Venda de parceiro com pagamento pendente: fecha sem modo de pagamento.
+  const noPayment = askPartner && paymentSkipped(partnerSt);
   const askProduct = isWonGate && !isKidsWon && dealProductsOf(lead.saas).length > 0;
   const oneOff = isOneOffProduct(lead.saas, dealProduct);
   // Teste grátis (28/10/2026): o produto "Lever Price · Teste grátis" fecha
@@ -154,7 +164,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   // Condição personalizada fica fora do "faturado em quantas vezes": o que o
   // closer escreveu não é N parcelas iguais — o recebido entra pelo espelho do
   // MP ou pela baixa manual em Clientes.
-  const isFaturado = !isTrial && !!payment && paymentUpfront(payment) === false && !paymentRecurring(payment) && !paymentCustom(payment) && !isMonthly;
+  const isFaturado = !isTrial && !noPayment && !!payment && paymentUpfront(payment) === false && !paymentRecurring(payment) && !paymentCustom(payment) && !isMonthly;
   const amountNum = parseMoneyInput(amount);
   const effInstallments = Number(installments) > 0 ? Number(installments)
     : (CLOSED_PLAN_MONTHS[isKidsWon || oneOff ? "unico" : planClosed] || 12);
@@ -184,7 +194,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   // A call é OBRIGATÓRIA pra entrar na etapa (regra do servidor), tanto no gate
   // de call quanto no handoff que já cai numa etapa de call.
   const ready = isLost ? (!!reason && (!askSale || !!saleFate))
-    : isWonGate ? ((isTrial || (amountNum > 0 && !!payment)) && (!askProduct || !!dealProduct) && (!askInteg || !!integrator))
+    : isWonGate ? ((isTrial || (amountNum > 0 && (!!payment || noPayment))) && (!askProduct || !!dealProduct) && (!askInteg || !!integrator) && (!askPartner || partnerReady(partnerSt)))
       : isOffer ? (!!followDay && (!askOffer || (!!offer && (offer === "nenhuma" || !offerProducts.length || !!offerProduct))))
         : askCall ? (!!closer && !!callAt)
           : !!closer;
@@ -214,6 +224,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
       patch.planClosed = isKidsWon ? "unico" : oneOff ? "unico" : isTrial ? TRIAL_PLAN : planClosed;
       if (isKidsWon) patch.consultPackage = Number(consultPackage) || 8;
       if (askProduct) patch.dealProduct = dealProduct;
+      if (askPartner) Object.assign(patch, partnerPatchOf(partnerSt));
       // Entrega: dono da integração e, se um horário foi escolhido, a hora dela.
       if (askInteg) { patch.integrator = integrator; if (schedMode === "horario" && integAt) patch.integrationAt = integAt; }
     } else if (isOffer) {
@@ -288,6 +299,13 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
                 <div style={{ height: 12 }} />
               </>
             )}
+            {askPartner && (
+              <>
+                <PartnerSaleField saasCfg={saasCfg} lead={lead} value={partnerSt} onChange={setPartnerSt}
+                  labelStyle={label} fieldStyle={field} idPrefix="gate-partner" />
+                <div style={{ height: 12 }} />
+              </>
+            )}
             {isTrial ? (
               <>
                 <label className="kicker" style={label}>Valor do negócio</label>
@@ -341,10 +359,14 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
                       options={withLegacyOption(CLOSED_PLANS_ACTIVE.filter((p) => !isTrialPlan(p.id)), CLOSED_PLANS, planClosed).map((p) => ({ value: p.id, label: p.label }))} />}
               </>
             )}
+            {!noPayment && (
+              <>
             <div style={{ height: 12 }} />
             <label className="kicker" style={label}>Modo de pagamento {isTrial ? "" : "*"}</label>
             <PaymentMethodPicker value={payment} onChange={setPayment} inputStyle={field} />
-            {isTrial && <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>opcional no teste grátis: como ele pretende pagar se continuar</div>}
+              </>
+            )}
+            {!noPayment && isTrial && <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>opcional no teste grátis: como ele pretende pagar se continuar</div>}
             {isFaturado && (
               <>
                 <div style={{ height: 12 }} />

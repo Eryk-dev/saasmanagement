@@ -142,7 +142,7 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
       const sub = await createClosedSubscription(repo, {
         customerId: customer.id, saas: lead.saas,
         planClosed: it.planClosed, amount: it.amount, paymentMethod: lead.paymentMethod,
-        paymentInstallments: lead.paymentInstallments, planFields: itemFields?.subscription,
+        paymentInstallments: lead.paymentInstallments, paymentPending: !!lead.paymentPending, planFields: itemFields?.subscription,
       });
       if (sub) { created.push(sub); if (subProduct) subProducts.add(subProduct); }
       // Serviço único: não há recorrência (spec null, arr 0). Faturado em Nx
@@ -158,7 +158,7 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
           });
         } else {
           await ensureOneOffInvoice(repo, {
-            customerId: customer.id, saas: lead.saas, amount: it.amount, paymentMethod: lead.paymentMethod,
+            customerId: customer.id, saas: lead.saas, amount: it.amount, paymentMethod: lead.paymentMethod, paymentPending: !!lead.paymentPending,
             startAt: customer.startedAt, title: itemLabelOf(it) || "Serviço único",
           });
         }
@@ -326,7 +326,7 @@ export async function syncWonLeadDeal(repo, lead) {
       patch.arr = manualArr();
       patch.oneOffAmount = oneOffAmountOf(lead);
       if (!closedInstallments(lead) && Number(lead.amount) > 0 && lead.planClosed === "unico") {
-        await ensureOneOffInvoice(repo, { customerId: customer.id, saas: lead.saas, amount: Number(lead.amount), paymentMethod: lead.paymentMethod, startAt: lead.wonAt || customer.startedAt, title: planLabelOf(lead) || "Serviço único" });
+        await ensureOneOffInvoice(repo, { customerId: customer.id, saas: lead.saas, amount: Number(lead.amount), paymentMethod: lead.paymentMethod, paymentPending: !!lead.paymentPending, startAt: lead.wonAt || customer.startedAt, title: planLabelOf(lead) || "Serviço único" });
       }
     }
   } else if (subs.length === 0) {
@@ -334,7 +334,7 @@ export async function syncWonLeadDeal(repo, lead) {
       await createClosedSubscription(repo, {
         customerId: customer.id, saas: lead.saas,
         planClosed: lead.planClosed, amount: lead.amount, paymentMethod: lead.paymentMethod,
-        paymentInstallments: lead.paymentInstallments, planFields: planFields?.subscription,
+        paymentInstallments: lead.paymentInstallments, paymentPending: !!lead.paymentPending, planFields: planFields?.subscription,
         startAt: lead.wonAt || customer.startedAt,
       });
     } else if (isTrialPlan(lead.planClosed)) {
@@ -345,7 +345,7 @@ export async function syncWonLeadDeal(repo, lead) {
       if (lead.planClosed === "unico") {
         patch.oneOffAmount = oneOffAmountOf(lead);
         if (!closedInstallments(lead)) {
-          await ensureOneOffInvoice(repo, { customerId: customer.id, saas: lead.saas, amount: Number(lead.amount), paymentMethod: lead.paymentMethod, startAt: lead.wonAt || customer.startedAt, title: planLabelOf(lead) || "Serviço único" });
+          await ensureOneOffInvoice(repo, { customerId: customer.id, saas: lead.saas, amount: Number(lead.amount), paymentMethod: lead.paymentMethod, paymentPending: !!lead.paymentPending, startAt: lead.wonAt || customer.startedAt, title: planLabelOf(lead) || "Serviço único" });
         }
       }
     }
