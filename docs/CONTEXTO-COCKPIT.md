@@ -264,6 +264,13 @@ as rotas `POST /api/sdr/agent/leads/:id/{send,hold,book,cancel,handoff,opt-out,c
 `GET /api/sdr/agenda`. Toda ação recusa lead que não é do agente
 (`not_agent_lead`) e lead com "parar robô" (`paused`); `send` também recusa
 resposta que nasceu velha (`superseded`, `human_answered`, `window_closed`).
+As cercas do cérebro nativo valem pro agente: fora da região do SDR
+(`out_of_region`: etapa de closer, desqualificado, ganho) e na pausa de humano
+ativo (`human_active`, a mesma `humanMuteHours`) nenhuma ação sai; a positiva ao
+lembrete da call continua da régua da call (`reminder_confirmed`, o link vai
+pelo fluxo 2c). A 1ª resposta do agente carimba `sdrLog.firstTouchAt` (via
+`agent`), e o 1º toque do fluxo espera 10 min quando o lead do agente já
+escreveu, pra não chegar junto com a resposta.
 Ligar, desligar e voltar pro robô nativo é PATCH no `sdrBot` do produto, sem
 deploy. Testes em `sdr-agent.test.js`.
 

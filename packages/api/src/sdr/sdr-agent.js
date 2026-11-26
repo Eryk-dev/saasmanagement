@@ -7,18 +7,24 @@
 // agenda, lembretes e histórico ficam iguais aos de uma marcação do robô.
 //
 // Só age em lead que é do agente (agentOwns, sdr-flow.js) e que o time não
-// parou ("parar robô" = lead.sdrOff). Recusa devolve { status, body } com um
-// `error` curto que o agente sabe ler; nunca lança por regra de negócio.
+// parou ("parar robô" = lead.sdrOff), e respeita as MESMAS cercas do cérebro
+// nativo: a região do funil que é do SDR (novo, contato, qualificação, call) e
+// a pausa de humano ativo (alguém do time falou há pouco: a conversa é dele).
+// Recusa devolve { status, body } com um `error` curto que o agente sabe ler;
+// nunca lança por regra de negócio.
 import { findThreadByPhone, listMessages, recordMessage } from "../whatsapp/wa-store.js";
 import { onOutboundMessage } from "../crm/lead-flow.js";
 import { raiseAlert } from "../whatsapp/wa-call-flow.js";
 import { slotsForLead, activeHolds, holdSlots, releaseHolds, OFFER_HOURS, HOLD_MIN } from "../crm/agenda-slots.js";
 import { upsertNotification } from "../tasks/tasks-core.js";
+import { kindOf, firstStage, isWonLead } from "../crm/stages.js";
 import { sdrBotConfig, agentOwns, SDR_AUTHOR } from "./sdr-flow.js";
+import { humanMuteHolds } from "./sdr-state.js";
 import { bookCall, cancelCall } from "./sdr-brain.js";
 import { windowOpenAt } from "./sdr-signals.js";
 
 const SLOT_RX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+const SDR_KINDS = new Set(["novo", "contato", "qualificacao", "call"]); // a região do cérebro nativo (BRAIN_KINDS)
 const refuse = (status, error, extra = {}) => ({ status, body: { ok: false, error, ...extra } });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -33,8 +39,13 @@ export function makeSdrAgent({ repo, whatsapp: wa, autoCallMeet = null, cancelCa
     const cfg = sdrBotConfig(product);
     if (!agentOwns(cfg, lead)) return { fail: refuse(409, "not_agent_lead") };
     if (lead.sdrOff) return { fail: refuse(409, "paused") };
+    if (lead.formExit || lead.disqualified || isWonLead(product, lead) || !SDR_KINDS.has(kindOf(product, lead.stage || firstStage(product)))) return { fail: refuse(409, "out_of_region") };
     const thread = await findThreadByPhone(repo, lead.waPhone || lead.phone || "");
-    return { lead, product, cfg, thread };
+    const msgs = thread ? await listMessages(repo, thread.id) : [];
+    const users = new Set((await repo.list("users")).map((u) => u.id));
+    const lastHumanOut = [...msgs].reverse().find((m) => m.direction === "out" && users.has(m.author));
+    if (humanMuteHolds(cfg, lastHumanOut, now().getTime())) return { fail: refuse(409, "human_active") };
+    return { lead, product, cfg, thread, msgs, users };
   }
 
   // Horários livres pro lead como o robô os vê, sem o que OUTRO lead segura.
@@ -52,16 +63,18 @@ export function makeSdrAgent({ repo, whatsapp: wa, autoCallMeet = null, cancelCa
   async function send(leadId, { parts = [], replyTo = "" } = {}) {
     const c = await load(leadId);
     if (c.fail) return c.fail;
-    const { lead, product, thread } = c;
+    const { lead, product, thread, msgs, users } = c;
     const texts = (Array.isArray(parts) ? parts : []).map((p) => String(p || "").trim()).filter(Boolean);
     if (!texts.length || texts.length > 4 || texts.some((t) => t.length > 600)) return refuse(400, "parts: de 1 a 4 balões de até 600 caracteres");
     if (lead.whatsappInvalid) return refuse(409, "invalid_number");
     if (!thread) return refuse(409, "no_thread");
-    const msgs = await listMessages(repo, thread.id);
     const lastIn = [...msgs].reverse().find((m) => m.direction === "in");
     if (!lastIn) return refuse(409, "no_inbound");
     if (replyTo && lastIn.id !== replyTo) return refuse(409, "superseded");
-    const users = new Set((await repo.list("users")).map((u) => u.id));
+    // A positiva ao lembrete da call é da régua da call (handleSdrInbound
+    // carimbou a confirmação NESTA mensagem): o link vai pelo fluxo (2c).
+    const confirmedMs = Date.parse(lead.confirmLog?.confirmed || "");
+    if (lead.callConfirmed && Number.isFinite(confirmedMs) && confirmedMs >= Date.parse(lastIn.at || 0) - 5000) return refuse(409, "reminder_confirmed");
     if (msgs.some((m) => m.direction === "out" && users.has(m.author) && Date.parse(m.at || 0) > Date.parse(lastIn.at || 0))) return refuse(409, "human_answered");
     if (!windowOpenAt(msgs, now().getTime())) return refuse(409, "window_closed");
     const phoneId = thread.waPhoneId || product?.waPhoneId || undefined;
@@ -80,6 +93,10 @@ export function makeSdrAgent({ repo, whatsapp: wa, autoCallMeet = null, cancelCa
       return refuse(502, "send_failed", { sent: ids.length, detail: String(err.message || err).slice(0, 160) });
     }
     await onOutboundMessage(repo, lead.id, { author: SDR_AUTHOR, text: "conversa com o SDR" }).catch(() => {});
+    // 1ª resposta = 1º toque dado (o mesmo carimbo do cérebro nativo): o fluxo
+    // não manda o 1º toque por cima e a escada de retomada conta a partir daqui.
+    const log0 = (await repo.get("leads", lead.id))?.sdrLog || {};
+    if (!log0.firstTouchAt) await repo.update("leads", lead.id, { sdrLog: { ...log0, firstTouchAt: now().toISOString(), firstTouchVia: "agent" } }).catch(() => {});
     return { status: 200, body: { ok: true, messageIds: ids } };
   }
 
