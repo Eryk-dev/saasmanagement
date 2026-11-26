@@ -858,7 +858,7 @@ export async function computeScoreboard(repo, product, query = {}, { now = () =>
         names: [...new Set([...teamKeyLeads.map((l) => l.customerId), ...teamKeyUps.map((i) => i.customer)].map((id) => customers.find((c) => c.id === id)?.name).filter(Boolean))],
       } : null,
       // Venda de parceiro (vendedor externo): fora do resultado, no rodapé.
-      partnerSale: teamPartner ? { won: teamPartner.count, revenue: teamPartner.revenue, partners: teamPartner.partners, sellers: teamPartner.sellers } : null,
+      partnerSale: teamPartner ? { won: teamPartner.count, revenue: teamPartner.revenue, pending: teamPartner.pending, partners: teamPartner.partners, sellers: teamPartner.sellers } : null,
       // Lead → ganho: ganhos no período ÷ leads que entraram no período. Os dois
       // lados são da PLATAFORMA (a mentoria tem funil e bloco próprios).
       leadToWin: leadsNewN > 0 ? round2((teamWonPlatform.length / leadsNewN) * 100) : null,

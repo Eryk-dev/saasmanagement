@@ -104,11 +104,12 @@ export function closedInstallments({ paymentMethod, paymentInstallments } = {}) 
 // uma por cliente/venda, idempotente (`oneOff: true` + mesmo startAt). À vista
 // nasce PRESUMIDA (paga, prova closing — o MP ou a baixa confirmam); no resto
 // nasce aberta. Reedição do valor atualiza a fatura que ainda não foi provada.
-export async function ensureOneOffInvoice(repo, { customerId, saas, amount, paymentMethod, startAt, title = "Serviço único" }, now = new Date()) {
+export async function ensureOneOffInvoice(repo, { customerId, saas, amount, paymentMethod, paymentPending = false, startAt, title = "Serviço único" }, now = new Date()) {
   const value = Math.round((Number(amount) || 0) * 100) / 100;
   if (!customerId || value <= 0) return null;
   const at = startAt || now.toISOString();
-  const naVista = !paymentMethod || UPFRONT_PAYMENT.has(String(paymentMethod));
+  // Pagamento pendente (venda de parceiro sem meio, 26/11/2026): nasce ABERTA.
+  const naVista = !paymentPending && (!paymentMethod || UPFRONT_PAYMENT.has(String(paymentMethod)));
   const existing = (await repo.list("invoices")).filter((i) => i.customer === customerId && i.oneOff && !i.mpPaymentId && i.paidProof?.kind !== "manual");
   if (existing.length) {
     const inv = existing[0];
@@ -207,7 +208,7 @@ export async function syncClosedInstallments(repo, { customerId, saas, subscript
 
 // `planFields` = plano do catálogo da venda ({ plan, planCode, planSnapshot },
 // de plan-history.js); sem ele a assinatura nasce sem plano, como sempre.
-export async function createClosedSubscription(repo, { customerId, saas, planClosed, amount, paymentMethod, paymentInstallments, startAt, planFields }, now = new Date()) {
+export async function createClosedSubscription(repo, { customerId, saas, planClosed, amount, paymentMethod, paymentInstallments, paymentPending = false, startAt, planFields }, now = new Date()) {
   const spec = closedSubscriptionSpec({ planClosed, amount, paymentMethod, paymentInstallments });
   if (!customerId || !spec) return null;
   const { cycle, price } = spec;
@@ -238,8 +239,11 @@ export async function createClosedSubscription(repo, { customerId, saas, planClo
     // — a 1ª cobrança só cai quando o Mercado Pago rodar, e contar antes
     // inflava o "Recebido no mês" do Financeiro com dinheiro que não entrou.
     // Condição personalizada também nasce ABERTA; meio em branco (fechamento
-    // antigo) mantém o comportamento à vista de sempre.
-    const naVista = !paymentMethod || UPFRONT_PAYMENT.has(String(paymentMethod));
+    // antigo) mantém o comportamento à vista de sempre. PAGAMENTO PENDENTE
+    // (venda de parceiro fechada sem meio, lead.paymentPending, 26/11/2026)
+    // nasce ABERTA, como a condição personalizada: ninguém disse como o
+    // cliente paga, então presumir o recebimento seria inventar caixa.
+    const naVista = !paymentPending && (!paymentMethod || UPFRONT_PAYMENT.has(String(paymentMethod)));
     await repo.create("invoices", {
       subscription: sub.id, customer: customerId, saas: saas || "",
       amount: price, kind: "renewal", status: naVista ? "paid" : "open",

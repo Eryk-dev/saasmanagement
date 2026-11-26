@@ -617,6 +617,19 @@ try {
       lead: { ...base, stage: "Proposta" }, toStage: "Ganho", gate: { type: "won", toKind: "ganho" }, saasCfg: { funnel: cfg.funnel }, onConfirm() {}, onCancel() {},
     })));
     if (semParceiro.includes("Venda de parceiro")) throw new Error("produto sem parceiro cadastrado não mostra o controle");
+    if (!html.includes("Pagamento pendente") || !html.includes("Modo de pagamento")) throw new Error("parceiro sem pendência: opção Pagamento pendente desligada e o modo de pagamento à vista");
+    // Pagamento pendente (26/11/2026): o gate esconde o modo de pagamento e
+    // confirma sem ele (o botão não nasce desabilitado).
+    const pendente = renderToString(wrap(React.createElement(MoveLeadModal, {
+      lead: { ...parceiro, stage: "Proposta", paymentPending: true, amount: 5988, dealProduct: "" }, toStage: "Ganho", gate: { type: "won", toKind: "ganho" }, saasCfg: cfg, onConfirm() {}, onCancel() {},
+    })));
+    if (!pendente.includes("Pagamento pendente")) throw new Error("o gate precisa mostrar a opção Pagamento pendente");
+    if (pendente.includes("Modo de pagamento")) throw new Error("com pagamento pendente o modo de pagamento some");
+    if (!/<button[^>]*disabled=""[^>]*>confirmar movimento/.test(html)) throw new Error("controle: sem valor nem pagamento o fechamento fica travado");
+    if (/<button[^>]*disabled=""[^>]*>confirmar movimento/.test(pendente)) throw new Error("pagamento pendente: o fechamento confirma sem modo de pagamento");
+    const { partnerPatchOf } = await server.ssrLoadModule("/src/components/partner-sale.jsx");
+    const pp = partnerPatchOf({ on: true, partner: "segunda_venda", seller: "Marcos", pending: true });
+    if (pp.paymentPending !== true || pp.paymentMethod !== "" || pp.paymentInstallments !== "") throw new Error("o PATCH do pendente grava paymentPending e limpa meio e parcelas");
     console.log("✓ venda-de-parceiro");
   } catch (err) {
     console.error(`✗ venda-de-parceiro: ${err.message}`);

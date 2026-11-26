@@ -287,7 +287,19 @@ caixa, ARR e MRR. `isPartnerSaleLead` (metrics-core, espelho em
 a conta grande (um balde só) e volta em `team.partnerSale`, `partnerSale` do
 pace/janela/histórico e `partnerWon`/`partnerRevenue` por pessoa. A semente
 `ensurePartnersSeed` (marcador `partnersSeedV1`) põe a Segunda Venda só no
-`leverads`; a lista é editada em Ajustes do produto → Parceiros de venda. Testes:
+`leverads`; a lista é editada em Ajustes do produto → Parceiros de venda.
+**Pagamento pendente:** a venda de parceiro pode fechar sem meio de pagamento
+(`lead.paymentPending: true`, também no contrato do espelho; só com `partner`,
+senão 400 `invalid_partner`). O gate e o Próximo passo têm a opção "Pagamento
+pendente", que esconde modo de pagamento e parcelas. No fechamento, cliente,
+assinatura e integração nascem iguais, o cliente fica sem `paymentMethod` e a
+fatura inicial da assinatura (ou a avulsa do serviço único) nasce ABERTA, como
+a condição personalizada, nunca presumida paga (`createClosedSubscription` /
+`ensureOneOffInvoice` com `paymentPending`). `saleValuer` conta da venda
+pendente só o que entrou (`partnerSale.pending` diz quantas). Definir
+`paymentMethod` depois (ficha → ✎ editar → Pagamento) põe `paymentPending:
+false` no servidor e re-espelha no cliente; a fatura aberta continua aberta até o
+MP casar ou alguém dar baixa. Tirar o parceiro também limpa a marca. Testes:
 `venda-de-parceiro.test.js` (API), `web/test/partner-sale.test.js` e o caso
 `venda-de-parceiro` do smoke.
 

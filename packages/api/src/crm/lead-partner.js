@@ -6,7 +6,11 @@
 // Vazio = sem parceiro. Ter `partner` é ser venda de parceiro: o ganho entra
 // no caixa e vira cliente, assinatura e integração normais, mas sai da meta,
 // do placar e da remuneração (isPartnerSaleLead no metrics-core). O CRM novo
-// copia o lead por espelho e depende destes dois nomes: não renomear.
+// copia o lead por espelho e depende destes nomes: não renomear.
+//   lead.paymentPending = venda de parceiro fechada SEM meio de pagamento
+//                         (o parceiro ainda vai dizer como o cliente paga).
+//                         Só vale com `partner`; tirar o parceiro limpa;
+//                         definir `paymentMethod` depois limpa sozinho.
 
 export const PARTNER_SELLER_MAX = 120;
 
@@ -24,11 +28,19 @@ const clean = (v) => String(v ?? "").trim();
 // - vendedor sem parceiro é recusado;
 // - tirar o parceiro sem mandar o vendedor limpa o vendedor junto (desligar
 //   "Venda de parceiro" na tela não deixa nome solto).
+export const touchesPartner = (body) => !!body && typeof body === "object"
+  && ["partner", "partnerSeller", "paymentPending", "paymentMethod"].some((k) => k in body);
+
 export function partnerPatch(body, { product = null, current = null } = {}) {
   if (!body || typeof body !== "object") return { patch: {} };
   const hasPartner = "partner" in body;
   const hasSeller = "partnerSeller" in body;
-  if (!hasPartner && !hasSeller) return { patch: {} };
+  const hasPending = "paymentPending" in body;
+  const methodSet = typeof body.paymentMethod === "string" && !!body.paymentMethod.trim();
+  if (!hasPartner && !hasSeller && !hasPending && !methodSet) return { patch: {} };
+  if (hasPending && body.paymentPending != null && typeof body.paymentPending !== "boolean") {
+    return { error: "Pagamento pendente precisa ser verdadeiro ou falso" };
+  }
   for (const k of ["partner", "partnerSeller"]) {
     if (k in body && body[k] != null && typeof body[k] !== "string") {
       return { error: k === "partner" ? "O parceiro precisa ser o id de uma opção da lista de parceiros do produto" : "O nome do vendedor do parceiro precisa ser um texto" };
@@ -44,6 +56,16 @@ export function partnerPatch(body, { product = null, current = null } = {}) {
   if (seller && !partner) return { error: "O nome do vendedor só vale com o parceiro: escolha o parceiro da venda" };
   if (hasPartner && partner && partner !== clean(current?.partner) && !partnersOf(product).some((p) => p.id === partner)) {
     return { error: `Parceiro "${partner}" não está na lista de parceiros do produto (Ajustes do produto → Parceiros de venda)` };
+  }
+  // Pagamento pendente: só na venda de parceiro. Meio de pagamento definido
+  // (no mesmo PATCH ou depois) encerra a pendência; tirar o parceiro também.
+  if (hasPending && body.paymentPending === true && !partner) {
+    return { error: "Pagamento pendente só vale para venda de parceiro: escolha o parceiro da venda" };
+  }
+  if (methodSet || !partner) {
+    if (hasPending || current?.paymentPending) patch.paymentPending = false;
+  } else if (hasPending) {
+    patch.paymentPending = body.paymentPending === true;
   }
   return { patch };
 }

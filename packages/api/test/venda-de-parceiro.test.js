@@ -41,7 +41,7 @@ test("isPartnerSaleLead: ter parceiro é ser venda de parceiro; vazio não é", 
   assert.equal(isPartnerSaleLead({ partnerSeller: "Marcos" }), false);
   assert.equal(isPartnerSaleLead(null), false);
   const b = partnerSaleOf([{ partner: "segunda_venda", partnerSeller: "Marcos", amount: 5000 }, { amount: 7000 }], (l) => l.amount, { partners: PARTNERS });
-  assert.deepEqual(b, { count: 1, revenue: 5000, partners: ["Segunda Venda"], sellers: ["Marcos"] });
+  assert.deepEqual(b, { count: 1, revenue: 5000, pending: 0, partners: ["Segunda Venda"], sellers: ["Marcos"] });
   assert.equal(partnerSaleOf([{ amount: 1 }], (l) => l.amount, {}), null);
 });
 
@@ -58,6 +58,87 @@ test("partnerPatch: parceiro da lista, vendedor só com parceiro, tirar o parcei
   // Parceiro que saiu da lista depois continua valendo no lead que já tinha.
   assert.deepEqual(partnerPatch({ partner: "antigo", partnerSeller: "Zé" }, { product, current: { partner: "antigo" } }).patch, { partner: "antigo", partnerSeller: "Zé" });
   assert.deepEqual(partnerPatch({ name: "x" }, { product }).patch, {});
+});
+
+// ── Pagamento pendente (26/11/2026) ─────────────────────────────────────────
+// Venda de parceiro pode fechar SEM meio de pagamento. `paymentPending` só
+// vale com parceiro; tirar o parceiro ou definir o meio limpa a marca.
+test("partnerPatch: paymentPending só com parceiro; meio definido ou parceiro tirado limpa", () => {
+  const product = { partners: PARTNERS };
+  const par = { partner: "segunda_venda", partnerSeller: "Marcos" };
+  assert.match(partnerPatch({ paymentPending: true }, { product }).error, /só vale para venda de parceiro/);
+  assert.match(partnerPatch({ paymentPending: "sim" }, { product, current: par }).error, /verdadeiro ou falso/);
+  assert.deepEqual(partnerPatch({ paymentPending: true, paymentMethod: "" }, { product, current: par }).patch, { paymentPending: true });
+  assert.deepEqual(partnerPatch({ ...par, paymentPending: true }, { product }).patch, { ...par, paymentPending: true });
+  assert.deepEqual(partnerPatch({ paymentMethod: "pix" }, { product, current: { ...par, paymentPending: true } }).patch, { paymentPending: false });
+  assert.deepEqual(partnerPatch({ paymentPending: true, paymentMethod: "pix" }, { product, current: par }).patch, { paymentPending: false }, "meio no mesmo PATCH vence");
+  assert.deepEqual(partnerPatch({ partner: "" }, { product, current: { ...par, paymentPending: true } }).patch, { partner: "", partnerSeller: "", paymentPending: false });
+  assert.deepEqual(partnerPatch({ paymentMethod: "pix" }, { product, current: {} }).patch, {}, "lead comum: nada muda");
+  assert.deepEqual(partnerPatch({ paymentPending: false }, { product, current: {} }).patch, { paymentPending: false });
+});
+
+test("fechamento do CRM novo pela Ponte: parceiro com pagamento pendente cria cliente, assinatura e integração sem inventar meio", async () => {
+  const { app, repo } = await crudApp();
+  await repo.create("users", { id: "int", name: "Iara", roles: ["integrator"] });
+  await repo.create("leads", { id: "lp", saas: "leverads", name: "Loja Parceira", stage: "Qualificando", closer: "", partner: "segunda_venda", partnerSeller: "Marcos", createdAt: "2026-11-20T12:00:00.000Z" });
+  const semParceiro = await app.inject({ method: "PATCH", url: "/api/leads/lp", payload: { partner: "", paymentPending: true } });
+  assert.equal(semParceiro.statusCode, 400, "pendente sem parceiro é recusado");
+  assert.equal(semParceiro.json().code, "invalid_partner");
+  const r = await app.inject({ method: "PATCH", url: "/api/leads/lp", payload: {
+    stage: "Integração", integrator: "int", amount: 5988, dealProduct: "price_essencial", planClosed: "anual", dealItems: [],
+    integrationNote: "parceiro combina o pagamento", paymentPending: true, paymentMethod: "", paymentInstallments: "",
+  } });
+  assert.equal(r.statusCode, 200);
+  const lead = await repo.get("leads", "lp");
+  assert.equal(lead.paymentPending, true);
+  assert.equal(lead.paymentMethod, "");
+  assert.ok(lead.customerId && lead.wonAt, "virou cliente");
+  const customer = await repo.get("customers", lead.customerId);
+  assert.equal(customer.paymentMethod ?? "", "", "o cliente não ganha meio inventado");
+  assert.equal(customer.arr, 5988);
+  const subs = (await repo.list("subscriptions")).filter((s) => s.customer === customer.id);
+  assert.equal(subs.length, 1, "assinatura criada");
+  assert.deepEqual([subs[0].cycle, subs[0].price], ["annual", 5988]);
+  const invs = (await repo.list("invoices")).filter((i) => i.customer === customer.id);
+  assert.equal(invs.length, 1);
+  assert.equal(invs[0].status, "open", "fatura inicial em aberto: nada presumido pago");
+  assert.equal(invs[0].paidProof, undefined);
+  assert.ok((await repo.list("onboardings")).some((o) => o.customer === customer.id && o.lead === "lp"), "integração nasce");
+
+  // Meio definido depois (ficha): a marca sai sozinha e o cliente acompanha.
+  const d = await app.inject({ method: "PATCH", url: "/api/leads/lp", payload: { paymentMethod: "pix" } });
+  assert.equal(d.statusCode, 200);
+  assert.equal((await repo.get("leads", "lp")).paymentPending, false);
+  assert.equal((await repo.get("customers", customer.id)).paymentMethod, "pix");
+  const depois = (await repo.list("invoices")).filter((i) => i.customer === customer.id);
+  assert.equal(depois.find((i) => i.kind === "renewal").status, "open", "definir o meio não inventa recebimento: só o MP ou a baixa pagam");
+  await app.close();
+});
+
+test("sem a marca, o mesmo fechamento sem meio presume a fatura paga (o que o pendente evita)", async () => {
+  const { app, repo } = await crudApp();
+  await repo.create("leads", { id: "lx", saas: "leverads", name: "Loja", stage: "Qualificando", partner: "segunda_venda" });
+  await app.inject({ method: "PATCH", url: "/api/leads/lx", payload: { stage: "Integração", amount: 5988, planClosed: "anual", paymentMethod: "" } });
+  const lead = await repo.get("leads", "lx");
+  const inv = (await repo.list("invoices")).find((i) => i.customer === lead.customerId);
+  assert.equal(inv.status, "paid");
+  assert.equal(inv.paidProof.kind, "closing");
+  await app.close();
+});
+
+test("balde da venda de parceiro: pendente não conta o contrato, só o que entrou", async () => {
+  const repo = await metricsRepo();
+  await repo.update("leads", "l_par", { paymentPending: true, paymentMethod: "" });
+  const app = Fastify();
+  registerRoutes(app, repo, { scoreboard: { now: () => new Date("2026-09-20T15:00:00.000Z") } });
+  const sb = (await app.inject({ url: "/api/scoreboard/leverads?since=2026-09-01&until=2026-09-30" })).json();
+  assert.deepEqual([sb.team.partnerSale.won, sb.team.partnerSale.revenue, sb.team.partnerSale.pending], [1, 0, 1]);
+  await repo.create("invoices", { id: "i_par", saas: "leverads", customer: "c_l_par", status: "paid", amount: 2000, paidAt: "2026-09-15T12:00:00.000Z", mpPaymentId: "mp_par" });
+  const sb2 = (await app.inject({ url: "/api/scoreboard/leverads?since=2026-09-01&until=2026-09-30&fresh=1" })).json();
+  assert.equal(sb2.team.partnerSale.revenue, 2000, "o que caiu de verdade conta");
+  assert.equal(sb2.team.cash.novos, 2000);
+  assert.equal(sb2.team.won, 1, "segue fora do time");
+  await app.close();
 });
 
 test("POST/PATCH do lead validam parceiro e vendedor (400 em pt-BR)", async () => {
@@ -143,7 +224,7 @@ test("placar: venda de parceiro fora do closer, do SDR e do time; volta em partn
   assert.deepEqual([sara.partnerWon, sara.partnerRevenue], [1, 5000]);
   assert.equal(sb.team.won, 1);
   assert.equal(sb.team.revenue, 7000);
-  assert.deepEqual(sb.team.partnerSale, { won: 1, revenue: 5000, partners: ["Segunda Venda"], sellers: ["Marcos"] });
+  assert.deepEqual(sb.team.partnerSale, { won: 1, revenue: 5000, pending: 0, partners: ["Segunda Venda"], sellers: ["Marcos"] });
   assert.equal(sb.team.keyAccount, null);
   await app.close();
 });

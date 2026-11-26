@@ -10,6 +10,11 @@ import { isPartnerSaleLead, partnersOf, partnerLabel } from "../lib/funnel.js";
 // vira cliente e integração normais, mas fica fora da meta, do placar e da
 // remuneração (isPartnerSaleLead na API). Usado no gate de fechamento
 // (stage-move.jsx) e em "A venda" do Próximo passo (today.jsx).
+// PAGAMENTO PENDENTE: a venda de parceiro pode fechar sem meio de pagamento
+// (o parceiro ainda vai dizer como o cliente paga). Ligado, quem usa o
+// controle esconde o modo de pagamento e as parcelas e não os exige; o lead
+// grava paymentPending e a fatura inicial nasce aberta. Definir o meio depois
+// (na ficha) limpa a marca no servidor.
 
 // Estado inicial a partir do lead (o que já está gravado volta ligado).
 export function partnerStateOf(lead, saasCfg) {
@@ -19,8 +24,12 @@ export function partnerStateOf(lead, saasCfg) {
     on,
     partner: on ? String(lead.partner) : (opts.length === 1 ? opts[0].id : ""),
     seller: on ? String(lead.partnerSeller || "") : "",
+    pending: on && !!lead.paymentPending,
   };
 }
+
+// O fechamento dispensa modo de pagamento e parcelas.
+export const paymentSkipped = (st) => !!(st?.on && st.pending);
 
 // O controle aparece quando o produto tem parceiro cadastrado ou o lead já é
 // venda de parceiro (opção que saiu da lista continua visível pra desligar).
@@ -31,8 +40,8 @@ export const partnerReady = (st) => !st?.on || (!!st.partner && !!String(st.sell
 
 // O que vai no PATCH do lead (desligado limpa os dois campos).
 export const partnerPatchOf = (st) => (st?.on
-  ? { partner: st.partner, partnerSeller: String(st.seller || "").trim() }
-  : { partner: "", partnerSeller: "" });
+  ? { partner: st.partner, partnerSeller: String(st.seller || "").trim(), paymentPending: !!st.pending, ...(st.pending ? { paymentMethod: "", paymentTerms: "", paymentInstallments: "" } : {}) }
+  : { partner: "", partnerSeller: "", paymentPending: false });
 
 const LABEL = { display: "block", marginBottom: 4 };
 
@@ -63,6 +72,12 @@ export function PartnerSaleField({ saasCfg, lead, value, onChange, labelStyle = 
               placeholder="quem vendeu pelo parceiro" onChange={(e) => set({ seller: e.target.value })} style={fieldStyle} />
           </div>
         </div>
+      )}
+      {st.on && (
+        <SwitchRow checked={!!st.pending} onChange={(pending) => set({ pending })} title="Pagamento pendente"
+          hint={st.pending
+            ? "fecha sem modo de pagamento · a fatura nasce em aberto e nada conta como recebido até o dinheiro entrar; defina o meio depois na ficha"
+            : "ligue se o parceiro ainda não disse como o cliente vai pagar"} />
       )}
     </div>
   );

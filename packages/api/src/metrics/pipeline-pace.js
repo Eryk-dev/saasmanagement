@@ -980,7 +980,7 @@ export async function computeMonthlyHistory(repo, product, { from = null, now = 
       ended: w.ended,
       current: w.current,
       keyAccount: ka ? { count: ka.count, revenue: ka.revenue, names: ka.names, soldWith: ka.soldWith, countWith: ka.countWith } : null,
-      partnerSale: ps ? { count: ps.count, revenue: ps.revenue, partners: ps.partners, sellers: ps.sellers, soldWith: ps.soldWith, countWith: ps.countWith } : null,
+      partnerSale: ps ? { count: ps.count, revenue: ps.revenue, pending: ps.pending, partners: ps.partners, sellers: ps.sellers, soldWith: ps.soldWith, countWith: ps.countWith } : null,
     });
   }
 

@@ -16,7 +16,7 @@ import { businessDaysBetween } from "../components/period-picker.jsx";
 import { scaledGoal } from "../components/team-cards.jsx";
 import { useData } from "../data.jsx";
 import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor, nurtureStage, hasDayStages, dayStageNumber, nextActionAfterMove, isPartnerSaleLead, partnerLine } from "../lib/funnel.js";
-import { PartnerSaleField, partnerFieldVisible, partnerPatchOf, partnerReady, partnerStateOf } from "../components/partner-sale.jsx";
+import { PartnerSaleField, partnerFieldVisible, partnerPatchOf, partnerReady, partnerStateOf, paymentSkipped } from "../components/partner-sale.jsx";
 import { allUsers, currentUser, displayName, userById, usersByRole, isAdminUser } from "../lib/users.js";
 import { offWorkHours } from "../../../api/src/shared/work-hours.js";
 import { nationalHoliday } from "../../../api/src/shared/holidays.js";
@@ -2741,7 +2741,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const allTrial = rows.length > 0 && rows.every(trialRow);
   const amountNum = rows.reduce((sum, r) => sum + (trialRow(r) ? 0 : r.value), 0);
   const askPartner = partnerFieldVisible(saasCfg, lead);
-  const dealReady = (allTrial || !!payment) && rows.every((r) => (r.value > 0 || trialRow(r)) && (!askProduct || (!!r.product && !!r.closed)))
+  // Venda de parceiro com pagamento pendente: fecha sem modo de pagamento.
+  const noPayment = askPartner && paymentSkipped(partnerSt);
+  const dealReady = (allTrial || !!payment || noPayment) && rows.every((r) => (r.value > 0 || trialRow(r)) && (!askProduct || (!!r.product && !!r.closed)))
     && (!askPartner || partnerReady(partnerSt));
   // Proposta na mesa completa = ciclo escolhido E, em quem tem catálogo, o
   // produto ofertado ("não chegou na proposta" dispensa o produto).
@@ -2851,7 +2853,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const multi = rows.length > 1;
   // Modo de pagamento: com um produto divide a linha com o valor; com dois ou
   // mais vale pra venda inteira e desce pro fim, ao lado do total.
-  const paymentField = (
+  const paymentField = noPayment ? null : (
     <div>
       <div className="kicker" style={label}>Modo de pagamento {allTrial ? "" : "*"}</div>
       <PaymentMethodPicker value={payment} onChange={setPayment} style={pickStyle} inputStyle={inputStyle} />
@@ -3133,9 +3135,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                 {dest.kind === "integracao" && (
                   <section className="today-dest-section" aria-label="A venda">
                     <h4 className="today-dest-title">A venda</h4>
-                    {dealFields(partnerSt.on ? "venda de parceiro: entra no caixa, fora da meta do time" : "vira a receita do closer")}
                     <PartnerSaleField saasCfg={saasCfg} lead={lead} value={partnerSt} onChange={setPartnerSt}
                       labelStyle={label} fieldStyle={fieldStyle} idPrefix="next-partner" />
+                    {dealFields(partnerSt.on ? "venda de parceiro: entra no caixa, fora da meta do time" : "vira a receita do closer")}
                   </section>
                 )}
                 {/* A entrega em três passos, na ordem em que se decide: QUEM faz,
@@ -3201,9 +3203,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
 
           {setup === "won" && (
             <>
-              {dealFields("vira a receita no marketing e a conversão enviada pra Meta")}
               <PartnerSaleField saasCfg={saasCfg} lead={lead} value={partnerSt} onChange={setPartnerSt}
                 labelStyle={label} fieldStyle={fieldStyle} idPrefix="next-partner" />
+              {dealFields("vira a receita no marketing e a conversão enviada pra Meta")}
             </>
           )}
 

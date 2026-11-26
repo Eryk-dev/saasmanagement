@@ -209,12 +209,15 @@ export const isPartnerSaleLead = (lead) => !!String(lead?.partner || "").trim();
 export const partnerLabelOf = (product, id) =>
   (Array.isArray(product?.partners) ? product.partners : []).find((p) => p?.id === id)?.label || String(id || "");
 // O balde: quantas, quanto (pela régua de valor do chamador) e de quem.
+// `pending` = as fechadas com pagamento pendente (lead.paymentPending): o
+// valuer só soma o que entrou delas, nunca o contrato (saleValuer).
 export function partnerSaleOf(leads, valueOf, product) {
   const list = (leads || []).filter(isPartnerSaleLead);
   if (!list.length) return null;
   return {
     count: list.length,
     revenue: revenueOf(list, valueOf),
+    pending: list.filter((l) => !!l.paymentPending).length,
     partners: [...new Set(list.map((l) => partnerLabelOf(product, l.partner)).filter(Boolean))],
     sellers: [...new Set(list.map((l) => String(l.partnerSeller || "").trim()).filter(Boolean))],
   };
@@ -534,7 +537,9 @@ export function saleValuer({ invoices, mpPayments, customers, inWin } = {}) {
     // O meio do LEAD é o do fechamento; o do cliente é o fallback (ficha
     // editada depois, fechamento antigo sem o campo).
     const method = lead?.paymentMethod || methodOf.get(lead?.customerId) || "";
-    if (!isPayOnReceipt(method)) return full;
+    // Pagamento pendente (venda de parceiro sem meio, 26/11/2026): ninguém
+    // disse como o cliente paga, então vale só o que ENTROU, como no faturado.
+    if (!lead?.paymentPending && !isPayOnReceipt(method)) return full;
     // Teto no contrato: um pagamento a mais (upsell no mesmo mês) não pode
     // fazer a venda valer mais do que foi vendido.
     return round2(Math.min(full, cash.get(lead?.customerId) || 0));

@@ -692,7 +692,8 @@ function LeadCard({ d, s, currentStage, dragProps, selected, onSelect, onOpen })
       )}
       {parceiro && (
         <div title="Venda de parceiro: fora da meta, do placar e da remuneração do time"
-          style={{ fontSize: 11, color: "var(--accent)", fontWeight: 600, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Parceiro: {parceiro}</div>
+          style={{ fontSize: 11, color: "var(--accent)", fontWeight: 600, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Parceiro: {parceiro}
+          {d.paymentPending && <span title="Fechou sem modo de pagamento · defina o meio na ficha" style={{ marginLeft: 6, padding: "1px 6px", borderRadius: 999, background: "var(--warn-soft)", color: "var(--warn)", fontSize: 10 }}>pagamento pendente</span>}</div>
       )}
       {/* O PRÓXIMO PASSO em texto: é o que a prancha põe no card, e é o que
           diz o que fazer sem abrir o lead. */}
