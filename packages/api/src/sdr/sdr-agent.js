@@ -15,7 +15,7 @@
 import { findThreadByPhone, listMessages, recordMessage } from "../whatsapp/wa-store.js";
 import { onOutboundMessage } from "../crm/lead-flow.js";
 import { raiseAlert } from "../whatsapp/wa-call-flow.js";
-import { slotsForLead, activeHolds, holdSlots, releaseHolds, OFFER_HOURS, HOLD_MIN } from "../crm/agenda-slots.js";
+import { slotsForLead, activeHolds, holdSlots, releaseHolds, wallNow, OFFER_HOURS, HOLD_MIN } from "../crm/agenda-slots.js";
 import { upsertNotification } from "../tasks/tasks-core.js";
 import { kindOf, firstStage, isWonLead } from "../crm/stages.js";
 import { sdrBotConfig, agentOwns, SDR_AUTHOR } from "./sdr-flow.js";
@@ -28,7 +28,7 @@ const SDR_KINDS = new Set(["novo", "contato", "qualificacao", "call"]); // a reg
 const refuse = (status, error, extra = {}) => ({ status, body: { ok: false, error, ...extra } });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export function makeSdrAgent({ repo, whatsapp: wa, autoCallMeet = null, cancelCallMeet = null, now = () => new Date(), partDelayMs = 1800, log = console }) {
+export function makeSdrAgent({ repo, whatsapp: wa, autoCallMeet = null, cancelCallMeet = null, now = () => new Date(), wall = wallNow, partDelayMs = 1800, log = console }) {
   // O lead, o produto e a conversa, ou a recusa. `paused` e `not_agent_lead`
   // valem pra TODA ação: lead parado pelo time ou devolvido ao robô nativo não
   // recebe nada do agente, nem no meio de um atendimento em curso.
@@ -160,8 +160,26 @@ export function makeSdrAgent({ repo, whatsapp: wa, autoCallMeet = null, cancelCa
     const iso = now().toISOString();
     const cur = (await repo.get("leads", lead.id))?.sdrLog || {};
     await repo.update("leads", lead.id, { sdrLog: { ...cur, handoffAt: iso, handoffKind: `agente:${k}`, handoffWhy: text } });
-    if (thread) await raiseAlert(repo, thread, { text: `${k === "sala" ? "LEAD NA SALA sem especialista · " : ""}Agente SDR chamou o time: ${text}` }).catch(() => {});
-    const users = new Set((await repo.list("users")).map((u) => u.id));
+    // LEAD NA SALA sem especialista (pedido do sócio, 26/11): além de quem cuida
+    // do lead, avisa quem do MESMO time de closers está com a agenda livre nos
+    // próximos 45 min e pode assumir a sala agora.
+    let free = null;
+    if (k === "sala") {
+      const { slots = [] } = await slotsForLead(repo, { lead, saas: lead.saas, sdr: true, ...OFFER_HOURS, now: wall(), minNoticeMin: 0, days: 1, limit: 0 }).catch(() => ({}));
+      const limit = wall().getTime() + 45 * 60_000;
+      free = slots.find((x) => x.closer && x.closer !== lead.closer && Date.parse(`${x.at}:00Z`) <= limit) || null;
+    }
+    const people = await repo.list("users");
+    const freeName = free ? people.find((u) => u.id === free.closer)?.name || "" : "";
+    if (thread) await raiseAlert(repo, thread, { text: `${k === "sala" ? "LEAD NA SALA sem especialista · " : ""}Agente SDR chamou o time: ${text}${freeName ? ` · ${freeName} está livre às ${free.at.slice(11)}` : ""}` }).catch(() => {});
+    const users = new Set(people.map((u) => u.id));
+    if (free && users.has(free.closer)) {
+      await upsertNotification(repo, {
+        user: free.closer, task: "", taskTitle: "", saas: lead.saas || "", by: "api", key: `agent-sala:${lead.id}:${iso}`, type: "sdr_handoff",
+        text: `LEAD NA SALA sem especialista: ${lead.name || "lead"}. Você está com a agenda livre às ${free.at.slice(11)}: consegue assumir agora? (${text})`,
+        link: { screen: "whatsapp", thread: thread?.id || "", lead: lead.id },
+      }, { now: iso }).catch(() => {});
+    }
     const user = [lead.closer, lead.owner].find((u) => u && users.has(u));
     if (user) {
       await upsertNotification(repo, {
@@ -169,7 +187,7 @@ export function makeSdrAgent({ repo, whatsapp: wa, autoCallMeet = null, cancelCa
         text: `Agente SDR entregou ${lead.name || "o lead"}: ${text}`, link: { screen: "whatsapp", thread: thread?.id || "", lead: lead.id },
       }, { now: iso }).catch(() => {});
     }
-    return { status: 200, body: { ok: true, notified: user || "" } };
+    return { status: 200, body: { ok: true, notified: user || "", ...(freeName ? { free: freeName } : {}) } };
   }
 
   // O lead pediu pra não receber mais mensagem: sai dos disparos, do drip e do

@@ -271,6 +271,9 @@ lembrete da call continua da régua da call (`reminder_confirmed`, o link vai
 pelo fluxo 2c). A 1ª resposta do agente carimba `sdrLog.firstTouchAt` (via
 `agent`), e o 1º toque do fluxo espera 10 min quando o lead do agente já
 escreveu, pra não chegar junto com a resposta.
+No `handoff` de tipo `sala` (lead na sala sem especialista), além de quem cuida
+do lead, é avisado quem do mesmo time de closers está com a agenda livre nos
+próximos 45 min, e o alerta do Inbox diz quem é.
 Ligar, desligar e voltar pro robô nativo é PATCH no `sdrBot` do produto, sem
 deploy. Testes em `sdr-agent.test.js`.
 
