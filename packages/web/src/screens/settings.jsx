@@ -8,7 +8,7 @@ import { sanitizeWorkHours, workHoursSummary, fmtWorkHour } from "../../../api/s
 import { Popover } from "../components/popover.jsx";
 import { useData } from "../data.jsx";
 import { api, assetUrl } from "../lib/api.js";
-import { KINDS, KIND_IDS, guessKind, lossReasonsOf, stageKind, stageByKind, phaseOf, NEXT_KINDS, NEXT_STEP_KINDS, NEXT_STEP_LABELS, nurtureStage, nextKindsFor } from "../lib/funnel.js";
+import { KINDS, KIND_IDS, guessKind, lossReasonsOf, partnersOf, stageKind, stageByKind, phaseOf, NEXT_KINDS, NEXT_STEP_KINDS, NEXT_STEP_LABELS, nurtureStage, nextKindsFor } from "../lib/funnel.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { DEFAULT_SCRIPTS, SCRIPT_CATALOG, catalogStageRow, isNoShowStage } from "../lib/scripts.js";
 import { followupContacts, DEFAULT_FOLLOWUP_CONTACTS } from "../lib/followup.js";
@@ -293,6 +293,8 @@ function FunnelSettings({ s }) {
 
       <LossReasonsSettings s={s} />
 
+      <PartnersSettings s={s} />
+
     </div>
   );
 }
@@ -323,6 +325,40 @@ function LossReasonsSettings({ s }) {
           </span>
         ))}
         <button type="button" onClick={() => setRows((current) => [...current, { id: "", label: "" }])} style={{ height: 32, padding: "0 6px", color: "var(--accent)", fontSize: 12.5, fontWeight: 600 }}>+ motivo</button>
+        <SaveBar onSave={save} />
+      </div>
+    </section>
+  );
+}
+
+// ───────────────────────────────────────────────── Parceiros de venda
+// product.partners (26/11/2026) — quem também vende o produto (a Segunda Venda
+// vende o LeverPrice). Mesmo formato dos motivos de perda: o lead guarda o id
+// em `partner`, então renomear o rótulo não quebra nada. Venda de parceiro
+// fica fora da meta, do placar e da remuneração do time.
+function PartnersSettings({ s }) {
+  const { refresh } = useData();
+  const [rows, setRows] = useStS(() => partnersOf(s).map((r) => ({ ...r })));
+
+  async function save() {
+    const partners = rows
+      .filter((r) => String(r.label || "").trim())
+      .map((r) => ({ id: r.id || slug(r.label), label: r.label.trim() }));
+    await api.update("products", s.id, { partners });
+    await refresh();
+  }
+
+  return (
+    <section style={{ background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
+      <div style={{ padding: "24px var(--pad-x) 0" }}><SettingHeader number="03" title="Parceiros de venda" sub="aparecem em Venda de parceiro no fechamento · vendedor externo, fora da meta e do placar" /></div>
+      <div style={{ padding: "16px var(--pad-x) 24px", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        {rows.map((r, i) => (
+          <span key={i} style={{ display: "inline-flex", alignItems: "center", height: 34, border: "1px solid var(--line-1)", borderRadius: 999, background: "var(--bg-1)", padding: "0 8px 0 12px" }}>
+            <input aria-label={`Parceiro ${i+1}`} value={r.label || ""} placeholder="Novo parceiro" onChange={(e) => setRows((current) => current.map((item, index) => index === i ? { ...item, label: e.target.value } : item))} style={{ width: Math.max(64, String(r.label || "Novo parceiro").length * 7.5), border: 0, background: "transparent", fontSize: 12.5, fontWeight: 600, color: "var(--fg-2)" }} />
+            <button type="button" aria-label={`Remover o parceiro ${r.label || i+1}`} onClick={() => setRows((current) => current.filter((_, index) => index !== i))} style={{ color: "var(--fg-4)", fontSize: 11, padding: "0 2px" }}>✕</button>
+          </span>
+        ))}
+        <button type="button" onClick={() => setRows((current) => [...current, { id: "", label: "" }])} style={{ height: 32, padding: "0 6px", color: "var(--accent)", fontSize: 12.5, fontWeight: 600 }}>+ parceiro</button>
         <SaveBar onSave={save} />
       </div>
     </section>

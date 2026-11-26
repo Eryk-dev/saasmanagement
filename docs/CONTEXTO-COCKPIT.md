@@ -270,6 +270,27 @@ lead e Qualificando, e o corte vai pra etapa nomeada Nutrição (o kind
 `docs/SDR-ETAPAS-LEVANTAMENTO-2026-11.md`. Testes: `cadencia-stages.test.js`,
 `sdr-ladder.test.js`, `sdr-second-touch.test.js`.
 
+**Venda de parceiro (26/11/2026):** a Segunda Venda também vende o LeverPrice
+(vendido no produto `leverads`, linha `price` do catálogo). O lead guarda
+`partner` (id de `product.partners`, `[{ id, label }]` no mesmo formato de
+`lossReasons`) e `partnerSeller` (nome do vendedor externo); vazio = venda do
+time. O CRM novo copia esses dois nomes pelo espelho: não renomear. O POST/PATCH
+do lead valida em `crm/lead-partner.js` (parceiro fora da lista → 400, vendedor
+sem parceiro → 400, tirar o parceiro limpa o vendedor). Com parceiro, o card
+não passa pelo handoff pro closer (`moveGate`; só a call segue pedindo closer),
+o follow-up do Próximo passo não exige closer e o fechamento (gate e "A venda"
+da Integração, `components/partner-sale.jsx`) tem o controle "Venda de
+parceiro". O ganho cria cliente, assinatura e integração iguais e entra no
+caixa, ARR e MRR. `isPartnerSaleLead` (metrics-core, espelho em
+`web/src/lib/funnel.js`) tira a venda da meta do mês, do ticket médio, do placar
+(SDR, closer, time) e da remuneração pela mesma porta da conta grande; ela vence
+a conta grande (um balde só) e volta em `team.partnerSale`, `partnerSale` do
+pace/janela/histórico e `partnerWon`/`partnerRevenue` por pessoa. A semente
+`ensurePartnersSeed` (marcador `partnersSeedV1`) põe a Segunda Venda só no
+`leverads`; a lista é editada em Ajustes do produto → Parceiros de venda. Testes:
+`venda-de-parceiro.test.js` (API), `web/test/partner-sale.test.js` e o caso
+`venda-de-parceiro` do smoke.
+
 **Rulebook do robô SDR (15/10/2026):** toda regra de comportamento do robô é
 uma entrada em `packages/api/src/sdr/sdr-rules.js` com id estável (R-nnn),
 origem (data, quem pediu, PR ou print), enunciado, estados da conversa e

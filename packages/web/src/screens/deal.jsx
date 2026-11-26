@@ -10,7 +10,7 @@ import { moveGate, MoveLeadModal, applyGatedMove, moveErrorText } from "../compo
 import { clientSummary, leadBox, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks } from "../components/lead-blocks.jsx";
 import { waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
 import { meetingInviteText } from "../lib/wa-copy.js";
-import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind, isLossKind, phaseOf, hasSaleRecord } from "../lib/funnel.js";
+import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind, isLossKind, phaseOf, hasSaleRecord, partnersOf, partnerLabel, partnerLine } from "../lib/funnel.js";
 import { SelectPopover } from "../components/select-popover.jsx";
 import { DateTimeField, formatDateTime } from "../components/datetime-field.jsx";
 import { brtMs } from "../lib/format.js";
@@ -676,6 +676,27 @@ Ele sai das vendas, do placar e da meta, e o cliente, a assinatura e as faturas 
                     </EditRow>
                   );
                 })}
+                {/* Venda de parceiro (26/11/2026): vendedor externo no lugar do
+                    closer, fora da meta e do placar. Tirar o parceiro limpa o
+                    vendedor no servidor. */}
+                {(partnersOf(saasCfg).length > 0 || lead.partner) && (
+                  <>
+                    <EditRow label="Parceiro">
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <SelectPopover label="Parceiro" value={lead.partner || ""} style={editPick}
+                          onChange={(v) => patch(v ? { partner: v } : { partner: "", partnerSeller: "" })}
+                          options={[
+                            { value: "", label: "— (venda do time)" },
+                            ...partnersOf(saasCfg).map((p) => ({ value: p.id, label: p.label })),
+                            ...(lead.partner && !partnersOf(saasCfg).some((p) => p.id === lead.partner) ? [{ value: lead.partner, label: partnerLabel(saasCfg, lead.partner) }] : []),
+                          ]} />
+                      </div>
+                    </EditRow>
+                    {lead.partner && (
+                      <EditRow label="Vendedor"><input aria-label="Nome do vendedor do parceiro" maxLength={120} defaultValue={lead.partnerSeller || ""} placeholder="quem vendeu pelo parceiro" onBlur={(e) => e.target.value.trim() !== (lead.partnerSeller || "") && patch({ partnerSeller: e.target.value.trim() })} style={editInput} /></EditRow>
+                    )}
+                  </>
+                )}
               </div>
             )}
           </ClientSummaryCard>
@@ -1099,6 +1120,7 @@ Ele sai das vendas, do placar e da meta, e o cliente, a assinatura e as faturas 
             </dl>
             <div className="lead-panel-owners">
               {[["SDR", lead.owner], ["Closer", lead.closer], ["Integrador", lead.integrator]].filter(([, id]) => id).map(([role, id]) => <span key={role}>{role} · {displayName(id)}</span>)}
+              {partnerLine(saasCfg, lead) && <span title="Venda de parceiro: fora da meta, do placar e da remuneração do time">Parceiro: {partnerLine(saasCfg, lead)}</span>}
               <span title={`Lead ${lead.id}`}>Nesta etapa · {daysSince(lead.stageSince || lead.createdAt)}</span>
             </div>
             {/* Tipo do negócio, tags e o caminho pro cliente e pra integração. */}

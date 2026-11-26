@@ -15,7 +15,8 @@ import { bizDay, bizWall } from "../lib/format.js";
 import { businessDaysBetween } from "../components/period-picker.jsx";
 import { scaledGoal } from "../components/team-cards.jsx";
 import { useData } from "../data.jsx";
-import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor, nurtureStage, hasDayStages, dayStageNumber, nextActionAfterMove } from "../lib/funnel.js";
+import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor, nurtureStage, hasDayStages, dayStageNumber, nextActionAfterMove, isPartnerSaleLead, partnerLine } from "../lib/funnel.js";
+import { PartnerSaleField, partnerFieldVisible, partnerPatchOf, partnerReady, partnerStateOf } from "../components/partner-sale.jsx";
 import { allUsers, currentUser, displayName, userById, usersByRole, isAdminUser } from "../lib/users.js";
 import { offWorkHours } from "../../../api/src/shared/work-hours.js";
 import { nationalHoliday } from "../../../api/src/shared/holidays.js";
@@ -2612,6 +2613,10 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   // O que foi VENDIDO (um item por produto do catálogo: plano, ciclo e valor):
   // o card só vai pra Integração depois de fechar, e a entrega precisa do escopo.
   const [items, setItems] = useS(() => dealItemsFromLead(lead));
+  // Venda de parceiro (26/11/2026): vendedor externo no lugar do closer. O
+  // controle fica em "A venda"; ligado, o follow-up não pede closer.
+  const [partnerSt, setPartnerSt] = useS(() => partnerStateOf(lead, saasCfg));
+  const partnerLead = isPartnerSaleLead(lead);
   const setItem = (key, patch) => setItems((cur) => cur.map((it) => (it.key === key ? { ...it, ...(typeof patch === "function" ? patch(it) : patch) } : it)));
   const [reason, setReason] = useS("");
   const [note, setNote] = useS("");
@@ -2634,6 +2639,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     setIntegrator(lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
     setPayment(paymentPickerValue(lead)); setReason(""); setNote(""); setIntegNote(lead.integrationNote || ""); setSchedMode(bookingLinkPending(lead, lead.integrator) ? "link" : "horario");
     setItems(dealItemsFromLead(lead));
+    setPartnerSt(partnerStateOf(lead, saasCfg));
     setOffer(lead.proposalOffer || ""); setOfferProduct(lead.proposalProduct || "");
     setEmail(lead.email || ""); setEmailTouched(false); setMeetBusy(false); setMeetRes(null); setMeetErr(null);
   }, [lead.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2734,7 +2740,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const trialRow = (r) => askProduct && isTrialPlan(r.closed);
   const allTrial = rows.length > 0 && rows.every(trialRow);
   const amountNum = rows.reduce((sum, r) => sum + (trialRow(r) ? 0 : r.value), 0);
-  const dealReady = (allTrial || !!payment) && rows.every((r) => (r.value > 0 || trialRow(r)) && (!askProduct || (!!r.product && !!r.closed)));
+  const askPartner = partnerFieldVisible(saasCfg, lead);
+  const dealReady = (allTrial || !!payment) && rows.every((r) => (r.value > 0 || trialRow(r)) && (!askProduct || (!!r.product && !!r.closed)))
+    && (!askPartner || partnerReady(partnerSt));
   // Proposta na mesa completa = ciclo escolhido E, em quem tem catálogo, o
   // produto ofertado ("não chegou na proposta" dispensa o produto).
   const offerDone = !!offer && (offer === "nenhuma" || !askProduct || !!offerProduct);
@@ -2742,7 +2750,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     : isRetry ? !!retryAt
     : setup === "reschedule" ? !!slot
     : setup === "call" ? !!(closer && slot)
-    : setup === "followup" ? !!closer && !!fupDay && (!fromCall || offerDone) // saindo da call, a proposta na mesa é obrigatória
+    : setup === "followup" ? (!!closer || partnerLead) && !!fupDay && (!fromCall || offerDone) // saindo da call, a proposta na mesa é obrigatória; venda de parceiro não pede closer
     : setup === "integrator" ? !!(integrator && (dest.kind !== "integracao" || dealReady))
     : setup === "won" ? dealReady
     : setup === "loss" ? !!reason
@@ -2759,6 +2767,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     ...(askProduct && rows.length > 1
       ? { dealItems: rows.map((r) => ({ product: r.product, planClosed: r.closed, amount: trialRow(r) ? 0 : r.value })) }
       : Array.isArray(lead.dealItems) && lead.dealItems.length ? { dealItems: [] } : {}),
+    ...(askPartner ? partnerPatchOf(partnerSt) : {}),
   });
 
   function confirm() {
@@ -2777,7 +2786,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     // hora: não ocupa a agenda). O servidor zera a sequência e põe o GPS em
     // 00:00 desse dia. Já foi gravado no callAt e dava ruim: a agenda desenhava
     // um "✓ call feita" que nunca aconteceu (Leo, 13/08 — casos Beto e Milaan).
-    else if (setup === "followup") { patch.closer = closer; if (fromCall && offer) { patch.proposalOffer = offer; patch.proposalProduct = offer === "nenhuma" ? "" : offerProduct; } patch.followupAt = fupDay; }
+    else if (setup === "followup") { if (closer) patch.closer = closer; if (fromCall && offer) { patch.proposalOffer = offer; patch.proposalProduct = offer === "nenhuma" ? "" : offerProduct; } patch.followupAt = fupDay; }
     // Integração: define o integrador e, se um horário foi escolhido na agenda,
     // agenda a integração nele (integrationAt aparece na Agenda e replica na
     // agenda pessoal do integrador que conectou o Google).
@@ -3078,7 +3087,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
           )}
 
           {setup === "followup" && (
-            closer ? (
+            closer || partnerLead ? (
               <div>
                 {/* Saindo da CALL: registra qual proposta ficou na mesa — o
                     PRODUTO da apresentação + o ciclo, é ela que o follow-up
@@ -3100,7 +3109,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                   </div>
                 )}
                 <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginBottom: 6 }}>
-                  Dia do contato 1 de {FOLLOWUP_STEPS} · {displayName(closer)}
+                  Dia do contato 1 de {FOLLOWUP_STEPS} · {closer ? displayName(closer) : `parceiro: ${partnerLine(saasCfg, lead)}`}
                 </div>
                 {callSummary?.followup?.nota && <div className="mono" style={{ fontSize: 10.5, color: "var(--accent)", marginBottom: 6 }}>✨ IA (última call): {callSummary.followup.nota}</div>}
                 <DayPicker value={fupDay} onChange={setFupDay} label="Dia do contato 1" />
@@ -3124,7 +3133,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                 {dest.kind === "integracao" && (
                   <section className="today-dest-section" aria-label="A venda">
                     <h4 className="today-dest-title">A venda</h4>
-                    {dealFields("vira a receita do closer")}
+                    {dealFields(partnerSt.on ? "venda de parceiro: entra no caixa, fora da meta do time" : "vira a receita do closer")}
+                    <PartnerSaleField saasCfg={saasCfg} lead={lead} value={partnerSt} onChange={setPartnerSt}
+                      labelStyle={label} fieldStyle={fieldStyle} idPrefix="next-partner" />
                   </section>
                 )}
                 {/* A entrega em três passos, na ordem em que se decide: QUEM faz,
@@ -3188,7 +3199,13 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
             );
           })()}
 
-          {setup === "won" && dealFields("vira a receita no marketing e a conversão enviada pra Meta")}
+          {setup === "won" && (
+            <>
+              {dealFields("vira a receita no marketing e a conversão enviada pra Meta")}
+              <PartnerSaleField saasCfg={saasCfg} lead={lead} value={partnerSt} onChange={setPartnerSt}
+                labelStyle={label} fieldStyle={fieldStyle} idPrefix="next-partner" />
+            </>
+          )}
 
           {setup === "loss" && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>

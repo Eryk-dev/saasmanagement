@@ -204,6 +204,25 @@ export function lossReasonLabel(saasCfg, id) {
   return lossReasonsOf(saasCfg).find((r) => r.id === id)?.label || id;
 }
 
+// Venda de parceiro (26/11/2026) — espelho do isPartnerSaleLead do metrics-core
+// (api). `lead.partner` = id de product.partners ([{ id, label }], mesmo
+// formato dos motivos de perda), `lead.partnerSeller` = nome do vendedor
+// externo. Venda de parceiro não exige closer e fica fora da meta, do placar e
+// da remuneração; o cliente e a integração seguem normais.
+export const isPartnerSaleLead = (lead) => !!String(lead?.partner || "").trim();
+export function partnersOf(saasCfg) {
+  return Array.isArray(saasCfg?.partners) ? saasCfg.partners.filter((p) => p && p.id) : [];
+}
+export function partnerLabel(saasCfg, id) {
+  if (!id) return "";
+  return partnersOf(saasCfg).find((p) => p.id === id)?.label || id;
+}
+// "Segunda Venda · Marcos" (o que o card e a ficha mostram); "" sem parceiro.
+export function partnerLine(saasCfg, lead) {
+  if (!isPartnerSaleLead(lead)) return "";
+  return [partnerLabel(saasCfg, lead.partner), String(lead.partnerSeller || "").trim()].filter(Boolean).join(" · ");
+}
+
 // ── "Próximos passos" (bloco "Depois da ação" da tela Meu dia) ───────────────
 // Pra CADA situação (kind da etapa em que o lead está) há uma lista ORDENADA de
 // destinos possíveis. É o default editável em Ajustes → Próximos passos:

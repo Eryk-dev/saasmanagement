@@ -166,6 +166,8 @@ export const openapi = {
           amount: { type: "number", description: "Valor estimado do negócio (R$) — soma no forecast do pipeline.", example: 84000 },
           reason: { type: "string", description: "Por que é relevante (aparece no card).", example: "Enterprise · 200+ funcionários · bate com o ICP" },
           closer: { type: "string", description: "id do usuário closer responsável (GET /api/auth/users).", example: "leonardo" },
+          partner: { type: "string", description: "Venda de parceiro: id de uma opção de product.partners (vendedor EXTERNO no lugar do closer). Vazio = venda do time. Com parceiro, o ganho entra no caixa e vira cliente/assinatura/integração normais, mas fica fora da meta, do placar e da remuneração (vai pro balde partnerSale). Id fora da lista → 400.", example: "segunda_venda" },
+          partnerSeller: { type: "string", description: "Nome do vendedor externo do parceiro (texto, até 120). Só vale com `partner` (sem ele → 400). Tirar o parceiro sem mandar este campo limpa o vendedor junto.", example: "Marcos" },
           nextActionAt: { type: "string", description: "Próximo toque no lead (ISO). O servidor preenche/reagenda pela cadência do estágio; envie explícito pra sobrescrever.", example: "2026-07-10T14:00:00Z" },
           nextActionNote: { type: "string", description: "O que fazer no próximo toque.", example: "Cobrar resposta da proposta" },
           followupAt: { type: "string", description: "Etapa de follow-up: DIA do próximo contato (YYYY-MM-DD, sem hora; não ocupa agenda). Valor com hora é truncado pro dia de Brasília. Entrar no follow-up sem enviar → hoje + prazo do Contato 1.", example: "2026-10-07" },
@@ -265,6 +267,11 @@ export const openapi = {
             type: "array",
             description: "Motivos de perda do produto (lead.lostReason guarda o id).",
             items: { type: "object", properties: { id: { type: "string", example: "preco" }, label: { type: "string", example: "Preço" } } },
+          },
+          partners: {
+            type: "array",
+            description: "Parceiros que também vendem o produto (venda de parceiro: lead.partner guarda o id). Editado em Ajustes do produto → Parceiros de venda.",
+            items: { type: "object", properties: { id: { type: "string", example: "segunda_venda" }, label: { type: "string", example: "Segunda Venda" } } },
           },
           nnm: {
             type: "object",

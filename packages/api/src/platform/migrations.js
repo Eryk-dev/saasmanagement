@@ -668,6 +668,27 @@ export async function ensureSemWhatsappReason(repo) {
   return changed;
 }
 
+// Venda de parceiro (26/11/2026, crm/lead-partner.js): a Segunda Venda também
+// vende o LeverPrice, que é vendido no produto LeverAds (linha `price` do
+// catálogo). Semeia a opção em product.partners uma vez por produto (marcador
+// partnersSeedV1 respeita remoção manual em Ajustes); a lista que já existe é
+// preservada e a opção não duplica.
+export const PARTNER_SEED = { id: "segunda_venda", label: "Segunda Venda" };
+export const PARTNER_SEED_PRODUCTS = ["leverads"];
+export async function ensurePartnersSeed(repo) {
+  let changed = 0;
+  for (const id of PARTNER_SEED_PRODUCTS) {
+    const product = await repo.get("products", id);
+    if (!product || product.partnersSeedV1) continue;
+    const partners = Array.isArray(product.partners) ? product.partners : [];
+    const patch = { partnersSeedV1: true };
+    if (!partners.some((p) => p?.id === PARTNER_SEED.id)) patch.partners = [...partners, { ...PARTNER_SEED }];
+    await repo.update("products", id, patch);
+    changed++;
+  }
+  return changed;
+}
+
 // 1º TOQUE DA IA NA BASE VELHA (raio-x 17/09). O sdr-brain passou a carimbar
 // sdrLog.firstTouchAt na primeira resposta; quem já tinha conversado com a IA
 // antes disso não tem carimbo nenhum de toque e por isso ficava fora do passe
@@ -2574,6 +2595,12 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] motivo "sem WhatsApp" verificado em ${n} produto(s)`);
   } catch (err) {
     console.error("[migration] ensureSemWhatsappReason falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensurePartnersSeed(repo);
+    if (n) console.log(`[migration] parceiro "Segunda Venda" verificado em ${n} produto(s) (venda de parceiro)`);
+  } catch (err) {
+    console.error("[migration] ensurePartnersSeed falhou:", err?.message || err);
   }
   try {
     const n = await ensureSdrBrainFirstTouch(repo);

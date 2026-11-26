@@ -219,7 +219,7 @@ function HistoricoCard({ hist, histErr, onRetry }) {
     <Card title="Histórico"
       hint={<>
         meta × realizado, mês a mês · a mesma régua da Visão geral
-        {infoDot("Realizado = receita RECONHECIDA do mês (à vista e cartão 12x contam inteiro; boleto faturado, PIX parcelado e assinatura recorrente só o que caiu no mês), com upsell contando como venda e conta grande fora da régua (ela aparece na nota da linha). Meta = a que valia naquele mês: agendada, pela regra de crescimento ou o padrão. Contratos = fechamentos + upsells contra a meta de contratos (receita ÷ ticket médio do mês anterior ao atual, igual à Visão geral). Mês fechado mostra o veredito; o corrente mostra onde o pace pede hoje.")}
+        {infoDot("Realizado = receita RECONHECIDA do mês (à vista e cartão 12x contam inteiro; boleto faturado, PIX parcelado e assinatura recorrente só o que caiu no mês), com upsell contando como venda e conta grande e venda de parceiro fora da régua (elas aparecem na nota da linha). Meta = a que valia naquele mês: agendada, pela regra de crescimento ou o padrão. Contratos = fechamentos + upsells contra a meta de contratos (receita ÷ ticket médio do mês anterior ao atual, igual à Visão geral). Mês fechado mostra o veredito; o corrente mostra onde o pace pede hoje.")}
       </>}>
       <div className="metas-hist">
         {!hist && !histErr && <div className="mono dim" style={{ fontSize: 12 }}>carregando histórico…</div>}
@@ -228,10 +228,12 @@ function HistoricoCard({ hist, histErr, onRetry }) {
         {rows.map((m) => {
           const { lvl, chip, expected } = histVeredito(m);
           const ka = m.keyAccount;
+          const ps = m.partnerSale; // venda de parceiro (vendedor externo), fora da régua como a conta grande
           const subParts = [
             m.contractsTarget != null ? `${int(m.soldN)} de ${int(m.contractsTarget)} contratos` : `${int(m.soldN)} contratos`,
             m.contracted > m.sold ? `contratado ${money(m.contracted)}` : null,
             ka ? `+ ${money(ka.revenue)} de conta grande fora da régua` : null,
+            ps ? `+ ${money(ps.revenue)} de venda de parceiro fora da régua` : null,
           ].filter(Boolean);
           return (
             <div key={m.month} className="metas-hist-row">

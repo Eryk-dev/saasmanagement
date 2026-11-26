@@ -3,7 +3,7 @@
 // frente em metas diárias de ganho, call, agendamento, contato e lead.
 
 import { memoCompute } from "../platform/compute-cache.js";
-import { DAY_MS as DAY, bookedLeadsIn, callCohortIn, callOutcome, customerStartMap, dayKey, firstResponseAttribution, isKeyAccountLead, isKeyAccountUpsell, isRealLead, isRealReceipt, isSaleLead, keyAccountIds, paymentMethodOf, revenueOf, round2, saleValuer, tcvOf, upsellContractedOf, upsellRevenueOf, upsellSalesIn, upsellSoldAt, upsellValuer, winsIn } from "./metrics-core.js";
+import { DAY_MS as DAY, bookedLeadsIn, callCohortIn, callOutcome, customerStartMap, dayKey, firstResponseAttribution, isKeyAccountLead, isKeyAccountUpsell, isPartnerSaleLead, isRealLead, isRealReceipt, isSaleLead, keyAccountIds, partnerSaleOf, paymentMethodOf, revenueOf, round2, saleValuer, tcvOf, upsellContractedOf, upsellRevenueOf, upsellSalesIn, upsellSoldAt, upsellValuer, winsIn } from "./metrics-core.js";
 import { metricsReader } from "./metrics-reader.js";
 import { TOUCH_TYPES } from "../crm/stages.js";
 
@@ -202,7 +202,9 @@ function averageEntryOf(product, { invoices, leads, saleLeads = leads, customers
   // caixa e vendido; só as MÉDIAS e as metas derivadas ignoram.
   const keyCustomerIds = keyAccountIds(customers);
   const isKeyInvoice = (i) => keyCustomerIds.has(i.customer);
-  const isKeyLead = (l) => isKeyAccountLead(keyCustomerIds, l);
+  // Venda de parceiro (26/11/2026) também fica fora do ticket: não é venda do
+  // time e não diz quanto o time precisa vender.
+  const isKeyLead = (l) => isKeyAccountLead(keyCustomerIds, l) || isPartnerSaleLead(l);
   const firstPaid = new Map();
   for (const inv of [...paid].sort((a, b) => String(a.paidAt).localeCompare(String(b.paidAt)))) {
     const key = inv.subscription ? `sub:${inv.subscription}` : inv.customer ? `customer:${inv.customer}` : "";
@@ -335,7 +337,8 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   const prevMonthEnd = `${prevMonth}-${String(new Date(pmY, pmM, 0).getDate()).padStart(2, "0")}`;
   const inPrevMonth = (iso) => inRange(iso, `${prevMonth}-01`, prevMonthEnd);
   const keyCustomerIds = keyAccountIds(customers);
-  const isKeyLead = (l) => isKeyAccountLead(keyCustomerIds, l);
+  // Venda de parceiro vence a conta grande (um balde só por venda).
+  const isKeyLead = (l) => !isPartnerSaleLead(l) && isKeyAccountLead(keyCustomerIds, l);
   const { averageEntry, averageEntrySource, previousMonth } = averageEntryOf(product, { invoices, leads, saleLeads, customers, goals, mpPayments }, now);
 
   // ── Taxas da cadeia: os 30 DIAS MÓVEIS (decisão do Leo, 25/08/2026) ────────
@@ -535,12 +538,15 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   // Conta grande fora do RESULTADO (Leo, 19/08) — a MESMA régua da janela
   // histórica (computeWindowGoal), pra as duas faixas nunca divergirem. O caixa
   // (`cash`, faturas pagas) segue cheio: o dinheiro entrou de verdade.
-  const notKey = (l) => !isKeyLead(l);
+  // Venda de parceiro (vendedor externo, 26/11/2026) sai pela mesma porta e
+  // volta em `partnerSale`.
+  const notKey = (l) => !isKeyLead(l) && !isPartnerSaleLead(l);
   const todayWinLeads = winSaleLeadsIn((iso) => dayKey(iso) === today).filter(notKey);
   const todayWon = todayWinLeads.length;
   const tcvMonthLeadsAll = winSaleLeadsIn(inMonth);
   const tcvMonthLeads = tcvMonthLeadsAll.filter(notKey);
   const keyMonthLeads = tcvMonthLeadsAll.filter(isKeyLead);
+  const partnerMonthLeads = tcvMonthLeadsAll.filter(isPartnerSaleLead);
   const tcvMonth = tcvOf(tcvMonthLeads);
   // VENDIDO = receita RECONHECIDA (Leo, 29/08/2026): à vista e cartão 12x
   // contam o contrato cheio, faturado/parcelado/recorrente contam só o que
@@ -678,6 +684,8 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     })(),
     // O que a conta grande tirou do resultado (e quanto o mês daria com ela).
     keyAccount: keyAccountNote(keyMonthLeads, customers, sold, soldN, valueOfMonth, keyUpsMonth, upsellValuer(inMonth)),
+    // Venda de parceiro: o que ficou de fora e quanto o mês daria com ela.
+    partnerSale: partnerSaleNote(partnerMonthLeads, product, sold, soldN, valueOfMonth),
     // Leitura de CAIXA (faturas pagas) — informativa; o fluxo detalhado e o
     // dinheiro futuro moram na aba Clientes.
     cash: {
@@ -819,8 +827,12 @@ function windowGoalFrom(product, { saleLeads, customers, invoices, mpPayments },
   // rodapé (`keyAccount`), pra ninguém achar que sumiu.
   const keyIds = keyAccountIds(customers);
   const winLeadsAll = leads.filter((l) => winAt.has(l.id));
-  const winLeads = winLeadsAll.filter((l) => !isKeyAccountLead(keyIds, l));
-  const keyWinLeads = winLeadsAll.filter((l) => isKeyAccountLead(keyIds, l));
+  // Venda de parceiro (26/11/2026): fora do resultado como a conta grande,
+  // em balde próprio; ela vence a conta grande (nunca nos dois).
+  const isKeyWin = (l) => !isPartnerSaleLead(l) && isKeyAccountLead(keyIds, l);
+  const winLeads = winLeadsAll.filter((l) => !isKeyWin(l) && !isPartnerSaleLead(l));
+  const keyWinLeads = winLeadsAll.filter(isKeyWin);
+  const partnerWinLeads = winLeadsAll.filter(isPartnerSaleLead);
   // MESMA régua do mês: faturado/recorrente conta só o que entrou NA JANELA.
   const valueOf = saleValuer({ invoices, mpPayments, customers, inWin });
   // Upsell é venda — mesma régua do mês (metrics-core).
@@ -889,6 +901,7 @@ function windowGoalFrom(product, { saleLeads, customers, invoices, mpPayments },
       status: statusOf(soldN, contractsTarget),
     },
     keyAccount: keyAccountNote(keyWinLeads, customers, sold, soldN, valueOf, keyUps, upsValue),
+    partnerSale: partnerSaleNote(partnerWinLeads, product, sold, soldN, valueOf),
   };
 }
 
@@ -948,6 +961,7 @@ export async function computeMonthlyHistory(repo, product, { from = null, now = 
     const { since, until } = monthBounds(month);
     const w = windowGoalFrom(product, data, { since, until, today, averageEntry });
     const ka = w.keyAccount;
+    const ps = w.partnerSale;
     months.push({
       month,
       target: w.sale.target,
@@ -966,6 +980,7 @@ export async function computeMonthlyHistory(repo, product, { from = null, now = 
       ended: w.ended,
       current: w.current,
       keyAccount: ka ? { count: ka.count, revenue: ka.revenue, names: ka.names, soldWith: ka.soldWith, countWith: ka.countWith } : null,
+      partnerSale: ps ? { count: ps.count, revenue: ps.revenue, partners: ps.partners, sellers: ps.sellers, soldWith: ps.soldWith, countWith: ps.countWith } : null,
     });
   }
 
@@ -1023,4 +1038,12 @@ function keyAccountNote(keyLeads, customers, sold, soldN, valueOf, keyUpsells = 
     soldWith: round2(sold + revenue),
     countWith: soldN + count,
   };
+}
+
+// Rodapé da venda de parceiro (26/11/2026): o mesmo desenho do da conta
+// grande, com o parceiro e o vendedor externo no lugar do nome do cliente.
+function partnerSaleNote(leads, product, sold, soldN, valueOf) {
+  const ps = partnerSaleOf(leads, valueOf, product);
+  if (!ps) return null;
+  return { ...ps, soldWith: round2(sold + ps.revenue), countWith: soldN + ps.count };
 }
