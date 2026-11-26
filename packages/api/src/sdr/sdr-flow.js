@@ -151,6 +151,11 @@ export function sdrBotConfig(product) {
   const num = (v, fb) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : fb; };
   return {
     enabledAt: cfg.enabledAt || "",
+    // AGENTE SDR externo (OpenBot, 26/11/2026): a conversa dos leads criados de
+    // `agentSince` em diante (e dos ids em `agentLeads`, pra teste) é do agente,
+    // pelas rotas /api/sdr/agent. Liga e desliga por PATCH, sem deploy.
+    agentSince: typeof cfg.agentSince === "string" ? cfg.agentSince : "",
+    agentLeads: Array.isArray(cfg.agentLeads) ? cfg.agentLeads.map(String) : [],
     firstTouch: cfg.firstTouch !== false,
     reminders: cfg.reminders !== false,
     rescue: cfg.rescue !== false,
@@ -329,6 +334,20 @@ export function leadPainFocus(product, lead) {
 // dois cruzados (teste não fala com lead real; produção não fala com teste).
 export const conversationActive = (cfg, lead) =>
   !!cfg && (lead?.internal ? cfg.conversationTest : cfg.conversation);
+
+// A CONVERSA deste lead é do agente SDR externo (OpenBot)? O cérebro nativo
+// cala nesses leads e quem responde, reserva, marca e desmarca é o agente,
+// pelas rotas /api/sdr/agent (sdr-agent.js). O fluxo determinístico (1º toque,
+// lembretes, resgate de no-show) segue igual pros dois. Vale pro lead criado
+// de `sdrBot.agentSince` em diante, ou listado em `sdrBot.agentLeads`.
+// Voltar pro robô nativo: tirar os dois do produto (PATCH, sem deploy).
+export const agentOwns = (cfg, lead) => {
+  if (!cfg || !lead?.id) return false;
+  if (cfg.agentLeads?.includes(String(lead.id))) return true;
+  const since = Date.parse(cfg.agentSince || "");
+  const created = Date.parse(lead.createdAt || "");
+  return Number.isFinite(since) && Number.isFinite(created) && created >= since && !lead.internal;
+};
 
 // "3 a 5 contas · autopeças · 500 a 2 mil anúncios" — o que o lead respondeu no
 // diagnóstico, com os RÓTULOS do painel de qualificação do produto

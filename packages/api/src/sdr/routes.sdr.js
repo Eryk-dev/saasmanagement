@@ -2,7 +2,7 @@
 // agora consultável por API), submissão dos templates da Meta (Fase 0) e o
 // status que o card "SDR automático" da aba Automações mostra.
 import { readFile } from "node:fs/promises";
-import { slotsForLead } from "../crm/agenda-slots.js";
+import { slotsForLead, activeHolds, OFFER_HOURS } from "../crm/agenda-slots.js";
 import { SDR_TEMPLATES } from "./sdr-templates.leverads.js";
 import { resolveWabaId, getWaHealth } from "../whatsapp/wa-health.js";
 import { sdrBotConfig } from "./sdr-flow.js";
@@ -175,6 +175,23 @@ export function registerSdrRoutes(app, repo, { whatsapp: wa, anthropic = null, s
     const days = Math.min(15, Math.max(1, Number(req.query?.days) || 5));
     const limit = Math.min(30, Math.max(1, Number(req.query?.limit) || 8));
     return slotsForLead(repo, { lead, saas, grade: GRADES.has(g) ? g : undefined, days, limit });
+  });
+
+  // A agenda como o ROBÔ SDR a enxerga, a partir de um dia: times por nota do
+  // lead, janela de oferta de cada closer, almoço fora, feriado fora e sem os
+  // horários que outro lead está segurando (reserva da oferta). Só leitura. É
+  // a consulta do agente SDR que roda fora do cockpit (OpenBot, em sombra desde
+  // 25/11/2026): a /api/agenda/free-slots é a grade MANUAL e corta em 30
+  // horários, então "sexta à tarde" pedido numa quarta ficava sem resposta.
+  app.get("/api/sdr/agenda", async (req, reply) => {
+    const saas = String(req.query?.saas || "");
+    if (!saas) return reply.code(400).send({ error: "passe ?saas=" });
+    const from = String(req.query?.from || "");
+    if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) return reply.code(400).send({ error: "from é AAAA-MM-DD" });
+    const lead = req.query?.lead ? await repo.get("leads", String(req.query.lead)) : null;
+    const days = Math.min(15, Math.max(1, Number(req.query?.days) || 5));
+    const holds = await activeHolds(repo, saas);
+    return slotsForLead(repo, { lead, saas, sdr: true, ...OFFER_HOURS, holds, days, limit: 0, ...(from ? { startDate: `${from}T00:00` } : {}) });
   });
 
   // Submete os templates do SDR pra aprovação da Meta. Idempotente: aprovado

@@ -245,8 +245,27 @@ depende de pedido do cliente por texto ou áudio transcrito; o pedido persiste
 na escolha da hora, mas não libera datas fora do período solicitado. Conversa,
 resgate de no-show e replay usam a mesma política. Horário comercial, almoço,
 ocupação e reservas continuam valendo. A rota manual `/api/agenda/free-slots`
-mantém sua régua existente. Testes: `sdr-agenda.test.js`, `sdr-brain.test.js`,
-`sdr-flow.test.js` e `sdr-humanizacao.test.js`.
+mantém sua régua existente. `GET /api/sdr/agenda?saas=&lead=&from=AAAA-MM-DD&days=`
+devolve, só para leitura, a agenda como o robô a enxerga (times por nota, janela
+de oferta, almoço, feriado e reservas de outro lead fora), sem o corte de 30
+horários: é a consulta do agente SDR que roda fora do cockpit (OpenBot, em
+sombra desde 25/11/2026). Testes: `sdr-agenda.test.js`, `sdr-agenda-route.test.js`,
+`sdr-brain.test.js`, `sdr-flow.test.js` e `sdr-humanizacao.test.js`.
+
+**Agente SDR externo (OpenBot, 26/11/2026).** A conversa de um lead pode ser
+entregue a um agente que roda fora do cockpit: `product.sdrBot.agentSince`
+(instante ISO) passa ao agente os leads criados dali em diante, e
+`sdrBot.agentLeads` (ids) serve pra teste. Nesses leads (`agentOwns`, em
+`sdr-flow.js`) o cérebro nativo (`sdr-brain.js`) fica calado; o fluxo
+determinístico (1º toque, lembretes, resgate) segue igual. As mãos do agente são
+as rotas `POST /api/sdr/agent/leads/:id/{send,hold,book,cancel,handoff,opt-out,callback}`
+(`sdr/sdr-agent.js`, só chave mestre ou admin), que reusam `bookCall`,
+`cancelCall`, a reserva de oferta, o Meet e o alerta do Inbox; a agenda ele lê em
+`GET /api/sdr/agenda`. Toda ação recusa lead que não é do agente
+(`not_agent_lead`) e lead com "parar robô" (`paused`); `send` também recusa
+resposta que nasceu velha (`superseded`, `human_answered`, `window_closed`).
+Ligar, desligar e voltar pro robô nativo é PATCH no `sdrBot` do produto, sem
+deploy. Testes em `sdr-agent.test.js`.
 
 **Cancelamento do SDR (21/09/2026):** quando o lead cancela ou avisa que não
 poderá comparecer, `sdr-brain.js` cancela a call pelo fluxo canônico, libera
