@@ -9,7 +9,7 @@ import { makeSdrAgent } from "../src/sdr/sdr-agent.js";
 import { registerSdrAgentRoutes } from "../src/sdr/routes.sdr-agent.js";
 import { makeSdrBrain } from "../src/sdr/sdr-brain.js";
 import { agentOwns, sdrBotConfig, SDR_AUTHOR, makeSdrRunner } from "../src/sdr/sdr-flow.js";
-import { activeHolds, holdSlots, wallNow } from "../src/crm/agenda-slots.js";
+import { activeHolds, holdSlots, wallNow, slotsForLead, OFFER_HOURS } from "../src/crm/agenda-slots.js";
 
 const FUNNEL = [{ stage: "Novo lead", kind: "novo" }, { stage: "Qualificando", kind: "qualificacao" }, { stage: "Call agendada", kind: "call" }];
 const ago = (min) => new Date(Date.now() - min * 60_000).toISOString();
@@ -140,6 +140,30 @@ test("handoff, opt-out e callback: carimbos que o resto do cockpit já entende",
   assert.equal((await agent.callback("ana", { day: "2020-01-01" })).status, 400);
   assert.equal((await agent.optOut("ana")).status, 200);
   assert.equal((await repo.get("leads", "ana")).whatsappOptOut, true);
+});
+
+test("lead na sala sem especialista: quem do time está com a agenda livre agora também é avisado", async () => {
+  const { repo } = await world();
+  // relógio de parede fixo num dia útil às 10h05: a agenda de hoje tem gente livre às 10h30
+  const day = businessDay(1);
+  const wall = () => new Date(`${day}T10:05:00Z`);
+  const agent = makeSdrAgent({ repo, whatsapp: { configured: () => true }, wall, partDelayMs: 0, log: { warn: () => {} } });
+  const { slots } = await slotsForLead(repo, { lead: await repo.get("leads", "ana"), saas: "leverads", sdr: true, ...OFFER_HOURS, now: wall(), minNoticeMin: 0, days: 1, limit: 0 });
+  const soon = slots.find((s) => s.at === `${day}T10:30`);
+  assert.ok(soon, "o mundo de teste tem closer livre às 10h30");
+  const other = ["leo", "vit"].find((u) => u !== soon.closer);
+  // a call da Ana é agora, com o OUTRO closer, que não apareceu
+  await repo.update("leads", "ana", { closer: other, stage: "Call agendada", callAt: `${day}T10:00` });
+  const r = await agent.handoff("ana", { kind: "sala", why: "entrou às 10h04, sala vazia" });
+  assert.equal(r.status, 200);
+  const freeUser = (await repo.list("users")).find((u) => u.name === r.body.free);
+  assert.ok(freeUser && freeUser.id !== other, "o livre não é o closer que faltou");
+  const notes = await repo.list("notifications");
+  assert.ok(notes.some((n) => n.user === freeUser.id && /LEAD NA SALA.*agenda livre às 10:30/.test(n.text)));
+  assert.match((await repo.list("wa_alerts"))[0].text, /LEAD NA SALA.*está livre às 10:30/);
+  // aviso de outro tipo não procura closer livre
+  const outro = await world();
+  assert.equal((await outro.agent.handoff("ana", { kind: "pessoa", why: "pediu pessoa" })).body.free, undefined);
 });
 
 test("as cercas do cérebro nativo valem pro agente: etapa de closer, gente falando há pouco e a positiva ao lembrete", async () => {
