@@ -21,4 +21,11 @@ export function registerSdrAgentRoutes(app, agent) {
   route("handoff", agent.handoff);
   route("opt-out", agent.optOut);
   route("callback", agent.callback);
+  // Toque do relógio (SDR proativo): pode trazer o print do case em base64, por
+  // isso o corpo maior que o padrão de 1 MB do Fastify.
+  app.post("/api/sdr/agent/leads/:id/touch", { bodyLimit: 8 * 1024 * 1024 }, async (req, reply) => {
+    if (guard(req, reply)) return;
+    const { status, body } = await agent.touch(req.params.id, req.body || {});
+    return reply.code(status).send(body);
+  });
 }

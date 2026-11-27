@@ -18,7 +18,8 @@ import { raiseAlert } from "../whatsapp/wa-call-flow.js";
 import { slotsForLead, activeHolds, holdSlots, releaseHolds, wallNow, OFFER_HOURS, HOLD_MIN } from "../crm/agenda-slots.js";
 import { upsertNotification } from "../tasks/tasks-core.js";
 import { kindOf, firstStage, isWonLead } from "../crm/stages.js";
-import { sdrBotConfig, agentOwns, SDR_AUTHOR } from "./sdr-flow.js";
+import { sdrBotConfig, agentOwns, touchOn, SDR_AUTHOR } from "./sdr-flow.js";
+import { touchId, claimUntil, claimValue, ABSORBED, FALLBACK_KINDS } from "./sdr-agent-touch.js";
 import { humanMuteHolds } from "./sdr-state.js";
 import { bookCall, cancelCall } from "./sdr-brain.js";
 import { windowOpenAt } from "./sdr-signals.js";
@@ -27,6 +28,18 @@ const SLOT_RX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 const SDR_KINDS = new Set(["novo", "contato", "qualificacao", "call"]); // a região do cérebro nativo (BRAIN_KINDS)
 const refuse = (status, error, extra = {}) => ({ status, body: { ok: false, error, ...extra } });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// O print do case que o agente manda (base64): só PNG ou JPEG de verdade (pelos
+// bytes, não pelo nome) e até 4 MB (a Meta aceita 5 MB em imagem).
+const IMAGE_MAX = 4 * 1024 * 1024;
+export function imageOf(image) {
+  const b64 = typeof image === "string" ? image : String(image?.b64 || "");
+  if (!b64 || b64.length > Math.ceil(IMAGE_MAX / 3) * 4 + 8 || !/^[A-Za-z0-9+/=\s]+$/.test(b64)) return null;
+  const buffer = Buffer.from(b64, "base64");
+  if (!buffer.length || buffer.length > IMAGE_MAX) return null;
+  if (buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return { buffer, mime: "image/png", ext: "png" };
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return { buffer, mime: "image/jpeg", ext: "jpg" };
+  return null;
+}
 
 export function makeSdrAgent({ repo, whatsapp: wa, autoCallMeet = null, cancelCallMeet = null, now = () => new Date(), wall = wallNow, partDelayMs = 1800, log = console }) {
   // O lead, o produto e a conversa, ou a recusa. `paused` e `not_agent_lead`
@@ -73,8 +86,10 @@ export function makeSdrAgent({ repo, whatsapp: wa, autoCallMeet = null, cancelCa
     if (replyTo && lastIn.id !== replyTo) return refuse(409, "superseded");
     // A positiva ao lembrete da call é da régua da call (handleSdrInbound
     // carimbou a confirmação NESTA mensagem): o link vai pelo fluxo (2c).
+    // Lead do SDR proativo: o texto fixo do link sai de cena (decisão 29) e quem
+    // responde à positiva é o próprio agente.
     const confirmedMs = Date.parse(lead.confirmLog?.confirmed || "");
-    if (lead.callConfirmed && Number.isFinite(confirmedMs) && confirmedMs >= Date.parse(lastIn.at || 0) - 5000) return refuse(409, "reminder_confirmed");
+    if (!touchOn(c.cfg, lead) && lead.callConfirmed && Number.isFinite(confirmedMs) && confirmedMs >= Date.parse(lastIn.at || 0) - 5000) return refuse(409, "reminder_confirmed");
     if (msgs.some((m) => m.direction === "out" && users.has(m.author) && Date.parse(m.at || 0) > Date.parse(lastIn.at || 0))) return refuse(409, "human_answered");
     if (!windowOpenAt(msgs, now().getTime())) return refuse(409, "window_closed");
     const phoneId = thread.waPhoneId || product?.waPhoneId || undefined;
@@ -113,6 +128,10 @@ export function makeSdrAgent({ repo, whatsapp: wa, autoCallMeet = null, cancelCa
     const taken = wanted.filter((s) => !open.has(s));
     if (taken.length) return refuse(409, "taken", { taken, alternatives: near(free, taken[0]) });
     await holdSlots(repo, { saas: c.lead.saas, leadId: c.lead.id, slots: wanted.map((at) => ({ at })), now: now() });
+    // A OFERTA do agente fica carimbada: é a âncora da reativação de quem
+    // recebeu os horários e sumiu (sdr-agent-touch.js, decisões 30 e 31).
+    const cur = (await repo.get("leads", c.lead.id))?.sdrLog || {};
+    await repo.update("leads", c.lead.id, { sdrLog: { ...cur, agentOfferAt: now().toISOString(), agentOfferSlots: wanted } }).catch(() => {});
     return { status: 200, body: { ok: true, held: wanted, minutes: HOLD_MIN } };
   }
 
@@ -238,5 +257,112 @@ export function makeSdrAgent({ repo, whatsapp: wa, autoCallMeet = null, cancelCa
     return { status: 200, body: { ok: true, callbackAt: at.toISOString() } };
   }
 
-  return { send, hold, book, cancel, confirm, handoff, optOut, callback };
+  // TOQUE DO RELÓGIO (SDR proativo, sdr-agent-touch.js): o agente entrega o
+  // que o relógio pediu. Só vale a linha de sdr_touches em "pedido", no prazo,
+  // pra mesma reunião; o lead que escreveu depois do pedido, ou gente do time
+  // que falou, encerra o toque sem texto (a conversa viva cobre). Os balões
+  // saem em ordem e o print do case, quando vem, logo depois do primeiro.
+  // `silencio` fecha o toque sem mandar nada: na confirmação e no link o passo
+  // volta pro lembrete fixo (o lead não fica sem); no resto, nada sai.
+  async function touch(leadId, { key = "", parts = [], image = null, case: caseId = "", silencio = "" } = {}) {
+    const id = touchId(String(leadId || ""), String(key || ""));
+    const rec = key ? await repo.get("sdr_touches", id) : null;
+    const iso = now().toISOString(), nowMs = now().getTime();
+    const close = async (patch) => { if (rec) await repo.update("sdr_touches", id, { ...patch, atualizadoEm: iso }); };
+    // Os passos do lembrete fixo que este toque reservou: devolvidos agora
+    // (o fixo sai) ou fechados de vez (a conversa viva cobre).
+    const settle = async (lead, how) => {
+      if (!rec?.covers?.length || !lead?.confirmLog || lead.confirmLog.at !== rec.callAt) return;
+      const log0 = { ...lead.confirmLog };
+      let changed = false;
+      for (const s of rec.covers) {
+        if (how === "sent") { log0[s] = iso; changed = true; }
+        else if (Number.isFinite(claimUntil(log0[s]))) { log0[s] = how === "absorb" ? ABSORBED : claimValue(nowMs); changed = true; }
+      }
+      if (changed) await repo.update("leads", lead.id, { confirmLog: log0 });
+    };
+    if (!rec) return refuse(404, "touch_unknown");
+    if (rec.estado !== "pedido") return refuse(409, "touch_closed", { estado: rec.estado });
+    const c = await load(leadId);
+    if (c.fail) {
+      const lead = await repo.get("leads", String(leadId));
+      await close({ estado: "pulado", motivo: c.fail.body.error });
+      await settle(lead, "release");
+      return c.fail;
+    }
+    const { lead, cfg, thread, msgs, users } = c;
+    if (!touchOn(cfg, lead)) { await close({ estado: "pulado", motivo: "desligado" }); await settle(lead, "release"); return refuse(409, "touch_off"); }
+    if (nowMs > Date.parse(rec.prazo || "")) { await close({ estado: "expirado", motivo: "entregue depois do prazo" }); return refuse(409, "touch_expired"); }
+    if (rec.callAt && lead.callAt !== rec.callAt) { await close({ estado: "pulado", motivo: "remarcada" }); return refuse(409, "call_changed"); }
+    const pedidoMs = Date.parse(rec.pedidoEm || 0);
+    const lastIn = [...msgs].reverse().find((m) => m.direction === "in");
+    // O lead escreveu depois do pedido: o atendimento dele responde a conversa
+    // inteira. O link da sala, esse não pode faltar: volta pro fixo.
+    if (lastIn && Date.parse(lastIn.at || 0) > pedidoMs) {
+      const absorb = rec.tipo !== "link_sala";
+      await close({ estado: absorb ? "absorvido" : "pulado", motivo: "o lead escreveu depois do pedido" });
+      await settle(lead, absorb ? "absorb" : "release");
+      return refuse(409, "superseded");
+    }
+    if (msgs.some((m) => m.direction === "out" && users.has(m.author) && Date.parse(m.at || 0) > pedidoMs)) {
+      await close({ estado: "pulado", motivo: "alguém do time falou" });
+      await settle(lead, "release");
+      return refuse(409, "human_answered");
+    }
+    if (silencio) {
+      const back = FALLBACK_KINDS.has(rec.tipo);
+      await close({ estado: "silencio", motivo: String(silencio).slice(0, 200), fallback: back });
+      await settle(lead, back ? "release" : "keep");
+      return { status: 200, body: { ok: true, silencio: true, fallback: back } };
+    }
+    const texts = (Array.isArray(parts) ? parts : []).map((p) => String(p || "").trim()).filter(Boolean);
+    if (!texts.length || texts.length > 4 || texts.some((t) => t.length > 600)) return refuse(400, "parts: de 1 a 4 balões de até 600 caracteres");
+    let picture = null;
+    if (image) {
+      picture = imageOf(image);
+      if (!picture) return refuse(400, "image: PNG ou JPEG de até 4 MB, em base64");
+      if (!rec.comCase || !/^K-\d{4}$/.test(String(caseId || ""))) return refuse(400, "image: só o print do case pedido neste toque");
+    }
+    if (lead.whatsappInvalid) return refuse(409, "invalid_number");
+    if (!thread) return refuse(409, "no_thread");
+    if (!windowOpenAt(msgs, nowMs)) {
+      await close({ estado: "pulado", motivo: "a janela de 24 horas fechou" });
+      await settle(lead, "release");
+      return refuse(409, "window_closed");
+    }
+    const phoneId = thread.waPhoneId || c.product?.waPhoneId || undefined;
+    if (!wa?.configured?.(phoneId)) return refuse(503, "whatsapp_not_configured");
+    const to = thread.phone || thread.id;
+    let mediaId = "";
+    if (picture) {
+      try { mediaId = await wa.uploadMedia(picture.buffer, { mime: picture.mime, filename: `${caseId}.${picture.ext}`, phoneId }); }
+      catch (err) { return refuse(502, "image_upload_failed", { sent: 0, detail: String(err.message || err).slice(0, 160) }); }
+      if (!mediaId) return refuse(502, "image_upload_failed", { sent: 0 });
+    }
+    const ids = [];
+    const record = (messageId, text, media = null) => recordMessage(repo, { id: messageId, phone: to, direction: "out", text, status: "sent", author: SDR_AUTHOR, waPhoneId: phoneId || "", saas: lead.saas || "", leadId: lead.id, via: "toque", ...(media ? { media } : {}) });
+    try {
+      for (const [i, text] of texts.entries()) {
+        if (i && partDelayMs) await sleep(Math.min(5000, partDelayMs + text.length * 25));
+        const { messageId } = await wa.sendText(to, text, { phoneId });
+        await record(messageId, text);
+        ids.push(messageId);
+        if (i === 0 && mediaId) {
+          if (partDelayMs) await sleep(partDelayMs);
+          const sentImg = await wa.sendMedia(to, { kind: "image", mediaId }, { phoneId });
+          await record(sentImg.messageId, "", { kind: "image", id: mediaId, mime: picture.mime, filename: `${caseId}.${picture.ext}` });
+          ids.push(sentImg.messageId);
+        }
+      }
+    } catch (err) {
+      log?.warn?.(`sdr agent touch ${lead.id}: ${err.message}`);
+      if (ids.length) { await close({ estado: "enviado", via: "agente", parcial: true, enviadoEm: iso, case: caseId || "", messageIds: ids }); await settle(lead, "sent"); }
+      return refuse(502, "send_failed", { sent: ids.length, detail: String(err.message || err).slice(0, 160) });
+    }
+    await close({ estado: "enviado", via: "agente", enviadoEm: iso, case: caseId || "", comPrint: !!mediaId, messageIds: ids });
+    await settle(lead, "sent");
+    return { status: 200, body: { ok: true, messageIds: ids } };
+  }
+
+  return { send, hold, book, cancel, confirm, handoff, optOut, callback, touch };
 }

@@ -101,7 +101,9 @@ const PRIVATE = new Set(["users", "icp_versions", "integration_secrets", "produc
   // (events/), lidos pelas rotas próprias.
   "crm_events", "timeline_events", "workspaces", "onboardings", "cs_followups", "saved_views", "meetings", "bundles", "deal_orders", "teams",
   // Guias: rascunho só para quem edita e escrita só com a etiqueta (guides/).
-  "guides", "guide_assets"]);
+  "guides", "guide_assets",
+  // Toques do relógio do agente SDR (sdr-agent-touch.js): só o motor e a rota do agente escrevem.
+  "sdr_touches"]);
 
 const isExposed = (c) => COLLECTION_NAMES.includes(c) && !PRIVATE.has(c);
 
