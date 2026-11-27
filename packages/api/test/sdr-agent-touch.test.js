@@ -353,6 +353,10 @@ test("case 2h antes só pra quem confirmou, com print; o agente não manda image
   const ok = await w.agent.touch("L1", { key: req.key, parts: ["Rafael, tava vendo aqui um resultado do seu nicho", "Uma loja de autopeças com uns 6 mil anúncios saiu de R$ 12 mil para R$ 31 mil de lucro por mês"], image: { b64: PNG_B64 }, case: "K-0012" });
   assert.equal(ok.status, 200);
   assert.deepEqual(w.wa.sent.slice(-3).map((s) => s.kind), ["text", "image", "text"], "o print vai logo depois do primeiro balão");
+  // na reativação o primeiro balão é a pergunta: o print entra depois do balão que o anuncia
+  await w.repo.update("sdr_touches", req.id, { estado: "pedido" });
+  await w.agent.touch("L1", { key: req.key, parts: ["Bom dia Rafael, conseguiu ver minha mensagem?", "Tava vendo aqui um resultado de uma loja do seu nicho", "Uma loja saiu de R$ 12 mil para R$ 31 mil de lucro por mês"], image: { b64: PNG_B64 }, case: "K-0012", imageAfter: 1 });
+  assert.deepEqual(w.wa.sent.slice(-4).map((s) => s.kind), ["text", "text", "image", "text"]);
   const rec = (await w.touches()).find((r) => r.tipo === "case");
   assert.deepEqual([rec.estado, rec.case, rec.comPrint], ["enviado", "K-0012", true]);
   assert.equal(imageOf(PNG_B64).mime, "image/png");

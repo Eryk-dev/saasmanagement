@@ -267,10 +267,11 @@ export function makeSdrAgent({ repo, whatsapp: wa, autoCallMeet = null, cancelCa
   // que o relógio pediu. Só vale a linha de sdr_touches em "pedido", no prazo,
   // pra mesma reunião; o lead que escreveu depois do pedido, ou gente do time
   // que falou, encerra o toque sem texto (a conversa viva cobre). Os balões
-  // saem em ordem e o print do case, quando vem, logo depois do primeiro.
+  // saem em ordem e o print do case, quando vem, logo depois do balão que o
+  // anuncia (`imageAfter`, o índice dele; sem ele, depois do primeiro).
   // `silencio` fecha o toque sem mandar nada: na confirmação e no link o passo
   // volta pro lembrete fixo (o lead não fica sem); no resto, nada sai.
-  async function touch(leadId, { key = "", parts = [], image = null, case: caseId = "", silencio = "" } = {}) {
+  async function touch(leadId, { key = "", parts = [], image = null, case: caseId = "", silencio = "", imageAfter = 0 } = {}) {
     const id = touchId(String(leadId || ""), String(key || ""));
     const rec = key ? await repo.get("sdr_touches", id) : null;
     const iso = now().toISOString(), nowMs = now().getTime();
@@ -353,7 +354,7 @@ export function makeSdrAgent({ repo, whatsapp: wa, autoCallMeet = null, cancelCa
         const { messageId } = await wa.sendText(to, text, { phoneId });
         await record(messageId, text);
         ids.push(messageId);
-        if (i === 0 && mediaId) {
+        if (i === Math.min(Math.max(0, Number(imageAfter) || 0), texts.length - 1) && mediaId) {
           if (partDelayMs) await sleep(partDelayMs);
           const sentImg = await wa.sendMedia(to, { kind: "image", mediaId }, { phoneId });
           await record(sentImg.messageId, "", { kind: "image", id: mediaId, mime: picture.mime, filename: `${caseId}.${picture.ext}` });
