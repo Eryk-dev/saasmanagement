@@ -129,9 +129,15 @@ export function makeSdrAgent({ repo, whatsapp: wa, autoCallMeet = null, cancelCa
     if (taken.length) return refuse(409, "taken", { taken, alternatives: near(free, taken[0]) });
     await holdSlots(repo, { saas: c.lead.saas, leadId: c.lead.id, slots: wanted.map((at) => ({ at })), now: now() });
     // A OFERTA do agente fica carimbada: é a âncora da reativação de quem
-    // recebeu os horários e sumiu (sdr-agent-touch.js, decisões 30 e 31).
+    // recebeu os horários e sumiu (sdr-agent-touch.js, decisões 30 e 31). Só
+    // oferta feita depois de o lead falar muda a âncora: o agente que oferece de
+    // novo dentro do próprio toque de reativação não reinicia a sequência (senão
+    // cada reativação geraria outra na manhã seguinte).
     const cur = (await repo.get("leads", c.lead.id))?.sdrLog || {};
-    await repo.update("leads", c.lead.id, { sdrLog: { ...cur, agentOfferAt: now().toISOString(), agentOfferSlots: wanted } }).catch(() => {});
+    const lastIn = [...(c.msgs || [])].reverse().find((m) => m.direction === "in");
+    const prev = Date.parse(cur.agentOfferAt || "");
+    const fresh = !Number.isFinite(prev) || (!!lastIn && Date.parse(lastIn.at || 0) > prev);
+    await repo.update("leads", c.lead.id, { sdrLog: { ...cur, ...(fresh ? { agentOfferAt: now().toISOString() } : {}), agentOfferSlots: wanted } }).catch(() => {});
     return { status: 200, body: { ok: true, held: wanted, minutes: HOLD_MIN } };
   }
 

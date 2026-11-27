@@ -467,3 +467,20 @@ test("reserva vencida ou de lead que saiu do proativo volta pro fluxo com o hor�
   assert.equal(releaseAgentClaims(log0, { on: false, nowMs: T("2026-12-03T08:30").getTime() }), true, "chave desligada: o passo absorvido volta pro fixo");
   assert.equal(log0["2h"], undefined);
 });
+
+test("a oferta só vira âncora nova de reativação depois de o lead falar: reoferta dentro do toque não encadeia reativações", async () => {
+  const w = await world({ lead: { stage: "Qualificando", callAt: "", callUrl: "", closer: "" }, msgs: [IN("2026-12-02T21:35", "quero conhecer")] });
+  w.clock.t = T("2026-12-02T21:40");
+  const day = "2026-12-03";
+  assert.equal((await w.agent.hold("L1", { slots: [`${day}T10:00`, `${day}T15:00`] })).status, 200);
+  const first = (await w.lead()).sdrLog.agentOfferAt;
+  assert.equal(first, ISO("2026-12-02T21:40"));
+  w.clock.t = T("2026-12-03T09:23");
+  await w.agent.hold("L1", { slots: [`${day}T15:00`, `${day}T17:00`] });
+  assert.equal((await w.lead()).sdrLog.agentOfferAt, first, "o lead não falou: a âncora fica");
+  assert.deepEqual((await w.lead()).sdrLog.agentOfferSlots, [`${day}T15:00`, `${day}T17:00`]);
+  await w.say("2026-12-03T09:30", "pode ser as 17h? ah não, deixa eu ver");
+  w.clock.t = T("2026-12-03T09:31");
+  await w.agent.hold("L1", { slots: [`${day}T17:00`] });
+  assert.equal((await w.lead()).sdrLog.agentOfferAt, ISO("2026-12-03T09:31"), "falou: oferta nova, âncora nova");
+});
