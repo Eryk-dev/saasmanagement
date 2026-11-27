@@ -274,6 +274,10 @@ escreveu, pra não chegar junto com a resposta.
 No `handoff` de tipo `sala` (lead na sala sem especialista), além de quem cuida
 do lead, é avisado quem do mesmo time de closers está com a agenda livre nos
 próximos 45 min, e o alerta do Inbox diz quem é.
+A ação `confirm` grava a presença confirmada na conversa, só no dia da
+demonstração, com a mesma marca da régua (`callConfirmed` + `confirmLog.confirmed`):
+o link sai pelo fluxo e o aviso de confirmados do time (grupo interno do
+WhatsApp, script na VPS do Hermes) lê essa marca.
 Ligar, desligar e voltar pro robô nativo é PATCH no `sdrBot` do produto, sem
 deploy. Testes em `sdr-agent.test.js`.
 

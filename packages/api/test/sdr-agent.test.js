@@ -166,6 +166,40 @@ test("lead na sala sem especialista: quem do time está com a agenda livre agora
   assert.equal((await outro.agent.handoff("ana", { kind: "pessoa", why: "pediu pessoa" })).body.free, undefined);
 });
 
+test("confirm: a presença confirmada na conversa, no dia, grava a marca da régua; véspera não vale e o link não repete", async () => {
+  const day = businessDay(1);
+  const wall = () => new Date(`${day}T09:00:00Z`);
+  const booked = { stage: "Call agendada", callAt: `${day}T14:00`, closer: "leo", callUrl: "https://meet.google.com/abc" };
+  const make = async (opts) => {
+    const w = await world(opts);
+    return { ...w, agent: makeSdrAgent({ repo: w.repo, whatsapp: { configured: () => true, sendText: async () => ({ messageId: "x" }) }, wall, partDelayMs: 0, log: { warn: () => {} } }) };
+  };
+  // "simm! mto obg" ao lembrete: a régua não leu, o agente confirma; o link fica com o fluxo (2c)
+  const { repo, agent } = await make({ lead: booked, messages: [{ direction: "out", author: SDR_AUTHOR, text: "Bom dia Ana, temos um horário reservado para hoje às 14h, tudo certo?", at: ago(9) }, { direction: "in", text: "simm! mto obg", at: ago(5) }] });
+  const r = await agent.confirm("ana");
+  assert.deepEqual([r.status, r.body.link], [200, "flow"]);
+  const ana = await repo.get("leads", "ana");
+  assert.equal(ana.callConfirmed, true);
+  assert.equal(ana.confirmLog.at, booked.callAt);
+  assert.ok(Date.parse(ana.confirmLog.confirmed) > 0 && !ana.confirmLog.linkSentAt);
+  // confirmado: a resposta é o link do fluxo, o agente não escreve por cima; e confirmar de novo não muda nada
+  assert.equal((await agent.send("ana", { parts: ["Combinado Ana"] })).body.error, "reminder_confirmed");
+  assert.equal((await agent.confirm("ana")).body.already, true);
+  // o agente já mandou o link depois da última mensagem do lead: fica carimbado, o fluxo não manda outro
+  const jaFoi = await make({ lead: booked, messages: [{ direction: "in", text: "pode ser hoje às 14h, confirmado", at: ago(5) }, { direction: "out", author: SDR_AUTHOR, text: `O link pra entrar é este: ${booked.callUrl}`, at: ago(4) }] });
+  assert.equal((await jaFoi.agent.confirm("ana")).body.link, "sent");
+  assert.ok((await jaFoi.repo.get("leads", "ana")).confirmLog.linkSentAt);
+  // demonstração de outro dia: quem confirma o dia é o lembrete da manhã
+  const vespera = await make({ lead: { ...booked, callAt: `${new Date(Date.parse(`${day}T00:00:00Z`) + 24 * 3600_000).toISOString().slice(0, 10)}T14:00` } });
+  assert.deepEqual([(await vespera.agent.confirm("ana")).status, (await vespera.agent.confirm("ana")).body.error], [409, "not_today"]);
+  assert.ok(!(await vespera.repo.get("leads", "ana")).callConfirmed);
+  // hora que já passou e lead sem demonstração
+  const passou = await make({ lead: { ...booked, callAt: `${day}T08:30` } });
+  assert.equal((await passou.agent.confirm("ana")).body.error, "not_today");
+  const semCall = await make();
+  assert.equal((await semCall.agent.confirm("ana")).body.error, "no_call");
+});
+
 test("as cercas do cérebro nativo valem pro agente: etapa de closer, gente falando há pouco e a positiva ao lembrete", async () => {
   const closer = await world({ lead: { stage: "Proposta" } });
   assert.equal((await closer.agent.send("ana", { parts: ["oi"] })).body.error, "out_of_region");
