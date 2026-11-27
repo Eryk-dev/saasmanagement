@@ -42,6 +42,7 @@ import { sdrSlotsForLead } from "./sdr-agenda.js";
 import { offerLine, NO_SLOT_TEXT } from "./sdr-offer.js";
 import { readFile } from "node:fs/promises";
 import { SDR_TEMPLATES } from "./sdr-templates.leverads.js";
+import { runAgentTouches, inReactivation, releaseAgentClaims, releasedFireMs, touchPlan, agentHeld } from "./sdr-agent-touch.js";
 
 export const SDR_AUTHOR = "sdr-bot";
 const HOUR = 3_600_000, MIN = 60_000;
@@ -156,6 +157,12 @@ export function sdrBotConfig(product) {
     // pelas rotas /api/sdr/agent. Liga e desliga por PATCH, sem deploy.
     agentSince: typeof cfg.agentSince === "string" ? cfg.agentSince : "",
     agentLeads: Array.isArray(cfg.agentLeads) ? cfg.agentLeads.map(String) : [],
+    // SDR PROATIVO (27/11/2026): o agente externo também toma a iniciativa por
+    // horário (sdr-agent-touch.js). Chave própria, desligada de fábrica:
+    // `agentTouch` liga pra todos os leads do agente; `agentTouchLeads`, só pros
+    // ids listados (teste). Desligada, o motor é exatamente o de antes.
+    agentTouch: cfg.agentTouch === true,
+    agentTouchLeads: Array.isArray(cfg.agentTouchLeads) ? cfg.agentTouchLeads.map(String) : [],
     firstTouch: cfg.firstTouch !== false,
     reminders: cfg.reminders !== false,
     rescue: cfg.rescue !== false,
@@ -348,6 +355,11 @@ export const agentOwns = (cfg, lead) => {
   const created = Date.parse(lead.createdAt || "");
   return Number.isFinite(since) && Number.isFinite(created) && created >= since && !lead.internal;
 };
+
+// O agente toma a iniciativa neste lead (toques do relógio, sdr-agent-touch.js)?
+// Só em lead que já é dele e com a chave do proativo ligada pra todos ou pra ele.
+export const touchOn = (cfg, lead) =>
+  agentOwns(cfg, lead) && (cfg.agentTouch === true || (cfg.agentTouchLeads || []).includes(String(lead?.id)));
 
 // "3 a 5 contas · autopeças · 500 a 2 mil anúncios" — o que o lead respondeu no
 // diagnóstico, com os RÓTULOS do painel de qualificação do produto
@@ -758,6 +770,32 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
       }
       const threadOf = (l) => threadByLead.get(l.id) || threadByKey.get(waMatchKey(l.waPhone || l.phone)) || null;
 
+      // ── 0. Toques do agente externo (SDR proativo, sdr-agent-touch.js) ───
+      // Roda ANTES das outras frentes: o toque que substitui um lembrete fixo
+      // reserva o passo neste mesmo ciclo, antes de a seção 2 olhar pra ele, e
+      // a reativação em curso cala o 2º toque, a escada e a cobrança da oferta.
+      // Falhou o ciclo dos toques: nada fica reservado e o motor segue como antes.
+      let touchRecs = null;
+      if (cfg.agentTouch || cfg.agentTouchLeads.length) {
+        try {
+          const run = await runAgentTouches({
+            repo, product, cfg, leads, humanIds, threadOf, listMessages, now: at, approvedNames, log,
+            sendTemplate: (args) => sendTemplate({ ...args, phoneId, saas: product.id }),
+          });
+          touchRecs = run.byLead;
+          sends += run.stats.templates;
+          stats.agentTouches = run.stats;
+        } catch (err) {
+          log.warn?.({ saas: product.id, err: err.message }, "sdr: ciclo dos toques do agente falhou");
+        }
+      }
+      // Reativação do agente em curso (ou ainda por sair) pra este lead. "Por
+      // sair" é o PLANO dizer que ela vem: lead com oferta do agente que não
+      // ganha reativação (já faltou uma vez, saiu da qualificação) segue com o
+      // 2º toque, a escada e a cobrança de sempre, senão ficaria sem nenhum.
+      const reactHolds = (l) => !!touchRecs && touchOn(cfg, l) && (inReactivation(touchRecs.get(l.id) || [], l, nowMs)
+        || (!!l.sdrLog?.agentOfferAt && touchPlan({ lead: l, product, recs: touchRecs.get(l.id) || [], nowMs }).some((t) => t.tipo === "reativacao_1")));
+
       // ── 1. Primeiro toque ────────────────────────────────────────────────
       if (cfg.firstTouch || cfg.conversationTest) {
         for (const lead of leads) {
@@ -845,6 +883,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           if (sends >= CAP || secondTouchNow >= SECOND_TOUCH_PER_TICK) break;
           if (!eligible(lead) || !passOn(cfg.secondTouch, lead)) continue;
           if (callbackPending(lead, nowMs)) continue; // retorno combinado: espera o dia (R-121)
+          if (reactHolds(lead)) continue;             // a reativação do agente cuida deste lead (seção 0)
           const t0 = Date.parse(lead.sdrLog?.firstTouchAt || "");
           if (!Number.isFinite(t0)) continue;
           if (lead.sdrLog?.firstTouchVia === "human") continue; // 1º toque foi gente: fila humana
@@ -950,6 +989,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
         const cands = leads
           .filter((l) => eligible(l) && passOn(cfg.ladder, l))
           .filter((l) => !callbackPending(l, nowMs)) // retorno combinado: espera o dia (R-121)
+          .filter((l) => !reactHolds(l))             // reativação do agente em curso (seção 0)
           .filter((l) => !isWonLead(product, l) && !l.callAt && !isNoShowStage(l.stage))
           .filter((l) => ["novo", "qualificacao"].includes(kindOf(product, l.stage || firstStage(product))))
           // A ESCADA VALE PRA QUEM A GENTE JÁ TOCOU, não só pra quem levou o 1º
@@ -1150,6 +1190,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           if (sends >= CAP || nudgeNow >= OFFER_NUDGE_PER_TICK) break;
           if (!eligible(lead) || !passOn(cfg.offerNudge, lead)) continue;
           if (callbackPending(lead, nowMs)) continue; // retorno combinado: espera o dia (R-121)
+          if (reactHolds(lead)) continue;             // a reativação do agente (com case) toma o lugar desta cobrança
           // Cobrança de oferta é a mesma conversa continuando: vale também nas
           // colunas de dia, onde o lead fica enquanto a cadência corre.
           if (!["novo", "qualificacao"].includes(kindOf(product, lead.stage || firstStage(product))) && !NOMES_DIAS.includes(lead.stage)) continue;
@@ -1225,9 +1266,14 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           // deste horário param até gente resolver (Emilene, 29/09: pediu pra
           // mudar às 20h49 e às 07h00 ainda levou "nossa conversa é hoje às 9h").
           if (log0.rescheduleAskedAt) continue;
-          const fireAtOf = (r) => r.key === "manha"
+          // PASSO RESERVADO PRO AGENTE EXTERNO (SDR proativo, sdr-agent-touch.js):
+          // enquanto o prazo dele corre, o passo conta como feito; entregue, já
+          // vem carimbado com a hora. Prazo vencido (ou lead fora do proativo):
+          // o passo volta pro fluxo e sai daqui em diante, pra nunca ficar sem.
+          if (releaseAgentClaims(log0, { on: touchOn(cfg, lead), nowMs })) await repo.update("leads", lead.id, { confirmLog: { ...log0 } });
+          const fireAtOf = (r) => releasedFireMs(log0, r.key, r.key === "manha"
             ? Date.parse(brtToIso(`${String(lead.callAt).slice(0, 10)}T${MORNING_REMINDER}`))
-            : callMs - r.beforeMs;
+            : callMs - r.beforeMs);
           // A MANHÃ PULA (e fica carimbada, pra não sair atrasada) quando: já
           // confirmou; a call é cedo demais (até 8h40: o de 10min cobre); ou
           // marcou hoje mesmo depois das 7h30 (a confirmação da marcação
@@ -1256,7 +1302,10 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           // min dele.
           const manhaWillSkip = lead.callConfirmed || log0.confirmed || callMs - manhaAt < 40 * MIN
             || (Number.isFinite(setAtMs) && setAtMs > manhaAt - 30 * MIN) || log0.manha === "skip";
-          if (!log0["2h"] && !manhaWillSkip && !log0.manha && nowMs >= callMs - 2 * HOUR && callMs - 2 * HOUR < manhaAt + 30 * MIN) {
+          // Manhã reservada pro agente externo (ou coberta pela conversa viva)
+          // também é manhã que vai sair: reunião às 10h tinha o fixo de 2h às 8h
+          // e a confirmação do agente às 8h02, as duas.
+          if (!log0["2h"] && !manhaWillSkip && (!log0.manha || agentHeld(log0.manha)) && nowMs >= callMs - 2 * HOUR && callMs - 2 * HOUR < manhaAt + 30 * MIN) {
             log0["2h"] = "manha";
             await repo.update("leads", lead.id, { confirmLog: { ...log0 } });
           }
@@ -1439,6 +1488,9 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           if (sends >= CAP) break;
           if (!eligible(lead) || !passOn(cfg.reminders, lead)) continue;
           if (kindOf(product, lead.stage) !== "call" || !lead.callAt || !lead.callConfirmed || !lead.callUrl) continue;
+          // Lead do SDR proativo: quem responde à positiva é o agente (o texto
+          // fixo sai de cena, decisão 29); o link vai no toque de 10 minutos.
+          if (touchOn(cfg, lead)) continue;
           const log0 = lead.confirmLog && lead.confirmLog.at === lead.callAt ? lead.confirmLog : null;
           if (!log0?.confirmed || log0.linkSentAt || log0["10min"] || log0.rescheduleAskedAt) continue;
           const confirmedMs = Date.parse(log0.confirmed);
@@ -1860,7 +1912,7 @@ export async function handleSdrInbound(repo, { message, now = new Date() } = {})
   const log0 = lead.confirmLog;
   const callMs = lead.callAt ? Date.parse(brtToIso(lead.callAt)) : NaN;
   const askedByBot = !!log0 && log0.at === lead.callAt
-    && [log0["24h"], log0.manha, log0["2h"], log0["1h"], log0["10min"]].some((v) => typeof v === "string" && v.length > 0 && !v.startsWith("erro:"));
+    && [log0["24h"], log0.manha, log0["2h"], log0["1h"], log0["10min"]].some((v) => typeof v === "string" && v.length > 0 && !v.startsWith("erro:") && !agentHeld(v));
   // LEAD JÁ ESTÁ NA CONVERSA (Leo, 24/08): "já estou na sala", "já conversamos",
   // "estou aguardando na reunião" — o lembrete seguinte não pode chamar pra uma
   // conversa que já está acontecendo (prod 24/08: o lead avisou às 17h01 que já

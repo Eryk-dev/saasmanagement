@@ -281,6 +281,29 @@ WhatsApp, script na VPS do Hermes) lê essa marca.
 Ligar, desligar e voltar pro robô nativo é PATCH no `sdrBot` do produto, sem
 deploy. Testes em `sdr-agent.test.js`.
 
+**SDR proativo: toques do relógio (27/11/2026).** Com `sdrBot.agentTouch: true`
+(ou o lead em `sdrBot.agentTouchLeads`, pra teste) o agente também toma a
+iniciativa nos leads dele (`touchOn`, em `sdr-flow.js`): confirmação às 8h do
+dia, segunda mensagem 2h depois pra quem não respondeu (nunca a menos de 1h da
+reunião), case 2h antes pra quem confirmou (reunião de manhã: logo depois da
+confirmação), link 10 min antes; reunião antes das 10h confirma às 19h da
+véspera, com o case, e de novo 1h antes; quem recebeu os horários do agente e
+sumiu ganha a reativação com case na manhã útil seguinte, um template de
+encerramento dois dias úteis depois e, 48h sem resposta, Nutrição. Quem decide a
+hora é `sdr/sdr-agent-touch.js` (seção 0 do motor, antes das outras frentes):
+cada toque vira uma linha em `sdr_touches` (estado `pedido`, PRIVATE; é também o
+registro que o Analista lê), a porta do agente entrega e o agente devolve em
+`POST /api/sdr/agent/leads/:id/touch` (texto e, no case, o print em base64, até
+4 MB). O toque que substitui um lembrete fixo (manhã, 2h, 10 min) reserva o
+passo no `confirmLog` com o prazo do agente (`agente:ate:<iso>`): o fixo espera;
+entregue, o passo fica carimbado; vencido o prazo, ou com a chave desligada, o
+passo volta e o fixo sai dali em diante (`releaseAgentClaims`). Janela de 24h
+fechada: o toque nem é pedido e o fixo (template) segue. Nos leads do proativo o
+link fixo depois da positiva (2c) não sai, `send` não recusa a positiva
+(`reminder_confirmed`) e a reativação em curso cala o 2º toque, a escada e a
+cobrança da oferta. `hold` carimba `sdrLog.agentOfferAt`, a âncora da
+reativação. Desligada, o motor é o de antes. Testes em `sdr-agent-touch.test.js`.
+
 **Cancelamento do SDR (21/09/2026):** quando o lead cancela ou avisa que não
 poderá comparecer, `sdr-brain.js` cancela a call pelo fluxo canônico, libera
 reservas e pergunta se ele gostaria de remarcar, sem oferecer horários nesse

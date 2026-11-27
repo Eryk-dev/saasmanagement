@@ -31,6 +31,7 @@ const SILENT = new Set([
   "ticket_assets", // bytes do anexo; o ticket (QUIET) já avisa a tela
   "guide_assets", // bytes do print; o guia avisa a tela quando passa a usá-lo
   "meeting_transcripts", // transcrição guardada pro agente Cases; nenhuma tela lê
+  "sdr_touches", // toques do relógio do agente SDR (pedido, entrega, motivo): nenhuma tela lê, o Analista lê do banco
 ]);
 
 // Coleções que EMITEM o evento mas não devem recarregar o SEED do SPA: a tela
