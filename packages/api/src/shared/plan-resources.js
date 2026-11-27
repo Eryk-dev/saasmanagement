@@ -31,8 +31,13 @@ export function planProductOf(plan) {
 export const planAccessOf = (product, kind) =>
   (kind === "one_off" ? "" : PLAN_PRODUCTS.find((p) => p.id === product)?.access || "");
 
+// `alsoIn` = outros produtos cujo plano também pode declarar o limite, só como
+// dado comercial: o `org` continua valendo apenas pra plano do `product`.
 export const PLAN_LIMITS = [
-  { key: "accounts", label: "Contas", unit: "contas", product: "leverads",
+  { key: "accounts", label: "Contas", unit: "contas", unitOne: "conta", product: "leverads",
+    // No Lever Price são as contas conectadas (1 no Start). Plano do Price sem
+    // a chave segue como sempre: não se aplica, sem limite de contas.
+    alsoIn: ["leverprice"],
     // Seat de conexão: 1 conta é a origem, as demais são destino.
     org: (v) => (v == null ? {} : { paid_seats: Number(v) }) },
   { key: "copiesPerDay", label: "Cópias por dia", unit: "cópias/dia", product: "leverads",
@@ -46,6 +51,17 @@ export const PLAN_LIMITS = [
     org: (v) => ({ creator_quota_limit: v == null ? null : Number(v), creator_quota_period: "year" }) },
   { key: "listings", label: "Anúncios precificados", unit: "anúncios", product: "leverprice" },
 ];
+// Limites que um plano do produto pode declarar (o formulário de Planos mostra
+// e grava só estes; o que ficar de fora some do plano ao salvar).
+export const planLimitsOf = (product) =>
+  PLAN_LIMITS.filter((l) => l.product === product || (l.alsoIn || []).includes(product));
+
+// Lever Price · Start (27/11/2026): teto de anúncios precificados do plano,
+// 1.000 (confirmado pelo Leo em 27/11/2026). É o único lugar do número: o
+// limite e os entregáveis do plano (billing/plan-catalog.js,
+// ensurePriceStartPlan) e o flashcard do Price leem daqui. Vale até o plano
+// nascer no banco: depois disso quem manda é a edição em Comercial → Planos.
+export const PRICE_START_LISTINGS = 1000;
 
 export const PLAN_FEATURES = [
   { key: "bulkEdit", label: "Edição em massa", product: "leverads", org: ["edit_enabled"] },
@@ -59,10 +75,11 @@ export const PLAN_FEATURES = [
 
 const fmtInt = (n) => String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 
-// "7 contas · 8.000 cópias/dia · OEMs/mês ilimitados"
+// "7 contas · 8.000 cópias/dia · OEMs/mês ilimitados" · "1 conta · 1.000 anúncios"
 export function limitsSummary(limits) {
   return PLAN_LIMITS.filter((l) => l.key in (limits || {}))
-    .map((l) => (limits[l.key] == null ? `${l.unit} ilimitados` : `${fmtInt(limits[l.key])} ${l.unit}`))
+    .map((l) => (limits[l.key] == null ? `${l.unit} ilimitados`
+      : `${fmtInt(limits[l.key])} ${Number(limits[l.key]) === 1 && l.unitOne ? l.unitOne : l.unit}`))
     .join(" · ");
 }
 

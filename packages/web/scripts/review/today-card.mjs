@@ -47,6 +47,29 @@ try {
     last=await saved();
     assert.equal(last.price,true);
     assert.equal(await cfgBox.locator('.deck-cfg-value strong').innerText(),'6× R$ 3.644');
+    // Plano só anual (Lever Price · Start): escolher ele leva o período pro
+    // anual, o Semestral fica desligado com o aviso e nada mostra R$ 0.
+    await cfgBox.getByRole('button',{name:/^Plano Lever Price: Lever Price · Escala$/}).click();
+    const startOption=page.getByRole('listbox',{name:'Plano Lever Price'}).getByRole('option',{name:/Lever Price · Start/});
+    assert.match(await startOption.innerText(),/R\$ 350\/mês · só anual/,'no semestral, o plano só anual mostra o preço do anual');
+    await startOption.click();
+    await cfgBox.getByRole('button',{name:/^Plano Lever Price: Lever Price · Start$/}).waitFor();
+    last=await saved();
+    assert.equal(last.priceTier,'start');
+    assert.equal(last.periodo,'anual');
+    assert.equal(await cfgBox.locator('.deck-cfg-value strong').innerText(),'12× R$ 3.347');
+    assert.ok(await cfgBox.getByRole('radio',{name:'Semestral · 6×',exact:true}).isDisabled());
+    assert.ok(await cfgBox.getByText('Lever Price · Start: só no plano anual',{exact:true}).isVisible());
+    assert.ok(!(await cfgBox.innerText()).includes('R$ 0'));
+    // De volta a um plano com os dois ciclos, o semestral volta a ser escolhível.
+    await cfgBox.getByRole('button',{name:/^Plano Lever Price: Lever Price · Start$/}).click();
+    await page.getByRole('listbox',{name:'Plano Lever Price'}).getByRole('option',{name:/Lever Price · Escala/}).click();
+    await cfgBox.getByRole('button',{name:/^Plano Lever Price: Lever Price · Escala$/}).waitFor();
+    await cfgBox.getByRole('radio',{name:'Semestral · 6×',exact:true}).click();
+    await cfgBox.getByRole('radio',{name:'Semestral · 6×',exact:true,checked:true}).waitFor();
+    last=await saved();
+    assert.equal(last.periodo,'semestral');
+    assert.equal(await cfgBox.locator('.deck-cfg-value strong').innerText(),'6× R$ 3.644');
     assert.equal(last.nome,'Bruno');
     assert.ok(await cfgBox.evaluate(e=>e.scrollWidth<=e.clientWidth));
     await h.capture(page,`card-config-${width}`);

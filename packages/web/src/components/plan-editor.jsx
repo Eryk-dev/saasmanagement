@@ -5,7 +5,7 @@ import { PrimaryButton, SecondaryButton } from "../atoms.jsx";
 import { Modal } from "./overlay.jsx";
 import { CYCLE_MONTHS, CYCLE_TITLE } from "../lib/payments.js";
 import { Checkbox } from "./form-controls.jsx";
-import { PLAN_LIMITS as LIMITS, PLAN_FEATURES, PLAN_PRODUCTS, planProductOf, planAccessOf } from "../../../api/src/shared/plan-resources.js";
+import { PLAN_LIMITS as LIMITS, PLAN_FEATURES, PLAN_PRODUCTS, planProductOf, planAccessOf, planLimitsOf } from "../../../api/src/shared/plan-resources.js";
 
 // Formulário de PLANO do catálogo (coleção `plans`, v2): criar e editar o que
 // se vende, com o produto, o preço de cada ciclo, os limites, os recursos do
@@ -35,11 +35,12 @@ const fromLines = (text) => String(text || "").split("\n").map((l) => l.trim()).
 
 // Seletor segmentado de uma opção (grupo de rádio): o mesmo desenho do
 // `Segmented` das telas, com botões que não enviam o formulário.
+// Opção com `disabled` fica à mostra e não se escolhe (`title` diz o porquê).
 export function Choice({ label, value, options, onChange, size = "md" }) {
   return (
     <div className="plan-choice" data-size={size} role="radiogroup" aria-label={label}>
       {options.map((o) => (
-        <button key={o.value} type="button" role="radio" aria-checked={value === o.value} onClick={() => onChange(o.value)}>{o.label}</button>
+        <button key={o.value} type="button" role="radio" aria-checked={value === o.value} disabled={!!o.disabled} title={o.title || undefined} onClick={() => onChange(o.value)}>{o.label}</button>
       ))}
     </div>
   );
@@ -83,7 +84,9 @@ export function PlanModal({ plan, saas, defaultProduct = "leverads", onClose, on
   // O produto vendido define em que sistema a assinatura libera acesso.
   const access = planAccessOf(f.product, f.kind);
   const hasModules = subscription && f.pricing !== "custom" && access === "leverads";
-  const limitsShown = subscription ? LIMITS.filter((l) => l.product === access) : [];
+  // Inclui o limite que o produto herda de outro (Contas num plano do
+  // LeverPrice): o que não aparece aqui sairia do plano ao salvar.
+  const limitsShown = subscription ? planLimitsOf(access) : [];
   const productLabel = PLAN_PRODUCTS.find((x) => x.id === f.product)?.label || "";
 
   async function submit(e) {

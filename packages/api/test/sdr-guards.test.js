@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { wallFromNaive } from "../src/crm/agenda-slots.js";
-import { GUARDS, guardById, validateDraft, makeDraft, realOfferOf, PRICE_RX, stripDuration, stripDeviceAsk, sameSentence, alreadySaid } from "../src/sdr/sdr-guards.js";
+import { GUARDS, guardById, validateDraft, makeDraft, realOfferOf, PRICE_RX, leaksPrice, stripDuration, stripDeviceAsk, sameSentence, alreadySaid } from "../src/sdr/sdr-guards.js";
 import { offerLine, OFFER_STYLES, NO_SLOT_TEXT } from "../src/sdr/sdr-offer.js";
 import { isOfferMsg, collapseSameDay, offeredSlotsIn } from "../src/sdr/sdr-signals.js";
 import { RULES, ruleById } from "../src/sdr/sdr-rules.js";
@@ -169,6 +169,10 @@ test("offerLine: toda variante é lida de volta como oferta pela régua comparti
 
 test("helpers de texto nosso: PRICE_RX, stripDuration, stripDeviceAsk, sameSentence, alreadySaid #R-050 #R-060 #R-061 #R-009", () => {
   assert.ok(PRICE_RX.test("a partir de R$ 497") && !PRICE_RX.test("500 anúncios em 5 minutos"));
+  // Nome de plano é escolha da call: os quatro pacotes travam, o Start incluído (27/11/2026).
+  for (const nome of ["Start", "Essencial", "Escala", "Enterprise"]) assert.ok(PRICE_RX.test(`pra você serve o plano ${nome}`), nome);
+  assert.ok(leaksPrice("o plano start cabe na sua operação"), "minúsculo também");
+  assert.ok(!PRICE_RX.test("o plano é dar o start na operação ainda esta semana"), "a palavra solta não é nome de plano");
   assert.equal(stripDuration("É uma conversa de 20 minutos"), "É uma conversa");
   assert.equal(stripDuration("publica em menos de 5 minutos"), "publica em menos de 5 minutos");
   assert.equal(stripDeviceAsk("Pode ser. Vai entrar pelo celular ou pelo computador? Te espero"), "Pode ser. Te espero");

@@ -32,7 +32,7 @@
 // REGRA DO ARQUIVO (igual ao proposal-page.js): o HTML é UM template literal —
 // nada de crase dentro dele nem do script do cliente, que usa concatenação.
 
-import { calcOferta, deckChoices, deckTelas } from "../shared/deck-offer.js";
+import { calcOferta, deckChoices, deckTelas, deckSoAnual, deckPeriodo, deckPricePadrao } from "../shared/deck-offer.js";
 
 export { calcOferta, deckTelas };
 
@@ -505,6 +505,8 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0B141D; }
 .cfg-seg button { flex: 1; padding: 7px 14px; border: 0; border-radius: var(--radius-control); background: none;
   color: var(--ink-muted); font: 500 13px/1 var(--font-sans); cursor: pointer; }
 .cfg-seg button[data-on] { background: var(--paper-card); color: var(--ink); font-weight: 600; box-shadow: var(--shadow-segment); }
+.cfg-seg button:disabled { opacity: .45; cursor: not-allowed; }
+.cfg-so-anual { font-size: 12.5px; color: var(--ink-muted); line-height: 1.4; }
 .cfg-btn { display: inline-flex; align-items: center; justify-content: center; padding: 11px 20px;
   border: 0; border-radius: var(--radius-control); background: var(--btn-primary-bg); color: var(--btn-primary-text);
   font: 600 14px/1 var(--font-sans); box-shadow: var(--shadow-btn); cursor: pointer; }
@@ -998,6 +1000,10 @@ export function contasDoForm(answers, calc) {
 // nunca um número inventado que o cliente pudesse levar a sério.
 // Com `catalog`, linha, pacote, Price e pacote de OEM só valem se forem planos
 // que o catálogo vende (deckChoices); sem ele, as chaves de sempre.
+// Sem pacote do Price escolhido, o padrão é o primeiro do catálogo que não é
+// de escolha manual (deckPricePadrao): o Start nunca vem marcado sozinho.
+// E com um plano só anual no que foi montado, o período volta pro anual
+// (deckPeriodo): "semestral" guardado ou mandado pelo navegador não sobrevive.
 //
 // O desconto da negociação é travado em 15% (o teto da tela zero antiga). Acima
 // disso só com o cadeado aberto: a senha de um admin conferida no servidor, que
@@ -1019,13 +1025,15 @@ export function deckConfig(p, { suggested = "", catalog = null } = {}) {
       || choices.plataforma.find((x) => x.key === String(suggested || ""))
       || choices.plataforma.find((x) => x.linha === String(s.linha || ""))
       || choices.plataforma[0];
-    const priceTier = (choices.price.find((x) => x.tier === String(s.priceTier || "")) || choices.price[0] || {}).tier || "essencial";
+    const priceTier = (choices.price.find((x) => x.tier === String(s.priceTier || "")) || deckPricePadrao(choices.price) || {}).tier || "essencial";
     const pack = choices.oemPacks.find((x) => String(x.qty) === String(s.oemPack || "")) || choices.oemPacks[0];
-    return {
+    const cfg = {
       ...deckConfig(p, { suggested }),
       linha: plat.linha, tier: plat.tier, priceTier,
       oemPack: pack ? String(pack.qty) : String(s.oemPack || "1000"),
     };
+    cfg.periodo = deckPeriodo(catalog, cfg);
+    return cfg;
   }
   return {
     nome: String(s.nome || lead.firstName || lead.name || "").slice(0, 60),
@@ -1038,7 +1046,7 @@ export function deckConfig(p, { suggested = "", catalog = null } = {}) {
     linha: ["ads", "oem"].includes(String(s.linha || "")) ? String(s.linha) : (linhaSug === "oem" ? "oem" : "ads"),
     tier: ["essencial", "escala"].includes(String(s.tier || "")) ? String(s.tier) : (tierSug === "escala" ? "escala" : "essencial"),
     price: !!s.price,
-    priceTier: ["essencial", "escala", "enterprise"].includes(String(s.priceTier || "")) ? String(s.priceTier) : "essencial",
+    priceTier: ["start", "essencial", "escala", "enterprise"].includes(String(s.priceTier || "")) ? String(s.priceTier) : "essencial",
     oem: !!s.oem,
     oemPack: String(s.oemPack || "1000"),
     periodo: s.periodo === "semestral" ? "semestral" : "anual",
@@ -1159,6 +1167,7 @@ function cfgScreen(configOnly = false) {
             <button type="button" data-v="anual">Anual · 12×</button>
             <button type="button" data-v="semestral">Semestral · 6×</button>
           </div>
+          <div class="cfg-so-anual" data-so-anual role="status" hidden></div>
           <div style="font-size:12.5px;color:var(--ink-muted);line-height:1.5" data-nota-plano></div>
         </div>
         <div class="cfg-value" style="background:var(--ink);color:var(--btn-primary-text);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:6px">
@@ -1325,6 +1334,8 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
 <script>
 (function () {
   var D = ${escJson(dados)};
+  var deckSoAnual = ${deckSoAnual.toString()};
+  var deckPeriodo = ${deckPeriodo.toString()};
   var calcOferta = ${calcOferta.toString()};
   var deckChoices = ${deckChoices.toString()};
   var deckTelas = ${deckTelas.toString()};
@@ -1677,12 +1688,21 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
         sel.appendChild(op);
       });
     }
+    // Plano sem preço semestral mostra o do anual com o aviso, nunca "R$ 0":
+    // escolher ele leva o período pro anual (travarPeriodo).
     function precoDe(key) {
       var pr = D.catalog.products[key];
       if (!pr) return "";
-      var per = Number((cfg.periodo === "semestral" ? pr.sem : pr.anu).per) || 0;
+      var sem = Number((pr.sem || {}).per) || 0;
+      if (cfg.periodo === "semestral" && !sem) {
+        return "R$ " + (Number((pr.anu || {}).per) || 0).toLocaleString("pt-BR") + "/mês · só anual";
+      }
+      var per = cfg.periodo === "semestral" ? sem : Number((pr.anu || {}).per) || 0;
       return "R$ " + per.toLocaleString("pt-BR") + "/mês";
     }
+    // Plano só anual marcado: o período volta pro anual antes de pintar e de
+    // salvar (a mesma regra que o servidor aplica ao guardar, deckPeriodo).
+    function travarPeriodo() { cfg.periodo = deckPeriodo(D.catalog, cfg); }
     // Planos escolhíveis: os do catálogo (deckChoices), com o nome de cada um.
     var escolhas = deckChoices(D.catalog);
     function tiersDa(linha) {
@@ -1717,14 +1737,25 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
         var on = !!cfg[el.getAttribute("data-prod")];
         if (on) el.setAttribute("data-on", ""); else el.removeAttribute("data-on");
       });
+      var soAnual = deckSoAnual(D.catalog, cfg);
       [].forEach.call(document.querySelectorAll('[data-seg="periodo"] button'), function (b) {
         if (b.getAttribute("data-v") === cfg.periodo) b.setAttribute("data-on", ""); else b.removeAttribute("data-on");
+        if (b.getAttribute("data-v") === "semestral") {
+          b.disabled = soAnual.length > 0;
+          b.title = soAnual.length ? "Este plano só vende no anual" : "";
+        }
       });
+      var aviso = document.querySelector("[data-so-anual]");
+      if (aviso) {
+        aviso.hidden = !soAnual.length;
+        aviso.textContent = soAnual.length ? soAnual.join(" e ") + ": só no plano anual" : "";
+      }
       var nota = document.querySelector("[data-nota-plano]");
       if (nota && pl) {
         var extra = (D.catalog.addons.contaExtra || {}).per || 100;
+        var semPl = Number((pl.sem || {}).per) || 0;
         nota.textContent = "Anual: 12× R$ " + Number(pl.anu.per || 0).toLocaleString("pt-BR") +
-          ". Semestral: 6× R$ " + Number(pl.sem.per || 0).toLocaleString("pt-BR") +
+          (semPl ? ". Semestral: 6× R$ " + semPl.toLocaleString("pt-BR") : ". Só no plano anual") +
           ". Conta além das " + (pl.contas || 0) + " do pacote: R$ " + Number(extra).toLocaleString("pt-BR") + " por parcela.";
       }
     }
@@ -1735,17 +1766,17 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
       cfg[k] = el.type === "checkbox" ? el.checked : (el.type === "number" ? Number(el.value) : el.value);
       if (k === "vistaPct") cfg[k] = Math.min(descTeto, Math.max(0, cfg[k] || 0));
       if (k === "linha") { var t = tiersDa(cfg.linha); if (!t.some(function (x) { return x.v === cfg.tier; })) cfg.tier = t[0] ? t[0].v : "essencial"; }
-      pintarCfg(); pintar(); salvar();
+      travarPeriodo(); pintarCfg(); pintar(); salvar();
     });
     document.addEventListener("change", function (e) {
       var el = e.target.closest("[data-cfg]");
-      if (el && el.tagName === "SELECT") { cfg[el.getAttribute("data-cfg")] = el.value; pintarCfg(); pintar(); salvar(); }
+      if (el && el.tagName === "SELECT") { cfg[el.getAttribute("data-cfg")] = el.value; travarPeriodo(); pintarCfg(); pintar(); salvar(); }
     });
     document.addEventListener("click", function (e) {
       var b = e.target.closest('[data-seg="periodo"] button');
-      if (!b) return;
+      if (!b || b.disabled) return;
       cfg.periodo = b.getAttribute("data-v");
-      pintarCfg(); pintar(); salvar();
+      travarPeriodo(); pintarCfg(); pintar(); salvar();
     });
     // ── Desconto travado ────────────────────────────────────────────────
     // Até o teto padrão (15%) qualquer closer aplica. O cadeado abre o campo

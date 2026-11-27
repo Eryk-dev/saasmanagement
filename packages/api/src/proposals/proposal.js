@@ -103,8 +103,18 @@ export function deckConfigState(proposal, state, deckC) {
   const c = deckConfig({ state: { deckC, seats: state.seats, descontoLiberado: state.descontoLiberado }, data: proposal.data },
     { suggested: activeProduct(proposal), catalog: proposal.calc?.catalog || null });
   const next = { ...state, deckC: c };
+  const produtos = proposal.calc?.catalog?.products || {};
   const chave = c.linha + "_" + c.tier;
-  if (c.plataforma && proposal.calc?.catalog?.products?.[chave]) next.product = chave;
+  const chavePrice = "price_" + c.priceTier;
+  if (c.plataforma && produtos[chave]) next.product = chave;
+  // Deck SÓ de Lever Price (plataforma desmarcada): o pacote do Price escolhido
+  // na tela zero é o produto da venda. Sem isto o `state.product` ficava como
+  // estava e o valor do card seguia a sugestão da régua (ou o plano da
+  // plataforma marcado antes), não o pacote apresentado: um Start de R$ 4.200
+  // aparecia como Essencial. Só vale com o pacote vindo NA configuração
+  // (`deckC.priceTier`): pacote que é só o padrão do saneamento não mexe em
+  // nada. Com a plataforma no plano, ela segue sendo o produto, como sempre.
+  else if (!c.plataforma && c.price && produtos[chavePrice] && String(deckC?.priceTier ?? "") === c.priceTier) next.product = chavePrice;
   next.cycle = c.periodo === "semestral" ? "semiannual" : "annual";
   // Contas em branco (form sem resposta, closer ainda não perguntou) não
   // zera os assentos que a fórmula por assentos usa.

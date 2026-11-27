@@ -41,7 +41,7 @@ export const PRICE_RX = new RegExp([
   /\b\d{1,2}x\s*de\s*(r\$)?\s*\d/,                                                          // "12x de 250"
   /\bparcelas?\s+de\s*(r\$)?\s*\d/,
   /\b\d{1,3}\s*%\s*(de\s+)?desconto|\bdesconto\s+de\s+\d/,
-  /\bplano\s+(essencial|escala|enterprise)\b/,                                              // nome do plano = escolha da call
+  /\bplano\s+(start|essencial|escala|enterprise)\b/,                                        // nome do plano = escolha da call
 ].map((r) => r.source).join("|"), "i");
 // PREÇO-BASE (decisão do Leo, 24/11/2026; afrouxa o "nunca número" de 18/09):
 // o robô pode dizer que os planos são variáveis, que a conversa orienta o

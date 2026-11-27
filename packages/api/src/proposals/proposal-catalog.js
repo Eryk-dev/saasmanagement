@@ -8,7 +8,9 @@
 //   - ads   (Lever Ads: sincronização, cópia, edição em massa, SAC)
 //   - price (Lever Price: precificação, produto novo)
 //   × essencial / escala / enterprise. Enterprise de OEM e Ads é SOB CONSULTA
-//   (não tem preço, não entra em `products`); o do Price tem preço.
+//   (não tem preço, não entra em `products`); o do Price tem preço. O Price
+//   tem ainda o START (27/11/2026): pacote de entrada, só anual, que não
+//   existe em OEM nem em Ads e que a régua nunca sugere.
 // Chave de produto = linha_pacote ("oem_essencial", "price_escala"…): cabe em
 // state.product, lead.dealProduct e no select do gate sem campo novo.
 //
@@ -36,6 +38,7 @@
 // dois precisam andar juntos.
 
 import { CLOSED_PLANS } from "../shared/plan-cycles.js";
+import { PRICE_TIERS_MANUAIS } from "../shared/deck-offer.js";
 
 const DEFAULT_GRID = [
   ["E", "D", "C", "C", "C"],
@@ -48,14 +51,16 @@ const DEFAULT_ACCOUNTS = ["1", "2", "3-5", "6-10", "10+"];
 const DEFAULT_VOL_LABELS = ["≤100", "100-500", "500-2k", "2-10k", "10k+"];
 
 export const LINE_KEYS = ["oem", "ads", "price"];
-export const TIER_KEYS = ["essencial", "escala", "enterprise"];
-const TIER_LABEL = { essencial: "Essencial", escala: "Escala", enterprise: "Enterprise" };
+// "start" só existe na linha price (Lever Price · Start): OEM e Ads não têm
+// esse pacote, e nenhuma régua daqui o sugere (ver priceTier).
+export const TIER_KEYS = ["start", "essencial", "escala", "enterprise"];
+const TIER_LABEL = { start: "Start", essencial: "Essencial", escala: "Escala", enterprise: "Enterprise" };
 // Ordem canônica dos produtos com preço (o que pode virar deck). Produto extra
 // gravado no banco (fora desta lista) também entra, depois destes.
 export const PRODUCT_KEYS = [
   "oem_essencial", "oem_escala",
   "ads_essencial", "ads_escala",
-  "price_essencial", "price_escala", "price_enterprise",
+  "price_start", "price_essencial", "price_escala", "price_enterprise",
 ];
 // Faixa de contas do form → pacote sugerido. `calc.catalog.tierByAccounts`
 // (banco) sobrescreve sem deploy, FAIXA A FAIXA: o mapa do banco entra por cima
@@ -90,6 +95,7 @@ export const PRODUCT_LABEL = {
   oem_escala: "Ads Escala + OEM",
   ads_essencial: "Ads Essencial",
   ads_escala: "Ads Escala",
+  price_start: "Lever Price · Start",
   price_essencial: "Lever Price · Essencial",
   price_escala: "Lever Price · Escala",
   price_enterprise: "Lever Price · Enterprise",
@@ -195,9 +201,15 @@ export const lineOf = (answers, state) => (isPrice(state, answers) ? "price" : i
 // Pacote do Price: lido dos próprios `limite` do catálogo (o banco manda, sem
 // deploy) contra o TOPO da faixa de anúncios respondida no form. Faixa
 // desconhecida cai no menor pacote; `limite: 0` é o ilimitado e fecha a escada.
+//
+// O START fica fora da escada (PRICE_TIERS_MANUAIS): a sugestão de quem já é
+// lead segue igual, e o closer o escolhe à mão na tela zero. Decisão do Leo
+// (27/11/2026): "closer escolhe"; lead que fatura até uns R$ 50 mil por mês
+// NÃO passa a receber o Start como sugestão. Se um dia passar, a regra entra
+// aqui (a faixa de faturamento não é o volume de anúncios que esta escada lê).
 export function priceTier(cat, state) {
   const products = cat?.products || {};
-  const escada = TIER_KEYS.filter((t) => products["price_" + t])
+  const escada = TIER_KEYS.filter((t) => !PRICE_TIERS_MANUAIS.includes(t) && products["price_" + t])
     .map((tier) => ({ tier, limite: Number(products["price_" + tier]?.limite) || 0 }));
   const top = VOL_TOP[String(state?.volume ?? "")] ?? 0;
   const cabe = escada.find((t) => t.limite > 0 && top <= t.limite) || escada.find((t) => !t.limite);
@@ -301,10 +313,11 @@ function withGroups(slide, motorItems, platItems) {
 }
 
 // Escopo curto do pacote (pílula do card de preço e rótulo do select):
-// "3 contas · 200 OEM/mês", "7 contas · OEM ilimitado", "até 1.000 anúncios".
+// "3 contas · 200 OEM/mês", "7 contas · OEM ilimitado", "até 1.000 anúncios",
+// "1 conta · até 1.000 anúncios" (Lever Price · Start).
 export function scopeOf(P) {
   const parts = [];
-  if (Number(P?.contas) > 0) parts.push(P.contas + " contas");
+  if (Number(P?.contas) > 0) parts.push(P.contas + (Number(P.contas) === 1 ? " conta" : " contas"));
   if (P?.line === "oem") {
     parts.push(Number(P.cotaAno) > 0 ? fmtBR(P.cotaAno) + " OEM/ano"
       : Number(P.cota) > 0 ? P.cota + " OEM/mês" : (P.cotaLabel || "OEM ilimitado"));

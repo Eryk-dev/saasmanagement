@@ -95,6 +95,8 @@ const deckCatalog = {
     ads_enterprise: { name: 'Ads Enterprise', line: 'ads', tier: 'enterprise', contas: 20, inclui: {}, anu: { per: 2997 }, sem: { per: 3297 } },
     oem_essencial: { name: 'Ads Essencial + OEM', line: 'oem', tier: 'essencial', contas: 3, inclui: {}, anu: { per: 597 }, sem: { per: 697 } },
     price_escala: { name: 'Lever Price · Escala', line: 'price', tier: 'escala', contas: 0, inclui: {}, anu: { per: 297 }, sem: { per: 347 } },
+    // Plano só anual (sem preço semestral): com ele marcado o período é o anual.
+    price_start: { name: 'Lever Price · Start', line: 'price', tier: 'start', contas: 1, inclui: {}, anu: { per: 350 }, sem: {} },
   },
 };
 let deckCfg = { nome: 'Bruno', empresa: 'Auto Peças Já', contas: 3, pedidos: 0, ticket: 0, vistaPct: 0, plataforma: true, linha: 'ads', tier: 'essencial', price: false, priceTier: 'escala', oem: false, oemPack: '1000', periodo: 'anual' };

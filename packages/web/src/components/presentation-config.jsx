@@ -5,7 +5,7 @@ import { SelectPopover } from "./select-popover.jsx";
 import { Checkbox } from "./form-controls.jsx";
 import { Choice } from "./plan-editor.jsx";
 import { useAttribution, leadPain } from "../lib/pains.js";
-import { calcOferta, deckChoices } from "../../../api/src/shared/deck-offer.js";
+import { calcOferta, deckChoices, deckSoAnual, deckPeriodo } from "../../../api/src/shared/deck-offer.js";
 
 // Informações da apresentação no card de Atividades (06/10/2026). Era a tela
 // zero do deck de slides num iframe: selects nativos do navegador, sem o tema
@@ -163,6 +163,9 @@ function DeckConfig({ leadId, url, initial, swap = "", onSwitch }) {
   }
   function update(patch) {
     const next = { ...cfgRef.current, ...patch };
+    // Plano só anual marcado (o Lever Price · Start): o período volta pro
+    // anual, a mesma regra que o servidor aplica ao guardar (deckPeriodo).
+    next.periodo = deckPeriodo(catalog, next);
     setCfg(next);
     if (pending.current) clearTimeout(pending.current.timer);
     pending.current = { cfg: next, timer: setTimeout(() => send(next), SAVE_DELAY) };
@@ -175,8 +178,12 @@ function DeckConfig({ leadId, url, initial, swap = "", onSwitch }) {
 
   const choices = deckChoices(catalog);
   const oferta = calcOferta(catalog, cfg);
-  const semestral = cfg.periodo === "semestral";
-  const perMonth = (x) => brl(semestral ? x.semestral : x.anual) + "/mês";
+  const soAnual = deckSoAnual(catalog, cfg);
+  const semestral = deckPeriodo(catalog, cfg) === "semestral";
+  // Plano sem preço semestral mostra o do anual com o aviso, nunca "R$ 0".
+  const perOf = (x) => (semestral && x.semestral ? x.semestral : x.anual);
+  const perMonth = (x) => brl(perOf(x)) + "/mês" + (semestral && !x.semestral ? " · só anual" : "");
+  const periodos = PERIODOS.map((o) => (o.value === "semestral" && soAnual.length ? { ...o, disabled: true, title: "Este plano só vende no anual" } : o));
   const planOptions = choices.plataforma.map((x) => ({ value: x.key, label: x.name, group: x.group, hint: `${x.contas} contas · ${perMonth(x)}` }));
   const priceOptions = choices.price.map((x) => ({ value: x.tier, label: x.name, hint: perMonth(x) }));
   const packOptions = choices.oemPacks.map((x) => ({ value: String(x.qty), label: `${x.qty.toLocaleString("pt-BR")} anúncios`, hint: brl(x.price) }));
@@ -190,7 +197,7 @@ function DeckConfig({ leadId, url, initial, swap = "", onSwitch }) {
   const extras = Math.max(0, contas - inclusas);
   const extraPer = Number(catalog?.addons?.contaExtra?.per) || 100;
   const platHint = plat
-    ? `${contas} contas · ${brl((semestral ? plat.semestral : plat.anual) + extras * extraPer)}/mês${extras ? ` · ${extras} extra${extras > 1 ? "s" : ""} a ${brl(extraPer)}` : ""}`
+    ? `${contas} contas · ${brl(perOf(plat) + extras * extraPer)}/mês${extras ? ` · ${extras} extra${extras > 1 ? "s" : ""} a ${brl(extraPer)}` : ""}`
     : "escolha o plano";
   const priceSel = choices.price.find((x) => x.tier === cfg.priceTier);
   const packSel = choices.oemPacks.find((x) => String(x.qty) === String(cfg.oemPack));
@@ -252,7 +259,8 @@ function DeckConfig({ leadId, url, initial, swap = "", onSwitch }) {
 
       <div className="deck-cfg-field">
         <div className="kicker">Plano</div>
-        <Choice label="Período do plano" size="sm" value={semestral ? "semestral" : "anual"} options={PERIODOS} onChange={(v) => update({ periodo: v })} />
+        <Choice label="Período do plano" size="sm" value={semestral ? "semestral" : "anual"} options={periodos} onChange={(v) => update({ periodo: v })} />
+        {soAnual.length > 0 && <span className="deck-cfg-product-hint" role="status">{soAnual.join(" e ")}: só no plano anual</span>}
       </div>
 
       <div className="deck-cfg-value">

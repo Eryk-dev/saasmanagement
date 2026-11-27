@@ -6,6 +6,50 @@
 // As funções são injetadas no script da página por toString(): sem crase,
 // sem sintaxe que o navegador do cliente não rode (var, function).
 
+// ── Plano só anual ──────────────────────────────────────────────────────────
+// Um plano pode vender SÓ no anual: o Lever Price · Start não tem preço
+// semestral (27/11/2026). Com um plano desses no que foi montado na tela zero,
+// o período é sempre o anual. Sem isto o "Semestral" somava R$ 0 pelo plano e
+// a apresentação saía com a parcela errada.
+//
+// deckSoAnual devolve o NOME dos planos escolhidos (o da plataforma, se a
+// plataforma está marcada, e o do Lever Price, se o Price está marcado) que
+// não têm preço semestral (`sem.per` ausente ou zero), nessa ordem. Lista
+// vazia = o semestral pode ser escolhido. O pacote de OEM avulso é pagamento
+// único e não entra. Lê tanto o catálogo cru do template quanto o enxuto da
+// página (slimCatalog).
+// As duas entram no script da página por toString() junto com calcOferta, que
+// chama deckPeriodo: quem injetar uma injeta as três. Sem crase.
+export function deckSoAnual(cat, st) {
+  var prods = (cat && cat.products) || {};
+  var s = st || {};
+  var nomes = [];
+  var ver = function (p) {
+    if (p && !(Number((p.sem || {}).per) > 0)) nomes.push(String(p.name || ""));
+  };
+  ver(s.plataforma ? prods[s.linha + "_" + s.tier] : null);
+  ver(s.price ? prods["price_" + s.priceTier] : null);
+  return nomes;
+}
+
+// O período que VALE pro plano montado: "semestral" só quando foi o escolhido
+// e todo plano marcado vende no semestral; em qualquer outro caso, "anual".
+export function deckPeriodo(cat, st) {
+  return st && st.periodo === "semestral" && !deckSoAnual(cat, st).length ? "semestral" : "anual";
+}
+
+// ── Pacote que só entra pela mão do closer ──────────────────────────────────
+// O Lever Price · Start nunca é escolhido sozinho: a régua do catálogo não o
+// sugere (proposal-catalog.js, priceTier) e a tela zero não abre nele. Sem
+// pacote do Price escolhido, o padrão é o primeiro do catálogo fora desta
+// lista, que é o que já era antes de o Start existir. (Não vai pro script da
+// página: quem decide o padrão é o deckConfig, no servidor.)
+export const PRICE_TIERS_MANUAIS = ["start"];
+export function deckPricePadrao(price) {
+  const lista = price || [];
+  return lista.find((x) => !PRICE_TIERS_MANUAIS.includes(x.tier)) || lista[0] || null;
+}
+
 // ── A conta do plano ────────────────────────────────────────────────────────
 // UMA função, usada no servidor (pra montar o deck do link do cliente) e
 // injetada no script da tela zero por toString() — assim o número que o closer
@@ -13,7 +57,8 @@
 // serializada dentro do template literal da página.
 export function calcOferta(cat, st) {
   var prods = (cat && cat.products) || {};
-  var anual = st.periodo !== "semestral";
+  // Plano só anual no que foi montado: a conta é a do anual (deckPeriodo).
+  var anual = deckPeriodo(cat, st) !== "semestral";
   var parcelas = anual ? 12 : 6;
   var fmt = function (n) { return Math.round(Number(n) || 0).toLocaleString("pt-BR"); };
   var contas = Math.max(1, Math.round(Number(st.contas) || 1));
@@ -37,7 +82,7 @@ export function calcOferta(cat, st) {
 
   var plat = st.plataforma ? prods[st.linha + "_" + st.tier] : null;
   if (plat) {
-    var per = Number((anual ? plat.anu : plat.sem).per) || 0;
+    var per = Number(((anual ? plat.anu : plat.sem) || {}).per) || 0;
     var inclusas = Number(plat.contas) || 0;
     var extras = Math.max(0, contas - inclusas);
     mensal += per + extras * extraPer;
@@ -54,7 +99,7 @@ export function calcOferta(cat, st) {
 
   var price = st.price ? prods["price_" + st.priceTier] : null;
   if (price) {
-    mensal += Number((anual ? price.anu : price.sem).per) || 0;
+    mensal += Number(((anual ? price.anu : price.sem) || {}).per) || 0;
     nomes.push(price.name);
     entregaveis.push({
       tag: "Espiral do lucro",

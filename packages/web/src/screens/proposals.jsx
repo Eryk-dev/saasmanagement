@@ -6,6 +6,7 @@ import { EmptyState, PrimaryButton, useEsc } from "../atoms.jsx";
 import { inputStyle, sectionTitle, cardStyle, addBtnStyle, THEME_DEFAULTS, LabeledInput, LabeledTextarea, ThemeEditor } from "../components/theme-inputs.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { waLink, cockpitProposalUrl } from "../lib/ui.js";
+import { deckSoAnual, PRICE_TIERS_MANUAIS } from "../../../api/src/shared/deck-offer.js";
 // Proposal builder — propostas comerciais por marca, no MESMO modelo do form
 // builder: template = lista de SLIDES estruturados + tema + calculadora; cada
 // lead ganha uma instância (snapshot) servida em /p/:id com trava magnética.
@@ -280,21 +281,26 @@ const PREVIEW_NUM = {
   oem: [["qtd", "Quantidade de anúncios", "na call"], ["valor", "Valor por anúncio (R$)", "na call"]],
   slides: [["contas", "Contas", "2"], ["pedidos", "Pedidos/mês", "na call"], ["ticket", "Ticket médio (R$)", "na call"], ["vistaPct", "Desconto (%)", "até 15"]],
 };
-const TIER_NOME = { essencial: "Essencial", escala: "Escala", enterprise: "Enterprise" };
+const TIER_NOME = { start: "Start", essencial: "Essencial", escala: "Escala", enterprise: "Enterprise" };
 const LINHA_NOME = { ads: "Lever Ads", oem: "Lever OEM (autopeças)" };
 export const DECK_FORM_VAZIO = { nome: "", empresa: "", contas: "", pedidos: "", ticket: "", vistaPct: "", qtd: "", valor: "", linha: "", tier: "", price: false, priceTier: "", oem: false, oemPack: "", periodo: "anual" };
 export const temTelaZero = t => t?.layout === "slides" || t?.layout === "oem";
 
 // As opções vêm do catálogo DO DECK, como na tela zero. Toggle sem opção no
 // catálogo não entra: caixa com select vazio é botão que não faz nada.
+// O Start (só no Lever Price) nunca vem escolhido sozinho, e plano só anual
+// no que foi montado tira o semestral: as mesmas regras da tela zero
+// (shared/deck-offer.js), que o servidor repete ao montar a prévia e o link.
 function deckOpcoes(deck, f) {
   const products = deck.calc?.catalog?.products || {};
   const linhas = ["ads", "oem"].filter(l => products[`${l}_essencial`] || products[`${l}_escala`]);
   const linha = f.linha || linhas[0] || "ads";
+  const tiers = ["essencial", "escala"].filter(t => products[`${linha}_${t}`]);
+  const priceTiers = ["start", "essencial", "escala", "enterprise"].filter(t => products[`price_${t}`]);
+  const priceTierPadrao = priceTiers.find(t => !PRICE_TIERS_MANUAIS.includes(t)) || priceTiers[0] || "";
+  const soAnual = deckSoAnual(deck.calc?.catalog, { plataforma: true, linha, tier: f.tier || tiers[0] || "", price: !!f.price, priceTier: f.priceTier || priceTierPadrao });
   return {
-    products, linhas, linha,
-    tiers: ["essencial", "escala"].filter(t => products[`${linha}_${t}`]),
-    priceTiers: ["essencial", "escala", "enterprise"].filter(t => products[`price_${t}`]),
+    products, linhas, linha, tiers, priceTiers, priceTierPadrao, soAnual,
     packs: deck.calc?.catalog?.oemPacks || [],
   };
 }
@@ -304,9 +310,9 @@ function deckOpcoes(deck, f) {
 export function deckPayload(deck, f) {
   const base = { nome: f.nome.trim(), empresa: f.empresa.trim() };
   if (deck.layout === "oem") return { ...base, qtd: f.qtd, valor: f.valor };
-  const { linha, tiers, priceTiers, packs } = deckOpcoes(deck, f);
-  const out = { ...base, contas: f.contas, pedidos: f.pedidos, ticket: f.ticket, vistaPct: f.vistaPct, linha, tier: f.tier || tiers[0] || "", periodo: f.periodo };
-  if (f.price) { out.price = true; out.priceTier = f.priceTier || priceTiers[0] || ""; }
+  const { linha, tiers, priceTierPadrao, soAnual, packs } = deckOpcoes(deck, f);
+  const out = { ...base, contas: f.contas, pedidos: f.pedidos, ticket: f.ticket, vistaPct: f.vistaPct, linha, tier: f.tier || tiers[0] || "", periodo: soAnual.length ? "anual" : f.periodo };
+  if (f.price) { out.price = true; out.priceTier = f.priceTier || priceTierPadrao; }
   if (f.oem) { out.oem = true; out.oemPack = f.oemPack || packs[0]?.qty || ""; }
   return out;
 }
@@ -319,7 +325,7 @@ export function deckPreviewHref(deck, f) {
 
 export function DeckForm({ deck, value: f, onChange }) {
   const set = (k, v) => onChange({ ...f, [k]: v });
-  const { products, linhas, linha, tiers, priceTiers, packs } = deckOpcoes(deck, f);
+  const { products, linhas, linha, tiers, priceTiers, priceTierPadrao, soAnual, packs } = deckOpcoes(deck, f);
   const num = ([k, label, ph]) => <label key={k}><span>{label}</span><input type="number" min="0" inputMode="decimal" placeholder={ph} value={f[k]} onChange={e => set(k, e.target.value)}/></label>;
   return <div className="proposals-deck-form">
     <label><span>Cliente</span><input value={f.nome} placeholder="nome do lead" onChange={e => set("nome", e.target.value)}/></label>
@@ -328,9 +334,9 @@ export function DeckForm({ deck, value: f, onChange }) {
     {deck.layout === "slides" && <>
       <label><span>Linha</span><select value={linha} onChange={e => { onChange({ ...f, linha: e.target.value, tier: "" }); }}>{linhas.map(l => <option key={l} value={l}>{LINHA_NOME[l] || l}</option>)}</select></label>
       <label><span>Pacote</span><select value={f.tier || tiers[0] || ""} onChange={e => set("tier", e.target.value)}>{tiers.map(t => <option key={t} value={t}>{TIER_NOME[t]} · {products[`${linha}_${t}`]?.contas || 0} contas</option>)}</select></label>
-      <label><span>Período</span><select value={f.periodo} onChange={e => set("periodo", e.target.value)}><option value="anual">Anual · 12×</option><option value="semestral">Semestral · 6×</option></select></label>
+      <label><span>Período</span><select value={soAnual.length ? "anual" : f.periodo} onChange={e => set("periodo", e.target.value)}><option value="anual">Anual · 12×</option><option value="semestral" disabled={soAnual.length > 0}>Semestral · 6×{soAnual.length ? ` · ${soAnual.join(" e ")}: só no plano anual` : ""}</option></select></label>
       {!!priceTiers.length && <label className="proposals-deck-check"><span><input type="checkbox" checked={f.price} onChange={e => set("price", e.target.checked)}/>Lever Price</span>
-        <select disabled={!f.price} value={f.priceTier || priceTiers[0] || ""} onChange={e => set("priceTier", e.target.value)}>{priceTiers.map(t => <option key={t} value={t}>{TIER_NOME[t]}</option>)}</select></label>}
+        <select disabled={!f.price} value={f.priceTier || priceTierPadrao} onChange={e => set("priceTier", e.target.value)}>{priceTiers.map(t => <option key={t} value={t}>{TIER_NOME[t]}</option>)}</select></label>}
       {!!packs.length && <label className="proposals-deck-check"><span><input type="checkbox" checked={f.oem} onChange={e => set("oem", e.target.checked)}/>Pacote de OEM</span>
         <select disabled={!f.oem} value={f.oemPack || packs[0]?.qty || ""} onChange={e => set("oemPack", e.target.value)}>{packs.map(pk => <option key={pk.qty} value={pk.qty}>{Number(pk.qty).toLocaleString("pt-BR")} anúncios</option>)}</select></label>}
     </>}
@@ -689,7 +695,7 @@ function ObjList({ label, cols, items, onChange }) {
 //
 // Ordem canônica das linhas (espelho do PRODUCT_KEYS da API); produto que
 // exista só no banco entra depois, sem sumir da tela.
-const CATALOG_ORDER = ["oem_essencial", "oem_escala", "ads_essencial", "ads_escala", "price_essencial", "price_escala", "price_enterprise"];
+const CATALOG_ORDER = ["oem_essencial", "oem_escala", "ads_essencial", "ads_escala", "price_start", "price_essencial", "price_escala", "price_enterprise"];
 const brl = (n) => "R$ " + Math.round(Number(n) || 0).toLocaleString("pt-BR");
 const parcelas = (cycle) => (cycle === "anu" ? 12 : 6);
 
@@ -751,16 +757,18 @@ function ProductCard({ id, product, onChange }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: 12 }}>
           <div className="proposal-editor-row" style={{ display: "flex", gap: 10 }}>
             <LabeledInput label="Nome do plano (aparece no deck)" value={product.name || ""} onChange={(v) => onChange({ name: v })} />
-            {product.line !== "price" && (
-              <LabeledInput label="Contas incluídas" type="number" value={product.contas ?? ""} onChange={(v) => onChange({ contas: v === "" ? "" : Number(v) })} />
-            )}
+            {/* No Lever Price o limite de contas é opcional (1 no Start): vazio
+                tira a chave, e o plano segue sem limite de contas. */}
+            {product.line !== "price"
+              ? <LabeledInput label="Contas incluídas" type="number" value={product.contas ?? ""} onChange={(v) => onChange({ contas: v === "" ? "" : Number(v) })} />
+              : <LabeledInput label="Contas conectadas (vazio = sem limite)" type="number" value={product.contas ?? ""} onChange={(v) => onChange({ contas: v === "" ? undefined : Number(v) })} />}
           </div>
           <div className="proposal-editor-row" style={{ display: "flex", gap: 10 }}>
             <LabeledInput label="Anual · R$ por mês (12×)" type="number" value={product.anu?.per ?? ""} onChange={(v) => setPer("anu", v)} />
             <LabeledInput label="Semestral · R$ por mês (6×)" type="number" value={product.sem?.per ?? ""} onChange={(v) => setPer("sem", v)} />
           </div>
           <div className="mono dim" style={{ fontSize: 11 }}>
-            Total do período (o valor do negócio): anual {brl(product.anu?.total)} · semestral {brl(product.sem?.total)}
+            Total do período (o valor do negócio): anual {brl(product.anu?.total)} · semestral {Number(product.sem?.per) > 0 ? brl(product.sem.total) : "não vende (plano só anual)"}
           </div>
           <StrList label="Entregáveis · motor" items={product.inclui?.motor || []} onChange={(v) => setInclui("motor", v)} />
           <StrList label="Entregáveis · plataforma" items={product.inclui?.plataforma || []} onChange={(v) => setInclui("plataforma", v)} />
