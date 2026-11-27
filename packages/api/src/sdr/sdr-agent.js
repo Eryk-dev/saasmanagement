@@ -299,7 +299,7 @@ export function makeSdrAgent({ repo, whatsapp: wa, autoCallMeet = null, cancelCa
     const { lead, cfg, thread, msgs, users } = c;
     if (!touchOn(cfg, lead)) { await close({ estado: "pulado", motivo: "desligado" }); await settle(lead, "release"); return refuse(409, "touch_off"); }
     if (nowMs > Date.parse(rec.prazo || "")) { await close({ estado: "expirado", motivo: "entregue depois do prazo" }); return refuse(409, "touch_expired"); }
-    if (rec.callAt && lead.callAt !== rec.callAt) { await close({ estado: "pulado", motivo: "remarcada" }); return refuse(409, "call_changed"); }
+    if (rec.callAt && lead.callAt !== rec.callAt) { await close({ estado: "pulado", motivo: lead.callAt ? "remarcada" : "desmarcada" }); return refuse(409, "call_changed"); }
     const pedidoMs = Date.parse(rec.pedidoEm || 0);
     const lastIn = [...msgs].reverse().find((m) => m.direction === "in");
     // O lead escreveu depois do pedido: o atendimento dele responde a conversa

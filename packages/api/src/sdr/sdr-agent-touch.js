@@ -279,7 +279,7 @@ export async function runAgentTouches({ repo, product, cfg, leads, humanIds, thr
     // do agente vencido. A reserva carrega o próprio prazo, então o lembrete
     // fixo volta mesmo sem este passo; aqui a linha só fecha com o motivo.
     for (const r of recs.filter((x) => x.estado === "pedido")) {
-      const gone = !on ? "desligado" : r.callAt && r.callAt !== lead.callAt ? "remarcada" : "";
+      const gone = !on ? "desligado" : r.callAt && r.callAt !== lead.callAt ? (lead.callAt ? "remarcada" : "desmarcada") : "";
       if (gone) { await write(r, { estado: "pulado", motivo: gone }); await settle(lead, r.covers, "release"); stats.pulados++; }
       else if (nowMs > Date.parse(r.prazo || "")) { await write(r, { estado: "expirado", motivo: "o agente não entregou no prazo" }); stats.vencidos++; }
     }
