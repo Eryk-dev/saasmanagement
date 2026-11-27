@@ -31,6 +31,8 @@ import { makeTtlCache } from "../platform/ttl-cache.js";
 const SUMMARY_TTL = { ttl: 2 * 60_000, staleTtl: 30 * 60_000 };
 const AUDIENCE_TTL = { ttl: 6 * 3600_000, staleTtl: 7 * 86400_000 };
 const DISCOVERY_TTL = { ttl: 30 * 60_000, staleTtl: 24 * 3600_000 };
+const DISCOVERY_POSTS_TTL = { ttl: 10 * 60_000, staleTtl: 10 * 60_000 };
+const DISCOVERY_POSTS_MAX = 10;
 const wantsRefresh = (req) => String(req.query?.refresh || "") === "1";
 
 const IMG_MAX = 15 * 1024 * 1024;   // PNG de 1080×1920 fica bem abaixo disso
@@ -102,6 +104,7 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
   const summaryCache = makeTtlCache(SUMMARY_TTL);
   const audienceCache = makeTtlCache(AUDIENCE_TTL);
   const discoveryCache = makeTtlCache(DISCOVERY_TTL);
+  const discoveryPostsCache = makeTtlCache(DISCOVERY_POSTS_TTL);
   // O id do IG é gravado como `metaIgUser` pela descoberta do marketing
   // (routes.marketing.js) — `metaIgUserId` era o nome só desta tela e nunca
   // chegou a existir no banco. Ler os dois: com só o nome antigo, o webhook não
@@ -394,6 +397,41 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
     );
     reply.header("x-cache", status);
     return { ...value, errors: { ...value.errors } };
+  });
+
+  // Posts recentes de perfis públicos, um a um (legenda, link, tipo, curtida,
+  // comentário, visualização de Reels). Quem lê é o robô Spy do OpenBot, pela
+  // porta da VPS2: a lista de perfis vem no pedido (até 10), não do produto.
+  // Erro de um perfil (não é business/creator, sumiu, mudou o nome) vem no
+  // próprio perfil e não derruba os outros. Cache curto e sem resposta velha
+  // além dele: o robô quer o número de agora.
+  app.get("/api/social/discovery/posts", async (req, reply) => {
+    const product = await productOr404(req, reply);
+    if (!product) return;
+    if (!social.configured()) return { configured: false };
+    const usernames = [...new Set(String(req.query?.usernames || "").split(",")
+      .map((u) => u.trim().replace(/^@/, "").toLowerCase()).filter(Boolean))];
+    if (!usernames.length || usernames.length > DISCOVERY_POSTS_MAX
+      || usernames.some((u) => !/^[a-z0-9._]{1,30}$/.test(u))) {
+      return reply.code(400).send({ error: `usernames: de 1 a ${DISCOVERY_POSTS_MAX} perfis do Instagram, separados por vírgula` });
+    }
+    const limit = Math.min(Math.max(Math.trunc(Number(req.query?.limit)) || 25, 1), 50);
+    const { igUserId } = await idsFor(product);
+    if (!igUserId) return { configured: true, profiles: [], errors: { setup: "sem Instagram configurado" } };
+    const { value, status } = await discoveryPostsCache.getWithMeta(
+      `${product.id}|${igUserId}|${usernames.join(",")}|${limit}`,
+      async () => ({
+        configured: true,
+        fetchedAt: new Date().toISOString(),
+        profiles: await Promise.all(usernames.map((u) => Promise.resolve()
+          .then(() => social.igBusinessDiscovery(igUserId, u, { limit, posts: true }))
+          .then((d) => ({ username: d.username, name: d.name, followers: d.followers, mediaCount: d.mediaCount, posts: d.recent }))
+          .catch((e) => ({ username: u, error: e.message })))),
+      }),
+      { force: wantsRefresh(req) },
+    );
+    reply.header("x-cache", status);
+    return value;
   });
 
   async function fetchDiscovery({ igUserId, comps, tags }) {

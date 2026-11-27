@@ -303,19 +303,46 @@ export function makeSocial({ fetch: f = globalThis.fetch, accessToken, sleep = (
     // Espião de concorrente (business_discovery): dados PÚBLICOS de outra conta
     // business/creator — seguidores, nº de posts e engajamento dos recentes.
     // Alcance deles é privado; curtida+comentário público já diz muito.
-    async igBusinessDiscovery(igUserId, username) {
+    // Com `posts: true` (robô Spy) vem cada post inteiro: legenda, link, tipo e
+    // a visualização do Reels (`view_count`, só por business_discovery), e
+    // `limit` acima de 25 pagina pelo cursor `after` (a resposta não traz
+    // `next`, só os cursores). Sem `posts`, a chamada da tela é a de sempre.
+    // Curtida escondida pelo dono vem sem `like_count`: `likes` fica 0, como
+    // sempre foi, e `likesHidden` diz que não é zero.
+    async igBusinessDiscovery(igUserId, username, { limit = 12, posts = false } = {}) {
       const u = String(username || "").replace(/^@/, "").replace(/[^A-Za-z0-9._]/g, "");
       if (!u) throw new Error("conta inválida");
-      const fields = `business_discovery.username(${u}){username,name,followers_count,media_count,media.limit(12){like_count,comments_count,timestamp}}`;
-      const body = await get(`${igUserId}`, { fields });
-      const d = body.business_discovery;
-      if (!d) throw new Error("conta não encontrada ou não é business/creator");
+      const want = posts ? Math.min(Math.max(Math.trunc(Number(limit)) || 12, 1), 100) : 12;
+      const mediaFields = posts
+        ? "id,caption,like_count,comments_count,timestamp,permalink,media_type,media_product_type,view_count"
+        : "like_count,comments_count,timestamp";
+      const recent = [];
+      let d = null, after = "";
+      while (recent.length < want) {
+        const page = Math.min(want - recent.length, 25);
+        const edge = after ? `media.after(${after}).limit(${page})` : `media.limit(${page})`;
+        const fields = `business_discovery.username(${u}){username,name,followers_count,media_count,${edge}{${mediaFields}}}`;
+        let body;
+        try { body = await get(`${igUserId}`, { fields }); } catch (e) { if (!d) throw e; break; } // 2ª página falhou: fica a 1ª
+        if (!body.business_discovery) { if (!d) throw new Error("conta não encontrada ou não é business/creator"); break; }
+        d = d || body.business_discovery;
+        const data = body.business_discovery.media?.data || [];
+        recent.push(...data.map((m) => (posts ? {
+          likes: Number(m.like_count) || 0, comments: Number(m.comments_count) || 0, at: m.timestamp || "",
+          id: String(m.id || ""), caption: m.caption || "", link: m.permalink || "",
+          type: m.media_type || "", surface: m.media_product_type || "",
+          views: m.view_count == null ? null : Number(m.view_count) || 0,
+          likesHidden: m.like_count == null,
+        } : {
+          likes: Number(m.like_count) || 0, comments: Number(m.comments_count) || 0, at: m.timestamp || "",
+        })));
+        after = body.business_discovery.media?.paging?.cursors?.after || "";
+        if (!posts || !data.length || !after || !/^[A-Za-z0-9_=-]+$/.test(after)) break;
+      }
       return {
         username: d.username || u, name: d.name || "",
         followers: Number(d.followers_count) || 0, mediaCount: Number(d.media_count) || 0,
-        recent: (d.media?.data || []).map((m) => ({
-          likes: Number(m.like_count) || 0, comments: Number(m.comments_count) || 0, at: m.timestamp || "",
-        })),
+        recent: recent.slice(0, want),
       };
     },
 
