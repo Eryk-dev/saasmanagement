@@ -213,6 +213,21 @@ LeverAds na mesma janela por cliente, com participação calculada e data da
 consulta visível. Valores antigos fixos saíram; falha de consulta mantém a
 última leitura identificada. Atualização automática no servidor a cada seis horas.
 
+**Deck redesenhado (26/11/2026):** o Leo trouxe o desenho novo em dois arquivos
+(`lever-oem.zip` e `lever-price.zip`): o mesmo deck, exportado num plano de OEM e
+num de Lever Price. Palco escuro em todos os slides, marca “Lever”, um slide de
+método por produto (“02a Efeito teia” com OEM no plano, “02b Lever Ads” no plano
+só de Ads, “02c Lever Price”), demonstração com a tela do produto principal,
+três passos em “Como você entra”, resultados com a faixa do painel (vendido em
+anúncios da Lever, fatia das vendas e dias até a primeira venda), três cases
+pelo nicho e a faixa de segurança (Oracle, EQI); o plano só de Lever Price
+mostra a prova do Price no lugar da geral. Entregáveis: um card por produto, com
+a linha de suporte embaixo do traço (o card “O lado humano” saiu). A regra das
+telas por plano mora em `deckTelas` (`shared/deck-offer.js`). Tela zero, conta
+do plano, aceite, notas do closer e a apresentação de criação de anúncios não
+mudaram: o CSS novo fica debaixo de `.dk`. Conferido no navegador em sete
+combinações de plano, com o catálogo e os cases de produção.
+
 
 ## Revisão de fidelidade das 30 páginas — 20/09/2026
 

@@ -182,8 +182,13 @@ export function presentationResults(row, updatedAt) {
   const gmv = Number(row.gmv_periodo), generated = Number(row.gerado_periodo);
   if (!(Number(row.clientes) > 0) || !Number.isFinite(gmv) || gmv <= 0
       || !Number.isFinite(generated) || generated < 0 || generated > gmv) return null;
+  // Mediana de dias entre conectar a conta e a 1ª venda (o `resDias` dos
+  // tokens): o terceiro número da faixa de resultados do deck. Sem base, null,
+  // e a faixa sai com dois números.
+  const dias = row.dias != null && Number.isFinite(Number(row.dias)) && Number(row.dias) >= 0 ? Math.round(Number(row.dias)) : null;
   return {
     gmv, generated, participation: generated / gmv * 100,
+    firstSaleDays: dias,
     periodStart: /^\d{4}-\d{2}-\d{2}$/.test(row.inicio_periodo || "") ? row.inicio_periodo : null,
     updatedAt: new Date(updatedAt).toISOString(),
   };

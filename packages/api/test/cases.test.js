@@ -173,8 +173,11 @@ const deck = (cases) => proposalSlidesPageHtml({
 
 test("deck: sem case publicado o slide 06 mantém os colchetes", () => {
   const html = deck([]);
-  assert.match(html, /\[CLIENTE\] · \[NICHO\]/);
+  assert.match(html, /\[Cliente\]/);
+  assert.match(html, /\[R\$ xx mil\]/);
   assert.match(html, /data-cases-fallback/);
+  // Nome de cliente nunca fica escrito no slide: só entra o case publicado.
+  assert.doesNotMatch(html, /Motvia|Lupa Autopeças|USACAR/);
   assert.match(html, /"cases":\[\]/);
 });
 
@@ -187,7 +190,9 @@ test("deck: com cases, eles vão no snapshot e o fallback some na pintura", () =
   assert.match(html, /data-cases\b/);
   // O fallback continua no HTML (é ele que aparece quando não há case), mas a
   // pintura o esconde: a regra está no script, não no markup.
-  assert.match(html, /fb\.style\.display = \(D\.cases \|\| \[\]\)\.length \? "none" : "contents"/);
+  assert.match(html, /if \(fb\) fb\.hidden = !!cs\.length;/);
+  // O slide mostra três cards: os três primeiros da régua (nicho, depois a ordem do time).
+  assert.match(html, /var cs = \(D\.cases \|\| \[\]\)\.slice\(0, 3\);/);
 });
 
 // ── Os quatro cases do painel (página 10 do deck C) ───────────────────────
@@ -272,12 +277,16 @@ test("deck: o slide de quem somos mostra as fotos da operação, não os placeho
   assert.ok(!html.includes("Foto do galpão"), "o rótulo de placeholder saiu");
 });
 
-test("deck: o card de case leva logo, as três medidas de apoio e a régua no slide", () => {
+// Desenho de 26/11/2026: o card mostra o nome, o número grande e dois números
+// de apoio. Nos cases do painel são pedidos e anúncios criados (este sai da
+// manchete da régua); horas poupadas, custo evitado e a logo saíram do slide.
+test("deck: o card de case leva o número grande e dois números de apoio, pedidos e anúncios criados", () => {
   const html = deck([]);
-  assert.match(html, /metricas\.slice\(1, 4\)/);   // as três medidas de apoio
-  assert.match(html, /if \(c\.logoUrl\)/);          // logo quando o cliente autoriza
-  assert.match(html, /10 minutos por anúncio, ao custo de um funcionário de R\$ 3\.000/);
-  assert.equal(html.split("[CLIENTE] · [NICHO]").length - 1, 4, "quatro cards de exemplo enquanto nada está publicado");
+  assert.match(html, /pares = pares\.slice\(0, 2\);/);   // dois números de apoio
+  assert.match(html, /\{ v: criados\[1\], r: "anúncios criados" \}/);   // o da manchete da régua
+  assert.match(html, /"pedidos gerados no periodo": "pedidos"/);   // o rótulo da régua, no tom do slide
+  assert.doesNotMatch(html, /10 minutos por anúncio/, "a régua de horas e custo saiu do slide");
+  assert.equal(html.split("[Cliente]").length - 1, 3, "três cards de exemplo enquanto nada está publicado");
 });
 
 // ── Números que se refazem sozinhos (28/09) ───────────────────────────────

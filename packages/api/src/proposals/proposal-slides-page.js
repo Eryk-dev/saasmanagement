@@ -20,12 +20,21 @@
 // notas do apresentador (aqui atrás do N, só no modo closer). Do cockpit:
 // contagem de views (na rota), aceite do cliente e o estado salvo pelo editKey.
 //
+// DESENHO (26/11/2026): o Leo trouxe o deck redesenhado em dois arquivos
+// (lever-oem.zip e lever-price.zip): o MESMO deck, exportado num plano de OEM e
+// num de Lever Price. Palco escuro, marca "Lever", um slide de método por
+// produto, a demonstração com a tela do produto, resultados e entregáveis
+// novos. O que é do cockpit continua como era: a tela zero, a conta do plano,
+// os cases pelo nicho com o número do painel, o aceite e as notas do closer.
+// O CSS do desenho novo mora debaixo de `.dk` (a classe de cada slide), porque
+// a tela zero é clara e a apresentação de criação de anúncios divide o DECK_CSS.
+//
 // REGRA DO ARQUIVO (igual ao proposal-page.js): o HTML é UM template literal —
 // nada de crase dentro dele nem do script do cliente, que usa concatenação.
 
-import { calcOferta, deckChoices } from "../shared/deck-offer.js";
+import { calcOferta, deckChoices, deckTelas } from "../shared/deck-offer.js";
 
-export { calcOferta };
+export { calcOferta, deckTelas };
 
 // Exportado porque a apresentação de CRIAÇÃO DE ANÚNCIOS (proposal-oem-page.js)
 // roda no MESMO palco: dois decks, um design system só.
@@ -507,6 +516,143 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0B141D; }
 .accept-btn:hover { background: var(--brand-deep); }
 .accept-ok { color: var(--success); font-weight: 700; font-size: 24px; }
 
+/* ── Deck redesenhado (handoff de 26/11/2026) ──────────────────────────────
+   Tudo debaixo de .dk, a classe de cada slide: --ink, --line e --brand são
+   redefinidos SÓ dentro do slide. A tela zero continua clara e o deck de
+   criação de anúncios, que usa este mesmo CSS, não muda. */
+.canvas.dkc { background: #0A131B; }
+.canvas > section.dk {
+  --bg: #0A131B; --card: #101E29; --card-2: #142533;
+  --line: rgba(237,242,245,.08); --line-2: rgba(237,242,245,.14);
+  --ink: #EDF2F5; --ink-2: rgba(237,242,245,.74); --ink-3: rgba(237,242,245,.52); --ink-4: rgba(237,242,245,.34);
+  --brand: #3ECCBF; --brand-ink: #04212A; --r: 22px;
+  background: var(--bg); color: var(--ink); font-family: var(--font-sans); color-scheme: dark;
+  padding: 72px 112px 80px; display: flex; flex-direction: column; overflow: hidden; line-height: 1.3; }
+.dk h1,.dk h2,.dk h3,.dk p,.dk ul{margin:0;padding:0}
+.dk ul{list-style:none}
+.dk img{display:block;max-width:100%}
+.dk [hidden]{display:none!important}
+
+/* tipografia */
+.dk .hd{display:flex;align-items:center;justify-content:space-between;gap:24px;position:relative;z-index:1}
+.dk .eb{font-size:26px;font-weight:500;color:var(--ink-3);letter-spacing:-.005em}
+.dk .pg{font:500 24px var(--font-mono);color:var(--ink-4)}
+.dk .h{font-weight:700;letter-spacing:-.043em;line-height:1.03;text-wrap:balance}
+.dk .a,.dk .p{color:var(--brand)}
+.dk .lede{font-size:32px;line-height:1.55;color:var(--ink-2);text-wrap:pretty}
+.dk .lede.soft{color:var(--ink-3)}
+.dk .mono{font-family:var(--font-mono)}
+.dk .tab{font-variant-numeric:tabular-nums}
+.dk .body{flex:1;min-height:0;position:relative;z-index:1}
+.dk.glow::before{content:"";position:absolute;left:50%;top:-340px;width:1700px;height:980px;transform:translateX(-50%);background:radial-gradient(closest-side,rgba(62,204,191,.17),transparent 70%);pointer-events:none}
+.dk.glow.low::before{top:auto;bottom:-520px}
+.dk .brand{display:inline-flex;align-items:center;gap:16px;font-weight:700;font-size:38px;letter-spacing:-.02em;position:relative;z-index:1}
+.dk .brand img{width:50px;height:54px}
+.dk .card{border-radius:var(--r);border:1px solid var(--line);background:linear-gradient(180deg,var(--card-2),var(--card))}
+.dk .foot{display:flex;align-items:center;justify-content:space-between;gap:24px;padding-top:28px;border-top:1px solid var(--line);font-size:26px;color:var(--ink-3);position:relative;z-index:1}
+
+/* capa e encerramento */
+.dk.cover{justify-content:space-between}
+.dk.cover .mid{position:relative;z-index:1;display:flex;flex-direction:column;gap:34px;max-width:1560px}
+
+/* quem somos */
+.dk .who{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(0,.92fr);gap:80px;align-items:center}
+.dk .stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:34px}
+.dk .stat{padding:24px 26px}
+.dk .stat b{display:block;font-size:46px;font-weight:700;letter-spacing:-.045em;line-height:1;font-variant-numeric:tabular-nums}
+.dk .stat span{display:block;font-size:22px;line-height:1.3;color:var(--ink-3);margin-top:12px}
+.dk .photos{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);grid-template-rows:250px 250px;gap:14px}
+.dk .photos .big{grid-row:span 2}
+.dk .photos img{width:100%;height:100%;object-fit:cover;border-radius:18px;border:1px solid var(--line);background:var(--card)}
+
+/* método por produto: três cards da mesma altura, título numa linha */
+.dk .feat{display:flex;gap:26px;align-items:flex-start;padding:32px 34px}
+.dk .feat .ic{flex:none;width:60px;height:60px;border-radius:50%;background:rgba(62,204,191,.14);display:flex;align-items:center;justify-content:center}
+.dk .feat b{display:block;font-size:34px;font-weight:700;letter-spacing:-.025em;margin-bottom:8px}
+.dk .feat span{display:block;font-size:27px;line-height:1.45;color:var(--ink-3)}
+.dk .body:has(> div > .card.feat){grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr)!important;gap:72px!important}
+.dk div:has(> .card.feat){display:grid!important;grid-template-rows:repeat(3,minmax(0,1fr));height:620px;gap:20px!important}
+.dk .card.feat{align-items:center;padding:28px 40px}
+.dk .card.feat b{font-size:30px;white-space:nowrap;margin-bottom:10px}
+.dk .card.feat span{font-size:25px}
+
+/* janela da demonstração */
+.dk .window{position:relative;border-radius:var(--r);border:1px solid var(--line-2);background:linear-gradient(180deg,#13212D 0%,#0D1822 100%);box-shadow:0 70px 140px -70px rgba(62,204,191,.45),0 30px 60px -30px rgba(0,0,0,.7);overflow:hidden}
+.dk .win-bar{display:flex;align-items:center;gap:18px;padding:16px 22px;border-bottom:1px solid var(--line)}
+.dk .dots{display:flex;gap:8px}
+.dk .dots i{width:12px;height:12px;border-radius:50%;opacity:.8}
+.dk .dots i:nth-child(1){background:#FF5F57}.dk .dots i:nth-child(2){background:#FEBC2E}.dk .dots i:nth-child(3){background:#28C840}
+.dk .win-url{flex:1;text-align:center;font:500 18px var(--font-mono);color:var(--ink-4);padding-right:64px}
+.dk .window img{width:100%;height:auto}
+
+/* passos */
+.dk .track{height:3px;border-radius:3px;background:var(--line);overflow:hidden;margin-bottom:26px}
+.dk .track i{display:block;height:100%;width:100%;background:linear-gradient(90deg,var(--brand),#7FE3D8)}
+.dk .steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px}
+.dk .steps li{border-radius:var(--r);border:1px solid var(--line);background:var(--card);padding:34px;display:flex;flex-direction:column;gap:14px}
+.dk .steps .top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.dk .steps .sn{font:600 34px var(--font-mono);color:var(--brand)}
+.dk .steps .dia{font-size:26px;font-weight:500;color:var(--ink-3)}
+.dk .steps h3{font-size:38px;font-weight:700;letter-spacing:-.03em;line-height:1.12}
+.dk .steps p{font-size:27px;line-height:1.45;color:var(--ink-3)}
+
+/* ciclo */
+.dk .cyc{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.85fr);gap:88px;align-items:center}
+.dk .cycbox{padding:36px 40px 40px}
+.dk .cyc .bd{position:absolute;width:56px;height:56px;border-radius:50%;background:var(--card);border:1px solid var(--brand);color:var(--brand);display:flex;align-items:center;justify-content:center;font:600 22px var(--font-mono)}
+.dk .cyc .lb{position:absolute;font-size:25px;font-weight:600;line-height:1.25;letter-spacing:-.01em;text-align:center}
+
+/* resultados */
+.dk .cs3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.dk .r1{padding:38px 44px 34px;display:flex;flex-direction:column;justify-content:center;min-width:0}
+.dk .r2c{padding:28px 40px 14px;display:flex;flex-direction:column;min-width:0}
+.dk .rrow{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:20px 0;flex:1}
+.dk .rrow+.rrow{border-top:1px solid var(--line-2)}
+.dk .rrow b{display:block;font-size:26px;font-weight:600;white-space:nowrap}
+.dk .rrow small{display:block;margin-top:4px;font-size:20px;color:var(--ink-3)}
+.dk .rrow em{font-style:normal;font-size:54px;font-weight:700;color:var(--brand);letter-spacing:-.04em;line-height:1;white-space:nowrap;font-variant-numeric:tabular-nums}
+.dk .kv{font-size:20px;color:var(--ink-3)}
+.dk .kv+div{margin-top:8px;font-size:32px;font-weight:700;letter-spacing:-.03em;white-space:nowrap;font-variant-numeric:tabular-nums}
+.dk .sec6{display:flex;align-items:flex-start;padding-top:26px;border-top:1px solid var(--line)}
+.dk .sec6 .lab{font-size:20px;line-height:24px;font-weight:500;color:var(--ink-3)}
+.dk .sec6 .row{display:flex;align-items:baseline;gap:var(--g);height:34px;line-height:34px;margin-top:10px;white-space:nowrap}
+.dk .sec6 .row::before{content:"\\200b";font-size:30px;font-weight:800;line-height:1;margin-right:calc(var(--g) * -1)}
+.dk .sec6 .vr{align-self:stretch;width:1px;background:var(--line-2);margin-inline:40px}
+.dk .wm{color:var(--ink-3);line-height:1}
+
+/* entregáveis */
+.dk .dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;align-items:stretch}
+.dk .dc{padding:34px 38px;display:flex;flex-direction:column;gap:24px;min-width:0}
+.dk .dc .t{font-size:28px;font-weight:600;color:var(--ink-3)}
+.dk .ticks{display:grid;gap:30px}
+.dk .ticks li{display:grid;grid-template-columns:calc(var(--tk,34px) + 2px) minmax(0,1fr);gap:18px;font-size:30px;line-height:1.35;color:var(--ink)}
+.dk .ticks li::before{content:"";width:var(--tk,34px);height:var(--tk,34px);margin-top:3px;border-radius:50%;background:rgba(62,204,191,.16) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.4l2.6 2.5L12 5.4' fill='none' stroke='%233ECCBF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/65% no-repeat}
+.dk .dl:has(.dc-one){grid-template-columns:minmax(0,1fr)}
+.dk .ticks.t2{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:48px}
+.dk .ticks.sup{border-top:1px solid var(--line-2);padding-top:44px}
+.dk .dc-one{padding:52px 56px;gap:44px}
+.dk .dc-one .t{font-size:32px}
+.dk .dc-one .ticks{row-gap:40px}
+.dk .dc-one .ticks li{font-size:31px;white-space:nowrap}
+.dk .dc-one .note{font-size:28px;padding:26px 30px}
+.dk .note{margin-top:auto;border-radius:16px;background:rgba(62,204,191,.08);border:1px solid rgba(62,204,191,.2);padding:22px 24px;font-size:26px;line-height:1.4;color:var(--ink-2)}
+.dk .note b{color:var(--brand);font-weight:600}
+/* três produtos no plano: um card por coluna, mais justo */
+.dk .dl3 .dc{padding:28px 30px;gap:18px}
+.dk .dl3 .dc .t{font-size:24px}
+.dk .dl3 .ticks li{gap:12px}
+.dk .dl3 .ticks.sup{padding-top:22px}
+.dk .dl3 .note{font-size:21px;padding:16px 18px}
+
+/* garantia */
+.dk .gar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:90px;align-items:center}
+.dk .shield{width:340px;height:340px;border-radius:50%;border:1px solid var(--line-2);background:radial-gradient(closest-side,rgba(62,204,191,.16),rgba(62,204,191,.03) 80%);display:flex;align-items:center;justify-content:center;box-shadow:0 60px 120px -60px rgba(62,204,191,.5)}
+
+/* aceite, no palco escuro */
+.dk .accept-btn{background:var(--brand);color:var(--brand-ink)}
+.dk .accept-btn:hover{background:#5BD9CE}
+.dk .accept-ok{color:var(--brand)}
+
 /* ── Impressão: um slide por página, no tamanho de projeto ──────────────── */
 @media print {
   @page { size: 1920px 1080px; margin: 0; }
@@ -516,6 +662,7 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0B141D; }
   .canvas > section { position: relative; inset: auto; visibility: visible; opacity: 1;
     break-after: page; page-break-after: always; }
   .canvas > section[hidden] { display: none; }
+  .canvas > section.dk[hidden] { display: none !important; }
   .hud, .notas, .fita { display: none !important; }
 }
 `;
@@ -525,6 +672,8 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0B141D; }
 // do Supabase Cloud do PRODUTO, que vai ser desligado; agora são estáticos do
 // próprio cockpit (packages/web/public/proposal-assets). Caminho relativo: o
 // deck só abre em página do cockpit (/p/:id, preview), em qualquer ambiente.
+// Na mesma pasta ficam a logo do palco escuro e as telas do produto que entram
+// na janela da demonstração (oem-criar, ads-copiar-giro, price-inicio).
 const ASSETS = "/proposal-assets/leverads";
 const FOTOS = {
   estoque: `${ASSETS}/operacao-interna-2.jpg`,
@@ -535,323 +684,294 @@ const FOTOS = {
 // Card vazio do slide de resultados: é o que aparece quando NENHUM case está
 // publicado. Mesma estrutura do card real (`cardCase`), com colchete no lugar de
 // cada número, pra que o closer veja na tela o que falta autorizar em vez de um
-// slide que some.
-const CASE_VAZIO = `
-    <div style="background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:24px;display:flex;flex-direction:column;gap:12px">
-      <div style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">[CLIENTE] · [NICHO]</div>
-      <div style="font-size:54px;font-weight:700;letter-spacing:-0.03em;line-height:1;color:var(--brand);font-variant-numeric:tabular-nums">[R$ xx mil]</div>
-      <div style="font-size:25px;color:var(--ink-muted);line-height:1.35">gerado por anúncios da Lever (todo o período)</div>
-      <div style="display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line-faint);padding-top:16px;font-size:23px;line-height:1.25;color:var(--ink-muted)">
-        <div><b style="color:var(--ink)">[x mil]</b> pedidos gerados no período</div>
-        <div><b style="color:var(--ink)">[x mil h]</b> de cadastro manual poupadas</div>
-        <div><b style="color:var(--ink)">[R$ xx mil]</b> de custo fixo evitado</div>
-      </div>
-      <div style="margin-top:auto;font-size:23px;line-height:1.4;color:var(--ink-soft);border-top:1px solid var(--line-faint);padding-top:16px">[O que mudou na operação dele em uma linha]</div>
-    </div>`;
+// slide que some. Nome de cliente nunca fica escrito aqui: só entra na tela o
+// case publicado e autorizado (cases.js).
+const CASE_VAZIO = `<div class="card" style="padding:30px 36px;display:flex;flex-direction:column;min-width:0"><div style="font-size:24px;font-weight:600;color:var(--ink-3)">[Cliente]</div><div class="tab" style="margin-top:18px;font-size:76px;font-weight:700;color:var(--brand);letter-spacing:-.045em;line-height:1;white-space:nowrap">[R$ xx mil]</div><div style="margin-top:10px;font-size:22px;color:var(--ink-3)">gerados por anúncios da Lever</div><div style="margin-top:22px;padding-top:20px;border-top:1px solid var(--line-2);display:grid;grid-template-columns:1fr 1fr;gap:16px"><div><div class="tab" style="font-size:30px;font-weight:700;color:var(--ink)">[x mil]</div><div style="font-size:19px;color:var(--ink-3);margin-top:4px">pedidos</div></div><div><div class="tab" style="font-size:30px;font-weight:700;color:var(--ink)">[x mil]</div><div style="font-size:19px;color:var(--ink-3);margin-top:4px">anúncios criados</div></div></div></div>`;
 
 const SLIDES = `
-<section data-label="Capa" data-screen-label="Capa" data-speaker-notes="Abertura. Confirme quem está na sala e diga em uma frase o que vem: quem somos, o método, a demonstração e o investimento." data-theme="dark" style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:96px 112px 88px;display:flex;flex-direction:column;justify-content:space-between">
-  <div style="display:flex;align-items:center;gap:18px">
-    <span class="logo logo-light" style="height:44px;width:auto;display:block"><svg viewBox="350 380 700 760" fill="currentColor" style="height:100%;width:auto;display:block" aria-hidden="true"><path d="M519.22,843.75l-45.1,15.11c53.94,77.43,143.68,128.2,245.06,128.2,4.38,0,8.76-.08,13.07-.3l-14.13-45.02c-80.76-.3-152.75-38.68-198.9-97.98ZM719.19,390.03c-164.61,0-298.55,133.94-298.55,298.55,0,29.46,4.31,58.02,12.31,84.91l39.13-29.31c-4-17.9-6.12-36.49-6.12-55.6,0-139.6,113.62-253.22,253.22-253.22s253.15,113.62,253.15,253.22c0,99.49-57.71,185.84-141.42,227.16v49.63c109.39-44.27,186.74-151.69,186.74-276.79,0-164.61-133.86-298.55-298.47-298.55Z"></path><polygon points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53"></polygon></svg></span>
-    <span style="font-size:32px;font-weight:700;letter-spacing:-0.02em">LeverAds</span>
+<section data-label="Capa" data-screen-label="Capa" data-speaker-notes="Abertura. Confirme quem está na sala e diga em uma frase o que vem: quem somos, o método, a demonstração e o investimento." class="dk cover glow">
+  <div class="brand"><img src="${ASSETS}/logo-lever-dark.svg" alt="">Lever</div>
+  <div class="mid">
+    <div class="eb">Proposta comercial</div>
+    <h1 class="h" style="font-size:112px;margin:0">O método que usamos para escalar nossa operação, <span class="a">aplicado ao seu negócio.</span></h1>
+    <div style="font-size:34px;color:var(--ink-2);line-height:1.45"><span data-f="planoNome"></span></div>
   </div>
-  <div style="display:flex;flex-direction:column;gap:32px;max-width:1300px">
-    <div style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Proposta comercial</div>
-    <h1 style="margin:0;font-size:104px;line-height:1.02;letter-spacing:-0.03em;font-weight:700;text-wrap:balance">O método que usamos para escalar nossa operação, aplicado ao seu negócio.</h1>
-    <div style="font-size:30px;color:var(--ink-muted);line-height:1.45"><span data-f="planoNome"></span></div>
-  </div>
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-top:28px;border-top:1px solid var(--line);font-size:24px;color:var(--ink-faint)">
+  <div class="foot">
     <span><span data-f="f.nome"></span> · <span data-f="f.empresa"></span></span>
-    <span style="font-family:var(--font-mono);font-variant-numeric:tabular-nums"><span data-f="hoje"></span></span>
+    <span class="mono tab" style="color:var(--ink-4)"><span data-f="hoje"></span></span>
   </div>
 </section>
 
-<section data-label="Quem somos" data-screen-label="01 Quem somos" data-speaker-notes="Credibilidade primeiro: somos sellers. Conte a história do primeiro barracão ao galpão de hoje e conecte com a dor que o cliente vive." data-theme="dark" style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:24px;border-bottom:1px solid var(--line);margin-bottom:48px">
-    <span style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Quem somos</span>
-    <span style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">01</span>
-  </div>
-  <div style="flex:1;display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,0.95fr);gap:72px;align-items:center">
+<section class="dk" data-label="Quem somos" data-screen-label="01 Quem somos" data-speaker-notes="Credibilidade primeiro: somos sellers. Conte a história do primeiro barracão ao galpão de hoje e conecte com a dor que o cliente vive.">
+  <div class="hd"><span class="eb">Quem somos</span><span class="pg">01</span></div>
+  <div class="body who">
     <div style="min-width:0">
-      <h2 style="margin:0 0 14px;font-size:62px;line-height:1.04;letter-spacing:-0.025em;font-weight:700;text-wrap:balance">Mais um sistema criado por quem <span style="color:var(--brand)">nunca vendeu?</span></h2>
-      <div style="font-size:34px;font-weight:600;color:var(--brand);margin-bottom:34px;letter-spacing:-0.015em">Longe disso.</div>
-      <p style="margin:0 0 22px;font-size:28px;line-height:1.5;color:var(--ink-muted);text-wrap:pretty">A Lever foi feita de seller pra seller. Ninguém aqui aprendeu marketplace em curso: a gente construiu uma operação de verdade, do primeiro barracão ao galpão de hoje, girando produto todo dia.</p>
-      <p style="margin:0;font-size:28px;line-height:1.5;color:var(--ink-muted);text-wrap:pretty">Cada fluxo dentro da plataforma nasceu de uma dor nossa. A dor de uma operação que fatura dezenas de milhões por ano e precisava crescer sem inchar a equipe.</p>
-      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:32px">
-        <div style="background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:20px"><div style="font-size:40px;font-weight:700;letter-spacing:-0.03em;line-height:1;font-variant-numeric:tabular-nums">+R$ 30 mi</div><div style="font-size:20px;line-height:1.3;color:var(--ink-muted);margin-top:10px">de faturamento próprio em 2026</div></div>
-        <div style="background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:20px"><div style="font-size:40px;font-weight:700;letter-spacing:-0.03em;line-height:1;font-variant-numeric:tabular-nums">+10 mil</div><div style="font-size:20px;line-height:1.3;color:var(--ink-muted);margin-top:10px">pedidos por mês</div></div>
-        <div style="background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:20px"><div style="font-size:40px;font-weight:700;letter-spacing:-0.03em;line-height:1;font-variant-numeric:tabular-nums">+10 anos</div><div style="font-size:20px;line-height:1.3;color:var(--ink-muted);margin-top:10px">de marketplace</div></div>
+      <h2 class="h" style="font-size:72px;margin:0 0 16px">Mais um sistema criado por quem <span class="a">nunca vendeu?</span></h2>
+      <div style="font-size:38px;font-weight:700;color:var(--brand);margin-bottom:28px;letter-spacing:-.03em">Longe disso.</div>
+      <p class="lede" style="font-size:27px;margin-bottom:18px;color:var(--ink-2)">A Lever foi feita de seller pra seller. Ninguém aqui aprendeu marketplace em curso: a gente construiu uma operação de verdade, do primeiro barracão ao galpão de hoje, girando produto todo dia.</p>
+      <p class="lede soft" style="font-size:27px">Cada fluxo dentro da plataforma nasceu de uma dor nossa. A dor de uma operação que fatura dezenas de milhões por ano e precisava crescer sem inchar a equipe.</p>
+      <div class="stats">
+        <div class="card stat"><b>+R$ 30 mi</b><span>de faturamento próprio em 2026</span></div>
+        <div class="card stat"><b>+10 mil</b><span>pedidos por mês</span></div>
+        <div class="card stat"><b>+10 anos</b><span>de marketplace</span></div>
       </div>
     </div>
-    <div style="min-width:0;display:flex;flex-direction:column;gap:16px">
-      <div style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">A operação por dentro</div>
-      <div style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);grid-template-rows:232px 232px;gap:12px">
-        <div style="grid-row:span 2;min-width:0"><img class="foto" src="${FOTOS.estoque}" alt="Estoque da nossa operação, com milhares de peças em prateleira"></div>
-        <div style="min-width:0"><img class="foto" src="${FOTOS.interna}" alt="Vista interna do galpão, com as bancadas de separação"></div>
-        <div style="min-width:0"><img class="foto" src="${FOTOS.galpao}" alt="Fachada do galpão de hoje"></div>
+    <div style="min-width:0;display:flex;flex-direction:column;gap:20px">
+      <div class="eb">A operação por dentro</div>
+      <div class="photos">
+        <div class="big"><img src="${FOTOS.estoque}" alt="Estoque da nossa operação, com milhares de peças em prateleira"></div>
+        <div><img src="${FOTOS.interna}" alt="Vista interna do galpão, com as bancadas de separação"></div>
+        <div><img src="${FOTOS.galpao}" alt="Fachada do galpão de hoje"></div>
       </div>
-      <div style="font-size:24px;color:var(--ink-faint);line-height:1.45">Milhares de peças girando todo dia. A operação que virou ferramenta.</div>
+      <div style="font-size:26px;color:var(--ink-3);line-height:1.45">Milhares de peças girando todo dia. A operação que virou ferramenta.</div>
     </div>
   </div>
 </section>
 
-<section data-label="O método" data-screen-label="02 Método" data-speaker-notes="Slide de virada. Deixe claro que a venda não é de software: é do processo. Os próximos slides são os produtos do plano escolhido." data-theme="dark" style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:24px;border-bottom:1px solid var(--line)">
-    <span style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">O método</span>
-    <span style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">02</span>
-  </div>
-  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:36px;max-width:1450px">
-    <h2 style="margin:0;font-size:76px;line-height:1.05;letter-spacing:-0.03em;font-weight:700;text-wrap:balance">Não é um software. É o método que usamos pra escalar a nossa operação, <span style="color:var(--brand)">alavancado por tecnologia.</span></h2>
-    <p style="margin:0;font-size:30px;line-height:1.5;color:var(--ink-muted);max-width:1000px;text-wrap:pretty">Tecnologia qualquer um compra. O que faz o número mudar é o processo por trás dela. Este é o método que vamos ligar na sua operação.</p>
+<section class="dk" data-label="O método" data-screen-label="02 Método" data-speaker-notes="Slide de virada. Deixe claro que a venda não é de software: é do processo. Os próximos slides são os produtos do plano escolhido.">
+  <div class="hd"><span class="eb">O método</span><span class="pg">02</span></div>
+  <div class="body" style="display:flex;flex-direction:column;justify-content:center;gap:44px;max-width:1500px">
+    <h2 class="h" style="font-size:100px;margin:0">Não é um software. É o método que usamos pra escalar a nossa operação, <span class="a">alavancado por tecnologia.</span></h2>
+    <p class="lede soft" style="max-width:1060px">Tecnologia qualquer um compra. O que faz o número mudar é o processo por trás dela. Este é o método que vamos ligar na sua operação.</p>
   </div>
 </section>
 
-<section data-if="oem" data-label="OEM" data-screen-label="02a OEM" data-speaker-notes="Estoque parado é o gancho. Mostre o volume do pacote contratado e diga que ninguém digita título." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:24px;border-bottom:1px solid var(--line);margin-bottom:52px">
-    <span style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">OEM · método</span>
-    <span style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">02</span>
-  </div>
-  <div style="flex:1;display:grid;grid-template-columns:minmax(0,0.92fr) minmax(0,1.08fr);gap:72px;align-items:center">
+<section class="dk" data-if="oem" data-label="Lever OEM" data-screen-label="02a Efeito teia" data-speaker-notes="Abra pelo estoque parado: pergunte há quanto tempo as peças dele estão sem venda. Depois os três pilares: título do jeito que o comprador busca, com até 200 caracteres; descrição específica e compatibilidade completa, para a peça aparecer na busca por veículo; e múltiplas contas com replicação automática, em que um anúncio publicado vai para todas as contas e uma edição chega em todas de uma vez.">
+  <div class="hd"><span class="eb">Lever OEM · método</span><span class="pg">02</span></div>
+  <div class="body" style="display:grid;grid-template-columns:minmax(0,.88fr) minmax(0,1.12fr);gap:80px;align-items:center">
     <div style="min-width:0">
-      <div style="width:88px;height:88px;border-radius:12px;background:var(--ink);display:flex;align-items:center;justify-content:center;margin-bottom:28px"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 9h10M7 12.5h10M7 16h6"></path><path d="m16.5 15.5 1.5 1.5 3-3" stroke-width="2"></path></svg></div>
-      <h3 style="margin:0 0 20px;font-size:64px;line-height:1.03;letter-spacing:-0.03em;font-weight:700">Anúncio perfeito.</h3>
-      <p style="margin:0;font-size:28px;line-height:1.5;color:var(--ink-muted);text-wrap:pretty">Estoque sem anúncio é dinheiro parado na prateleira. Você cola a lista de códigos; a Lever busca ficha, fotos, categoria e compatibilidade, monta e publica. <span data-f="oemPackFmt"></span> anúncios no ar sem ninguém digitar um título.</p>
+      <h3 class="h" style="font-size:112px;margin:0 0 34px">Efeito <span class="a">teia.</span></h3>
+      <p class="lede soft" style="color:var(--ink-2)">Estoque sem anúncio é dinheiro parado na prateleira. Com o efeito teia, um anúncio publicado vai para todas as suas contas, e uma edição chega em todas de uma vez. Mais alcance, mesma equipe.</p>
     </div>
-    <div style="min-width:0;display:flex;flex-direction:column;gap:16px">
-      <div style="display:flex;gap:22px;align-items:flex-start;background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:28px"><span style="flex:none;width:56px;height:56px;border-radius:10px;background:var(--paper-tinted);display:flex;align-items:center;justify-content:center"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h10M4 17h7"></path><path d="m16 15 2 2 4-4"></path></svg></span><div><div style="font-size:30px;font-weight:600;letter-spacing:-0.01em;margin-bottom:8px">Título do jeito que o comprador busca</div><div style="font-size:25px;color:var(--ink-muted);line-height:1.45">Otimizado dentro do limite de cada marketplace.</div></div></div>
-      <div style="display:flex;gap:22px;align-items:flex-start;background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:28px"><span style="flex:none;width:56px;height:56px;border-radius:10px;background:var(--paper-tinted);display:flex;align-items:center;justify-content:center"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"></path><path d="M15 3v4h4M9 12h6M9 16h6"></path></svg></span><div><div style="font-size:30px;font-weight:600;letter-spacing:-0.01em;margin-bottom:8px">Descrição específica da peça</div><div style="font-size:25px;color:var(--ink-muted);line-height:1.45">Ficha técnica e aplicação, não texto genérico copiado.</div></div></div>
-      <div style="display:flex;gap:22px;align-items:flex-start;background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:28px"><span style="flex:none;width:56px;height:56px;border-radius:10px;background:var(--paper-tinted);display:flex;align-items:center;justify-content:center"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 16l1.5-5h11L19 16"></path><rect x="3" y="16" width="18" height="3" rx="1"></rect><circle cx="7" cy="20" r="1.5"></circle><circle cx="17" cy="20" r="1.5"></circle></svg></span><div><div style="font-size:30px;font-weight:600;letter-spacing:-0.01em;margin-bottom:8px">Compatibilidade completa</div><div style="font-size:25px;color:var(--ink-muted);line-height:1.45">A peça aparece na busca por veículo, onde o cliente realmente procura.</div></div></div>
+    <div style="min-width:0;display:flex;flex-direction:column;gap:18px">
+      <div class="card feat"><span class="ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h10M4 17h7"></path><path d="m16 15 2 2 4-4"></path></svg></span><div><b>Título do jeito que o comprador busca</b><span>Até 200 caracteres, dentro do limite de cada marketplace.</span></div></div>
+      <div class="card feat"><span class="ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 16l1.5-5h11L19 16"></path><rect x="3" y="16" width="18" height="3" rx="1"></rect><circle cx="7" cy="20" r="1.5"></circle><circle cx="17" cy="20" r="1.5"></circle></svg></span><div><b>Descrição específica e compatibilidade completa</b><span>Ficha técnica e aplicação da peça, que aparece na busca por veículo, onde o cliente realmente procura.</span></div></div>
+      <div class="card feat"><span class="ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect><path d="M11 7.5h4.5v4M13 16.5H8.5v-4"></path></svg></span><div><b>Múltiplas contas e replicação automática</b><span>Todas as contas num painel só. Anúncio novo se espalha sozinho, e SKU editado é atualizado em todas.</span></div></div>
     </div>
   </div>
 </section>
 
-<section data-if="ads" data-label="Lever Ads" data-screen-label="02b Lever Ads" data-speaker-notes="Efeito teia: um anúncio publicado vira N anúncios no ar. Use o número de contas do cliente que está na tela." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:24px;border-bottom:1px solid var(--line);margin-bottom:52px">
-    <span style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Lever Ads · método</span>
-    <span style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">02</span>
-  </div>
-  <div style="flex:1;display:grid;grid-template-columns:minmax(0,0.92fr) minmax(0,1.08fr);gap:72px;align-items:center">
+<section class="dk" data-if="ads" data-label="Lever Ads" data-screen-label="02b Lever Ads" data-speaker-notes="Efeito teia: um anúncio publicado vai para todas as contas do cliente, e uma edição chega em todas de uma vez. Depois os três pilares: todas as contas num painel só, replicação automática e atendimento automático.">
+  <div class="hd"><span class="eb">Lever Ads · método</span><span class="pg">02</span></div>
+  <div class="body" style="display:grid;grid-template-columns:minmax(0,.88fr) minmax(0,1.12fr);gap:80px;align-items:center">
     <div style="min-width:0">
-      <div style="width:88px;height:88px;border-radius:12px;background:var(--ink);display:flex;align-items:center;justify-content:center;margin-bottom:28px"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.2"></circle><circle cx="4" cy="6" r="1.6"></circle><circle cx="20" cy="6" r="1.6"></circle><circle cx="4" cy="18" r="1.6"></circle><circle cx="20" cy="18" r="1.6"></circle><path d="M10.3 10.6 5.3 7M13.7 10.6 18.7 7M10.3 13.4 5.3 17M13.7 13.4 18.7 17"></path></svg></div>
-      <h3 style="margin:0 0 20px;font-size:64px;line-height:1.03;letter-spacing:-0.03em;font-weight:700">Efeito teia.</h3>
-      <p style="margin:0;font-size:28px;line-height:1.5;color:var(--ink-muted);text-wrap:pretty">Hoje, cada conta nova é trabalho dobrado. Com o efeito teia, um anúncio publicado vira <span data-f="f.contas"></span> anúncios no ar, e uma edição chega em todas as contas de uma vez. Mais alcance, mesma equipe.</p>
+      <h3 class="h" style="font-size:112px;margin:0 0 34px">Efeito <span class="a">teia.</span></h3>
+      <p class="lede soft" style="color:var(--ink-2)">Hoje, cada conta nova é trabalho dobrado. Com o efeito teia, um anúncio publicado vai para todas as suas contas, e uma edição chega em todas de uma vez. Mais alcance, mesma equipe.</p>
     </div>
-    <div style="min-width:0;display:flex;flex-direction:column;gap:16px">
-      <div style="display:flex;gap:22px;align-items:flex-start;background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:28px"><span style="flex:none;width:56px;height:56px;border-radius:10px;background:var(--paper-tinted);display:flex;align-items:center;justify-content:center"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"></rect><path d="M3 9h18M8 21h8"></path></svg></span><div><div style="font-size:30px;font-weight:600;letter-spacing:-0.01em;margin-bottom:8px">Múltiplas contas, um painel</div><div style="font-size:25px;color:var(--ink-muted);line-height:1.45">Todas conectadas, cada uma com as próprias regras respeitadas.</div></div></div>
-      <div style="display:flex;gap:22px;align-items:flex-start;background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:28px"><span style="flex:none;width:56px;height:56px;border-radius:10px;background:var(--paper-tinted);display:flex;align-items:center;justify-content:center"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect><path d="M11 7.5h4.5v4M13 16.5H8.5v-4"></path></svg></span><div><div style="font-size:30px;font-weight:600;letter-spacing:-0.01em;margin-bottom:8px">Replicação automática</div><div style="font-size:25px;color:var(--ink-muted);line-height:1.45">Anúncio novo se espalha sozinho. SKU editado, atualizado em todas.</div></div></div>
-      <div style="display:flex;gap:22px;align-items:flex-start;background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:28px"><span style="flex:none;width:56px;height:56px;border-radius:10px;background:var(--paper-tinted);display:flex;align-items:center;justify-content:center"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v10H9l-5 4z"></path><path d="M8 9h8M8 12h5"></path></svg></span><div><div style="font-size:30px;font-weight:600;letter-spacing:-0.01em;margin-bottom:8px">Atendimento automático</div><div style="font-size:25px;color:var(--ink-muted);line-height:1.45">Perguntas e pós-venda respondidos por IA com o contexto do seu catálogo.</div></div></div>
+    <div style="min-width:0;display:flex;flex-direction:column;gap:18px">
+      <div class="card feat"><span class="ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"></rect><path d="M3 9h18M8 21h8"></path></svg></span><div><b>Múltiplas contas, um painel</b><span>Todas conectadas, cada uma com as próprias regras respeitadas.</span></div></div>
+      <div class="card feat"><span class="ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect><path d="M11 7.5h4.5v4M13 16.5H8.5v-4"></path></svg></span><div><b>Replicação automática</b><span>Anúncio novo se espalha sozinho. SKU editado, atualizado em todas.</span></div></div>
+      <div class="card feat"><span class="ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v10H9l-5 4z"></path><path d="M8 9h8M8 12h5"></path></svg></span><div><b>Atendimento automático</b><span>Perguntas e pós-venda respondidos por IA com o contexto do seu catálogo.</span></div></div>
     </div>
   </div>
 </section>
 
-<section data-if="price" data-label="Lever Price" data-screen-label="02c Lever Price" data-speaker-notes="Fale de margem, não de preço. A régua é a margem mínima que o cliente define." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:24px;border-bottom:1px solid var(--line);margin-bottom:52px">
-    <span style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Lever Price · método</span>
-    <span style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">02</span>
-  </div>
-  <div style="flex:1;display:grid;grid-template-columns:minmax(0,0.92fr) minmax(0,1.08fr);gap:72px;align-items:center">
+<section class="dk" data-if="price" data-label="Lever Price" data-screen-label="02c Lever Price" data-speaker-notes="A espiral do lucro é o faturamento subir com o lucro subindo junto, ou pelo menos com a mesma margem. Margem mínima: o preço se ajusta sozinho quando muda o frete do Mercado Livre ou o custo do fornecedor. Reprecificação em massa: todos os anúncios prontos para as melhores promoções, sem furar a margem. Promoção com critério: mais alcance para o anúncio, preço mais atraente e o rebate priorizado para manter ou aumentar a margem.">
+  <div class="hd"><span class="eb">Lever Price · método</span><span class="pg">02</span></div>
+  <div class="body" style="display:grid;grid-template-columns:minmax(0,.88fr) minmax(0,1.12fr);gap:80px;align-items:center">
     <div style="min-width:0">
-      <div style="width:88px;height:88px;border-radius:12px;background:var(--ink);display:flex;align-items:center;justify-content:center;margin-bottom:28px"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7"></path><path d="M20 4v4h-4"></path><path d="M12 8v8M9.8 10.3c0-1 1-1.6 2.2-1.6s2.2.6 2.2 1.5c0 2.3-4.4 1.2-4.4 3.6 0 .9 1 1.6 2.2 1.6s2.2-.6 2.2-1.6"></path></svg></div>
-      <h3 style="margin:0 0 20px;font-size:64px;line-height:1.03;letter-spacing:-0.03em;font-weight:700">Espiral do lucro.</h3>
-      <p style="margin:0;font-size:28px;line-height:1.5;color:var(--ink-muted);text-wrap:pretty">Ganhar o catálogo baixando preço no susto é queimar margem. Você define a margem mínima; a Lever ajusta em massa, o dia inteiro, e só entra em promoção quando ela ainda dá lucro.</p>
+      <h3 class="h" style="font-size:112px;margin:0 0 34px">Espiral do <span class="p">lucro.</span></h3>
+      <p class="lede soft" style="color:var(--ink-2)">Faturamento crescendo e lucro crescendo junto. Você define a margem mínima; a Lever ajusta preço e promoções sozinha, para você vender mais com a margem igual ou maior.</p>
     </div>
-    <div style="min-width:0;display:flex;flex-direction:column;gap:16px">
-      <div style="display:flex;gap:22px;align-items:flex-start;background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:28px"><span style="flex:none;width:56px;height:56px;border-radius:10px;background:var(--paper-tinted);display:flex;align-items:center;justify-content:center"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 4.5 3.4 7.8 8 9 4.6-1.2 8-4.5 8-9V6z"></path><path d="M12 8v8M10 10.5c0-.8.9-1.3 2-1.3s2 .5 2 1.2c0 1.8-4 .9-4 2.8 0 .7.9 1.3 2 1.3s2-.5 2-1.3"></path></svg></span><div><div style="font-size:30px;font-weight:600;letter-spacing:-0.01em;margin-bottom:8px">Margem mínima protegida</div><div style="font-size:25px;color:var(--ink-muted);line-height:1.45">Cada SKU trabalha dentro da margem que você definiu. Nunca abaixo.</div></div></div>
-      <div style="display:flex;gap:22px;align-items:flex-start;background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:28px"><span style="flex:none;width:56px;height:56px;border-radius:10px;background:var(--paper-tinted);display:flex;align-items:center;justify-content:center"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V4M4 20h16"></path><path d="M7 15l4-4 3 3 5-6"></path></svg></span><div><div style="font-size:30px;font-weight:600;letter-spacing:-0.01em;margin-bottom:8px">Reprecificação em massa</div><div style="font-size:25px;color:var(--ink-muted);line-height:1.45">Milhares de anúncios ajustados de uma vez, em todas as contas.</div></div></div>
-      <div style="display:flex;gap:22px;align-items:flex-start;background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:28px"><span style="flex:none;width:56px;height:56px;border-radius:10px;background:var(--paper-tinted);display:flex;align-items:center;justify-content:center"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4"></path><path d="m9 12 2 2 4-4"></path></svg></span><div><div style="font-size:30px;font-weight:600;letter-spacing:-0.01em;margin-bottom:8px">Promoção com critério</div><div style="font-size:25px;color:var(--ink-muted);line-height:1.45">Entra e sai de campanhas com base na margem real.</div></div></div>
+    <div style="min-width:0;display:flex;flex-direction:column;gap:18px">
+      <div class="card feat"><span class="ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 4.5 3.4 7.8 8 9 4.6-1.2 8-4.5 8-9V6z"></path><path d="M12 8v8M10 10.5c0-.8.9-1.3 2-1.3s2 .5 2 1.2c0 1.8-4 .9-4 2.8 0 .7.9 1.3 2 1.3s2-.5 2-1.3"></path></svg></span><div><b>Margem mínima protegida</b><span>Você fatura e sobra lucro. Mudou o frete do Mercado Livre ou o custo do fornecedor, o preço se ajusta sozinho.</span></div></div>
+      <div class="card feat"><span class="ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V4M4 20h16"></path><path d="M7 15l4-4 3 3 5-6"></path></svg></span><div><b>Reprecificação em massa</b><span>Reprecifica todos os anúncios para entrar nas melhores promoções, sem passar da margem mínima.</span></div></div>
+      <div class="card feat"><span class="ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4"></path><path d="m9 12 2 2 4-4"></path></svg></span><div><b>Promoção automática com critério</b><span>Entra nas melhores promoções: mais alcance para o anúncio, preço mais atraente e margem mantida pelo rebate.</span></div></div>
     </div>
   </div>
 </section>
 
-<section data-label="Demonstração" data-screen-label="03 Demonstração" data-speaker-notes="Pare o deck aqui e abra a plataforma. Volte para o slide seguinte quando terminar a demo." data-theme="dark" style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:24px;border-bottom:1px solid var(--line)">
-    <span style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Demonstração</span>
-    <span style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">03</span>
-  </div>
-  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:32px;max-width:1300px">
-    <h2 style="margin:0;font-size:110px;line-height:1;letter-spacing:-0.035em;font-weight:700">Vamos ver funcionando.</h2>
-    <p style="margin:0;font-size:32px;line-height:1.45;color:var(--ink-muted);max-width:900px;text-wrap:pretty">Vou abrir a plataforma e mostrar <span data-f="demoLista"></span> rodando em contas reais, agora.</p>
-  </div>
-</section>
-
-<section data-label="Como você entra" data-screen-label="04 Como você entra" data-speaker-notes="Tire o medo da implantação: grupo no WhatsApp no dia 0, call de plano de ação, processos liberados na primeira semana e acompanhamento mensal." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:24px;border-bottom:1px solid var(--line);margin-bottom:44px">
-    <span style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">O que acontece depois do sim</span>
-    <span style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">04</span>
-  </div>
-  <div style="flex:1;display:flex;flex-direction:column;justify-content:center">
-  <h2 style="margin:0 0 18px;font-size:60px;line-height:1.05;letter-spacing:-0.025em;font-weight:700;max-width:1200px;text-wrap:balance">Você fecha hoje. <span style="color:var(--brand)">Em dias, está rodando.</span></h2>
-  <p style="margin:0 0 72px;font-size:28px;line-height:1.45;color:var(--ink-muted);max-width:900px;text-wrap:pretty">Sem manual pra ler, sem ficar sozinho com um login. A gente entra junto na sua operação e só sai quando o número aparece.</p>
-  <div style="position:relative;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:28px">
-    <div style="position:absolute;left:36px;right:36px;top:35px;height:1px;background:var(--line)"></div>
-    <div style="position:relative;display:flex;flex-direction:column;gap:16px">
-      <div style="width:72px;height:72px;border-radius:999px;background:var(--ink);color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:600;font-size:28px;border:8px solid var(--paper)">1</div>
-      <div style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Dia 0</div>
-      <div style="font-size:32px;font-weight:600;letter-spacing:-0.015em;line-height:1.2">Grupo no WhatsApp</div>
-      <div style="font-size:25px;color:var(--ink-muted);line-height:1.45">Você, seu time e o nosso no mesmo canal. Resposta direta, sem ticket.</div>
+<section class="dk" data-label="Demonstração" data-screen-label="03 Demonstração" data-speaker-notes="Pare o deck aqui e abra a plataforma. Volte para o slide seguinte quando terminar a demo.">
+  <div class="hd"><span class="eb">Demonstração</span><span class="pg">03</span></div>
+  <div class="body" style="display:grid;grid-template-columns:minmax(0,.78fr) minmax(0,1.22fr);gap:72px;align-items:center">
+    <div style="min-width:0;display:flex;flex-direction:column;gap:34px">
+      <h2 class="h" style="font-size:100px;margin:0">Vamos ver <span class="a">funcionando.</span></h2>
+      <p class="lede soft">Vou abrir a plataforma e mostrar <span data-f="demoLista"></span> rodando em contas reais, agora.</p>
     </div>
-    <div style="position:relative;display:flex;flex-direction:column;gap:16px">
-      <div style="width:72px;height:72px;border-radius:999px;background:var(--ink);color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:600;font-size:28px;border:8px solid var(--paper)">2</div>
-      <div style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Dia 1–2</div>
-      <div style="font-size:32px;font-weight:600;letter-spacing:-0.015em;line-height:1.2">Plano de ação</div>
-      <div style="font-size:25px;color:var(--ink-muted);line-height:1.45">Conectamos as <span data-f="f.contas"></span> contas, definimos regras e o que ataca primeiro.</div>
-    </div>
-    <div style="position:relative;display:flex;flex-direction:column;gap:16px">
-      <div style="width:72px;height:72px;border-radius:999px;background:var(--ink);color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:600;font-size:28px;border:8px solid var(--paper)">3</div>
-      <div style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Semana 1</div>
-      <div style="font-size:32px;font-weight:600;letter-spacing:-0.015em;line-height:1.2">Processos liberados</div>
-      <div style="font-size:25px;color:var(--ink-muted);line-height:1.45">Os mesmos fluxos que rodam na nossa operação, ativos no seu painel.</div>
-    </div>
-    <div style="position:relative;display:flex;flex-direction:column;gap:16px">
-      <div style="width:72px;height:72px;border-radius:999px;background:var(--brand-soft);color:var(--brand);border:8px solid var(--paper);box-shadow:inset 0 0 0 1px var(--brand);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:600;font-size:28px">∞</div>
-      <div style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Todo mês</div>
-      <div style="font-size:32px;font-weight:600;letter-spacing:-0.015em;line-height:1.2">Acompanhamento</div>
-      <div style="font-size:25px;color:var(--ink-muted);line-height:1.45">Resultado conferido com você, em reais, dentro do painel.</div>
-    </div>
-  </div>
-  </div>
-</section>
-
-<section data-label="Foco no resultado" data-screen-label="05 Foco no resultado" data-speaker-notes="A plataforma é o meio. Percorra o ciclo com o dedo na tela: estratégia aplicada, alcance multiplicado, faturamento maior." data-theme="dark" style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:24px;border-bottom:1px solid var(--line);margin-bottom:48px">
-    <span style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Foco no resultado</span>
-    <span style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">05</span>
-  </div>
-  <div style="flex:1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,0.85fr);gap:80px;align-items:center">
     <div style="min-width:0">
-      <h2 style="margin:0 0 32px;font-size:64px;line-height:1.04;letter-spacing:-0.03em;font-weight:700;text-wrap:balance">Nosso objetivo é você <span style="color:var(--brand)">faturando e lucrando mais.</span></h2>
-      <p style="margin:0 0 22px;font-size:28px;line-height:1.5;color:var(--ink-muted);text-wrap:pretty">A plataforma é o meio. O fim é o número na sua conta no fim do mês. É por ele que a gente se mede.</p>
-      <p style="margin:0;font-size:28px;line-height:1.5;color:var(--ink-muted);text-wrap:pretty">Cada estratégia que rodamos na nossa operação entra na sua. Quanto mais ela gira, mais a Lever se paga sozinha.</p>
+      <div class="window" data-win="oem">
+        <div class="win-bar"><div class="dots"><i></i><i></i><i></i></div><div class="win-url">leverads.com.br · Anunciar peças</div></div>
+        <img src="${ASSETS}/oem-criar.webp" alt="Tela Anunciar peças do Lever OEM">
+      </div>
+      <div class="window" data-win="ads">
+        <div class="win-bar"><div class="dots"><i></i><i></i><i></i></div><div class="win-url">leverads.com.br · Copiar anúncios</div></div>
+        <img src="${ASSETS}/ads-copiar-giro.webp" alt="Tela Copiar anúncios do Lever Ads">
+      </div>
+      <div class="window" data-win="price">
+        <div class="win-bar"><div class="dots"><i></i><i></i><i></i></div><div class="win-url">leverprice.com.br · Início</div></div>
+        <img src="${ASSETS}/price-inicio.webp" alt="Tela inicial do Lever Price">
+      </div>
     </div>
-    <div style="min-width:0;background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:36px">
-      <div style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:20px">O ciclo</div>
+  </div>
+</section>
+
+<section class="dk" data-label="Como você entra" data-screen-label="04 Como você entra" data-speaker-notes="Tire o medo da implantação: grupo no WhatsApp no dia 0, plano de ação e integração no dia 1 ou 2, já com os processos liberados, e acompanhamento todo mês.">
+  <div class="hd"><span class="eb">O que acontece depois do sim</span><span class="pg">04</span></div>
+  <div class="body" style="display:flex;flex-direction:column;justify-content:center">
+    <h2 class="h" style="font-size:96px;margin:0 0 26px;max-width:1500px">Você fecha hoje. <span class="a" style="white-space:nowrap">Em dias, está rodando.</span></h2>
+    <p class="lede soft" style="max-width:1100px;margin-bottom:64px">Sem manual pra ler, sem ficar sozinho com um login. A gente entra junto na sua operação e só sai quando o número aparece.</p>
+    <div class="track"><i></i></div>
+    <ul class="steps">
+      <li><div class="top"><span class="sn">1</span><span class="dia">Dia 0</span></div><h3>Grupo no WhatsApp</h3><p>Você, seu time e o nosso no mesmo canal. Resposta direta, sem ticket.</p></li>
+      <li><div class="top"><span class="sn">2</span><span class="dia">Dia 1–2</span></div><h3>Plano de ação e integração</h3><p>Conectamos suas contas, definimos as regras e liberamos os processos da nossa operação.</p></li>
+      <li><div class="top"><span class="sn">∞</span><span class="dia">Todo mês</span></div><h3>Acompanhamento</h3><p>Resultado conferido com você, em reais, dentro do painel.</p></li>
+    </ul>
+  </div>
+</section>
+
+<section class="dk" data-label="Foco no resultado" data-screen-label="05 Foco no resultado" data-speaker-notes="A plataforma é o meio. Percorra o ciclo com o dedo na tela: estratégia aplicada, alcance multiplicado, faturamento maior.">
+  <div class="hd"><span class="eb">Foco no resultado</span><span class="pg">05</span></div>
+  <div class="body cyc">
+    <div style="min-width:0">
+      <h2 class="h" style="font-size:84px;margin:0 0 36px">Nosso objetivo é você <span class="a">faturando e lucrando mais.</span></h2>
+      <p class="lede soft" style="margin-bottom:22px;color:var(--ink-2)">A plataforma é o meio. O fim é o número na sua conta no fim do mês. É por ele que a gente se mede.</p>
+      <p class="lede soft">Cada estratégia que rodamos na nossa operação entra na sua. Quanto mais ela gira, mais a Lever se paga sozinha.</p>
+    </div>
+    <div class="card cycbox" style="min-width:0">
+      <div class="eb" style="margin-bottom:56px">O ciclo</div>
       <div style="position:relative;aspect-ratio:1;max-width:560px;margin:0 auto">
         <svg viewBox="0 0 200 200" width="100%" height="100%" fill="none" style="display:block">
           <defs><marker id="cyc-arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5 0 10z" fill="var(--brand)"></path></marker></defs>
-          <circle cx="100" cy="100" r="52" stroke="var(--line-strong)" stroke-width="1.2"></circle>
+          <circle cx="100" cy="100" r="52" stroke="var(--line-2)" stroke-width="1.2"></circle>
           <path d="M100 48 A52 52 0 0 1 145 74" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" marker-end="url(#cyc-arrow)"></path>
           <path d="M145 126 A52 52 0 0 1 100 152" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" marker-end="url(#cyc-arrow)"></path>
           <path d="M55 126 A52 52 0 0 1 55 74" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" marker-end="url(#cyc-arrow)"></path>
         </svg>
-        <div style="position:absolute;left:50%;top:24%;transform:translate(-50%,-50%);width:56px;height:56px;border-radius:999px;background:var(--paper-card);border:1px solid var(--brand);color:var(--brand);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:22px;font-weight:600">01</div>
-        <div style="position:absolute;left:72.5%;top:63%;transform:translate(-50%,-50%);width:56px;height:56px;border-radius:999px;background:var(--paper-card);border:1px solid var(--brand);color:var(--brand);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:22px;font-weight:600">02</div>
-        <div style="position:absolute;left:27.5%;top:63%;transform:translate(-50%,-50%);width:56px;height:56px;border-radius:999px;background:var(--brand-soft);border:1px solid var(--brand);color:var(--brand);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:22px;font-weight:600">03</div>
-        <div style="position:absolute;left:50%;top:-2%;transform:translateX(-50%);width:64%;font-size:24px;font-weight:600;line-height:1.25;letter-spacing:-0.01em;text-align:center">A plataforma aplica nossas estratégias</div>
-        <div style="position:absolute;right:-4%;top:78%;width:44%;font-size:24px;font-weight:600;line-height:1.25;letter-spacing:-0.01em;text-align:center">Você multiplica seu alcance</div>
-        <div style="position:absolute;left:-4%;top:78%;width:44%;font-size:24px;font-weight:600;line-height:1.25;letter-spacing:-0.01em;text-align:center">Isso aumenta seu faturamento</div>
-        <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;font-size:24px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-faint);line-height:1.4">E o ciclo recomeça</div>
+        <div class="bd" style="left:50%;top:24%;transform:translate(-50%,-50%)">01</div>
+        <div class="bd" style="left:72.5%;top:63%;transform:translate(-50%,-50%)">02</div>
+        <div class="bd" style="left:27.5%;top:63%;transform:translate(-50%,-50%)">03</div>
+        <div class="lb" style="left:50%;top:-2%;transform:translateX(-50%);width:64%">A plataforma aplica nossas estratégias</div>
+        <div class="lb" style="right:-4%;top:78%;width:44%">Você multiplica seu alcance</div>
+        <div class="lb" style="left:-4%;top:78%;width:44%">Isso aumenta seu faturamento</div>
+        <div class="lb" style="left:50%;top:50%;transform:translate(-50%,-50%);width:36%;color:var(--ink-3);font-weight:500">E o ciclo recomeça</div>
       </div>
     </div>
   </div>
 </section>
 
-<section data-if="resultados" data-label="Quem já está dentro" data-screen-label="06 Resultados" data-speaker-notes="Cases escolhidos pelo nicho deste cliente. Sem case do nicho, entram os mais fortes. Sem case nenhum publicado, a tela volta pros colchetes. Feche com os totais atualizados do painel: faturamento dos clientes, receita dos anúncios e participação no mesmo período." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:72px 112px 80px;display:flex;flex-direction:column">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:24px;border-bottom:1px solid var(--line);margin-bottom:20px">
-    <span style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Quem já está dentro</span>
-    <span style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">06</span>
+<section class="dk" data-if="resultados" data-label="Quem já está dentro" data-screen-label="06 Resultados" data-speaker-notes="Resultados do painel de vendas da Lever. Em cima, o geral: quanto já foi vendido em anúncios que a Lever criou, que fatia das vendas dos clientes vem desses anúncios e a mediana de dias da conexão até a primeira venda. No meio, os clientes escolhidos pelo nicho deste lead, no acumulado desde a entrada de cada um: valor gerado por anúncios da Lever, pedidos e anúncios criados. Sem case publicado, a tela mostra colchetes. Embaixo, a segurança: a plataforma usa a infraestrutura tecnológica da Oracle, a mesma usada por Caixa, TIM, Zoom e Uber; e a Lever é parceira oficial da EQI, a terceira maior corretora do Brasil e a que mais faz M&amp;A. Conte o que aconteceu, sem prometer o mesmo número." style="padding-top:56px;padding-bottom:80px">
+  <div class="hd" style="margin-bottom:22px"><span class="eb">Quem já está dentro</span><span class="pg">06</span></div>
+  <h2 class="h" style="font-size:62px;margin:0;max-width:1500px">Sellers com a mesma dor que a sua.<br><span class="a">O que mudou com a Lever.</span></h2>
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;min-height:0;padding-block:28px;gap:20px">
+    <!--RESULTADOS_VIVOS-->
+    <div class="cs3" data-cases hidden></div>
+    <div class="cs3" data-cases-fallback>${CASE_VAZIO.repeat(3)}</div>
+    <!--RESULTADOS_FONTE-->
   </div>
-  <h2 style="margin:0 0 16px;font-size:52px;line-height:1.05;letter-spacing:-0.025em;font-weight:700;text-wrap:balance">Sellers com a mesma dor que a sua. <span style="color:var(--brand)">O que mudou.</span></h2>
-  <p style="margin:0 0 20px;font-size:24px;line-height:1.45;color:var(--ink-muted)">Acumulado desde o início de cada cliente na Lever. Tempo e custo pela mesma régua: 10 minutos por anúncio, ao custo de um funcionário de R$ 3.000 em 44 horas semanais.</p>
-  <div style="flex:1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px">
-    <div data-cases style="display:contents"></div>
-    <div data-cases-fallback style="display:contents">${CASE_VAZIO.repeat(4)}</div>
+  <div class="sec6">
+    <div style="flex:none"><div class="lab">Segurança</div><div class="row" style="--g:12px"><span style="font-size:22px">Infraestrutura tecnológica da</span><svg role="img" aria-label="Oracle" viewBox="0 0 231 30" style="height:18px;width:auto;flex:none"><path d="M99.61,19.52h15.24l-8.05-13L92,30H85.27l18-28.17a4.29,4.29,0,0,1,7-.05L128.32,30h-6.73l-3.17-5.25H103l-3.36-5.23m69.93,5.23V0.28h-5.72V27.16a2.76,2.76,0,0,0,.85,2,2.89,2.89,0,0,0,2.08.87h26l3.39-5.25H169.54M75,20.38A10,10,0,0,0,75,.28H50V30h5.71V5.54H74.65a4.81,4.81,0,0,1,0,9.62H58.54L75.6,30h8.29L72.43,20.38H75M14.88,30H32.15a14.86,14.86,0,0,0,0-29.71H14.88a14.86,14.86,0,1,0,0,29.71m16.88-5.23H15.26a9.62,9.62,0,0,1,0-19.23h16.5a9.62,9.62,0,1,1,0,19.23M140.25,30h17.63l3.34-5.23H140.64a9.62,9.62,0,1,1,0-19.23h16.75l3.38-5.25H140.25a14.86,14.86,0,1,0,0,29.71m69.87-5.23a9.62,9.62,0,0,1-9.26-7h24.42l3.36-5.24H200.86a9.61,9.61,0,0,1,9.26-7h16.76l3.35-5.25h-20.5a14.86,14.86,0,0,0,0,29.71h17.63l3.35-5.23h-20.6" transform="translate(-0.02 0)" fill="#C74634"></path></svg></div></div>
+    <div style="margin-left:56px;margin-right:auto;flex:none"><div class="lab">A mesma de</div><div class="row" style="--g:28px"><span class="wm" style="font-size:23px;font-weight:800;letter-spacing:.05em">CAIXA</span><span class="wm" style="font-size:23px;font-weight:800;letter-spacing:.08em">TIM</span><span class="wm" style="font-size:27px;font-weight:800;letter-spacing:-0.03em">zoom</span><span class="wm" style="font-size:25px;font-weight:600;letter-spacing:-0.01em">Uber</span></div></div>
+    <div class="vr"></div>
+    <div style="flex:1;min-width:0"><div class="lab">Parceria</div><div class="row" style="--g:10px"><span style="font-size:22px">Parceiro oficial da EQI</span><span style="color:var(--ink-3);font-size:19px">· 3ª maior corretora do Brasil</span><span style="margin-left:auto;font-size:30px;font-weight:800;letter-spacing:-0.02em;line-height:1">EQI</span></div></div>
   </div>
-  <!--RESULTADOS_VIVOS-->
 </section>
 
-<section data-label="Entregáveis" data-screen-label="07 Entregáveis" data-speaker-notes="Recapitule item a item o que entra no plano montado no configurador. É a ponte para o preço." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:24px;border-bottom:1px solid var(--line);margin-bottom:40px">
-    <span style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Recapitulando</span>
-    <span style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">07</span>
+<section class="dk" data-if="price" data-label="Quem já usa o Lever Price" data-screen-label="06 Resultados · Lever Price" data-speaker-notes="Cases do Lever Price, identificados só pelo nicho. À esquerda, uma autopeças antes e depois de ligar o Price: junho a agosto contra outubro e novembro até o dia 12. A sobra subiu R$ 112.478 por mês, a margem foi de 6,1% para 8,6%, as vendas no prejuízo caíram de 762 para 54 por mês, a mensalidade se paga 43 vezes e o rebate do Mercado Livre foi de R$ 0 em setembro para R$ 17.745 em outubro. À direita, o rebate de setembro para outubro em outras operações: pesca e camping de R$ 118 para R$ 7.006, importados de R$ 121 para R$ 3.971 e pet de R$ 24.330 para R$ 44.902. Em outubro, os clientes do Price recuperaram R$ 557.696 de rebate. Embaixo, a segurança: a plataforma usa a infraestrutura tecnológica da Oracle, a mesma usada por Caixa, TIM, Zoom e Uber; e a Lever é parceira oficial da EQI, a terceira maior corretora do Brasil e a que mais faz M&amp;A. Conte o que aconteceu, sem prometer o mesmo número." style="padding-top:56px;padding-bottom:80px">
+  <div class="hd" style="margin-bottom:22px"><span class="eb">Quem já está dentro</span><span class="pg">06</span></div>
+  <h2 class="h" style="font-size:62px;margin:0;max-width:1500px">Sellers com a mesma dor que a sua. <span class="p">O que mudou com o Lever Price.</span></h2>
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;min-height:0;padding-block:34px">
+    <div style="display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:24px;align-items:stretch">
+      <div class="card r1">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px"><span style="font-size:26px;font-weight:600;white-space:nowrap">Autopeças</span><span style="font-size:21px;color:var(--ink-3);white-space:nowrap">jun a ago → out e nov</span></div>
+        <div class="tab" style="margin-top:18px;font-size:116px;font-weight:700;color:var(--brand);letter-spacing:-.05em;line-height:1;white-space:nowrap">+R$&nbsp;112.478</div>
+        <div style="margin-top:10px;font-size:26px;color:var(--ink-2)">a mais de sobra todo mês</div>
+        <div style="margin-top:28px;padding-top:24px;border-top:1px solid var(--line-2);display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px 20px">
+          <div><div class="kv">Margem</div><div>6,1% → 8,6%</div></div>
+          <div><div class="kv">Vendas no prejuízo</div><div style="color:var(--brand)">762 → 54<span style="font-size:20px;font-weight:600;margin-left:10px">−93%</span></div></div>
+          <div><div class="kv">A mensalidade se paga</div><div>43×</div></div>
+          <div><div class="kv">Rebate do Mercado Livre <span>· set → out</span></div><div style="color:var(--brand)">R$ 0 → R$ 17.745</div></div>
+        </div>
+      </div>
+      <div class="card r2c"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding-bottom:8px"><span style="font-size:26px;font-weight:600;white-space:nowrap">Rebate do Mercado Livre</span><span style="font-size:21px;color:var(--ink-3);white-space:nowrap">setembro → outubro</span></div>
+        <div class="rrow"><div style="min-width:0"><b>Pesca e camping</b><small>antes R$ 118</small></div><em>R$ 7.006</em></div>
+        <div class="rrow"><div style="min-width:0"><b>Importados</b><small>antes R$ 121</small></div><em>R$ 3.971</em></div>
+        <div class="rrow"><div style="min-width:0"><b>Pet</b><small>antes R$ 24.330</small></div><em>R$ 44.902</em></div>
+      </div>
+    </div>
   </div>
-  <h2 style="margin:0 0 44px;font-size:56px;line-height:1.05;letter-spacing:-0.025em;font-weight:700;max-width:1300px;text-wrap:balance">Tudo o que entra na sua operação <span style="color:var(--brand)">com este plano.</span></h2>
-  <div style="flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px;align-items:stretch">
+  <div class="sec6">
+    <div style="flex:none"><div class="lab">Segurança</div><div class="row" style="--g:12px"><span style="font-size:22px">Infraestrutura tecnológica da</span><svg role="img" aria-label="Oracle" viewBox="0 0 231 30" style="height:18px;width:auto;flex:none"><path d="M99.61,19.52h15.24l-8.05-13L92,30H85.27l18-28.17a4.29,4.29,0,0,1,7-.05L128.32,30h-6.73l-3.17-5.25H103l-3.36-5.23m69.93,5.23V0.28h-5.72V27.16a2.76,2.76,0,0,0,.85,2,2.89,2.89,0,0,0,2.08.87h26l3.39-5.25H169.54M75,20.38A10,10,0,0,0,75,.28H50V30h5.71V5.54H74.65a4.81,4.81,0,0,1,0,9.62H58.54L75.6,30h8.29L72.43,20.38H75M14.88,30H32.15a14.86,14.86,0,0,0,0-29.71H14.88a14.86,14.86,0,1,0,0,29.71m16.88-5.23H15.26a9.62,9.62,0,0,1,0-19.23h16.5a9.62,9.62,0,1,1,0,19.23M140.25,30h17.63l3.34-5.23H140.64a9.62,9.62,0,1,1,0-19.23h16.75l3.38-5.25H140.25a14.86,14.86,0,1,0,0,29.71m69.87-5.23a9.62,9.62,0,0,1-9.26-7h24.42l3.36-5.24H200.86a9.61,9.61,0,0,1,9.26-7h16.76l3.35-5.25h-20.5a14.86,14.86,0,0,0,0,29.71h17.63l3.35-5.23h-20.6" transform="translate(-0.02 0)" fill="#C74634"></path></svg></div></div>
+    <div style="margin-left:56px;margin-right:auto;flex:none"><div class="lab">A mesma de</div><div class="row" style="--g:28px"><span class="wm" style="font-size:23px;font-weight:800;letter-spacing:.05em">CAIXA</span><span class="wm" style="font-size:23px;font-weight:800;letter-spacing:.08em">TIM</span><span class="wm" style="font-size:27px;font-weight:800;letter-spacing:-0.03em">zoom</span><span class="wm" style="font-size:25px;font-weight:600;letter-spacing:-0.01em">Uber</span></div></div>
+    <div class="vr"></div>
+    <div style="flex:1;min-width:0"><div class="lab">Parceria</div><div class="row" style="--g:10px"><span style="font-size:22px">Parceiro oficial da EQI</span><span style="color:var(--ink-3);font-size:19px">· 3ª maior corretora do Brasil</span><span style="margin-left:auto;font-size:30px;font-weight:800;letter-spacing:-0.02em;line-height:1">EQI</span></div></div>
+  </div>
+</section>
+
+<section class="dk" data-label="Entregáveis" data-screen-label="07 Entregáveis" data-speaker-notes="Recapitule item a item o que entra no plano montado no configurador. É a ponte para o preço." style="padding-top:56px">
+  <div class="hd" style="margin-bottom:34px"><span class="eb">Recapitulando</span><span class="pg">07</span></div>
+  <h2 class="h" style="font-size:80px;margin:0 0 40px;max-width:1500px">Tudo o que entra na sua operação <span class="a">com este plano.</span></h2>
+  <div class="body dl">
     <div data-entregaveis style="display:contents"></div>
   </div>
 </section>
 
-<section data-label="Investimento" data-screen-label="08 Investimento" data-speaker-notes="Diga o valor com calma e fique em silêncio. O próximo slide traduz a parcela em vendas." data-theme="dark" style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:24px;border-bottom:1px solid var(--line)">
-    <span style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Investimento</span>
-    <span style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">08</span>
-  </div>
-  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:40px">
-    <div style="font-size:44px;font-weight:600;letter-spacing:-0.02em;color:var(--ink-muted)">Plano <span data-f="periodoLabel"></span> · <span data-f="planoNome"></span></div>
-    <div style="display:flex;align-items:flex-end;gap:24px;font-variant-numeric:tabular-nums">
-      <div style="display:flex;flex-direction:column;gap:10px;font-size:40px;font-weight:600;color:var(--ink-muted);line-height:1;padding-bottom:26px"><span><span data-f="parcelas"></span>×</span><span>R$</span></div>
-      <div style="font-size:230px;font-weight:700;letter-spacing:-0.05em;line-height:0.86"><span data-f="mensalFmt"></span></div>
-      <div style="font-size:40px;font-weight:600;color:var(--ink-muted);line-height:1;padding-bottom:26px">,00</div>
+<section class="dk" data-label="Investimento" data-screen-label="08 Investimento" data-speaker-notes="Diga o valor com calma e fique em silêncio. O próximo slide traduz a parcela em vendas.">
+  <div class="hd"><span class="eb">Investimento</span><span class="pg">08</span></div>
+  <div class="body" style="display:flex;flex-direction:column;justify-content:center;gap:44px">
+    <div style="font-size:46px;font-weight:600;letter-spacing:-.025em;color:var(--ink-3)">Plano <span data-f="periodoLabel"></span> · <span data-f="planoNome"></span></div>
+    <div class="tab" style="display:flex;align-items:flex-end;gap:24px">
+      <div style="display:flex;flex-direction:column;gap:10px;font-size:42px;font-weight:600;color:var(--ink-3);line-height:1;padding-bottom:26px"><span><span data-f="parcelas"></span>×</span><span>R$</span></div>
+      <div style="font-size:250px;font-weight:700;letter-spacing:-.055em;line-height:.86"><span data-f="mensalFmt"></span></div>
+      <div style="font-size:42px;font-weight:600;color:var(--ink-3);line-height:1;padding-bottom:28px">,00</div>
     </div>
-    <div style="font-size:36px;font-weight:600;letter-spacing:-0.02em;color:var(--brand)">ou R$ <span data-f="vistaFmt"></span> à vista</div>
+    <div style="font-size:42px;font-weight:600;letter-spacing:-.025em;color:var(--brand)">ou R$ <span data-f="vistaFmt"></span> à vista</div>
   </div>
 </section>
 
-<section data-if="pratica" data-label="Na prática" data-screen-label="09 Tangibilidade" data-speaker-notes="Traduza a parcela em pedidos: com o ticket médio informado, são poucas vendas a mais por mês. Tudo acima disso é lucro novo." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:24px;border-bottom:1px solid var(--line);margin-bottom:48px">
-    <span style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Na prática</span>
-    <span style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">09</span>
-  </div>
-  <div style="flex:1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,0.95fr);gap:72px;align-items:center">
+<section class="dk" data-if="pratica" data-label="Na prática" data-screen-label="09 Na prática" data-speaker-notes="Traduza a parcela em pedidos: com o ticket médio informado, são poucas vendas a mais por mês. Tudo acima disso é lucro novo. Ticket médio e pedidos por mês vêm da tela de configuração; sem os dois, o slide não aparece.">
+  <div class="hd"><span class="eb">Na prática</span><span class="pg">09</span></div>
+  <div class="body" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.95fr);gap:72px;align-items:center">
     <div style="min-width:0">
-      <h2 style="margin:0 0 28px;font-size:62px;line-height:1.04;letter-spacing:-0.03em;font-weight:700;text-wrap:balance"><span style="color:var(--brand)"><span data-f="vendasNecessarias"></span> vendas a mais</span> por mês. É isso que paga a Lever.</h2>
-      <p style="margin:0 0 28px;font-size:28px;line-height:1.5;color:var(--ink-muted);text-wrap:pretty">Com ticket médio de R$ <span data-f="ticketFmt"></span>, a parcela equivale a <span data-f="vendasNecessarias"></span> pedidos. Você já faz <span data-f="pedidosFmt"></span> por mês. Estamos falando de <strong style="color:var(--ink);font-weight:700"><span data-f="percentualExtra"></span></strong> a mais. Tudo acima disso é lucro novo.</p>
-      <div style="font-size:24px;color:var(--ink-faint);line-height:1.45">Parcela ÷ ticket médio, arredondado pra cima. Sem contar a hora de equipe que volta.</div>
+      <h2 class="h" style="font-size:76px;margin:0 0 30px"><span class="a"><span data-f="vendasNecessarias"></span> vendas a mais</span> por mês. É isso que paga a Lever.</h2>
+      <p class="lede" style="font-size:29px;margin:0 0 22px">Com ticket médio de R$ <span data-f="ticketFmt"></span>, a parcela equivale a <span data-f="vendasNecessarias"></span> pedidos. Você já faz <span data-f="pedidosFmt"></span> por mês. Estamos falando de <b style="color:var(--ink)"><span data-f="percentualExtra"></span></b> a mais. Tudo acima disso é lucro novo.</p>
+      <div style="font-size:21px;color:var(--ink-4);line-height:1.45">Parcela ÷ ticket médio, arredondado pra cima. Sem contar a hora de equipe que volta.</div>
     </div>
-    <div style="min-width:0;background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:36px">
-      <div style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:20px">Retorno × investimento</div>
+    <div class="card" style="padding:40px 44px;min-width:0">
+      <div style="font-size:24px;font-weight:500;color:var(--ink-3);margin-bottom:24px">Retorno × investimento</div>
       <div style="position:relative">
-        <svg viewBox="0 0 400 260" width="100%" style="display:block;overflow:visible" fill="none">
-          <path d="M28 232H386" stroke="var(--line-strong)" stroke-width="1.5"></path><path d="M28 232V22" stroke="var(--line-strong)" stroke-width="1.5"></path>
-          <path d="M380 228l6 4-6 4M24 28l4-6 4 6" stroke="var(--line-strong)" stroke-width="1.5"></path>
-          <path d="M28 232C110 150 170 128 380 126" stroke="var(--ink-faint)" stroke-width="2" stroke-dasharray="5 5"></path>
-          <path d="M28 232C120 232 150 70 290 58" stroke="var(--brand)" stroke-width="2.5" stroke-dasharray="6 5"></path>
-          <circle cx="134.9" cy="156.5" r="13" stroke="var(--danger)" stroke-width="3"></circle>
+        <svg viewBox="0 0 400 260" width="100%" style="display:block;overflow:visible" fill="none" aria-hidden="true">
+          <path d="M28 232H386M28 232V22" stroke="var(--line-2)" stroke-width="1.5"></path>
+          <path d="M380 228l6 4-6 4M24 28l4-6 4 6" stroke="var(--line-2)" stroke-width="1.5"></path>
+          <path d="M28 232C110 150 170 128 380 126" stroke="var(--ink-4)" stroke-width="2" stroke-dasharray="5 5"></path>
+          <path d="M28 232C120 232 150 70 290 58" stroke="var(--brand)" stroke-width="3"></path>
+          <circle cx="134.9" cy="156.5" r="12" stroke="var(--brand)" stroke-width="3" fill="var(--bg)"></circle>
         </svg>
-        <div style="position:absolute;left:34%;top:66%;font-size:24px;font-weight:600;line-height:1.3;color:var(--danger)">Retorno sobre<br>investimento</div>
-        <div style="position:absolute;right:0;top:50%;font-size:24px;font-weight:600;text-align:right;line-height:1.3;color:var(--ink-faint)">Valor<br>investido</div>
-        <div style="position:absolute;right:0;top:2%;text-align:right;max-width:34%"><div style="font-size:64px;font-weight:700;letter-spacing:-0.03em;line-height:1;color:var(--brand);font-variant-numeric:tabular-nums">+<span data-f="vendasNecessarias"></span></div><div style="font-size:24px;font-weight:600;color:var(--ink-muted);margin-top:8px;line-height:1.3">vendas a mais<br>por mês</div></div>
+        <div style="position:absolute;left:35%;top:66%;font-size:23px;font-weight:600;line-height:1.3;color:var(--ink)">Retorno sobre<br>investimento</div>
+        <div style="position:absolute;right:0;top:50%;font-size:23px;font-weight:600;text-align:right;line-height:1.3;color:var(--ink-3)">Valor<br>investido</div>
+        <div style="position:absolute;right:0;top:0;text-align:right;max-width:36%"><div class="tab" style="font-size:72px;font-weight:700;letter-spacing:-.045em;line-height:1;color:var(--brand)">+<span data-f="vendasNecessarias"></span></div><div style="font-size:22px;font-weight:600;color:var(--ink-3);margin-top:8px;line-height:1.3">vendas a mais<br>por mês</div></div>
       </div>
     </div>
   </div>
 </section>
 
-<section data-label="Garantia" data-screen-label="10 Garantia" data-speaker-notes="Feche o risco: 60% de uso nos dois primeiros meses, faturamento não subiu no valor da parcela, devolvemos tudo. Depois pergunte se faz sentido começar." data-theme="dark" style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:24px;border-bottom:1px solid var(--line);margin-bottom:48px">
-    <span style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Garantia incondicional</span>
-    <span style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">10</span>
-  </div>
-  <div style="flex:1;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:80px;align-items:center">
+<section class="dk" data-label="Garantia" data-screen-label="10 Garantia" data-speaker-notes="Feche o risco: 60% de uso nos dois primeiros meses, faturamento não subiu no valor da parcela, devolvemos tudo. Depois pergunte se faz sentido começar.">
+  <div class="hd"><span class="eb">Garantia incondicional</span><span class="pg">10</span></div>
+  <div class="body gar">
     <div style="min-width:0">
-      <h2 style="margin:0 0 28px;font-size:64px;line-height:1.04;letter-spacing:-0.03em;font-weight:700;text-wrap:balance">Se a Lever não pagar a própria parcela, <span style="color:var(--brand)">você recebe tudo de volta.</span></h2>
-      <p style="margin:0 0 36px;font-size:28px;line-height:1.5;color:var(--ink-muted);max-width:1000px;text-wrap:pretty">Use a plataforma com pelo menos 60% da capacidade nos primeiros 2 meses. Se o seu faturamento não subir no valor da parcela, devolvemos cada centavo. Sem letra miúda.</p>
-      <div style="border-top:1px solid var(--line);padding-top:28px;max-width:1000px;display:flex;flex-direction:column;gap:10px">
-        <div style="font-size:26px;color:var(--ink-muted);line-height:1.45">Até hoje, nenhum cliente precisou acionar a garantia.</div>
-        <div style="font-size:26px;font-weight:600;color:var(--ink);line-height:1.45">O risco dessa decisão é nosso. O único risco seu é continuar como está.</div>
+      <h2 class="h" style="font-size:84px;margin:0 0 34px">Se a Lever não pagar a própria parcela, <span class="a">você recebe tudo de volta.</span></h2>
+      <p class="lede soft" style="margin-bottom:38px;max-width:1100px;color:var(--ink-2)">Use a plataforma com pelo menos 60% da capacidade nos primeiros 2 meses. Se o seu faturamento não subir no valor da parcela, devolvemos cada centavo. Sem letra miúda.</p>
+      <div style="border-top:1px solid var(--line);padding-top:28px;max-width:1100px;display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:28px;color:var(--ink-3);line-height:1.45">Até hoje, nenhum cliente precisou acionar a garantia.</div>
+        <div style="font-size:28px;font-weight:600;color:var(--ink);line-height:1.45">O risco dessa decisão é nosso. O único risco seu é continuar como está.</div>
       </div>
     </div>
-    <div style="width:320px;height:320px;border-radius:999px;background:var(--paper-card);border:1px solid var(--line);display:flex;align-items:center;justify-content:center">
-      <svg width="55%" height="55%" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5 4 5.5v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10v-6z"></path><path d="m8.5 12 2.3 2.3L15.5 9.5" stroke-width="2"></path></svg>
-    </div>
+    <div class="shield"><svg width="55%" height="55%" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5 4 5.5v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10v-6z"></path><path d="m8.5 12 2.3 2.3L15.5 9.5" stroke-width="1.9"></path></svg></div>
   </div>
 </section>
 
-<section data-label="Encerramento" data-screen-label="11 Encerramento" data-speaker-notes="Último slide: repita o plano e a condição, e combine o próximo passo ainda na call." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:96px 112px 88px;display:flex;flex-direction:column;justify-content:space-between">
-  <div style="display:flex;align-items:center;gap:18px">
-    <span class="logo" style="height:44px;width:auto;display:block"><svg viewBox="350 380 700 760" fill="currentColor" style="height:100%;width:auto;display:block" aria-hidden="true"><path d="M519.22,843.75l-45.1,15.11c53.94,77.43,143.68,128.2,245.06,128.2,4.38,0,8.76-.08,13.07-.3l-14.13-45.02c-80.76-.3-152.75-38.68-198.9-97.98ZM719.19,390.03c-164.61,0-298.55,133.94-298.55,298.55,0,29.46,4.31,58.02,12.31,84.91l39.13-29.31c-4-17.9-6.12-36.49-6.12-55.6,0-139.6,113.62-253.22,253.22-253.22s253.15,113.62,253.15,253.22c0,99.49-57.71,185.84-141.42,227.16v49.63c109.39-44.27,186.74-151.69,186.74-276.79,0-164.61-133.86-298.55-298.47-298.55Z"></path><polygon points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53"></polygon></svg></span>
-    <span style="font-size:32px;font-weight:700;letter-spacing:-0.02em">LeverAds</span>
+<section data-label="Encerramento" data-screen-label="11 Encerramento" data-speaker-notes="Último slide: repita o plano e a condição, e combine o próximo passo ainda na call." class="dk cover glow low">
+  <div class="brand"><img src="${ASSETS}/logo-lever-dark.svg" alt="">Lever</div>
+  <div class="mid" style="gap:30px">
+    <div class="eb">Proposta · <span data-f="f.empresa"></span></div>
+    <h2 class="h" style="font-size:116px;margin:0"><span data-f="planoNome" class="p"></span></h2>
+    <div class="tab" style="font-size:56px;font-weight:600;letter-spacing:-.03em;color:var(--ink-2)"><span data-f="parcelas"></span>× R$ <span data-f="mensalFmt"></span> <span class="a">ou R$ <span data-f="vistaFmt"></span> à vista</span></div>
   </div>
-  <div style="display:flex;flex-direction:column;gap:28px">
-    <div style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Proposta · <span data-f="f.empresa"></span></div>
-    <div style="font-size:64px;font-weight:700;letter-spacing:-0.03em;line-height:1.05"><span data-f="planoNome"></span></div>
-    <div style="font-size:44px;font-weight:600;letter-spacing:-0.02em;color:var(--ink-muted);font-variant-numeric:tabular-nums"><span data-f="parcelas"></span>× R$ <span data-f="mensalFmt"></span> <span style="color:var(--brand)">ou R$ <span data-f="vistaFmt"></span> à vista</span></div>
-  </div>
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-top:28px;border-top:1px solid var(--line);font-size:24px;color:var(--ink-faint)">
+  <div class="foot">
     <span class="accept-wrap" data-client-only hidden><button type="button" class="accept-btn" data-act="aceitar">Quero começar</button></span>
     <span>Condições válidas apenas no dia da apresentação</span>
-    <span style="font-family:var(--font-mono);font-variant-numeric:tabular-nums"><span data-f="hoje"></span></span>
+    <span class="mono tab" style="color:var(--ink-4)"><span data-f="hoje"></span></span>
   </div>
 </section>
-
 
 `;
 
@@ -1040,19 +1160,43 @@ function cfgScreen(configOnly = false) {
 </section>`;
 }
 
-// Só números conferidos pelo servidor. Sem cache válido, não reutilizar os
-// antigos R$ 8 mi / R$ 1 mi / 12% como se fossem resultados atuais.
+// Slide 06, a faixa de cima (o geral do painel) e a linha da fonte.
+//
+// Os números são os do painel na hora de abrir (leverads-results.js), nunca
+// escritos no slide: é a decisão de 28/09/2026, a prova tem que estar
+// atualizada em TODA apresentação. Sem apuração em memória (o processo acabou
+// de subir e a consulta ainda não voltou), a faixa não fica em branco e não
+// mostra número sem data: entram os do handoff de 26/11/2026, com o dia em que
+// foram apurados escrito na fonte.
+const RESULTADOS_HANDOFF = { generated: "R$ 6,1 mi", participation: "10%", days: "9 dias", date: "17/11/2026" };
+const colado = (t) => escHtml(t).replace(/ /g, "&nbsp;");
 function presentationResultsHtml(results) {
-  if (!results) return '<p style="margin:24px 0 0;font-size:24px;color:var(--ink-muted)">Resultados agregados temporariamente indisponíveis.</p>';
   const money = (n) => "R$ " + new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }).format(n >= 1e6 ? n / 1e6 : n >= 1e3 ? n / 1e3 : n) + (n >= 1e6 ? " mi" : n >= 1e3 ? " mil" : "");
-  const pct = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }).format(results.participation) + "%";
-  const updated = new Date(results.updatedAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
-  const since = results.periodStart ? results.periodStart.split("-").reverse().join("/") : "";
+  const dias = results && results.firstSaleDays != null ? results.firstSaleDays + (results.firstSaleDays === 1 ? " dia" : " dias") : "";
+  const kpis = results
+    ? [
+      [money(results.generated), "em vendas de anúncios que a Lever criou"],
+      [new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }).format(results.participation) + "%", "das vendas dos clientes vêm desses anúncios"],
+      ...(dias ? [[dias, "da conexão até a primeira venda (mediana)"]] : []),
+    ]
+    : [
+      [RESULTADOS_HANDOFF.generated, "em vendas de anúncios que a Lever criou"],
+      [RESULTADOS_HANDOFF.participation, "das vendas dos clientes vêm desses anúncios"],
+      [RESULTADOS_HANDOFF.days, "da conexão até a primeira venda (mediana)"],
+    ];
   const exact = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-  return `<div data-live-results style="margin-top:24px" title="${escHtml(exact.format(results.gmv) + ' de faturamento; ' + exact.format(results.generated) + ' em anúncios da LeverAds. Mesma cobertura por cliente, na janela de até 180 dias do painel.')}">
-    <p style="margin:0;font-size:34px;line-height:1.3;letter-spacing:-0.02em;font-weight:500;text-wrap:pretty">O resultado: no período acompanhado, nossos clientes faturaram <strong>${money(results.gmv)}</strong>. Desse total, <strong>${money(results.generated)}</strong> vieram de anúncios criados pela LeverAds — <strong style="color:var(--brand)">${pct} do faturamento deles</strong>.</p>
-    <p style="margin:10px 0 0;font-size:18px;line-height:1.3;color:var(--ink-muted)">Fonte: painel LeverAds · período acompanhado por cliente${since ? ' · base desde ' + escHtml(since) : ''} · atualizado em ${escHtml(updated)}</p>
-  </div>`;
+  const title = results
+    ? ` title="${escHtml(exact.format(results.gmv) + " de faturamento; " + exact.format(results.generated) + " em anúncios da Lever. Mesma cobertura por cliente, na janela de até 180 dias do painel.")}"`
+    : "";
+  const cols = kpis.length === 3 ? "1.15fr 1fr 1fr" : "repeat(" + kpis.length + ",minmax(0,1fr))";
+  return `<div class="card" ${results ? "data-live-results" : "data-handoff-results"}${title} style="padding:26px 40px;display:grid;grid-template-columns:${cols};gap:36px;align-items:center">${kpis.map(([valor, rotulo]) =>
+    `<div style="display:flex;align-items:baseline;gap:20px;min-width:0"><span class="tab" style="font-size:64px;font-weight:700;color:var(--brand);letter-spacing:-.045em;line-height:1;white-space:nowrap">${colado(valor)}</span><span style="font-size:23px;line-height:1.3;color:var(--ink-2)">${escHtml(rotulo)}</span></div>`).join("")}</div>`;
+}
+function presentationResultsSource(results) {
+  const dia = results
+    ? new Date(results.updatedAt).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })
+    : RESULTADOS_HANDOFF.date;
+  return `<div style="font-size:19px;color:var(--ink-4)">Fonte: painel de vendas da Lever. Clientes: acumulado desde a entrada de cada um, números de ${escHtml(dia)}.</div>`;
 }
 
 // ── O esqueleto da apresentação, lido do próprio deck ──────────────────────
@@ -1156,7 +1300,7 @@ html, body { height: auto; overflow: auto; background: var(--paper-card); }
 <body>
 ${previewBanner ? '<div class="fita">Pré-visualização do template · nada aqui é salvo</div>' : ""}
 <div class="stage">
-  <div class="canvas" id="canvas">${editable ? cfgScreen(configOnly) : ""}${SLIDES.replace("<!--RESULTADOS_VIVOS-->", presentationResultsHtml(results))}</div>
+  <div class="canvas dkc" id="canvas">${editable ? cfgScreen(configOnly) : ""}${SLIDES.replace("<!--RESULTADOS_VIVOS-->", () => presentationResultsHtml(results)).replace("<!--RESULTADOS_FONTE-->", () => presentationResultsSource(results))}</div>
 </div>
 <div class="hud" id="hud">
   <button type="button" data-act="prev" aria-label="Slide anterior">‹</button>
@@ -1170,6 +1314,7 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
   var D = ${escJson(dados)};
   var calcOferta = ${calcOferta.toString()};
   var deckChoices = ${deckChoices.toString()};
+  var deckTelas = ${deckTelas.toString()};
   var cfg = D.cfg;
   var canvas = document.getElementById("canvas");
   var todos = [].slice.call(canvas.children);
@@ -1194,29 +1339,35 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
   // Nenhum número é escrito no slide: tudo vem da oferta montada na tela
   // zero. No link do cliente a conta já veio pronta do servidor.
   function oferta() { return D.editable ? calcOferta(D.catalog, cfg) : D.oferta; }
-  function cardEntregavel(e) {
-    var d = document.createElement("div");
-    d.setAttribute("style", "background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:32px;display:flex;flex-direction:column;gap:22px;min-width:0");
-    var tag = document.createElement("div");
-    tag.setAttribute("style", "font-size:24px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-faint)");
-    tag.textContent = e.tag;
-    d.appendChild(tag);
-    var lista = document.createElement("div");
-    lista.setAttribute("style", "display:flex;flex-direction:column;gap:16px");
-    (e.itens || []).forEach(function (t) {
-      var li = document.createElement("div");
-      li.setAttribute("style", "display:flex;gap:14px;font-size:25px;color:var(--ink);line-height:1.35");
-      li.innerHTML = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:4px"><path d="m5 12.5 4.5 4.5L19 7"></path></svg>';
+  function ticks(itens, extra) {
+    var ul = document.createElement("ul");
+    ul.className = "ticks" + (extra ? " " + extra : "");
+    (itens || []).forEach(function (t) {
+      var li = document.createElement("li");
       var sp = document.createElement("span");
       sp.textContent = t;
       li.appendChild(sp);
-      lista.appendChild(li);
+      ul.appendChild(li);
     });
-    d.appendChild(lista);
+    return ul;
+  }
+  // Um card por produto do plano. Sozinho (um produto só), ele ocupa o slide
+  // inteiro com os itens em duas colunas; com mais de um, ficam lado a lado.
+  // sup é a linha de suporte do produto, embaixo do traço. Oferta congelada
+  // antes de 26/11/2026 não tem sup e ainda traz o card "O lado humano":
+  // ela é desenhada como veio, que é o que o cliente recebeu.
+  function cardEntregavel(e, unico) {
+    var d = document.createElement("div");
+    d.className = "card dc" + (unico ? " dc-one" : "");
+    var tag = document.createElement("div");
+    tag.className = "t";
+    tag.textContent = e.tag;
+    d.appendChild(tag);
+    d.appendChild(ticks(e.itens, unico ? "t2" : ""));
+    if ((e.sup || []).length) d.appendChild(ticks(e.sup, (unico ? "t2 " : "") + "sup"));
     var nota = document.createElement("div");
-    nota.setAttribute("style", "margin-top:auto;background:var(--brand-soft);border-radius:10px;padding:20px;font-size:24px;line-height:1.4;color:var(--ink-soft)");
-    var forte = document.createElement("span");
-    forte.setAttribute("style", "color:var(--brand);font-weight:600");
+    nota.className = "note";
+    var forte = document.createElement("b");
     forte.textContent = e.notaDestaque || "";
     nota.appendChild(forte);
     nota.appendChild(document.createTextNode(" " + (e.nota || "")));
@@ -1224,69 +1375,64 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
     return d;
   }
 
-  // Card de case real, no molde do cardEntregavel. A 1ª métrica (a que o time
-  // pôs em primeiro) vira o número grande; as seguintes viram linhas de valor +
-  // rótulo, porque um case do painel conta a história em mais de um número:
-  // quanto vendeu, quantos pedidos gerou, quanto tempo poupou e quanto
-  // custaria fazer na mão. O rodapé é o depoimento ou a manchete do case.
-  //
-  // A logo entra QUANDO EXISTE e nunca no lugar do nome: logo pequena em slide
-  // de palco é reconhecida por quem já conhece a marca, e o nome resolve para
-  // todo mundo. Sem logo, o card é o de sempre.
+  // Card de case real. A 1ª métrica (a que o time pôs em primeiro) vira o
+  // número grande; embaixo do traço vão dois números de apoio. Nos cases do
+  // painel são sempre pedidos e anúncios criados (este sai da manchete que a
+  // régua escreve, "574.780 anúncios criados pela plataforma…"). Case escrito
+  // à mão usa as duas medidas seguintes e mostra a frase dele no pé.
+  var ROTULO_CASE = { "gerado por anuncios da lever": "gerados por anúncios da Lever", "pedidos gerados no periodo": "pedidos" };
+  function semAcento(v) { return String(v || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").trim().toLowerCase(); }
+  function rotuloCase(l) { return ROTULO_CASE[semAcento(l)] || l || ""; }
   function cardCase(c) {
     var d = document.createElement("div");
-    d.setAttribute("style", "background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:24px;display:flex;flex-direction:column;gap:12px;min-width:0");
+    d.className = "card";
+    d.setAttribute("style", "padding:30px 36px;display:flex;flex-direction:column;min-width:0");
     var metricas = c.metrics || [];
     var m = metricas[0] || {};
-    if (c.logoUrl) {
-      var logo = document.createElement("img");
-      logo.className = "logo-case";
-      logo.src = c.logoUrl;
-      logo.alt = c.name || "";
-      // Logo que não carrega SOME: no meio de uma call, o ícone de imagem
-      // quebrada num slide de prova custa mais caro que a logo vale.
-      logo.onerror = function () { logo.remove(); };
-      d.appendChild(logo);
-    }
-    // Duas linhas reservadas pro nome mesmo quando ele cabe em uma: são quatro
-    // cards lado a lado e o número grande tem que nascer na mesma altura nos
-    // quatro, senão a fileira parece torta.
-    var topo = document.createElement("div");
-    topo.setAttribute("style", "font-family:var(--font-mono);font-size:24px;line-height:1.25;color:var(--ink-faint);min-height:60px");
-    topo.textContent = c.name + (c.niche ? " · " + c.niche : "");
-    d.appendChild(topo);
+    var nome = document.createElement("div");
+    nome.setAttribute("style", "font-size:24px;font-weight:600;color:var(--ink)");
+    nome.textContent = c.name || "";
+    d.appendChild(nome);
     var num = document.createElement("div");
-    num.setAttribute("style", "font-size:54px;font-weight:700;letter-spacing:-0.03em;line-height:1;color:var(--brand);font-variant-numeric:tabular-nums");
+    num.className = "tab";
+    num.setAttribute("data-case-num", "");
+    num.setAttribute("style", "margin-top:18px;font-size:76px;font-weight:700;color:var(--brand);letter-spacing:-.045em;line-height:1;white-space:nowrap");
     num.textContent = m.value || "";
     d.appendChild(num);
     var leg = document.createElement("div");
-    leg.setAttribute("style", "font-size:25px;color:var(--ink-muted);line-height:1.35");
-    leg.textContent = (m.label || "") + (m.period ? " (" + m.period + ")" : "");
+    leg.setAttribute("style", "margin-top:10px;font-size:22px;color:var(--ink-3)");
+    leg.textContent = rotuloCase(m.label) + (m.period && semAcento(m.period) !== "todo o periodo" ? " (" + m.period + ")" : "");
     d.appendChild(leg);
-    var resto = metricas.slice(1, 4);
-    if (resto.length) {
-      var lista = document.createElement("div");
-      lista.setAttribute("style", "display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line-faint);padding-top:16px");
-      resto.forEach(function (x) {
-        // Uma frase por linha (valor em negrito + rótulo), não duas colunas: o
-        // rótulo que não cabe continua embaixo alinhado à esquerda, em vez de
-        // pendurar recuado na coluna do número.
-        var linha = document.createElement("div");
-        linha.setAttribute("style", "font-size:23px;line-height:1.3;color:var(--ink-muted)");
-        var v = document.createElement("b");
-        v.setAttribute("style", "font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums");
-        v.textContent = x.value || "";
-        linha.appendChild(v);
-        linha.appendChild(document.createTextNode(" " + (x.label || "")));
-        lista.appendChild(linha);
+    var pares = metricas.slice(1).filter(function (x) { return x && x.value; })
+      .map(function (x) { return { v: x.value, r: rotuloCase(x.label) }; });
+    var criados = /^([\\d.,]+)\\s+anúncios criados/i.exec(c.headline || "");
+    if (criados) pares.splice(Math.min(1, pares.length), 0, { v: criados[1], r: "anúncios criados" });
+    pares = pares.slice(0, 2);
+    if (pares.length) {
+      var base = document.createElement("div");
+      base.setAttribute("style", "margin-top:22px;padding-top:20px;border-top:1px solid var(--line-2);display:grid;grid-template-columns:1fr 1fr;gap:16px");
+      pares.forEach(function (x) {
+        var par = document.createElement("div");
+        var v = document.createElement("div");
+        v.className = "tab";
+        v.setAttribute("style", "font-size:30px;font-weight:700;color:var(--ink)");
+        v.textContent = x.v;
+        var r = document.createElement("div");
+        r.setAttribute("style", "font-size:19px;color:var(--ink-3);margin-top:4px");
+        r.textContent = x.r;
+        par.appendChild(v);
+        par.appendChild(r);
+        base.appendChild(par);
       });
-      d.appendChild(lista);
+      d.appendChild(base);
     }
-    var pe = document.createElement("div");
-    pe.setAttribute("style", "margin-top:auto;font-size:23px;line-height:1.4;color:var(--ink-soft);border-top:1px solid var(--line-faint);padding-top:16px");
-    if (c.quote) pe.textContent = '"' + c.quote + '"' + (c.quoteAuthor ? " " + c.quoteAuthor : "");
-    else pe.textContent = c.headline || "";
-    d.appendChild(pe);
+    var frase = c.quote ? '"' + c.quote + '"' + (c.quoteAuthor ? " " + c.quoteAuthor : "") : (criados ? "" : (c.headline || ""));
+    if (frase) {
+      var pe = document.createElement("div");
+      pe.setAttribute("style", "margin-top:18px;font-size:21px;line-height:1.4;color:var(--ink-3);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden");
+      pe.textContent = frase;
+      d.appendChild(pe);
+    }
     return d;
   }
 
@@ -1305,28 +1451,91 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
     });
     var grid = document.querySelector("[data-entregaveis]");
     if (grid) {
+      var ent = o.entregaveis || [];
       grid.innerHTML = "";
-      (o.entregaveis || []).forEach(function (e) { grid.appendChild(cardEntregavel(e)); });
+      ent.forEach(function (e) { grid.appendChild(cardEntregavel(e, ent.length === 1)); });
+      // Três produtos no plano (plataforma, Price e pacote de OEM): uma coluna por card.
+      grid.parentNode.style.gridTemplateColumns = ent.length > 2 ? "repeat(" + ent.length + ",minmax(0,1fr))" : "";
+      grid.parentNode.classList.toggle("dl3", ent.length > 2);
     }
-    // Cases reais entram no lugar dos colchetes do slide 06. Sem case
-    // publicado, o fallback fica: colchete na tela é sinal pro closer, número
-    // inventado seria mentira.
+    // Cases reais entram no lugar dos colchetes do slide 06 (os três primeiros
+    // da régua: nicho do lead, depois a ordem do time). Sem case publicado, o
+    // fallback fica: colchete na tela é sinal pro closer, número inventado
+    // seria mentira.
     var gc = document.querySelector("[data-cases]");
     var fb = document.querySelector("[data-cases-fallback]");
+    var cs = (D.cases || []).slice(0, 3);
     if (gc) {
       gc.innerHTML = "";
-      (D.cases || []).forEach(function (c) { gc.appendChild(cardCase(c)); });
+      cs.forEach(function (c) { gc.appendChild(cardCase(c)); });
+      gc.style.gridTemplateColumns = "repeat(" + Math.max(1, cs.length) + ",minmax(0,1fr))";
+      gc.hidden = !cs.length;
     }
-    if (fb) fb.style.display = (D.cases || []).length ? "none" : "contents";
-    // Slide de produto que não está no plano sai da apresentação.
+    if (fb) fb.hidden = !!cs.length;
+    // Slide de produto que não está no plano sai da apresentação, e a janela
+    // da demonstração mostra a tela do produto principal (regra em deckTelas).
+    var ver = deckTelas(o.mostra);
     todos.forEach(function (s) {
       var cond = s.getAttribute("data-if");
-      if (cond) s.hidden = !o.mostra[cond];
+      if (cond) s.hidden = !ver[cond];
+    });
+    [].forEach.call(document.querySelectorAll("[data-win]"), function (w) {
+      w.hidden = w.getAttribute("data-win") !== ver.janela;
     });
     var setup = document.querySelector("[data-setup]");
     if (setup) setup.hidden = !(Number(o.setupFmt.replace(/\\D/g, "")) > 0);
     recontar();
+    ajustar();
   }
+
+  // ── Encaixe ───────────────────────────────────────────────────────────
+  // O texto dos entregáveis vem do catálogo (Comercial → Planos) e o número
+  // do case vem do painel: o slide não sabe o tamanho de nenhum dos dois.
+  // Aqui a letra desce até caber, como o protótipo do desenho fazia.
+  function ajustar() {
+    if (D.configOnly) return;
+    [].forEach.call(document.querySelectorAll("[data-case-num]"), function (el) {
+      var px = 76;
+      el.style.fontSize = px + "px";
+      while (px > 44 && el.scrollWidth > el.clientWidth + 1) { px -= 4; el.style.fontSize = px + "px"; }
+    });
+    var grid = document.querySelector("[data-entregaveis]");
+    if (!grid || !grid.children.length) return;
+    var corpo = grid.parentNode;
+    var unico = grid.children.length === 1;
+    var uls = [].slice.call(grid.querySelectorAll(".ticks"));
+    var lis = [].slice.call(grid.querySelectorAll(".ticks li"));
+    var justo = grid.children.length > 2;
+    var passos = unico ? [31, 29, 27, 25, 23, 21] : [30, 28, 26, 24, 22, 21, 20, 19, 18, 17, 16];
+    for (var i = 0; i < passos.length; i++) {
+      var px = passos[i], cabe = true;
+      lis.forEach(function (li) { li.style.fontSize = px + "px"; li.style.whiteSpace = ""; });
+      if (unico) {
+        // Duas colunas, cada item numa linha só: cada coluna fica da largura
+        // do maior texto dela, e a divisão entre as duas acompanha.
+        var a = 0, b = 0;
+        uls.forEach(function (ul) {
+          ul.style.gridTemplateColumns = "max-content max-content";
+          var cols = getComputedStyle(ul).gridTemplateColumns.split(" ");
+          a = Math.max(a, parseFloat(cols[0]) || 0);
+          b = Math.max(b, parseFloat(cols[1]) || 0);
+        });
+        var vao = parseFloat(getComputedStyle(uls[0]).columnGap) || 0;
+        cabe = a + b + vao <= uls[0].clientWidth;
+        var colunas = cabe && b > 0 ? "minmax(0," + (a / b).toFixed(2) + "fr) minmax(0,1fr)" : "";
+        uls.forEach(function (ul) { ul.style.gridTemplateColumns = colunas; });
+        // Nem na menor letra coube numa linha: o texto quebra.
+        if (!cabe && i === passos.length - 1) { lis.forEach(function (li) { li.style.whiteSpace = "normal"; }); cabe = true; }
+      } else {
+        uls.forEach(function (ul) {
+          ul.style.rowGap = Math.round(px * (justo ? 0.6 : 1)) + "px";
+          ul.style.setProperty("--tk", Math.min(34, px + 4) + "px");
+        });
+      }
+      if (cabe && corpo.scrollHeight <= corpo.clientHeight + 1) break;
+    }
+  }
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(ajustar);
 
   // ── Palco ─────────────────────────────────────────────────────────────
   var atual = 0, vis = [];
