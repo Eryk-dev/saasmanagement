@@ -35,8 +35,15 @@ const orgOf = (doc, customers) => {
   return UUID_RE.test(daFicha) ? daFicha : "";
 };
 
-let cache = { docs: [], at: 0 };
-let inFlight = null;
+// Um cache por repo. Em produção existe um repo só; a separação existe porque a
+// prévia e o JSON do site também passaram a ler daqui (26/11/2026), e uma
+// lista calculada para um repo nunca pode responder por outro.
+let caches = new WeakMap();
+const estadoDe = (repo) => {
+  let e = caches.get(repo);
+  if (!e) { e = { docs: [], at: 0, inFlight: null }; caches.set(repo, e); }
+  return e;
+};
 
 // Os cases publicáveis de HOJE, com os números refeitos. Só entra quem está
 // publicado e autorizado: o gate continua sendo o de sempre (cases.js).
@@ -62,35 +69,41 @@ async function build(repo, { snapshot }) {
 // FRIO espera (até TIMEOUT_MS), porque a primeira apresentação do dia não pode
 // ser justamente a que sai com a lista velha.
 export async function liveCases(repo, { now = Date.now, ttlMs = TTL_MS, timeoutMs = TIMEOUT_MS, snapshot = orgSnapshot } = {}) {
+  const cache = estadoDe(repo);
   if (cache.docs.length && now() - cache.at <= ttlMs) return cache.docs;
   const run = async () => {
     try {
       const docs = await build(repo, { snapshot });
       // Consulta sem resultado não apaga o que já temos: é falta de base, não
       // notícia de que os cases sumiram.
-      if (docs.length) cache = { docs, at: now() };
+      if (docs.length) { cache.docs = docs; cache.at = now(); }
       return docs;
     } catch (e) {
       console.warn("[cases-live] falhou:", e.message);
       return cache.docs;
-    } finally { inFlight = null; }
+    } finally { cache.inFlight = null; }
   };
-  inFlight ||= run();
+  cache.inFlight ||= run();
   if (cache.docs.length) return cache.docs;                  // quente mas vencido: devolve e recalcula por fora
   let timer;
   const espera = new Promise((r) => { timer = setTimeout(() => r(cache.docs), timeoutMs); });
-  try { return await Promise.race([inFlight, espera]); } finally { clearTimeout(timer); }
+  try { return await Promise.race([cache.inFlight, espera]); } finally { clearTimeout(timer); }
 }
 
 // Os cards do slide 06 na hora de apresentar: quem está publicado HOJE, pela
 // mesma régua de sempre (nicho do lead primeiro, depois a ordem do time), com
 // os números refeitos no painel. Sem nenhum case publicado, devolve null e a
 // página segue com o que foi congelado no snapshot da proposta.
-export async function liveDeckCases(repo, { niche = "", limit = 4, ...opts } = {}) {
+//
+// `strictNiche` é a régua da prévia e das propostas novas do deck de slides (só
+// cases do nicho pedido): a prévia tem que mostrar os MESMOS números da
+// apresentação de verdade, e em 26/11/2026 ela ainda mostrava os gravados em
+// 28/09 (Motvia R$ 442 mil na prévia, R$ 1,5 mi no deck do closer).
+export async function liveDeckCases(repo, { niche = "", limit = 4, strictNiche = false, ...opts } = {}) {
   const docs = await liveCases(repo, opts);
   if (!docs.length) return null;
-  return pickCases(docs, { niche, limit }).map(publicCase);
+  return pickCases(docs, { niche, limit, strictNiche }).map(publicCase);
 }
 
 // Só pros testes: zera o estado de módulo entre casos.
-export function _resetLiveCases() { cache = { docs: [], at: 0 }; inFlight = null; }
+export function _resetLiveCases() { caches = new WeakMap(); }

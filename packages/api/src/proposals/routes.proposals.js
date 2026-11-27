@@ -197,10 +197,14 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     if (typeof q.volume === "string" && (t.calc?.volumeMid || {})[q.volume] != null) fake.state.volume = q.volume;
     if (typeof q.niche === "string" && q.niche) fake.data.answers.niche = q.niche.slice(0, 40);
     // Preview usa a mesma seleção das novas propostas: só autopeças no deck C
-    // de LeverAds, nicho da query nos outros decks.
+    // de LeverAds, nicho da query nos outros decks. E os MESMOS números da
+    // apresentação de verdade: os de hoje no painel (cases-live.js). Sem
+    // painel, ou sem nenhum case publicado, fica o que está gravado no case.
     try {
       const autopecas = t.layout === "slides" && t.saas === "leverads";
-      fake.data.cases = pickCases(await repo.list("cases"), { niche: autopecas ? "autopecas" : fake.data.answers.niche || "", strictNiche: autopecas, limit: 4 }).map(publicCase);
+      const regra = { niche: autopecas ? "autopecas" : fake.data.answers.niche || "", strictNiche: autopecas, limit: 4 };
+      const vivos = await liveDeckCases(repo, regra).catch(() => null);
+      fake.data.cases = vivos || pickCases(await repo.list("cases"), regra).map(publicCase);
     } catch { fake.data.cases = []; }
     if (typeof q.product === "string") fake.state.product = q.product.slice(0, 20);
     if (typeof q.pain === "string") fake.state.pain = q.pain.slice(0, 8);

@@ -65,6 +65,9 @@ test("deck C já gerado recebe totais atuais ao abrir, preservando seu estado co
     // A faixa de cima do slide 06: vendido em anúncios da Lever, a fatia das
     // vendas dos clientes e a mediana de dias até a 1ª venda, todos do painel.
     assert.match(response.body, /data-live-results/);
+    // Três colunas iguais, como os três cards de case logo abaixo: cada número começa onde começa o texto do card.
+    assert.match(response.body, /<div class="card kp" data-live-results[^>]*style="grid-template-columns:repeat\(3,minmax\(0,1fr\)\)">/);
+    assert.equal((response.body.match(/<div class="kp-i"><span class="tab kp-n">/g) || []).length, 3);
     assert.match(response.body, /R\$&nbsp;2,1&nbsp;mi<\/span><span[^>]*>em vendas de anúncios que a Lever criou/);
     assert.match(response.body, /11,1%<\/span><span[^>]*>das vendas dos clientes vêm desses anúncios/);
     assert.match(response.body, /3&nbsp;dias<\/span><span[^>]*>da conexão até a primeira venda \(mediana\)/);

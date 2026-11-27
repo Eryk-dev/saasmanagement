@@ -333,6 +333,56 @@ test("case ao vivo: painel manda no número, o texto salvo manda na frase", () =
   assert.equal(caseWithLiveNumbers(aMao, SNAP).headline, aMao.headline);
 });
 
+// A prévia (/p/t/:id) e o JSON do site mostravam os números GRAVADOS no case,
+// de 28/09, enquanto a apresentação de verdade mostrava os de hoje (Motvia
+// R$ 442 mil na prévia, R$ 1,5 mi no deck do closer, conferido em 26/11/2026).
+test("prévia e JSON do site mostram os números de hoje do painel, como a apresentação de verdade", async () => {
+  _resetLiveCases();
+  const repo = makeMemRepo();
+  await repo.create("proposal_templates", { id: "pt_previa", saas: "leverads", layout: "slides", name: "Deck" });
+  await repo.create("cases", {
+    ...completo({ id: "ca_motvia", name: "Motvia", niche: "Autopeças" }),
+    evidence: { orgId: "102f9143-c7d0-414c-9393-85fdd5fa3da8" }, headlineAuto: true,
+    ...panelCaseFacts({ gmvTotal: 442000, ordersTotal: 3008, listings: 574780 }),
+  });
+  await repo.create("cases", { ...completo({ id: "ca_casa", name: "Casa B", niche: "casa" }) });
+  const { registerProposalRoutes } = await import("../src/proposals/routes.proposals.js");
+  const app = Fastify();
+  registerProposalRoutes(app, repo);
+  registerCaseRoutes(app, repo);
+  const previa = () => app.inject({ url: "/p/t/pt_previa" });
+
+  // Painel fora do ar (o padrão do teste): fica o que está gravado no case.
+  assert.match((await previa()).body, /"value":"R\$ 442 mil"/);
+
+  // Painel respondendo: a prévia e o site passam a mostrar o número de hoje.
+  _resetLiveCases();
+  const snapshot = async () => new Map([["102f9143-c7d0-414c-9393-85fdd5fa3da8", { gmvTotal: 1476165.83, ordersTotal: 8420, listings: 574780 }]]);
+  await liveCases(repo, { snapshot });
+  const body = (await previa()).body;
+  assert.match(body, /"name":"Motvia"/);
+  assert.match(body, /"value":"R\$ 1,5 mi"/);
+  assert.match(body, /"value":"8\.420"/);
+  assert.doesNotMatch(body, /R\$ 442 mil|"name":"Casa B"/, "o número gravado não aparece, e a prévia segue só com autopeças");
+  const site = (await app.inject({ url: "/public/cases.json" })).json();
+  assert.equal(site.cases.find((c) => c.name === "Motvia").metrics[0].value, "R$ 1,5 mi");
+  assert.equal(site.count, 2, "o site continua com todos os cases publicados");
+  await app.close();
+  _resetLiveCases();
+});
+
+test("liveDeckCases: strictNiche deixa só os cases do nicho pedido, com os números de hoje", async () => {
+  _resetLiveCases();
+  const repo = makeMemRepo();
+  await repo.create("cases", completo({ id: "ca_a", name: "Auto A", niche: "Autopeças" }));
+  await repo.create("cases", completo({ id: "ca_b", name: "Casa B", niche: "casa" }));
+  const snapshot = async () => new Map();
+  assert.deepEqual((await liveDeckCases(repo, { niche: "autopecas", strictNiche: true, snapshot })).map((c) => c.name), ["Auto A"]);
+  assert.equal((await liveDeckCases(repo, { niche: "autopecas", snapshot })).length, 2, "sem a trava, o nicho só ordena");
+  assert.deepEqual(await liveDeckCases(repo, { niche: "pet", strictNiche: true, snapshot }), [], "nenhum do nicho: lista vazia, não a de outro nicho");
+  _resetLiveCases();
+});
+
 test("liveDeckCases: a lista é a de hoje, pela régua de nicho e ordem", async () => {
   _resetLiveCases();
   const repo = makeMemRepo();

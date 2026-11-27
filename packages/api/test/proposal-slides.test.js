@@ -12,7 +12,7 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 const { ensureProposalCatalog, ensureSlidesDeck, regenerateOpenLeadsToSlides } = await import("../src/platform/migrations.js");
 const { runNativeProposal, shareProposalOffer, proposalOffersOf } = await import("../src/proposals/proposal.js");
 const { registerProposalRoutes } = await import("../src/proposals/routes.proposals.js");
-const { calcOferta, deckTelas, deckConfig, slimCatalog, proposalSlidesPageHtml } = await import("../src/proposals/proposal-slides-page.js");
+const { calcOferta, deckTelas, deckConfig, slimCatalog, proposalSlidesPageHtml, DECK_PLAN_NAME } = await import("../src/proposals/proposal-slides-page.js");
 const { hashPassword } = await import("../src/auth/auth.js");
 
 const TEMPLATE = {
@@ -175,13 +175,67 @@ test("a conta do plano sai do catálogo: pacote, conta extra, período e descont
   assert.equal(completo.mensal, 999 + 1497, "plataforma + Price somam na parcela");
   assert.equal(completo.setupFmt, "3.500", "pacote de OEM é pagamento único, fora da parcela");
   assert.equal(completo.planoNome, "Ads Escala + Lever Price · Escala + OEM 2.000");
-  assert.equal(completo.entregaveis.length, 3, "um card por produto: plataforma, Price e pacote de OEM");
+  assert.deepEqual(completo.entregaveis.map((e) => e.tag), ["Efeito teia", "Espiral do lucro", "OEM · anúncio perfeito", "Lado a lado"],
+    "um bloco por produto, com o nome do método, e o Lado a lado");
   assert.ok(completo.entregaveis[0].itens.length > 0, "entregáveis vêm do catálogo, não escritos no slide");
-  // O suporte de cada produto vai no próprio card, embaixo do traço (não é mais um card à parte).
-  assert.deepEqual(completo.entregaveis[0].sup, ["Suporte individualizado no WhatsApp"]);
-  assert.deepEqual(completo.entregaveis[1].sup, ["Suporte individualizado no WhatsApp", "Call de planejamento trimestral"]);
-  assert.equal(completo.entregaveis[2].sup, undefined, "pacote de OEM avulso é serviço único, sem linha de suporte");
-  assert.equal(essencial.entregaveis.length, 1, "um produto só: um card, que ocupa o slide inteiro");
+  assert.ok(completo.entregaveis.every((e) => e.sup === undefined), "a linha de suporte virou o bloco Lado a lado");
+});
+
+test("entregáveis em dois blocos: Efeito teia com as funcionalidades do plano e Lado a lado; as contas do pacote não repetem", async () => {
+  const repo = await seedRepo();
+  const cat = await catalogoDoTemplate(repo);
+  const o = calcOferta(cat, { ...cfgBase, linha: "oem" });
+  assert.deepEqual(o.entregaveis.map((e) => e.tag), ["Efeito teia", "Lado a lado"]);
+
+  // Bloco do produto: tudo o que o plano inclui no catálogo, menos a linha que só repete as contas.
+  const inclui = cat.products.oem_essencial.inclui;
+  const doCatalogo = inclui.motor.concat(inclui.plataforma);
+  const linhaDeContas = doCatalogo.filter((t) => /contas? inclu[ií]das?/i.test(t));
+  assert.equal(linhaDeContas.length, 1, "o catálogo traz a linha de contas do pacote");
+  assert.deepEqual(o.entregaveis[0].itens, doCatalogo.filter((t) => !linhaDeContas.includes(t)));
+  assert.match(o.entregaveis[0].nota, /3 contas no pacote/, "as contas ficam só na nota do card");
+
+  // O que vier depois das contas na mesma linha do catálogo continua no card.
+  const escala = structuredClone(cat);
+  escala.products.oem_escala.inclui.plataforma = ["7 contas incluídas · conta extra R$ 100/mês"];
+  const itensEscala = calcOferta(escala, { ...cfgBase, linha: "oem", tier: "escala", contas: 7 }).entregaveis[0].itens;
+  assert.ok(itensEscala.includes("Conta extra R$ 100/mês"));
+  assert.ok(!itensEscala.some((t) => /contas? inclu/i.test(t)));
+
+  // Lado a lado: igual em todo plano, inclusive sem produto escolhido.
+  const lado = o.entregaveis[1];
+  assert.deepEqual(lado.itens, ["Reuniões estratégicas", "Acesso aos sócios", "Suporte individualizado", "Garantia incondicional"]);
+  const soPrice = calcOferta(cat, { ...cfgBase, plataforma: false, price: true });
+  assert.deepEqual(soPrice.entregaveis.map((e) => e.tag), ["Espiral do lucro", "Lado a lado"]);
+  assert.deepEqual(calcOferta(cat, { ...cfgBase, plataforma: false }).entregaveis.map((e) => e.tag), ["Lado a lado"]);
+});
+
+test("nome do plano na apresentação: a linha OEM aparece como LeverOEM Essencial e LeverOEM Escala; o catálogo de Planos não muda", async () => {
+  const repo = await seedRepo();
+  const full = (await repo.get("proposal_templates", "pt_leverads")).calc.catalog;
+  const oficial = { essencial: full.products.oem_essencial.name, escala: full.products.oem_escala.name };
+  const cat = slimCatalog(full);
+  assert.deepEqual(DECK_PLAN_NAME, { oem_essencial: "LeverOEM Essencial", oem_escala: "LeverOEM Escala" });
+  assert.equal(cat.products.oem_essencial.name, "LeverOEM Essencial");
+  assert.equal(cat.products.oem_escala.name, "LeverOEM Escala");
+  assert.equal(cat.products.ads_essencial.name, full.products.ads_essencial.name, "os outros planos seguem com o nome do catálogo");
+  assert.equal(cat.products.price_essencial.name, full.products.price_essencial.name);
+  assert.deepEqual({ essencial: full.products.oem_essencial.name, escala: full.products.oem_escala.name }, oficial, "o catálogo do template não é alterado");
+
+  // Capa, demonstração, investimento e encerramento leem o planoNome da oferta.
+  assert.equal(calcOferta(cat, { ...cfgBase, linha: "oem" }).planoNome, "LeverOEM Essencial");
+  assert.equal(calcOferta(cat, { ...cfgBase, linha: "oem", tier: "escala", price: true }).planoNome, "LeverOEM Escala + " + full.products.price_essencial.name);
+  assert.match(calcOferta(cat, { ...cfgBase, linha: "oem" }).demoLista, /^LeverOEM Essencial$/);
+
+  // A tela zero, o card de Atividades e o painel do CRM Lever recebem o mesmo catálogo enxuto pela rota de configuração.
+  const lead = await repo.create("leads", { id: "ld_nome", saas: "leverads", name: "Ana", niche: "autopecas", accounts: "2-3" });
+  const r = await runNativeProposal(repo, lead, { baseUrl: "http://x", template: "pt_leverads_slides" });
+  const app = Fastify();
+  registerProposalRoutes(app, repo);
+  const closer = await app.inject({ url: "/p/" + r.proposal.id + "?k=" + r.proposal.editKey });
+  assert.match(closer.body, /"oem_essencial":\{"name":"LeverOEM Essencial"/);
+  assert.doesNotMatch(closer.body, /Ads Essencial \+ OEM/);
+  await app.close();
 });
 
 test("telas por plano: com OEM o slide do Ads não repete, plano só de Price mostra a prova do Price, a janela segue o produto principal", async () => {
@@ -230,8 +284,14 @@ test("deck redesenhado (26/11/2026): palco escuro, marca Lever, método por prod
   assert.match(html, /data-if="oem" data-label="Lever OEM" data-screen-label="02a Efeito teia"/);
   assert.match(html, /data-if="ads" data-label="Lever Ads" data-screen-label="02b Lever Ads"/);
   assert.match(html, /data-if="price" data-label="Lever Price" data-screen-label="02c Lever Price"/);
-  assert.match(html, /Descrição específica e compatibilidade completa/);
   assert.match(html, /Promoção automática com critério/);
+  // Lever OEM: os três blocos do método (Leo, 26/11/2026).
+  const oem = html.slice(html.indexOf('data-screen-label="02a Efeito teia"'), html.indexOf('data-screen-label="02b Lever Ads"'));
+  assert.deepEqual([...oem.matchAll(/<div><b>([^<]+)<\/b>/g)].map((m) => m[1]), ["Criação de anúncio por OEM", "SAC automatizado", "Múltiplas contas e automações"]);
+  assert.match(oem, /Mercado Livre e Shopee num painel só\. Anúncio, estoque e preço se replicam sozinhos/);
+  assert.doesNotMatch(oem, /Título do jeito que o comprador busca|Descrição específica e compatibilidade completa/);
+  // Como você entra: uma frase por linha.
+  assert.match(html, /sem ficar sozinho com um login\.<br>A gente entra junto na sua operação/);
 
   // A demonstração leva a tela de cada produto; o script mostra uma só.
   for (const [chave, img] of [["oem", "oem-criar.webp"], ["ads", "ads-copiar-giro.webp"], ["price", "price-inicio.webp"]]) {
