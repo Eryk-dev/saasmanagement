@@ -84,6 +84,9 @@ const CLAIM = "agente:ate:";
 export const ABSORBED = "agente:absorvido";       // a conversa viva cobriu o passo: o fixo não sai
 export const claimUntil = (v) => (typeof v === "string" && v.startsWith(CLAIM) ? Date.parse(v.slice(CLAIM.length)) : NaN);
 export const claimValue = (untilMs) => CLAIM + new Date(untilMs).toISOString();
+// O passo está com o agente (reservado até o prazo, ou coberto pela conversa
+// viva)? Não é lembrete enviado: ninguém pediu a confirmação ao lead ainda.
+export const agentHeld = (v) => typeof v === "string" && v.startsWith("agente:");
 // Chamado pelos lembretes (sdr-flow.js, seção 2) antes de qualquer conta: a
 // reserva vencida, ou de lead que saiu do proativo, é apagada e o passo volta
 // ao fluxo, com o horário empurrado pro fim do prazo (`agenteLiberou`), pra
@@ -216,6 +219,10 @@ export function blockedReason(touch, { lead, product, cfg, msgs = [], humanIds =
     if (!lastOut || lastOut.author !== SDR_AUTHOR || Date.parse(lastOut.at || 0) < touch.offerMs - MIN) return "conversa_andou";
     const since = touch.tipo === "reativacao_1" ? touch.offerMs - MIN : touch.sinceMs;
     if (msgs.some((m) => Date.parse(m.at || 0) > since && (m.direction === "in" || humanIds.has(m.author)))) return "respondeu";
+    // O motor fixo já tocou este lead depois da oferta (cobrança da oferta, 2º
+    // toque, escada: tudo "via flow"), por exemplo com a chave ligada no meio
+    // da manhã: a reativação não sai por cima.
+    if (msgs.some((m) => m.direction === "out" && m.via === "flow" && Date.parse(m.at || 0) > since)) return "ja_cobrado";
     const before = [...msgs].reverse().find((m) => m.direction === "in" && Date.parse(m.at || 0) <= touch.offerMs);
     const said = plainReply(before?.transcript || before?.text || "");
     if (POSTPONE_RX.test(said) || NO_INTEREST_RX.test(said)) return "adiou";

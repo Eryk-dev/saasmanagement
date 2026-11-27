@@ -31,6 +31,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // O print do case que o agente manda (base64): só PNG ou JPEG de verdade (pelos
 // bytes, não pelo nome) e até 4 MB (a Meta aceita 5 MB em imagem).
 const IMAGE_MAX = 4 * 1024 * 1024;
+// Folga entre a entrega de um toque e o prazo dele: no prazo o motor devolve o
+// passo ao lembrete fixo, e os balões levam segundos pra sair. Entrega que
+// começa no último minuto é recusada, pra que o toque e o fixo nunca se cruzem.
+const TOUCH_SEND_MARGIN_MS = 60_000;
 export function imageOf(image) {
   const b64 = typeof image === "string" ? image : String(image?.b64 || "");
   if (!b64 || b64.length > Math.ceil(IMAGE_MAX / 3) * 4 + 8 || !/^[A-Za-z0-9+/=\s]+$/.test(b64)) return null;
@@ -271,7 +275,17 @@ export function makeSdrAgent({ repo, whatsapp: wa, autoCallMeet = null, cancelCa
   // anuncia (`imageAfter`, o índice dele; sem ele, depois do primeiro).
   // `silencio` fecha o toque sem mandar nada: na confirmação e no link o passo
   // volta pro lembrete fixo (o lead não fica sem); no resto, nada sai.
-  async function touch(leadId, { key = "", parts = [], image = null, case: caseId = "", silencio = "", imageAfter = 0 } = {}) {
+  // Uma entrega por vez por toque: a mesma entrega repetida enquanto a primeira
+  // ainda manda os balões (a linha só fecha no fim) não sai duas vezes. O
+  // processo da API é único, então a trava em memória basta.
+  const delivering = new Set();
+  async function touch(leadId, body = {}) {
+    const id = touchId(String(leadId || ""), String(body?.key || ""));
+    if (delivering.has(id)) return refuse(409, "touch_in_progress");
+    delivering.add(id);
+    try { return await deliverTouch(leadId, body || {}); } finally { delivering.delete(id); }
+  }
+  async function deliverTouch(leadId, { key = "", parts = [], image = null, case: caseId = "", silencio = "", imageAfter = 0 } = {}) {
     const id = touchId(String(leadId || ""), String(key || ""));
     const rec = key ? await repo.get("sdr_touches", id) : null;
     const iso = now().toISOString(), nowMs = now().getTime();
@@ -299,7 +313,7 @@ export function makeSdrAgent({ repo, whatsapp: wa, autoCallMeet = null, cancelCa
     }
     const { lead, cfg, thread, msgs, users } = c;
     if (!touchOn(cfg, lead)) { await close({ estado: "pulado", motivo: "desligado" }); await settle(lead, "release"); return refuse(409, "touch_off"); }
-    if (nowMs > Date.parse(rec.prazo || "")) { await close({ estado: "expirado", motivo: "entregue depois do prazo" }); return refuse(409, "touch_expired"); }
+    if (nowMs > Date.parse(rec.prazo || "") - TOUCH_SEND_MARGIN_MS) { await close({ estado: "expirado", motivo: "entregue depois do prazo" }); return refuse(409, "touch_expired"); }
     if (rec.callAt && lead.callAt !== rec.callAt) { await close({ estado: "pulado", motivo: lead.callAt ? "remarcada" : "desmarcada" }); return refuse(409, "call_changed"); }
     const pedidoMs = Date.parse(rec.pedidoEm || 0);
     const lastIn = [...msgs].reverse().find((m) => m.direction === "in");

@@ -42,7 +42,7 @@ import { sdrSlotsForLead } from "./sdr-agenda.js";
 import { offerLine, NO_SLOT_TEXT } from "./sdr-offer.js";
 import { readFile } from "node:fs/promises";
 import { SDR_TEMPLATES } from "./sdr-templates.leverads.js";
-import { runAgentTouches, inReactivation, releaseAgentClaims, releasedFireMs } from "./sdr-agent-touch.js";
+import { runAgentTouches, inReactivation, releaseAgentClaims, releasedFireMs, touchPlan, agentHeld } from "./sdr-agent-touch.js";
 
 export const SDR_AUTHOR = "sdr-bot";
 const HOUR = 3_600_000, MIN = 60_000;
@@ -789,9 +789,12 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           log.warn?.({ saas: product.id, err: err.message }, "sdr: ciclo dos toques do agente falhou");
         }
       }
-      // Reativação do agente em curso (ou ainda por sair) pra este lead.
+      // Reativação do agente em curso (ou ainda por sair) pra este lead. "Por
+      // sair" é o PLANO dizer que ela vem: lead com oferta do agente que não
+      // ganha reativação (já faltou uma vez, saiu da qualificação) segue com o
+      // 2º toque, a escada e a cobrança de sempre, senão ficaria sem nenhum.
       const reactHolds = (l) => !!touchRecs && touchOn(cfg, l) && (inReactivation(touchRecs.get(l.id) || [], l, nowMs)
-        || (!!l.sdrLog?.agentOfferAt && !(touchRecs.get(l.id) || []).some((r) => r.tipo === "reativacao_1" && r.anchor === l.sdrLog.agentOfferAt)));
+        || (!!l.sdrLog?.agentOfferAt && touchPlan({ lead: l, product, recs: touchRecs.get(l.id) || [], nowMs }).some((t) => t.tipo === "reativacao_1")));
 
       // ── 1. Primeiro toque ────────────────────────────────────────────────
       if (cfg.firstTouch || cfg.conversationTest) {
@@ -1299,7 +1302,10 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           // min dele.
           const manhaWillSkip = lead.callConfirmed || log0.confirmed || callMs - manhaAt < 40 * MIN
             || (Number.isFinite(setAtMs) && setAtMs > manhaAt - 30 * MIN) || log0.manha === "skip";
-          if (!log0["2h"] && !manhaWillSkip && !log0.manha && nowMs >= callMs - 2 * HOUR && callMs - 2 * HOUR < manhaAt + 30 * MIN) {
+          // Manhã reservada pro agente externo (ou coberta pela conversa viva)
+          // também é manhã que vai sair: reunião às 10h tinha o fixo de 2h às 8h
+          // e a confirmação do agente às 8h02, as duas.
+          if (!log0["2h"] && !manhaWillSkip && (!log0.manha || agentHeld(log0.manha)) && nowMs >= callMs - 2 * HOUR && callMs - 2 * HOUR < manhaAt + 30 * MIN) {
             log0["2h"] = "manha";
             await repo.update("leads", lead.id, { confirmLog: { ...log0 } });
           }
@@ -1906,7 +1912,7 @@ export async function handleSdrInbound(repo, { message, now = new Date() } = {})
   const log0 = lead.confirmLog;
   const callMs = lead.callAt ? Date.parse(brtToIso(lead.callAt)) : NaN;
   const askedByBot = !!log0 && log0.at === lead.callAt
-    && [log0["24h"], log0.manha, log0["2h"], log0["1h"], log0["10min"]].some((v) => typeof v === "string" && v.length > 0 && !v.startsWith("erro:"));
+    && [log0["24h"], log0.manha, log0["2h"], log0["1h"], log0["10min"]].some((v) => typeof v === "string" && v.length > 0 && !v.startsWith("erro:") && !agentHeld(v));
   // LEAD JÁ ESTÁ NA CONVERSA (Leo, 24/08): "já estou na sala", "já conversamos",
   // "estou aguardando na reunião" — o lembrete seguinte não pode chamar pra uma
   // conversa que já está acontecendo (prod 24/08: o lead avisou às 17h01 que já

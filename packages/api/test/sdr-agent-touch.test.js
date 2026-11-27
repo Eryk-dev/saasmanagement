@@ -9,6 +9,7 @@ import { makeSdrRunner, handleSdrInbound, sdrBotConfig, touchOn, SDR_AUTHOR } fr
 import { makeSdrAgent, imageOf } from "../src/sdr/sdr-agent.js";
 import { touchPlan, blockedReason, claimValue, ABSORBED, isBusinessDay, releaseAgentClaims } from "../src/sdr/sdr-agent-touch.js";
 import { wallNow } from "../src/crm/agenda-slots.js";
+import { bump, currentRev } from "../src/platform/changes.js";
 
 const FUNNEL = [
   { stage: "Novo lead", kind: "novo" }, { stage: "Qualificando", kind: "qualificacao" }, { stage: "Call agendada", kind: "call" },
@@ -487,4 +488,95 @@ test("a oferta só vira âncora nova de reativação depois de o lead falar: reo
   w.clock.t = T("2026-12-03T09:31");
   await w.agent.hold("L1", { slots: [`${day}T17:00`] });
   assert.equal((await w.lead()).sdrLog.agentOfferAt, ISO("2026-12-03T09:31"), "falou: oferta nova, âncora nova");
+});
+
+// ── laudo do revisor (27/11/2026): o que quebrava para um lead de verdade ──
+
+test("reunião às 10h em ponto: o fixo de 2h (que cairia às 8h) não sai junto com a confirmação do agente; a segunda mensagem segue às 9h", async () => {
+  const w = await world({ lead: { callAt: "2026-12-03T10:00" } });
+  for (const t of ["2026-12-03T07:58", "2026-12-03T08:00", "2026-12-03T08:01", "2026-12-03T08:02"]) await w.at(t);
+  assert.equal(w.wa.sent.length, 0, "às 8h o fixo de 2h não sai: a manhã está com o agente");
+  assert.equal((await w.lead()).confirmLog["2h"], "manha", "o de 2h fica junto com a manhã, como no fluxo fixo");
+  w.clock.t = T("2026-12-03T08:03");
+  assert.equal((await w.agent.touch("L1", { key: (await w.pending()).key, parts: ["Bom dia Rafael, tudo bom?", "Nossa conversa de hoje às 10h segue de pé?"] })).status, 200);
+  for (const t of ["2026-12-03T08:04", "2026-12-03T08:31"]) await w.at(t);
+  assert.deepEqual(w.texts(), ["Bom dia Rafael, tudo bom?", "Nossa conversa de hoje às 10h segue de pé?"], "uma confirmação só");
+  await w.at("2026-12-03T09:00");
+  assert.equal((await w.pending()).tipo, "segunda_confirmacao", "sem resposta: a segunda mensagem do agente às 9h");
+  // agente fora do ar: o lead recebe o fixo da manhã no fim do prazo, e só ele
+  const fora = await world({ lead: { callAt: "2026-12-03T10:00" } });
+  for (const t of ["2026-12-03T07:58", "2026-12-03T08:00", "2026-12-03T08:02", "2026-12-03T08:23", "2026-12-03T08:40"]) await fora.at(t);
+  assert.equal(fora.wa.sent.length, 1);
+  assert.match(fora.wa.sent[0].text, /^Bom dia Rafael! Nossa conversa é hoje às 10h/);
+});
+
+test("lead que já faltou uma vez e recebeu horários do agente não ganha reativação, e por isso o motor não cala a retomada fixa dele", async () => {
+  const offerAt = ISO("2026-12-02T21:40");
+  const again = (sdrLog) => world({ approved: ["sdr_retomada_conversa", "sdr_encerramento_atendimento"], sdrBot: { ladder: true, conversation: true },
+    lead: { stage: "Qualificando", callAt: "", callUrl: "", closer: "", sdrLog: { agentOfferAt: offerAt, firstTouchAt: ISO("2026-11-10T10:00"), firstTouchVia: "template", ...sdrLog } },
+    msgs: [IN("2026-12-02T21:35", "oi, quero remarcar aquela demonstração"), BOT("2026-12-02T21:40", "Tenho amanhã (03/12) às 10h ou às 15h, qual fica melhor pra você?")] });
+  const faltou = await again({ noshowFor: "2026-11-20T15:00" });
+  for (const t of ["2026-12-03T09:25", "2026-12-04T10:00", "2026-12-07T10:00", "2026-12-08T10:00"]) await faltou.at(t);
+  assert.deepEqual(await faltou.touches(), [], "não vale depois de falta (decisão 31)");
+  assert.deepEqual(faltou.wa.sent.map((s) => s.name), ["sdr_retomada_conversa"], "a escada do motor segue cuidando dele");
+  // o mesmo lead sem a falta: a reativação está na vez, e enquanto ela corre a escada espera
+  const normal = await again({});
+  await normal.at("2026-12-03T09:22");
+  assert.equal((await normal.pending()).tipo, "reativacao_1");
+  assert.equal((await normal.agent.touch("L1", { key: (await normal.pending()).key, parts: ["Bom dia Rafael, conseguiu ver minha mensagem?"] })).status, 200);
+  for (const t of ["2026-12-04T10:00", "2026-12-05T10:00"]) await normal.at(t);
+  assert.equal(normal.wa.sent.filter((s) => s.kind === "template").length, 0);
+});
+
+test("chave ligada depois de a cobrança fixa da oferta já ter saído: a reativação do agente não sai por cima", async () => {
+  const offer = "Tenho amanhã às 10h ou às 15h, qual fica melhor pra você?";
+  const w = await world({ sdrBot: { agentTouch: false, offerNudge: true, conversation: true },
+    lead: { stage: "Qualificando", callAt: "", callUrl: "", closer: "", sdrLog: { agentOfferAt: ISO("2026-12-02T21:40"), firstTouchAt: ISO("2026-12-02T21:36"), firstTouchVia: "agent" } },
+    msgs: [IN("2026-12-02T21:35", "Oi, quero saber mais"), BOT("2026-12-02T21:40", offer)] });
+  await w.repo.update("wa_threads", "5541999990000", { lastDir: "out", lastOutAuthor: SDR_AUTHOR, lastText: offer, lastAt: ISO("2026-12-02T21:40") });
+  await w.at("2026-12-03T09:45");
+  assert.equal(w.wa.sent.length, 1);
+  assert.match(w.wa.sent[0].text, /^Bom dia Rafael! Ainda consigo hoje às/, "com a chave desligada, a cobrança de sempre");
+  const p = await w.repo.get("products", "leverads");
+  await w.repo.update("products", "leverads", { sdrBot: { ...p.sdrBot, agentTouch: true } });
+  await w.at("2026-12-03T10:00");
+  assert.deepEqual((await w.touches()).map((r) => [r.tipo, r.estado, r.motivo]), [["reativacao_1", "pulado", "ja_cobrado"]]);
+  assert.equal(w.wa.sent.length, 1);
+});
+
+test("entrega do agente no último minuto do prazo é recusada: o fixo que vai sair no fim do prazo não pode cruzar com ela", async () => {
+  const w = await world();
+  for (const t of ["2026-12-03T07:58", "2026-12-03T08:02"]) await w.at(t);
+  const req = await w.pending();
+  assert.equal(req.prazo, ISO("2026-12-03T08:22"));
+  w.clock.t = T("2026-12-03T08:21:30");
+  const late = await w.agent.touch("L1", { key: req.key, parts: ["Bom dia Rafael, tudo bom?", "Nossa conversa de hoje às 15h segue de pé?"] });
+  assert.deepEqual([late.status, late.body.error], [409, "touch_expired"]);
+  await w.at("2026-12-03T08:23");
+  assert.equal(w.wa.sent.length, 1, "só o fixo");
+  assert.match(w.wa.sent[0].text, /^Bom dia Rafael! Nossa conversa é hoje às 15h/);
+});
+
+test("a mesma entrega chegando duas vezes ao mesmo tempo sai uma vez só", async () => {
+  const w = await world();
+  await w.at("2026-12-03T08:02");
+  const body = { key: (await w.pending()).key, parts: ["Bom dia Rafael, tudo bom?", "Nossa conversa de hoje às 15h segue de pé?"] };
+  const got = await Promise.all([w.agent.touch("L1", body), w.agent.touch("L1", body)]);
+  assert.deepEqual(got.map((r) => r.body.error || r.status).sort(), [200, "touch_in_progress"]);
+  assert.deepEqual(w.texts(), body.parts);
+});
+
+test("passo só reservado pro agente não é pedido de confirmação: o 'ok' do lead antes de alguém perguntar não confirma a presença", async () => {
+  const w = await world({ msgs: [IN("2026-12-02T17:00", "Fechado"), IN("2026-12-03T07:50", "bom dia, vocês integram com Bling?"), BOT("2026-12-03T07:51", "Ela trabalha ao lado do Bling")] });
+  for (const t of ["2026-12-03T07:58", "2026-12-03T08:02"]) await w.at(t);
+  assert.match((await w.lead()).confirmLog.manha, /^agente:ate:/, "conversa viva: o passo está reservado e ninguém perguntou ainda");
+  await w.say("2026-12-03T08:05", "ok obrigado");
+  assert.notEqual(await handleSdrInbound(w.repo, { message: { from: "5541999990000", text: "ok obrigado" }, now: T("2026-12-03T08:05") }), "confirmed");
+  assert.ok(!(await w.lead()).callConfirmed, "a lista de confirmados do grupo não ganha quem não confirmou");
+});
+
+test("gravar um toque não recarrega a tela de quem está no cockpit (nenhuma tela lê sdr_touches)", () => {
+  const before = currentRev();
+  bump("sdr_touches");
+  assert.equal(currentRev(), before);
 });
