@@ -580,3 +580,17 @@ test("gravar um toque não recarrega a tela de quem está no cockpit (nenhuma te
   bump("sdr_touches");
   assert.equal(currentRev(), before);
 });
+
+test("janela de 24h que fecha entre o pedido e a entrega: o texto do agente é recusado antes de sair e o fixo vai por template", async () => {
+  const w = await world({ msgs: [IN("2026-12-02T08:20", "Fechado, amanhã às 15h")], approved: ["sdr_lembrete_link2"] });
+  for (const t of ["2026-12-03T07:58", "2026-12-03T08:02"]) await w.at(t);
+  const req = await w.pending();
+  assert.equal(req.tipo, "confirmacao_dia", "às 8h02 a janela ainda tem 18 min: o toque é pedido");
+  w.clock.t = T("2026-12-03T08:20:30");
+  const r = await w.agent.touch("L1", { key: req.key, parts: ["Bom dia Rafael, tudo bom?", "Nossa conversa de hoje às 15h segue de pé?"] });
+  assert.deepEqual([r.status, r.body.error], [409, "window_closed"]);
+  assert.equal(w.wa.sent.length, 0, "nenhum texto livre com a janela fechada");
+  assert.deepEqual((await w.touches()).map((t) => [t.estado, t.motivo]), [["pulado", "a janela de 24 horas fechou"]]);
+  await w.at("2026-12-03T08:21");
+  assert.deepEqual(w.wa.sent.map((s) => [s.kind, s.name]), [["template", "sdr_lembrete_link2"]], "o lead não fica sem: o lembrete fixo sai por template");
+});
