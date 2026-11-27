@@ -149,6 +149,29 @@ export function makeSdrAgent({ repo, whatsapp: wa, autoCallMeet = null, cancelCa
     return { status: 200, body: { ok: true, was: lead.callAt } };
   }
 
+  // O lead confirmou a presença NO DIA da demonstração, em conversa com o
+  // agente (a régua só lê a positiva curta ao lembrete; "simm, mto obg" e o
+  // "pode ser hoje às 18h" de quem marcou no mesmo dia passavam sem a marca).
+  // Grava a MESMA marca da régua (callConfirmed + confirmLog.confirmed): o link
+  // sai pelo fluxo (2c), o lembrete de 2h não pede de novo e o aviso de
+  // confirmados do time enxerga. Véspera não vale: o lembrete da manhã é quem
+  // confirma o dia. Link que o agente já mandou nesta troca não se repete.
+  async function confirm(leadId) {
+    const c = await load(leadId);
+    if (c.fail) return c.fail;
+    const { lead, product, msgs } = c;
+    if (!lead.callAt || kindOf(product, lead.stage) !== "call") return refuse(409, "no_call");
+    const clock = wall().toISOString().slice(0, 16);
+    if (lead.callAt.slice(0, 10) !== clock.slice(0, 10) || lead.callAt <= clock) return refuse(409, "not_today");
+    if (lead.callConfirmed) return { status: 200, body: { ok: true, already: true } };
+    const iso = now().toISOString();
+    const log0 = lead.confirmLog && lead.confirmLog.at === lead.callAt ? lead.confirmLog : { at: lead.callAt };
+    const lastInMs = Date.parse([...msgs].reverse().find((m) => m.direction === "in")?.at || 0);
+    const linkSent = !!lead.callUrl && msgs.some((m) => m.direction === "out" && Date.parse(m.at || 0) > lastInMs && String(m.text || "").includes(lead.callUrl));
+    await repo.update("leads", lead.id, { callConfirmed: true, confirmLog: { ...log0, confirmed: iso, ...(linkSent ? { linkSentAt: iso } : {}) } });
+    return { status: 200, body: { ok: true, link: linkSent ? "sent" : lead.callUrl ? "flow" : "none" } };
+  }
+
   // Chama o time: carimba o handoff (o lembrete de handoff insiste de 2h em 2h
   // até alguém falar), levanta o alerta do Inbox e avisa quem cuida do lead.
   async function handoff(leadId, { kind = "", why = "" } = {}) {
@@ -215,5 +238,5 @@ export function makeSdrAgent({ repo, whatsapp: wa, autoCallMeet = null, cancelCa
     return { status: 200, body: { ok: true, callbackAt: at.toISOString() } };
   }
 
-  return { send, hold, book, cancel, handoff, optOut, callback };
+  return { send, hold, book, cancel, confirm, handoff, optOut, callback };
 }

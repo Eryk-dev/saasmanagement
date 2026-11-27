@@ -17,6 +17,7 @@ export function registerSdrAgentRoutes(app, agent) {
   route("hold", agent.hold);
   route("book", agent.book);
   route("cancel", agent.cancel);
+  route("confirm", agent.confirm);
   route("handoff", agent.handoff);
   route("opt-out", agent.optOut);
   route("callback", agent.callback);
