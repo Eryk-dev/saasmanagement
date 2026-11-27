@@ -1686,7 +1686,7 @@ const LEVERADS_CATALOG = {
   },
   products: {
     oem_essencial: {
-      line: "oem", tier: "essencial", name: "Ads Essencial + OEM", contas: 3, cota: 200,
+      line: "oem", tier: "essencial", name: "LeverOEM Essencial", contas: 3, cota: 200,
       inclui: {
         motor: ["200 anúncios OEM criados por mês, com compatibilidade veicular", "Sincronização das suas contas (Meli + Shopee)", "Cópia de anúncios entre contas com títulos sugeridos"],
         plataforma: ["Edição em massa por SKU", "SAC centralizado e automatizado pela descrição dos produtos", "3 contas incluídas"],
@@ -1694,7 +1694,7 @@ const LEVERADS_CATALOG = {
       anu: { total: 5964, per: 497 }, sem: { total: 3582, per: 597 },
     },
     oem_escala: {
-      line: "oem", tier: "escala", name: "Ads Escala + OEM", contas: 7, cota: 0, cotaLabel: "OEM ilimitado",
+      line: "oem", tier: "escala", name: "LeverOEM Escala", contas: 7, cota: 0, cotaLabel: "OEM ilimitado",
       inclui: {
         motor: ["Anúncios OEM sem limite mensal, com compatibilidade veicular", "Equalização das suas contas", "Sincronização das suas contas (Meli + Shopee)", "Cópia de anúncios entre contas com títulos sugeridos"],
         plataforma: ["Edição em massa por SKU", "SAC centralizado e automatizado pela descrição dos produtos", "7 contas incluídas · conta extra R$ 100/mês"],

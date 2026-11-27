@@ -139,8 +139,8 @@ export const CLOSED_PLAN_MONTHS = { ...RECURRING_PLAN_MONTHS, unico: 1 };
 // (FULL/OEM/Parcial/clonagem avulsa) ficam com `legacy: true`: não entram em
 // select nenhum, só nomeiam venda antiga.
 export const DEAL_PRODUCTS = [
-  { id: "oem_essencial", label: "Ads Essencial + OEM" },
-  { id: "oem_escala", label: "Ads Escala + OEM" },
+  { id: "oem_essencial", label: "LeverOEM Essencial" },
+  { id: "oem_escala", label: "LeverOEM Escala" },
   { id: "ads_essencial", label: "Ads Essencial" },
   { id: "ads_escala", label: "Ads Escala" },
   { id: "price_start", label: "Lever Price · Start" },
