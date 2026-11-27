@@ -54,7 +54,7 @@ test("ganho: cliente e assinatura nascem com código, ciclo e retrato do plano; 
   t.after(() => app.close());
   const { customer, sub } = await win(app, repo, { dealProduct: "oem_escala", planClosed: "anual", amount: 10000, paymentMethod: "pix" });
 
-  assert.equal(customer.plan, "Ads Escala + OEM · Anual");
+  assert.equal(customer.plan, "LeverOEM Escala · Anual");
   assert.equal(customer.arr, 10000);
   assert.equal(customer.planCode, "oem_escala");
   assert.equal(customer.planCycle, "anual");
@@ -125,7 +125,7 @@ test("reeditar o fechamento troca o plano no cliente e na assinatura e registra 
   await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { dealProduct: "oem_escala", amount: 11988 } });
   const after = await repo.get("customers", customer.id);
   assert.equal(after.planCode, "oem_escala");
-  assert.equal(after.plan, "Ads Escala + OEM · Anual");
+  assert.equal(after.plan, "LeverOEM Escala · Anual");
   assert.equal(after.arr, 11988);
   assert.equal((await repo.get("subscriptions", sub.id)).planCode, "oem_escala");
   const history = await planHistoryOf(repo, customer.id);

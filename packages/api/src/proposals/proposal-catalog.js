@@ -87,12 +87,14 @@ const DEFAULT_LINES = {
 };
 
 // Nome de exibição dos produtos do catálogo (espelho dos `name` da migração
+// ensureProposalCatalog — os dois andam juntos). A linha OEM se chama
+// "LeverOEM <pacote>" desde 27/11/2026 (Leo); antes, "Ads <pacote> + OEM".
 // ensureProposalCatalog — os dois andam juntos). Usado FORA da proposta:
 // link de pagamento do lead, coluna Plano do cliente e card da Integração
 // (web espelha em lib/payments.js DEAL_PRODUCTS).
 export const PRODUCT_LABEL = {
-  oem_essencial: "Ads Essencial + OEM",
-  oem_escala: "Ads Escala + OEM",
+  oem_essencial: "LeverOEM Essencial",
+  oem_escala: "LeverOEM Escala",
   ads_essencial: "Ads Essencial",
   ads_escala: "Ads Escala",
   price_start: "Lever Price · Start",
@@ -102,7 +104,7 @@ export const PRODUCT_LABEL = {
 };
 // Enterprise de OEM/Ads é sob consulta (não tem produto no catálogo): o nome
 // do plano, como a planilha de planos o chama.
-const ENTERPRISE_LABEL = { oem: "Ads Enterprise + OEM", ads: "Ads Enterprise" };
+const ENTERPRISE_LABEL = { oem: "LeverOEM Enterprise", ads: "Ads Enterprise" };
 // Catálogo ANTERIOR (FULL / +OEM / OEM avulso / Parcial / combo / clonagem
 // avulsa): não vende mais, mas venda fechada com essas chaves continua
 // nomeada na coluna Plano do cliente, no checkout e no card da Integração.

@@ -258,7 +258,7 @@ test("linha OEM: tela OEM escura depois do 3 etapas (que fica), ritmo re-alterna
   assert.equal(pricing.key, "investimento_oem_essencial");
   assert.equal(pricing.price, "5.964");
   assert.equal(pricing.planPill, "3 contas · 200 OEM/mês");
-  assert.equal(pricing.sub, "Ads Essencial + OEM");
+  assert.equal(pricing.sub, "LeverOEM Essencial");
   assert.equal(pricing.offer3, undefined);
   assert.ok(!JSON.stringify(pricing).includes("100 anúncios gerados por OEM"), "texto velho do slide de autopeças não sobrevive");
 
@@ -384,7 +384,7 @@ test("consulta rápida: adicionais, pacotes de OEM e sob consulta; fora do deck"
     ["Pacote de 3.000 anúncios OEM (uma vez)", "R$ 4.500"],
     ["Setup de Equalização", "sob consulta"],
     ["Setup de Otimização", "sob consulta"],
-    ["Ads Enterprise + OEM", "sob consulta"],
+    ["LeverOEM Enterprise", "sob consulta"],
     ["Ads Enterprise", "sob consulta"],
   ]);
   // É consulta do closer: nada disso entra no deck que o cliente recebe.

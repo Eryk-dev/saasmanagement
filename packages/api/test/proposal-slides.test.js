@@ -12,7 +12,7 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 const { ensureProposalCatalog, ensureSlidesDeck, regenerateOpenLeadsToSlides } = await import("../src/platform/migrations.js");
 const { runNativeProposal, shareProposalOffer, proposalOffersOf } = await import("../src/proposals/proposal.js");
 const { registerProposalRoutes } = await import("../src/proposals/routes.proposals.js");
-const { calcOferta, deckTelas, deckConfig, slimCatalog, proposalSlidesPageHtml, DECK_PLAN_NAME } = await import("../src/proposals/proposal-slides-page.js");
+const { calcOferta, deckTelas, deckConfig, slimCatalog, proposalSlidesPageHtml } = await import("../src/proposals/proposal-slides-page.js");
 const { hashPassword } = await import("../src/auth/auth.js");
 
 const TEMPLATE = {
@@ -210,24 +210,25 @@ test("entregáveis em dois blocos: Efeito teia com as funcionalidades do plano e
   assert.deepEqual(calcOferta(cat, { ...cfgBase, plataforma: false }).entregaveis.map((e) => e.tag), ["Lado a lado"]);
 });
 
-test("nome do plano na apresentação: a linha OEM aparece como LeverOEM Essencial e LeverOEM Escala; o catálogo de Planos não muda", async () => {
+test("nome do plano (Leo, 27/11/2026): a linha OEM se chama LeverOEM Essencial e LeverOEM Escala no cadastro, e a apresentação mostra o nome do cadastro", async () => {
   const repo = await seedRepo();
   const full = (await repo.get("proposal_templates", "pt_leverads")).calc.catalog;
-  const oficial = { essencial: full.products.oem_essencial.name, escala: full.products.oem_escala.name };
+  assert.equal(full.products.oem_essencial.name, "LeverOEM Essencial");
+  assert.equal(full.products.oem_escala.name, "LeverOEM Escala");
   const cat = slimCatalog(full);
-  assert.deepEqual(DECK_PLAN_NAME, { oem_essencial: "LeverOEM Essencial", oem_escala: "LeverOEM Escala" });
   assert.equal(cat.products.oem_essencial.name, "LeverOEM Essencial");
-  assert.equal(cat.products.oem_escala.name, "LeverOEM Escala");
-  assert.equal(cat.products.ads_essencial.name, full.products.ads_essencial.name, "os outros planos seguem com o nome do catálogo");
-  assert.equal(cat.products.price_essencial.name, full.products.price_essencial.name);
-  assert.deepEqual({ essencial: full.products.oem_essencial.name, escala: full.products.oem_escala.name }, oficial, "o catálogo do template não é alterado");
 
   // Capa, demonstração, investimento e encerramento leem o planoNome da oferta.
   assert.equal(calcOferta(cat, { ...cfgBase, linha: "oem" }).planoNome, "LeverOEM Essencial");
   assert.equal(calcOferta(cat, { ...cfgBase, linha: "oem", tier: "escala", price: true }).planoNome, "LeverOEM Escala + " + full.products.price_essencial.name);
   assert.match(calcOferta(cat, { ...cfgBase, linha: "oem" }).demoLista, /^LeverOEM Essencial$/);
 
-  // A tela zero, o card de Atividades e o painel do CRM Lever recebem o mesmo catálogo enxuto pela rota de configuração.
+  // Sem atalho por cima do cadastro: o nome que estiver no plano é o que a apresentação mostra.
+  const editado = structuredClone(full);
+  editado.products.oem_essencial.name = "Nome editado em Planos";
+  assert.equal(slimCatalog(editado).products.oem_essencial.name, "Nome editado em Planos");
+
+  // A tela zero, o card de Atividades e o painel do CRM Lever recebem o mesmo catálogo enxuto.
   const lead = await repo.create("leads", { id: "ld_nome", saas: "leverads", name: "Ana", niche: "autopecas", accounts: "2-3" });
   const r = await runNativeProposal(repo, lead, { baseUrl: "http://x", template: "pt_leverads_slides" });
   const app = Fastify();

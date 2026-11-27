@@ -16,7 +16,7 @@ const { registerRoutes } = await import("../src/routes.js");
 
 const FUNNEL = [{ stage: "Follow-up", kind: "followup" }, { stage: "Ganho", kind: "ganho" }];
 
-// Cliente que fechou o LeverAds (Ads Escala + OEM, anual) pelo gate.
+// Cliente que fechou o LeverAds (LeverOEM Escala, anual) pelo gate.
 async function wonCustomer() {
   const repo = makeMemRepo();
   await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL });
@@ -51,7 +51,7 @@ test("adicionar o LeverPrice a quem já tem o LeverAds: segunda assinatura, ARR 
   assert.equal(after.arr, 11988 + 11382 * 2, "ARR = soma das duas assinaturas, anualizadas");
   assert.deepEqual(after.products, ["leverads", "leverprice"]);
   assert.equal(after.planCode, "oem_escala", "o cadastro segue espelhando a assinatura principal (a mais antiga)");
-  assert.equal(after.plan, "Ads Escala + OEM · Anual");
+  assert.equal(after.plan, "LeverOEM Escala · Anual");
   // 1ª fatura do produto novo nasce em aberto: adicionar não é receber.
   const inv = (await repo.list("invoices")).find((i) => i.subscription === subscription.id);
   assert.equal(inv.status, "open");

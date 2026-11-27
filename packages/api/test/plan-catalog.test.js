@@ -349,16 +349,16 @@ test("nomes da planilha: plano semeado com o nome antigo é renomeado uma vez; n
   await repo.update("plans", "plan_leverads_ads_escala", { name: "Plano do Leo" });
   await ensurePlanResources(repo);
   const name = async (code) => (await repo.get("plans", `plan_leverads_${code}`)).name;
-  assert.equal(await name("oem_escala"), "Ads Escala + OEM");
+  assert.equal(await name("oem_escala"), "LeverOEM Escala");
   assert.equal(await name("ads_essencial"), "Ads Essencial");
-  assert.equal(await name("oem_enterprise"), "Ads Enterprise + OEM", "sob consulta também é renomeado");
+  assert.equal(await name("oem_enterprise"), "LeverOEM Enterprise", "sob consulta também é renomeado");
   assert.equal(await name("ads_enterprise"), "Ads Enterprise");
   assert.equal(await name("ads_escala"), "Plano do Leo");
   assert.equal((await repo.get("plans", "plan_leverads_oem_escala")).priceVersion, 2, "limites novos sobem a versão; o nome sozinho não");
   assert.equal((await repo.get("plans", "plan_leverads_oem_enterprise")).priceVersion, 1);
   // O nome novo chega à apresentação e ao gate de fechamento.
   await syncPlanCatalogProjection(repo, "leverads");
-  assert.equal((await catalogOf(repo, "pt_leverads_slides")).products.oem_escala.name, "Ads Escala + OEM");
+  assert.equal((await catalogOf(repo, "pt_leverads_slides")).products.oem_escala.name, "LeverOEM Escala");
   assert.equal(dealCatalogFromPlans(await repo.list("plans")).find((r) => r.id === "ads_essencial").label, "Ads Essencial");
 });
 
@@ -377,7 +377,7 @@ test("banco sem template de proposta (ambiente novo): os planos do LeverAds nasc
   try { await runStartupMigrations(repo); } finally { console.log = log; }
   const by = Object.fromEntries((await repo.list("plans")).map((p) => [p.code, p]));
   for (const [code, name] of [["ads_essencial", "Ads Essencial"], ["ads_escala", "Ads Escala"], ["ads_enterprise", "Ads Enterprise"],
-    ["oem_essencial", "Ads Essencial + OEM"], ["oem_escala", "Ads Escala + OEM"], ["oem_enterprise", "Ads Enterprise + OEM"]]) {
+    ["oem_essencial", "LeverOEM Essencial"], ["oem_escala", "LeverOEM Escala"], ["oem_enterprise", "LeverOEM Enterprise"]]) {
     assert.equal(by[code]?.name, name, code);
   }
   assert.deepEqual(by.oem_essencial.limits, { accounts: 3, oemPerMonth: 200, copiesPerDay: 500 });

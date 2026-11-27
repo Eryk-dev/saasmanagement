@@ -38,11 +38,15 @@ const MENTORIA_PRICE_LABEL = "à vista ou 12x no cartão";
 // Nomes dos planos como a planilha "planos lever" os chama (02/10/2026). O
 // nome antigo é o que a semente trazia do catálogo das apresentações: plano
 // que ainda o tem é renomeado uma vez; nome editado pelo admin fica.
-const ENTERPRISE_NAME = { oem: "Ads Enterprise + OEM", ads: "Ads Enterprise" };
+// A linha OEM virou "LeverOEM <pacote>" em 27/11/2026 (Leo); quem trocou o
+// nome em produção, inclusive nos clientes e assinaturas, foi o script
+// 2026-11-27-nome-leveroem (billing/plan-rename.js). Aqui fica o nome que um
+// banco semeado com o nome de antes de 02/10 recebe.
+const ENTERPRISE_NAME = { oem: "LeverOEM Enterprise", ads: "Ads Enterprise" };
 const PLAN_RENAMES = {
-  oem_essencial: ["Lever OEM \u00b7 Essencial", "Ads Essencial + OEM"],
-  oem_escala: ["Lever OEM \u00b7 Escala", "Ads Escala + OEM"],
-  oem_enterprise: ["Lever OEM \u00b7 Enterprise", "Ads Enterprise + OEM"],
+  oem_essencial: ["Lever OEM \u00b7 Essencial", "LeverOEM Essencial"],
+  oem_escala: ["Lever OEM \u00b7 Escala", "LeverOEM Escala"],
+  oem_enterprise: ["Lever OEM \u00b7 Enterprise", "LeverOEM Enterprise"],
   ads_essencial: ["Lever Ads \u00b7 Essencial", "Ads Essencial"],
   ads_escala: ["Lever Ads \u00b7 Escala", "Ads Escala"],
   ads_enterprise: ["Lever Ads \u00b7 Enterprise", "Ads Enterprise"],

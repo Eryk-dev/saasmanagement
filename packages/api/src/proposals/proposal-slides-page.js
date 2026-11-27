@@ -1057,20 +1057,17 @@ export function deckConfig(p, { suggested = "", catalog = null } = {}) {
 // pacote). Só vai pro navegador no modo closer — o link do cliente recebe os
 // números já calculados, nunca a tabela.
 //
-// NOME DO PLANO NA APRESENTAÇÃO (Leo, 26/11/2026): os planos da linha OEM são
-// apresentados como "LeverOEM Essencial" e "LeverOEM Escala". O nome oficial
-// do plano (Comercial → Planos, hoje "Ads Essencial + OEM") continua valendo
-// no link de pagamento, na coluna Plano do cliente e no acesso do produto. A
-// troca é feita AQUI porque todo mundo que mostra a apresentação lê este
-// catálogo enxuto: a página, a tela zero, o card de Atividades e o painel do
-// CRM Lever (/api/leads/:id/proposal-config).
-export const DECK_PLAN_NAME = { oem_essencial: "LeverOEM Essencial", oem_escala: "LeverOEM Escala" };
+// O nome de cada plano é o de Comercial → Planos (a projeção dos planos no
+// catálogo do template), e quem abre a proposta no modo closer recebe o
+// catálogo de hoje (syncProposalCatalog). Em 26/11/2026 a linha OEM foi
+// renomeada só aqui, por cima do catálogo; em 27/11 o nome "LeverOEM
+// Essencial/Escala" passou a ser o do plano (script 2026-11-27-nome-leveroem).
 export function slimCatalog(catalog) {
   const src = (catalog && catalog.products) || {};
   const products = {};
   for (const [k, v] of Object.entries(src)) {
     products[k] = {
-      name: DECK_PLAN_NAME[k] || v.name || k, line: v.line || k.split("_")[0], tier: v.tier || k.split("_")[1],
+      name: v.name || k, line: v.line || k.split("_")[0], tier: v.tier || k.split("_")[1],
       contas: v.contas || 0, inclui: v.inclui || {}, anu: v.anu || {}, sem: v.sem || {},
     };
   }
