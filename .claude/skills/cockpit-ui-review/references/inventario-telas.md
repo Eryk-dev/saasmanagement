@@ -228,6 +228,21 @@ do plano, aceite, notas do closer e a apresentação de criação de anúncios n
 mudaram: o CSS novo fica debaixo de `.dk`. Conferido no navegador em sete
 combinações de plano, com o catálogo e os cases de produção.
 
+**Ajustes do Leo no mesmo dia (26/11/2026):** no slide do Lever OEM, os três
+blocos passam a ser “Criação de anúncio por OEM”, “SAC automatizado” e
+“Múltiplas contas e automações”. Os planos da linha OEM aparecem na
+apresentação como “LeverOEM Essencial” e “LeverOEM Escala” (`DECK_PLAN_NAME`,
+aplicado no catálogo enxuto que a página, a tela zero, o card de Atividades e o
+CRM Lever leem; o nome oficial em Comercial → Planos não mudou). Em “Como você
+entra”, uma frase por linha. A faixa de cima dos resultados tem três colunas
+iguais às dos cards de case, com a legenda centrada na altura do número. Os
+entregáveis viraram dois blocos: o do produto com o nome do método (“Efeito
+teia”, “Espiral do lucro”) e “Lado a lado” (reuniões estratégicas, acesso aos
+sócios, suporte individualizado, garantia incondicional); a linha “N contas
+incluídas” do catálogo sai da lista, porque a nota do card já diz. A prévia
+(`/p/t/:id`) e o JSON do site passaram a mostrar os números de hoje do painel,
+como a apresentação de verdade já fazia: estavam com os gravados em 28/09.
+
 
 ## Revisão de fidelidade das 30 páginas — 20/09/2026
 

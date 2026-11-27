@@ -604,6 +604,11 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0B141D; }
 
 /* resultados */
 .dk .cs3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+/* faixa de cima: cada número começa onde começa o texto do card de baixo, com a legenda centrada na altura dele */
+.dk .kp{display:grid;column-gap:20px;padding:0}
+.dk .kp-i{display:flex;align-items:center;gap:16px;min-width:0;padding:26px 12px 26px 36px}
+.dk .kp-n{flex:none;font-size:64px;font-weight:700;color:var(--brand);letter-spacing:-.045em;line-height:1;white-space:nowrap}
+.dk .kp-l{min-width:0;font-size:21px;line-height:1.3;color:var(--ink-2);text-wrap:balance}
 .dk .r1{padding:38px 44px 34px;display:flex;flex-direction:column;justify-content:center;min-width:0}
 .dk .r2c{padding:28px 40px 14px;display:flex;flex-direction:column;min-width:0}
 .dk .rrow{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:20px 0;flex:1}
@@ -736,7 +741,7 @@ const SLIDES = `
   </div>
 </section>
 
-<section class="dk" data-if="oem" data-label="Lever OEM" data-screen-label="02a Efeito teia" data-speaker-notes="Abra pelo estoque parado: pergunte há quanto tempo as peças dele estão sem venda. Depois os três pilares: título do jeito que o comprador busca, com até 200 caracteres; descrição específica e compatibilidade completa, para a peça aparecer na busca por veículo; e múltiplas contas com replicação automática, em que um anúncio publicado vai para todas as contas e uma edição chega em todas de uma vez.">
+<section class="dk" data-if="oem" data-label="Lever OEM" data-screen-label="02a Efeito teia" data-speaker-notes="Abra pelo estoque parado: pergunte há quanto tempo as peças dele estão sem venda. Depois os três pilares: criação de anúncio por OEM, em que ele cola o código e a peça volta com título, compatibilidade, ficha técnica e descrição; SAC automatizado, com as perguntas e o pós-venda de todas as contas respondidos a partir da descrição dos produtos; e múltiplas contas e automações, com Mercado Livre e Shopee num painel só, anúncio, estoque e preço replicados sozinhos e a edição por SKU valendo para todas as contas.">
   <div class="hd"><span class="eb">Lever OEM · método</span><span class="pg">02</span></div>
   <div class="body" style="display:grid;grid-template-columns:minmax(0,.88fr) minmax(0,1.12fr);gap:80px;align-items:center">
     <div style="min-width:0">
@@ -744,9 +749,9 @@ const SLIDES = `
       <p class="lede soft" style="color:var(--ink-2)">Estoque sem anúncio é dinheiro parado na prateleira. Com o efeito teia, um anúncio publicado vai para todas as suas contas, e uma edição chega em todas de uma vez. Mais alcance, mesma equipe.</p>
     </div>
     <div style="min-width:0;display:flex;flex-direction:column;gap:18px">
-      <div class="card feat"><span class="ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h10M4 17h7"></path><path d="m16 15 2 2 4-4"></path></svg></span><div><b>Título do jeito que o comprador busca</b><span>Até 200 caracteres, dentro do limite de cada marketplace.</span></div></div>
-      <div class="card feat"><span class="ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 16l1.5-5h11L19 16"></path><rect x="3" y="16" width="18" height="3" rx="1"></rect><circle cx="7" cy="20" r="1.5"></circle><circle cx="17" cy="20" r="1.5"></circle></svg></span><div><b>Descrição específica e compatibilidade completa</b><span>Ficha técnica e aplicação da peça, que aparece na busca por veículo, onde o cliente realmente procura.</span></div></div>
-      <div class="card feat"><span class="ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect><path d="M11 7.5h4.5v4M13 16.5H8.5v-4"></path></svg></span><div><b>Múltiplas contas e replicação automática</b><span>Todas as contas num painel só. Anúncio novo se espalha sozinho, e SKU editado é atualizado em todas.</span></div></div>
+      <div class="card feat"><span class="ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h10M4 17h7"></path><path d="m16 15 2 2 4-4"></path></svg></span><div><b>Criação de anúncio por OEM</b><span>Cole o código e, em 2 a 3 minutos, a peça volta com título, compatibilidade, ficha técnica e descrição prontos.</span></div></div>
+      <div class="card feat"><span class="ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v10H9l-5 4z"></path><path d="M8 9h8M8 12h5"></path></svg></span><div><b>SAC automatizado</b><span>Perguntas e pós-venda de todas as contas num lugar só, respondidos a partir da descrição dos seus produtos.</span></div></div>
+      <div class="card feat"><span class="ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect><path d="M11 7.5h4.5v4M13 16.5H8.5v-4"></path></svg></span><div><b>Múltiplas contas e automações</b><span>Mercado Livre e Shopee num painel só. Anúncio, estoque e preço se replicam sozinhos, e a edição por SKU vale para todas as contas.</span></div></div>
     </div>
   </div>
 </section>
@@ -809,7 +814,7 @@ const SLIDES = `
   <div class="hd"><span class="eb">O que acontece depois do sim</span><span class="pg">04</span></div>
   <div class="body" style="display:flex;flex-direction:column;justify-content:center">
     <h2 class="h" style="font-size:96px;margin:0 0 26px;max-width:1500px">Você fecha hoje. <span class="a" style="white-space:nowrap">Em dias, está rodando.</span></h2>
-    <p class="lede soft" style="max-width:1100px;margin-bottom:64px">Sem manual pra ler, sem ficar sozinho com um login. A gente entra junto na sua operação e só sai quando o número aparece.</p>
+    <p class="lede soft" style="max-width:1100px;margin-bottom:64px">Sem manual pra ler, sem ficar sozinho com um login.<br>A gente entra junto na sua operação e só sai quando o número aparece.</p>
     <div class="track"><i></i></div>
     <ul class="steps">
       <li><div class="top"><span class="sn">1</span><span class="dia">Dia 0</span></div><h3>Grupo no WhatsApp</h3><p>Você, seu time e o nosso no mesmo canal. Resposta direta, sem ticket.</p></li>
@@ -1043,12 +1048,21 @@ export function deckConfig(p, { suggested = "", catalog = null } = {}) {
 // O catálogo que a PÁGINA precisa (nomes, preços, entregáveis, contas do
 // pacote). Só vai pro navegador no modo closer — o link do cliente recebe os
 // números já calculados, nunca a tabela.
+//
+// NOME DO PLANO NA APRESENTAÇÃO (Leo, 26/11/2026): os planos da linha OEM são
+// apresentados como "LeverOEM Essencial" e "LeverOEM Escala". O nome oficial
+// do plano (Comercial → Planos, hoje "Ads Essencial + OEM") continua valendo
+// no link de pagamento, na coluna Plano do cliente e no acesso do produto. A
+// troca é feita AQUI porque todo mundo que mostra a apresentação lê este
+// catálogo enxuto: a página, a tela zero, o card de Atividades e o painel do
+// CRM Lever (/api/leads/:id/proposal-config).
+export const DECK_PLAN_NAME = { oem_essencial: "LeverOEM Essencial", oem_escala: "LeverOEM Escala" };
 export function slimCatalog(catalog) {
   const src = (catalog && catalog.products) || {};
   const products = {};
   for (const [k, v] of Object.entries(src)) {
     products[k] = {
-      name: v.name || k, line: v.line || k.split("_")[0], tier: v.tier || k.split("_")[1],
+      name: DECK_PLAN_NAME[k] || v.name || k, line: v.line || k.split("_")[0], tier: v.tier || k.split("_")[1],
       contas: v.contas || 0, inclui: v.inclui || {}, anu: v.anu || {}, sem: v.sem || {},
     };
   }
@@ -1188,9 +1202,8 @@ function presentationResultsHtml(results) {
   const title = results
     ? ` title="${escHtml(exact.format(results.gmv) + " de faturamento; " + exact.format(results.generated) + " em anúncios da Lever. Mesma cobertura por cliente, na janela de até 180 dias do painel.")}"`
     : "";
-  const cols = kpis.length === 3 ? "1.15fr 1fr 1fr" : "repeat(" + kpis.length + ",minmax(0,1fr))";
-  return `<div class="card" ${results ? "data-live-results" : "data-handoff-results"}${title} style="padding:26px 40px;display:grid;grid-template-columns:${cols};gap:36px;align-items:center">${kpis.map(([valor, rotulo]) =>
-    `<div style="display:flex;align-items:baseline;gap:20px;min-width:0"><span class="tab" style="font-size:64px;font-weight:700;color:var(--brand);letter-spacing:-.045em;line-height:1;white-space:nowrap">${colado(valor)}</span><span style="font-size:23px;line-height:1.3;color:var(--ink-2)">${escHtml(rotulo)}</span></div>`).join("")}</div>`;
+  return `<div class="card kp" ${results ? "data-live-results" : "data-handoff-results"}${title} style="grid-template-columns:repeat(${kpis.length},minmax(0,1fr))">${kpis.map(([valor, rotulo]) =>
+    `<div class="kp-i"><span class="tab kp-n">${colado(valor)}</span><span class="kp-l">${escHtml(rotulo)}</span></div>`).join("")}</div>`;
 }
 function presentationResultsSource(results) {
   const dia = results
@@ -1351,11 +1364,12 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
     });
     return ul;
   }
-  // Um card por produto do plano. Sozinho (um produto só), ele ocupa o slide
-  // inteiro com os itens em duas colunas; com mais de um, ficam lado a lado.
-  // sup é a linha de suporte do produto, embaixo do traço. Oferta congelada
-  // antes de 26/11/2026 não tem sup e ainda traz o card "O lado humano":
-  // ela é desenhada como veio, que é o que o cliente recebeu.
+  // Um card por bloco da oferta: o do produto (com o nome do método, "Efeito
+  // teia" ou "Espiral do lucro") e o "Lado a lado", lado a lado. Card sozinho
+  // ocupa o slide inteiro, com os itens em duas colunas. Oferta congelada num
+  // link já enviado é desenhada como veio, que é o que o cliente recebeu: as
+  // de antes de 26/11/2026 trazem "O lado humano", e as daquele dia trazem a
+  // linha de suporte (sup) embaixo do traço.
   function cardEntregavel(e, unico) {
     var d = document.createElement("div");
     d.className = "card dc" + (unico ? " dc-one" : "");
@@ -1499,6 +1513,16 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
       el.style.fontSize = px + "px";
       while (px > 44 && el.scrollWidth > el.clientWidth + 1) { px -= 4; el.style.fontSize = px + "px"; }
     });
+    // Faixa de cima dos resultados: os números têm todos o mesmo tamanho, e
+    // ele desce até a legenda de cada um caber em duas linhas.
+    var kn = [].slice.call(document.querySelectorAll(".kp-n"));
+    var kl = [].slice.call(document.querySelectorAll(".kp-l"));
+    var kpx = [64, 62, 60, 58, 56, 54, 52, 50, 48];
+    for (var j = 0; j < kpx.length && kn.length; j++) {
+      kn.forEach(function (el) { el.style.fontSize = kpx[j] + "px"; });
+      var linhas = kl.map(function (el) { return Math.round(el.offsetHeight / (parseFloat(getComputedStyle(el).lineHeight) || 28)); });
+      if (Math.max.apply(null, linhas) <= 2) break;
+    }
     var grid = document.querySelector("[data-entregaveis]");
     if (!grid || !grid.children.length) return;
     var corpo = grid.parentNode;

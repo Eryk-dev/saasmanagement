@@ -2,6 +2,7 @@
 // publicação e o JSON público que o site consome.
 
 import { validateCase, publishBlockers, publicCase, pickCases } from "./cases.js";
+import { liveCases } from "./cases-live.js";
 import { influencedByOrg } from "../customers/leverads-results.js";
 
 const money = (n) => `R$ ${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 }).format(Number(n) || 0)}`;
@@ -71,7 +72,10 @@ export function registerCaseRoutes(app, repo, { influenced = influencedByOrg } =
   app.get("/public/cases.json", async (req, reply) => {
     reply.header("cache-control", "public, max-age=300, stale-while-revalidate=3600");
     try {
-      const all = await repo.list("cases");
+      // Os números de hoje no painel, como no deck (cases-live.js); sem painel,
+      // os gravados no case.
+      const vivos = await liveCases(repo).catch(() => []);
+      const all = vivos.length ? vivos : await repo.list("cases");
       const cases = pickCases(all, { limit: 12 }).map(publicCase);
       return { cases, count: cases.length, at: new Date().toISOString() };
     } catch {

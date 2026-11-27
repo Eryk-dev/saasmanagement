@@ -19,9 +19,21 @@ export function calcOferta(cat, st) {
   var contas = Math.max(1, Math.round(Number(st.contas) || 1));
   var extraPer = Number(((cat.addons || {}).contaExtra || {}).per) || 100;
   var mensal = 0, setup = 0, nomes = [], entregaveis = [];
-  // itens: os entregáveis do plano, lidos do catálogo. sup: a linha de suporte
-  // do produto, que o slide põe embaixo do traço do card (desenho de
-  // 26/11/2026; antes disso o suporte era um card à parte, "O lado humano").
+  // Os cards do slide de entregáveis: um por produto, com o nome do MÉTODO
+  // ("Efeito teia", "Espiral do lucro") e as funcionalidades lidas do catálogo,
+  // e o "Lado a lado", igual em todo plano (Leo, 26/11/2026).
+  // O item do catálogo que só repete as contas do pacote ("3 contas
+  // incluídas") sai da lista, porque a nota do card já diz; o que vier depois
+  // dele na mesma linha ("· conta extra R$ 100/mês") fica.
+  var semContas = function (itens) {
+    var out = [];
+    (itens || []).forEach(function (t) {
+      var resto = String(t).replace(/^\s*\d+\s+contas?\s+inclu[ií]das?\s*(·\s*)?/i, "");
+      if (resto === String(t)) out.push(t);
+      else if (resto) out.push(resto.charAt(0).toUpperCase() + resto.slice(1));
+    });
+    return out;
+  };
 
   var plat = st.plataforma ? prods[st.linha + "_" + st.tier] : null;
   if (plat) {
@@ -31,9 +43,8 @@ export function calcOferta(cat, st) {
     mensal += per + extras * extraPer;
     nomes.push(plat.name);
     entregaveis.push({
-      tag: plat.name,
-      itens: ((plat.inclui || {}).motor || []).concat((plat.inclui || {}).plataforma || []),
-      sup: ["Suporte individualizado no WhatsApp"],
+      tag: "Efeito teia",
+      itens: semContas(((plat.inclui || {}).motor || []).concat((plat.inclui || {}).plataforma || [])),
       notaDestaque: extras ? "Contas extras:" : "Contas inclusas:",
       nota: extras
         ? extras + " conta" + (extras > 1 ? "s" : "") + " além das " + inclusas + " do pacote, R$ " + fmt(extraPer) + " por conta em cada parcela."
@@ -46,9 +57,8 @@ export function calcOferta(cat, st) {
     mensal += Number((anual ? price.anu : price.sem).per) || 0;
     nomes.push(price.name);
     entregaveis.push({
-      tag: price.name,
+      tag: "Espiral do lucro",
       itens: ((price.inclui || {}).motor || []).concat((price.inclui || {}).plataforma || []),
-      sup: ["Suporte individualizado no WhatsApp", "Call de planejamento trimestral"],
       notaDestaque: "Margem primeiro:",
       nota: "o preço se move sozinho o dia inteiro, sempre acima da margem que você definir."
     });
@@ -71,6 +81,18 @@ export function calcOferta(cat, st) {
       nota: "R$ " + fmt(setup) + " na contratação, fora das parcelas do plano."
     });
   }
+
+  entregaveis.push({
+    tag: "Lado a lado",
+    itens: [
+      "Reuniões estratégicas",
+      "Acesso aos sócios",
+      "Suporte individualizado",
+      "Garantia incondicional"
+    ],
+    notaDestaque: "Time Lever dentro da sua operação:",
+    nota: "quem vende todo dia, cuidando de quem vende todo dia."
+  });
 
   // Desconto da negociação: baixa a PARCELA (em reais inteiros) e o total é a
   // soma das parcelas, pra conta fechar na cabeça do cliente. A chave segue
