@@ -411,7 +411,7 @@ test("editar plano não troca de produto: o servidor ignora product/access no PA
 
 // ── Lever Price · Start (27/11/2026) ────────────────────────────────────────
 // Pacote de entrada do Lever Price: só anual (12× R$ 350), 1 conta conectada e
-// teto de anúncios (PRICE_START_LISTINGS, que o dono ainda confirma).
+// teto de anúncios (PRICE_START_LISTINGS: 1.000, confirmado pelo Leo).
 const START_ID = "plan_leverads_price_start";
 const milhar = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 

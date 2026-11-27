@@ -529,8 +529,8 @@ export async function ensurePriceTrialPlan(repo) {
 // Lever Price · Start (Leo, 27/11/2026): o pacote de entrada do Lever Price,
 // pra quem fatura até uns R$ 50 mil por mês. Só ANUAL (12× R$ 350 = R$ 4.200,
 // sem preço semestral), 1 conta conectada e teto de anúncios precificados
-// (PRICE_START_LISTINGS, em shared/plan-resources.js, que o dono ainda
-// confirma). Nasce como o teste grátis nasceu: em todo produto que já tem o
+// (PRICE_START_LISTINGS, em shared/plan-resources.js: 1.000, confirmado pelo
+// Leo). Nasce como o teste grátis nasceu: em todo produto que já tem o
 // Price semeado e ainda não tem o Start, antes do Essencial na ordem do
 // catálogo. Uma vez por produto; depois é da tela Planos (plano que já existe,
 // editado ou arquivado pelo time, nunca é regravado aqui).

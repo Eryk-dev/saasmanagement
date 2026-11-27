@@ -14,7 +14,7 @@
 import { PRICE_START_LISTINGS } from "../shared/plan-resources.js";
 
 // Teto de anúncios do Lever Price · Start no card do Price (ger_n_154): vem da
-// constante que o dono ainda confirma, pra não ficar escrito em dois lugares.
+// constante do plano (1.000), pra não ficar escrito em dois lugares.
 const START_ANUNCIOS = String(PRICE_START_LISTINGS).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 
 const GERAL_NEGOCIO_BASE = [

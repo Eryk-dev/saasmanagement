@@ -56,11 +56,11 @@ export const PLAN_LIMITS = [
 export const planLimitsOf = (product) =>
   PLAN_LIMITS.filter((l) => l.product === product || (l.alsoIn || []).includes(product));
 
-// Lever Price · Start (27/11/2026): teto de anúncios precificados do plano.
-// A CONFIRMAR COM O DONO (100 ou 1.000). É o único lugar do número: o limite
-// e os entregáveis do plano (billing/plan-catalog.js, ensurePriceStartPlan) e
-// o flashcard do Price leem daqui. Vale até o plano nascer no banco: depois
-// disso quem manda é a edição em Comercial → Planos.
+// Lever Price · Start (27/11/2026): teto de anúncios precificados do plano,
+// 1.000 (confirmado pelo Leo em 27/11/2026). É o único lugar do número: o
+// limite e os entregáveis do plano (billing/plan-catalog.js,
+// ensurePriceStartPlan) e o flashcard do Price leem daqui. Vale até o plano
+// nascer no banco: depois disso quem manda é a edição em Comercial → Planos.
 export const PRICE_START_LISTINGS = 1000;
 
 export const PLAN_FEATURES = [

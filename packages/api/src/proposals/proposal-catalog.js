@@ -203,10 +203,10 @@ export const lineOf = (answers, state) => (isPrice(state, answers) ? "price" : i
 // desconhecida cai no menor pacote; `limite: 0` é o ilimitado e fecha a escada.
 //
 // O START fica fora da escada (PRICE_TIERS_MANUAIS): a sugestão de quem já é
-// lead segue igual, e o closer o escolhe à mão na tela zero. Decisão do dono
-// ainda em aberto: lead que fatura até uns R$ 50 mil por mês passa a receber
-// o Start como sugestão? Se sim, a regra entra aqui (a faixa de faturamento
-// não é o volume de anúncios que esta escada lê).
+// lead segue igual, e o closer o escolhe à mão na tela zero. Decisão do Leo
+// (27/11/2026): "closer escolhe"; lead que fatura até uns R$ 50 mil por mês
+// NÃO passa a receber o Start como sugestão. Se um dia passar, a regra entra
+// aqui (a faixa de faturamento não é o volume de anúncios que esta escada lê).
 export function priceTier(cat, state) {
   const products = cat?.products || {};
   const escada = TIER_KEYS.filter((t) => !PRICE_TIERS_MANUAIS.includes(t) && products["price_" + t])
