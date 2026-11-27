@@ -30,6 +30,7 @@ const SILENT = new Set([
   "leverads_orgs", // espelho de 10 em 10 min; a aba Gratuitas tem load próprio e vincular bumpa `customers`
   "ticket_assets", // bytes do anexo; o ticket (QUIET) já avisa a tela
   "guide_assets", // bytes do print; o guia avisa a tela quando passa a usá-lo
+  "meeting_transcripts", // transcrição guardada pro agente Cases; nenhuma tela lê
 ]);
 
 // Coleções que EMITEM o evento mas não devem recarregar o SEED do SPA: a tela

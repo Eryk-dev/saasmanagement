@@ -7,6 +7,7 @@ import { logActivity, appointmentAt } from "../crm/lead-flow.js";
 import { syncClientPending } from "../customers/client-pending.js";
 import { kindOf } from "../crm/stages.js";
 import { followupDayOf, dayStartIso } from "../shared/followup-contacts.js";
+import { fetchRoomTranscript, keepTranscript } from "./meeting-transcripts.js";
 
 const CLOSED_STAGE = /perdid|ganh|fechad|won|lost|cliente/i;
 
@@ -89,45 +90,16 @@ export function makeCallSummarizer({ repo, google, googleUser = null, anthropic,
       return { ok: false, reason: "already_done" };
     }
 
-    // 1º a Meet API (conferenceRecords). Se ela não devolver (comum quando quem
-    // hospeda a call é outra conta que não a conectada), cai no fallback do Drive:
-    // lê o Doc de transcrição no Drive do organizador (a conta conectada).
-    // A Meet API LANÇA em 4xx (API desabilitada no Cloud, sala de outra conta,
-    // escopo faltando) — sem este catch a exceção subia e matava o fallback do
-    // Drive, então a call ficava pra sempre sem resumo e o poller só logava
-    // warn. Erro dela vira diagnóstico e o Drive segue sendo tentado.
-    let t = null;
-    let detail = "";
-    let live = false;
-    try {
-      t = await g.fetchTranscript(code);
-      // Sala ainda ABERTA: não existe transcrição enquanto alguém está lá
-      // dentro (o Google fecha a gravação quando o último sai). Vira reason
-      // próprio pra tela mandar encerrar a sala em vez de "não está pronta".
-      if (t?.live) { live = true; t = null; }
-    } catch (err) {
-      detail = `meet: ${String(err.message || err).slice(0, 160)}`;
-      log.warn?.({ lead: leadId, kind, err: err.message }, "Meet API falhou (segue pro fallback do Drive)");
-    }
-    if (!t && typeof g.fetchTranscriptFromDrive === "function") {
-      // Os dois motivos SOMAM (meet + drive): quando nenhum caminho traz a
-      // transcrição, o diagnóstico precisa dizer o que cada um respondeu.
-      const add = (s) => { detail = detail ? `${detail} · ${s}` : s; };
-      try {
-        t = await g.fetchTranscriptFromDrive({ eventId: lead[cfg.eventField], leadName: lead.name, since: lead[cfg.schedField] });
-        if (!t) add("drive: Doc de transcrição não encontrado (confira o título/horário da call ou a conta do Drive)");
-      } catch (err) {
-        // 403 ACCESS_TOKEN_SCOPE_INSUFFICIENT aqui = reconectar o Google (escopo drive.readonly novo).
-        add(`drive: ${String(err.message || err).slice(0, 160)}`);
-        log.warn?.({ lead: lead.id, kind, err: err.message }, "fallback de transcrição pelo Drive falhou");
-      }
-    }
-    // Sala aberta e o Drive (ainda) sem o Doc: o motivo é a call que não fechou,
-    // não "transcrição processando" — é acionável (sair da sala destrava).
-    if (!t && live) {
-      return { ok: false, reason: "call_in_progress", detail: "a sala do Meet ainda está aberta: o Google só gera a transcrição quando o último participante sai" };
-    }
-    if (!t) return { ok: false, reason: "transcript_not_ready", ...(detail ? { detail } : {}) };
+    // Meet API primeiro, Doc do Drive do organizador depois, com os motivos de
+    // falha de sempre (meeting-transcripts.js, a mesma busca do agente Cases).
+    const got = await fetchRoomTranscript(g, { code, eventId: lead[cfg.eventField], leadName: lead.name, since: lead[cfg.schedField] }, { log, ctx: { lead: leadId, kind } });
+    if (!got.ok) return got;
+    const t = got.t;
+    // A transcrição inteira fica guardada pro agente Cases: a Meet API só
+    // entrega por um tempo e buscar de novo é lento. Falhar aqui não segura o
+    // resumo.
+    await keepTranscript(repo, { code, kind, leadId: lead.id, saas: lead.saas || "", eventId: lead[cfg.eventField] || "", t, by: "resumo" })
+      .catch((err) => log.warn?.({ lead: lead.id, kind, err: err.message }, "transcrição da call não foi guardada (o resumo segue)"));
 
     const product = lead.saas ? await repo.get("products", lead.saas) : null;
     const brt = (d) => new Date(d).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });

@@ -81,6 +81,9 @@ function canonWhen(body) {
 const PRIVATE = new Set(["users", "icp_versions", "integration_secrets", "product_updates", "product_update_assets", "sessions", "user_assets", "activity_assets", "task_assets", "followup_assets", "task_events", "notifications", "wa_threads", "wa_messages", "wa_media", "wa_template_media", "blog_posts",
   // callface_calls guarda a transcrição inteira da ligação: só o webhook escreve e ninguém lê pelo CRUD.
   "callface_calls",
+  // Mesma coisa com a transcrição das reuniões do Meet: só a rota do agente
+  // Cases lê (calls/cases-feed.js), atrás da chave mestre ou de um admin.
+  "meeting_transcripts",
   // comp_months tem R$ por pessoa: só pelas rotas /api/comp/, que exigem
   // etiqueta admin (ADMIN_PREFIXES), nunca pelo CRUD genérico.
   "comp_months",
