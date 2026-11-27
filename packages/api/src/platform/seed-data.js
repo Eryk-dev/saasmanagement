@@ -104,6 +104,7 @@ export const COLLECTIONS = {
   bundles: [], // pacotes: planos de produtos diferentes por um preço só, rateado no fechamento (billing/bundles.js); PRIVATE
   deal_orders: [], // pedido do fechamento: as assinaturas que nasceram de um negócio (e do pacote); PRIVATE
   meetings: [], // calls de venda como registro (crm/meetings.js): espelho dos campos de call do lead, com estado agendada/realizada/no_show/remarcada; PRIVATE
+  meeting_transcripts: [], // transcrição inteira de cada sala do Meet, id = código da sala (calls/meeting-transcripts.js); PRIVATE, lida só pela rota do agente Cases
   saved_views: [], // filtros salvos por usuário e tela (crm/routes.views.js); PRIVATE
   cs_followups: [], // acompanhamento de CS do cliente: check-in, QBR, renovação, com reunião e próximos passos (customers/cs-followups.js); PRIVATE
   leverads_orgs: [], // espelho das orgs do LeverAds (customers/leverads-orgs.js): contas gratuitas, pagantes sem cliente e o vínculo cliente × org; PRIVATE, rotas em /api/customers/leverads-orgs

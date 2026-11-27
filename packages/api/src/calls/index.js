@@ -1,12 +1,15 @@
 // Domínio de calls: resumo das calls de venda, briefing do integrador,
-// consultas 1:1 (UniqueKids), copiloto ao vivo e análise de pitch.
+// consultas 1:1 (UniqueKids), copiloto ao vivo, análise de pitch e a leitura
+// das reuniões gravadas pelo agente Cases.
 
 import { registerPitchRoutes } from "./routes.pitch.js";
 import { registerConsultationRoutes } from "./routes.consultations.js";
 import { registerCopilotRoutes } from "./copilot.js";
 import { registerRecordMeetingRoutes } from "./routes.record-meetings.js";
 import { registerCallfaceRoutes } from "./routes.callface.js";
+import { registerCasesFeedRoutes } from "./routes.cases-feed.js";
 import { callface as defaultCallface } from "./callface.js";
+import { makeCasesFeed } from "./cases-feed.js";
 import { startRecordMeetingSummaries } from "./record-meetings.js";
 import { startCallSummaries } from "./call-summaries.js";
 import { startIntegrationBriefs } from "./integration-brief.js";
@@ -30,6 +33,9 @@ export function register(app, repo, ctx) {
   // timeline do lead. Publica o cliente no ctx pro bootstrap mostrar o estado.
   ctx.callface = ctx.opts.callface || defaultCallface;
   registerCallfaceRoutes(app, repo, { callface: ctx.callface });
+  // Agente Cases (OpenBot): as reuniões gravadas, a transcrição inteira de cada
+  // uma e os cases autorizados. Só chave mestre ou admin.
+  registerCasesFeedRoutes(app, ctx.opts.casesFeed || makeCasesFeed({ repo, google: ctx.google, googleUser: ctx.googleUser, log: app.log }));
 }
 
 export function start(repo, { clients, log, jobOn }) {

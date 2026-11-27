@@ -1876,6 +1876,41 @@ de SDR.
   · M no-show" na linha do cabeçalho do card do Negócio.
 - **Teste:** `crm-meetings.test.js`.
 
+**Agente Cases: reuniões gravadas e transcrição inteira (27/11/2026).** O
+agente Cases (OpenBot) tira cases e vocabulário das reuniões. Ele lê pelas
+rotas de `calls/cases-feed.js`, só leitura, e só a chave mestre (a porta dele
+na VPS do Hermes) ou um admin passam (`routes.cases-feed.js`, a mesma guarda de
+`/api/sdr/agent`).
+
+- **Rotas:**
+  - `GET /api/calls/agent/meetings?since=AAAA-MM-DD&until=&kind=&saas=leverads`
+    lista as reuniões que aconteceram, sem transcrição. São três tipos:
+    `call` (linha `realizada` de `meetings`), `integracao` (a do card do lead
+    e as dos `onboardings`) e `acompanhamento` (`cs_followups`). Cada uma vem
+    com closer, integrador, produto (linha do formulário) e o nicho e as
+    faixas do lead (valor e rótulo do formulário).
+  - `GET /api/calls/agent/meetings/:id/transcript` devolve o texto inteiro.
+  - `GET /api/calls/agent/cases` devolve os cases com `authorizedAt`.
+    `canPublish` é `public` com o gate de `cases.js`, e os números do painel
+    vêm de `cases-live.js`.
+- **Uma reunião por sala de cada lead:** call remarcada leva a sala junto, e
+  cada horário que passa vira uma linha `realizada` (em nov/2026, 89 de 402
+  dividiam sala). A lista mostra a mais recente e as outras em `sameRoom`.
+  Pedida pelo id de uma das outras, a transcrição responde `same_room` com a
+  reunião da lista, porque o Google devolve a conversa mais recente da sala.
+  Pelo id só sai o que a lista mostraria (falta, futura, cancelada, lead do
+  time e outro produto dão 404).
+- **Busca:** `fetchRoomTranscript` (`calls/meeting-transcripts.js`) é a do
+  resumo automático: Meet API e depois o Doc do Drive, na conta de quem
+  organizou, com os motivos `call_in_progress`, `transcript_not_ready` e
+  `not_connected`. Numa sala antiga de venda, o organizador sai da atividade
+  `meet_created`.
+- **Guarda:** coleção PRIVATE e SILENT `meeting_transcripts`, uma linha por
+  sala (id = código do Meet). O resumo automático grava o que buscou, sem
+  bloquear o resumo se falhar. A linha só vale para uma reunião se foi buscada
+  depois do horário dela. Nunca usar `repo.list()` nela.
+- **Teste:** `cases-feed.test.js`.
+
 **Pacotes e pedidos (20/10/2026).** Fase 2 do plano do Lever CRM, em
 `billing/bundles.js`.
 
