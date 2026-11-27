@@ -25,6 +25,8 @@ test("resumo do deck C calcula a participação na mesma janela, sem usar o all-
   assert.equal(summary.generated, 2_059_468.45);
   assert.equal(summary.participation, SUMMARY_ROW.gerado_periodo / SUMMARY_ROW.gmv_periodo * 100);
   assert.equal(summary.periodStart, "2026-06-26");
+  assert.equal(summary.firstSaleDays, 3, "mediana de dias até a 1ª venda: o terceiro número da faixa do deck");
+  assert.equal(presentationResults({ ...SUMMARY_ROW, dias: null }, 0).firstSaleDays, null, "sem base, a faixa sai com dois números");
   assert.equal(summary.updatedAt, "2026-09-15T11:00:00.000Z");
   assert.equal(presentationResults({ ...SUMMARY_ROW, gerado_periodo: 0 }, 0).participation, 0);
   for (const patch of [{ gmv_periodo: 0 }, { gmv_periodo: null }, { gerado_periodo: null }, { gerado_periodo: -1 }, { gerado_periodo: Infinity }, { gerado_periodo: 20_000_000 }]) {
@@ -60,18 +62,26 @@ test("deck C já gerado recebe totais atuais ao abrir, preservando seu estado co
   for (const url of ["/p/pr_live_c?k=k_live", "/p/t/pt_live_c"]) {
     const response = await app.inject({ url });
     assert.equal(response.statusCode, 200);
-    assert.match(response.body, /R\$ 18,6 mi/);
-    assert.match(response.body, /R\$ 2,1 mi/);
-    assert.match(response.body, /11,1% do faturamento/);
-    assert.match(response.body, /base desde 26\/06\/2026/);
-    assert.doesNotMatch(response.body, /12% do faturamento deles/);
+    // A faixa de cima do slide 06: vendido em anúncios da Lever, a fatia das
+    // vendas dos clientes e a mediana de dias até a 1ª venda, todos do painel.
+    assert.match(response.body, /data-live-results/);
+    assert.match(response.body, /R\$&nbsp;2,1&nbsp;mi<\/span><span[^>]*>em vendas de anúncios que a Lever criou/);
+    assert.match(response.body, /11,1%<\/span><span[^>]*>das vendas dos clientes vêm desses anúncios/);
+    assert.match(response.body, /3&nbsp;dias<\/span><span[^>]*>da conexão até a primeira venda \(mediana\)/);
+    assert.match(response.body, /18\.634\.412,87 de faturamento/, "o faturamento do período fica na dica da faixa");
+    assert.match(response.body, /números de \d{2}\/\d{2}\/\d{4}\./, "a fonte diz de quando são os números");
+    assert.doesNotMatch(response.body, /data-handoff-results|R\$&nbsp;6,1&nbsp;mi/, "com apuração, os números fixos do desenho não aparecem");
   }
   assert.deepEqual((await repo.get("proposals", "pr_live_c")).state, state);
   _resetResultsCache();
   const { proposalSlidesPageHtml } = await import("../src/proposals/proposal-slides-page.js");
   const empty = proposalSlidesPageHtml({ state: {}, data: {} });
-  assert.match(empty, /Resultados agregados temporariamente indisponíveis/);
-  assert.doesNotMatch(empty, /<strong[^>]*>R\$ 8 mi/);
+  // Sem apuração em memória, a faixa não fica em branco: entram os números do
+  // desenho de 26/11/2026, com a data em que foram apurados escrita na fonte.
+  assert.match(empty, /data-handoff-results/);
+  assert.doesNotMatch(empty, /data-live-results/);
+  assert.match(empty, /R\$&nbsp;6,1&nbsp;mi/);
+  assert.match(empty, /números de 17\/11\/2026\./);
   await app.close();
 });
 

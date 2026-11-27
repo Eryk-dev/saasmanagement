@@ -3,7 +3,7 @@
 // SPA (configuração da apresentação no card de Atividades). Sem dependências
 // de servidor; os Dockerfiles de build web copiam a pasta shared/.
 //
-// As duas funções são injetadas no script da página por toString(): sem crase,
+// As funções são injetadas no script da página por toString(): sem crase,
 // sem sintaxe que o navegador do cliente não rode (var, function).
 
 // ── A conta do plano ────────────────────────────────────────────────────────
@@ -19,6 +19,9 @@ export function calcOferta(cat, st) {
   var contas = Math.max(1, Math.round(Number(st.contas) || 1));
   var extraPer = Number(((cat.addons || {}).contaExtra || {}).per) || 100;
   var mensal = 0, setup = 0, nomes = [], entregaveis = [];
+  // itens: os entregáveis do plano, lidos do catálogo. sup: a linha de suporte
+  // do produto, que o slide põe embaixo do traço do card (desenho de
+  // 26/11/2026; antes disso o suporte era um card à parte, "O lado humano").
 
   var plat = st.plataforma ? prods[st.linha + "_" + st.tier] : null;
   if (plat) {
@@ -30,6 +33,7 @@ export function calcOferta(cat, st) {
     entregaveis.push({
       tag: plat.name,
       itens: ((plat.inclui || {}).motor || []).concat((plat.inclui || {}).plataforma || []),
+      sup: ["Suporte individualizado no WhatsApp"],
       notaDestaque: extras ? "Contas extras:" : "Contas inclusas:",
       nota: extras
         ? extras + " conta" + (extras > 1 ? "s" : "") + " além das " + inclusas + " do pacote, R$ " + fmt(extraPer) + " por conta em cada parcela."
@@ -44,6 +48,7 @@ export function calcOferta(cat, st) {
     entregaveis.push({
       tag: price.name,
       itens: ((price.inclui || {}).motor || []).concat((price.inclui || {}).plataforma || []),
+      sup: ["Suporte individualizado no WhatsApp", "Call de planejamento trimestral"],
       notaDestaque: "Margem primeiro:",
       nota: "o preço se move sozinho o dia inteiro, sempre acima da margem que você definir."
     });
@@ -66,18 +71,6 @@ export function calcOferta(cat, st) {
       nota: "R$ " + fmt(setup) + " na contratação, fora das parcelas do plano."
     });
   }
-
-  entregaveis.push({
-    tag: "O lado humano",
-    itens: [
-      "Suporte humano via WhatsApp",
-      "Call de plano de ação e setup",
-      "Resultado conferido mês a mês",
-      "Garantia incondicional de 2 meses"
-    ],
-    notaDestaque: "Time Lever dentro da sua operação:",
-    nota: "quem vende todo dia, cuidando de quem vende todo dia."
-  });
 
   // Desconto da negociação: baixa a PARCELA (em reais inteiros) e o total é a
   // soma das parcelas, pra conta fechar na cabeça do cliente. A chave segue
@@ -116,6 +109,27 @@ export function calcOferta(cat, st) {
       pratica: vendas > 0 && pedidos > 0,
       resultados: true
     }
+  };
+}
+
+// Quais telas condicionais do deck entram, a partir do `mostra` da oferta, e
+// qual tela do produto vai na janela da demonstração. Lê só as chaves de
+// sempre do `mostra` (ads, oem, price, pratica, resultados), porque a oferta do
+// link do cliente fica congelada no dia do envio e não ganha chave nova.
+//   - com OEM no plano, o slide do Lever OEM já conta o efeito teia: o do
+//     Lever Ads não repete;
+//   - num plano só de Lever Price, a prova é a do Price, sem a geral;
+//   - a janela mostra o produto principal: OEM, depois Ads, depois Price.
+// Também entra no script da página por toString(): sem crase.
+export function deckTelas(mostra) {
+  var m = mostra || {};
+  return {
+    oem: !!m.oem,
+    ads: !!m.ads && !m.oem,
+    price: !!m.price,
+    pratica: !!m.pratica,
+    resultados: m.resultados !== false && (!!m.ads || !!m.oem || !m.price),
+    janela: m.oem ? "oem" : m.ads ? "ads" : m.price ? "price" : ""
   };
 }
 

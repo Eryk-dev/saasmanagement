@@ -236,7 +236,7 @@ function ProposalsScreen() {
 // lido do HTML do deck) — slide novo aparece aqui sem uma segunda lista pra
 // alguém esquecer de atualizar. Nos decks campo a campo, saem dos slides do
 // template.
-const COND_LABEL={oem:'com OEM no plano',ads:'com Lever Ads no plano',price:'com Lever Price no plano',pratica:'com ticket e pedidos preenchidos',resultados:'com cases publicados'};
+const COND_LABEL={oem:'com OEM no plano',ads:'com Lever Ads no plano, sem OEM',price:'com Lever Price no plano',pratica:'com ticket e pedidos preenchidos',resultados:'fora do plano só de Lever Price'};
 const semToken=s=>String(s||'').replace(/\{\{[^}]*\}\}/g,'…').replace(/\*/g,'').trim();
 export function deckScreens(t,outline){
   const telas=outline||window.SEED?.CONFIG?.proposals?.slidesDeck||[];

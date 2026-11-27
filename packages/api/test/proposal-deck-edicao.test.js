@@ -40,8 +40,12 @@ test("o esqueleto do deck é lido do renderer, com a condição de cada tela", (
   assert.ok(rotulos.includes("08 Investimento"), "o slide de investimento tem que estar na lista");
   assert.ok(!rotulos.includes("Configurar"), "a tela zero é do closer, não é tela da apresentação");
   // As telas de produto e a de tangibilidade só entram conforme o plano.
-  assert.equal(telas.find((t) => t.label === "02a OEM")?.cond, "oem");
-  assert.equal(telas.find((t) => t.label === "09 Tangibilidade")?.cond, "pratica");
+  assert.equal(telas.find((t) => t.label === "02a Efeito teia")?.cond, "oem");
+  assert.equal(telas.find((t) => t.label === "02b Lever Ads")?.cond, "ads");
+  assert.equal(telas.find((t) => t.label === "02c Lever Price")?.cond, "price");
+  assert.equal(telas.find((t) => t.label === "06 Resultados")?.cond, "resultados");
+  assert.equal(telas.find((t) => t.label === "06 Resultados · Lever Price")?.cond, "price", "a prova do Price só entra com o Price no plano");
+  assert.equal(telas.find((t) => t.label === "09 Na prática")?.cond, "pratica");
   assert.equal(telas.find((t) => t.label === "Capa")?.cond, undefined);
 });
 

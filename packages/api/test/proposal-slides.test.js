@@ -12,7 +12,7 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 const { ensureProposalCatalog, ensureSlidesDeck, regenerateOpenLeadsToSlides } = await import("../src/platform/migrations.js");
 const { runNativeProposal, shareProposalOffer, proposalOffersOf } = await import("../src/proposals/proposal.js");
 const { registerProposalRoutes } = await import("../src/proposals/routes.proposals.js");
-const { calcOferta, deckConfig, slimCatalog, proposalSlidesPageHtml } = await import("../src/proposals/proposal-slides-page.js");
+const { calcOferta, deckTelas, deckConfig, slimCatalog, proposalSlidesPageHtml } = await import("../src/proposals/proposal-slides-page.js");
 const { hashPassword } = await import("../src/auth/auth.js");
 
 const TEMPLATE = {
@@ -175,8 +175,96 @@ test("a conta do plano sai do catálogo: pacote, conta extra, período e descont
   assert.equal(completo.mensal, 999 + 1497, "plataforma + Price somam na parcela");
   assert.equal(completo.setupFmt, "3.500", "pacote de OEM é pagamento único, fora da parcela");
   assert.equal(completo.planoNome, "Ads Escala + Lever Price · Escala + OEM 2.000");
-  assert.equal(completo.entregaveis.length, 4, "um card por produto + o lado humano");
+  assert.equal(completo.entregaveis.length, 3, "um card por produto: plataforma, Price e pacote de OEM");
   assert.ok(completo.entregaveis[0].itens.length > 0, "entregáveis vêm do catálogo, não escritos no slide");
+  // O suporte de cada produto vai no próprio card, embaixo do traço (não é mais um card à parte).
+  assert.deepEqual(completo.entregaveis[0].sup, ["Suporte individualizado no WhatsApp"]);
+  assert.deepEqual(completo.entregaveis[1].sup, ["Suporte individualizado no WhatsApp", "Call de planejamento trimestral"]);
+  assert.equal(completo.entregaveis[2].sup, undefined, "pacote de OEM avulso é serviço único, sem linha de suporte");
+  assert.equal(essencial.entregaveis.length, 1, "um produto só: um card, que ocupa o slide inteiro");
+});
+
+test("telas por plano: com OEM o slide do Ads não repete, plano só de Price mostra a prova do Price, a janela segue o produto principal", async () => {
+  const repo = await seedRepo();
+  const cat = await catalogoDoTemplate(repo);
+  const telas = (cfg) => deckTelas(calcOferta(cat, { ...cfgBase, ...cfg }).mostra);
+
+  const oem = telas({ linha: "oem" });
+  assert.deepEqual([oem.oem, oem.ads, oem.price, oem.resultados, oem.janela], [true, false, false, true, "oem"]);
+
+  const ads = telas({ linha: "ads" });
+  assert.deepEqual([ads.oem, ads.ads, ads.price, ads.resultados, ads.janela], [false, true, false, true, "ads"]);
+
+  const price = telas({ plataforma: false, price: true });
+  assert.deepEqual([price.oem, price.ads, price.price, price.resultados, price.janela], [false, false, true, false, "price"]);
+
+  // Plataforma + Price: os dois métodos e as duas provas; a janela é a da plataforma.
+  const combo = telas({ linha: "ads", price: true });
+  assert.deepEqual([combo.ads, combo.price, combo.resultados, combo.janela], [true, true, true, "ads"]);
+
+  // Ads com pacote de OEM avulso: quem conta a história é o slide do Lever OEM.
+  const comPacote = telas({ linha: "ads", oem: true });
+  assert.deepEqual([comPacote.oem, comPacote.ads, comPacote.janela], [true, false, "oem"]);
+
+  // Nada escolhido: sem slide de produto, sem janela, e a prova geral continua.
+  const vazio = telas({ plataforma: false });
+  assert.deepEqual([vazio.oem, vazio.ads, vazio.price, vazio.resultados, vazio.janela], [false, false, false, true, ""]);
+
+  // Oferta congelada num link já enviado (só as chaves de sempre) segue valendo.
+  assert.equal(deckTelas({ ads: true, oem: true, price: false, pratica: true, resultados: true }).pratica, true);
+  assert.equal(deckTelas(undefined).resultados, true);
+});
+
+test("deck redesenhado (26/11/2026): palco escuro, marca Lever, método por produto, janela da demonstração e aceite", async () => {
+  const repo = await seedRepo();
+  const catalog = (await repo.get("proposal_templates", "pt_leverads")).calc.catalog;
+  const p = { id: "pr_novo", name: "Proposta", state: { deckC: { ...cfgBase, linha: "oem" } }, data: { lead: { name: "Ana" } }, accepted: false };
+  const html = proposalSlidesPageHtml(p, { editable: false, catalog });
+
+  assert.match(html, /<div class="canvas dkc" id="canvas">/, "o palco do deck novo é escuro");
+  assert.doesNotMatch(html, /<section(?![^>]*\bclass="dk[ "])[^>]*data-label=/, "todo slide é do desenho novo");
+  assert.match(html, /<div class="brand"><img src="\/proposal-assets\/leverads\/logo-lever-dark\.svg" alt="">Lever<\/div>/, "capa com a marca Lever");
+  assert.doesNotMatch(html, />LeverAds<\/span>/, "a capa não diz mais LeverAds");
+
+  // Um slide de método por produto, cada um com a sua condição.
+  assert.match(html, /data-if="oem" data-label="Lever OEM" data-screen-label="02a Efeito teia"/);
+  assert.match(html, /data-if="ads" data-label="Lever Ads" data-screen-label="02b Lever Ads"/);
+  assert.match(html, /data-if="price" data-label="Lever Price" data-screen-label="02c Lever Price"/);
+  assert.match(html, /Descrição específica e compatibilidade completa/);
+  assert.match(html, /Promoção automática com critério/);
+
+  // A demonstração leva a tela de cada produto; o script mostra uma só.
+  for (const [chave, img] of [["oem", "oem-criar.webp"], ["ads", "ads-copiar-giro.webp"], ["price", "price-inicio.webp"]]) {
+    assert.match(html, new RegExp('<div class="window" data-win="' + chave + '">[\\s\\S]*?/proposal-assets/leverads/' + img.replace(".", "\\.")));
+  }
+  assert.match(html, /w\.hidden = w\.getAttribute\("data-win"\) !== ver\.janela;/);
+
+  // Três passos depois do sim, a prova do Price e a faixa de segurança.
+  assert.equal((html.match(/<span class="sn">/g) || []).length, 3, "Grupo no WhatsApp, Plano de ação e integração, Acompanhamento");
+  assert.match(html, /O que mudou com o Lever Price\./);
+  assert.match(html, /Parceiro oficial da EQI/);
+  assert.doesNotMatch(html, /opção D/, "rótulo de rascunho do desenho não vai pra tela de Propostas");
+
+  // O que é do cockpit continua: aceite no encerramento, entregáveis e cases pintados pelo script.
+  assert.match(html, /class="accept-wrap" data-client-only hidden><button type="button" class="accept-btn" data-act="aceitar">Quero começar<\/button>/);
+  assert.match(html, /<div data-entregaveis style="display:contents"><\/div>/, "nenhum entregável escrito no slide");
+  assert.match(html, /data-speaker-notes="Abra pelo estoque parado:/, "notas do closer do handoff");
+});
+
+test("o CSS do deck novo fica debaixo de .dk: a tela zero e o deck de criação de anúncios não mudam", async () => {
+  const { DECK_CSS } = await import("../src/proposals/proposal-slides-page.js");
+  const inicio = DECK_CSS.lastIndexOf("/*", DECK_CSS.indexOf("Deck redesenhado"));
+  const fim = DECK_CSS.lastIndexOf("/*", DECK_CSS.indexOf("Impressão: um slide por página"));
+  const novo = DECK_CSS.slice(inicio, fim);
+  assert.ok(novo.length > 2000, "o bloco do desenho novo existe");
+  const seletores = novo.replace(/\/\*[\s\S]*?\*\//g, "").split("}").map((r) => r.split("{")[0].trim()).filter(Boolean);
+  for (const lista of seletores) {
+    for (const sel of lista.split(",")) {
+      assert.match(sel.trim(), /^(\.dk\b|\.canvas\.dkc\b|\.canvas > section\.dk\b)/, "seletor fora do escopo do deck novo: " + sel.trim());
+    }
+  }
+  // As variáveis do tema claro continuam como eram pra tela zero.
+  assert.match(DECK_CSS, /--ink: #0C1D2B;/);
 });
 
 test("cadeado do desconto: 15% sem senha; só a senha de um admin libera, e fica na proposta", async (t) => {
