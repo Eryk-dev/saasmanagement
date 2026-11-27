@@ -9,7 +9,9 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { ensureProposalCatalog } = await import("../src/platform/migrations.js");
-const { applyCatalog, activeProduct, catalogUI, suggestProduct, dealCatalog, catalogAmount, hasCatalog, DEAL_PRODUCT_LABEL } = await import("../src/proposals/proposal-catalog.js");
+const { applyCatalog, activeProduct, catalogUI, suggestProduct, priceTier, dealCatalog, catalogAmount, hasCatalog, DEAL_PRODUCT_LABEL, PRODUCT_KEYS, TIER_KEYS } = await import("../src/proposals/proposal-catalog.js");
+const { ensurePlansCatalog, ensurePriceStartPlan, syncPlanCatalogProjection } = await import("../src/billing/plan-catalog.js");
+const { PRICE_START_LISTINGS } = await import("../src/shared/plan-resources.js");
 const { runNativeProposal, shareProposalOffer, publicProposal, syncProposalLeadSnapshot } = await import("../src/proposals/proposal.js");
 const { registerProposalRoutes } = await import("../src/proposals/routes.proposals.js");
 
@@ -811,4 +813,80 @@ test("pkgOf com o mapa do banco: faixa nova cai no padrão, faixa definida no ba
   assert.equal(pkgOf(cat, { accounts: "3-5" }), "essencial", "faixa antiga segue como o banco diz");
   assert.equal(pkgOf({ ...cat, tierByAccounts: { ...cat.tierByAccounts, "4-6": "essencial" } }, { accounts: "4-6" }), "essencial", "decisão comercial no banco vence o padrão");
   assert.equal(pkgOf(cat, { accounts: "" }), "essencial");
+});
+
+// ── Lever Price · Start (27/11/2026) ────────────────────────────────────────
+// O Start chega ao catálogo do template como em produção: planos semeados, o
+// plano criado (ensurePriceStartPlan) e a projeção dos planos de volta.
+async function seedRepoComStart() {
+  const repo = await seedRepo();
+  await ensurePlansCatalog(repo);
+  await ensurePriceStartPlan(repo);
+  await syncPlanCatalogProjection(repo, "leverads");
+  return repo;
+}
+const tetoStart = String(PRICE_START_LISTINGS).replace(/\B(?=(\d{3})+(?!\d))/g, "."); // milhar pt-BR, sem depender do ICU
+
+test("Lever Price · Start: entra no catálogo e no select do Price, mas a régua nunca o sugere", async () => {
+  const repo = await seedRepoComStart();
+  const cat = (await repo.get("proposal_templates", "pt_leverads")).calc.catalog;
+  assert.equal(cat.products.price_start.name, "Lever Price · Start");
+  assert.deepEqual(Object.keys(cat.products).filter((k) => k.endsWith("_start")), ["price_start"], "start só existe na linha price");
+  assert.ok(TIER_KEYS.includes("start"));
+  assert.deepEqual(PRODUCT_KEYS.filter((k) => k.endsWith("_start")), ["price_start"]);
+  assert.equal(DEAL_PRODUCT_LABEL.price_start, "Lever Price · Start");
+
+  // A sugestão de quem veio pelo Price é a de antes do Start, faixa a faixa,
+  // inclusive nas faixas que caberiam no teto dele ("0-100" cabe em qualquer teto).
+  const esperado = { "0-100": "essencial", "0-500": "essencial", "500-1000": "essencial", "1000-5000": "escala", "5000-10000": "escala", "10000+": "enterprise", "": "essencial" };
+  for (const [volume, tier] of Object.entries(esperado)) assert.equal(priceTier(cat, { volume }), tier, volume || "(sem faixa)");
+  const sug = async (answers, state = {}) => {
+    const p = await makeProposal(repo, answers);
+    return suggestProduct(p.calc, { ...p.state, ...state }, p.data.answers);
+  };
+  assert.equal(await sug({ niche: "outros", accounts: "1", listings: "0-500" }, { pain: "PRICE" }), "price_essencial");
+  assert.equal(await sug({ niche: "outros", accounts: "1", listings: "0-500", formProduct: "price" }), "price_essencial");
+  assert.equal(await sug({ niche: "outros", accounts: "1", listings: "1000-5000" }, { pain: "PRICE" }), "price_escala");
+  // Ads e OEM seguem com a sugestão de sempre.
+  assert.equal(await sug({ niche: "outros", accounts: "1", listings: "100-500" }), "ads_essencial");
+  assert.equal(await sug({ niche: "autopecas", accounts: "6-10", listings: "100-500" }), "oem_escala");
+
+  // Tela zero: o Start é a 1ª opção do Price, com o rótulo dele; nenhuma outra linha ganha Start.
+  const p = await makeProposal(repo, { niche: "outros", accounts: "1", listings: "0-500" });
+  const ui = catalogUI({ ...p, state: { ...p.state, pain: "PRICE" } });
+  assert.equal(ui.suggested, "price_essencial");
+  const price = ui.lines.find((l) => l.id === "price");
+  assert.deepEqual(price.products.map((x) => x.key), ["price_start", "price_essencial", "price_escala", "price_enterprise"]);
+  assert.equal(price.products[0].label, `Start · 1 conta · até ${tetoStart} anúncios`);
+  assert.ok(ui.lines.filter((l) => l.id !== "price").every((l) => l.products.every((x) => x.tier !== "start")));
+  assert.equal(ui.names.price_start, "Lever Price · Start");
+  assert.equal(ui.priceLines.price_start, "Anual R$ 4.200 (12x 350)", "sem o degrau semestral");
+  assert.match(ui.offerLines.price_start, /1 conta conectada/);
+});
+
+test("Lever Price · Start escolhido pelo closer: só anual no deck, R$ 4.200 no card e no gate", async () => {
+  const repo = await seedRepoComStart();
+  const p = await makeProposal(repo, { niche: "outros", accounts: "1", listings: "0-500" });
+  p.state.product = "price_start";
+  assert.equal(activeProduct(p), "price_start");
+  assert.equal(catalogAmount(p), 4200);
+  const t = applyCatalog(p);
+  assert.equal(t.product, "price_start");
+  assert.equal(t.line, "price");
+  assert.equal(t.pkg, "start");
+  const pricing = pricingOf(t);
+  assert.equal(pricing.key, "investimento_price_start");
+  assert.equal(pricing.price, "4.200");
+  assert.equal(pricing.cycles, "12x de *350*/mês");
+  assert.equal(pricing.offer2, undefined, "sem preço semestral, não existe degrau secreto");
+  assert.equal(pricing.planPill, `1 conta · até ${tetoStart} anúncios`);
+  assert.equal(pricing.sub, "Lever Price · Start");
+  assert.ok(pricing.features.includes("1 conta conectada"));
+  assert.ok(pricing.features.includes(`Precificação automática de até ${tetoStart} anúncios`));
+  assert.doesNotMatch(JSON.stringify(pricing), /SEMESTRAL/);
+
+  // Gate de fechamento pelo catálogo do template: só o anual.
+  const rows = dealCatalog(p.calc);
+  assert.deepEqual(rows.map((r) => r.id).filter((id) => id.startsWith("price_")), ["price_start", "price_essencial", "price_escala", "price_enterprise"]);
+  assert.deepEqual(rows.find((r) => r.id === "price_start").prices, [{ plan: "anual", label: "Anual", value: 4200 }]);
 });

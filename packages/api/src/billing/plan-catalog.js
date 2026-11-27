@@ -18,7 +18,7 @@ import {
   PRODUCT_KEYS, PRODUCT_LABEL, LEGACY_PRODUCT_LABEL, DEAL_PRODUCT_LABEL, ONE_OFF_KEY, TRIAL_KEY,
   hasCatalog, moneyOf, fmtBR,
 } from "../proposals/proposal-catalog.js";
-import { defaultResources, PLAN_PRODUCTS, planProductOf, planAccessOf } from "../shared/plan-resources.js";
+import { defaultResources, PLAN_PRODUCTS, planProductOf, planAccessOf, PRICE_START_LISTINGS } from "../shared/plan-resources.js";
 import { MENTORIA_PRODUCT_IDS, MENTORIA_PRODUCTS, MENTORIA_TEMPLATE_ID, hasMentoria } from "../customers/mentoria.js";
 
 export const PLAN_VERSION = 2;
@@ -519,6 +519,49 @@ export async function ensurePriceTrialPlan(repo) {
       requiresIntegration: base.requiresIntegration === true,
       // Nasce depois do ensurePlanResources e não tem recurso do LeverAds pra
       // ganhar: leva o carimbo do Essencial pra não voltar a passar por lá.
+      ...(base.resourcesV ? { resourcesV: base.resourcesV } : {}),
+    }, { by: "migration" }));
+    created++;
+  }
+  return created;
+}
+
+// Lever Price · Start (Leo, 27/11/2026): o pacote de entrada do Lever Price,
+// pra quem fatura até uns R$ 50 mil por mês. Só ANUAL (12× R$ 350 = R$ 4.200,
+// sem preço semestral), 1 conta conectada e teto de anúncios precificados
+// (PRICE_START_LISTINGS, em shared/plan-resources.js, que o dono ainda
+// confirma). Nasce como o teste grátis nasceu: em todo produto que já tem o
+// Price semeado e ainda não tem o Start, antes do Essencial na ordem do
+// catálogo. Uma vez por produto; depois é da tela Planos (plano que já existe,
+// editado ou arquivado pelo time, nunca é regravado aqui).
+const PRICE_START_CODE = "price_start";
+const PRICE_START_ACCOUNTS = 1;
+export async function ensurePriceStartPlan(repo) {
+  const all = await plansOf(repo);
+  let created = 0;
+  for (const base of all.filter((p) => p.code === "price_essencial")) {
+    const id = planIdOf(base.saas, PRICE_START_CODE);
+    if (all.some((p) => p.id === id) || await repo.get("plans", id).catch(() => null)) continue;
+    await repo.create("plans", nextPlan(null, {
+      id, v: PLAN_VERSION, saas: base.saas, code: PRICE_START_CODE,
+      name: PRODUCT_LABEL[PRICE_START_CODE],
+      kind: "subscription", pricing: "table",
+      product: base.product || "leverprice",
+      access: { product: base.access?.product || "leverprice" },
+      line: base.line || "price", tier: "start", group: base.group || "Lever Price",
+      order: (Number(base.order) || 50) - 5,
+      status: "active",
+      prices: { annual: { per: 350, total: 4200 } },
+      options: [],
+      limits: { listings: PRICE_START_LISTINGS, accounts: PRICE_START_ACCOUNTS },
+      features: {},
+      deliverables: {
+        motor: [`Precificação automática de até ${fmtBR(PRICE_START_LISTINGS)} anúncios`, "Regras de preço por margem e concorrência"],
+        plataforma: ["Acompanhamento de preço e margem no painel", "Alertas de anúncio fora da regra", `${PRICE_START_ACCOUNTS} conta conectada`],
+      },
+      labels: {}, extra: {},
+      requiresIntegration: base.requiresIntegration === true,
+      // Mesmo motivo do teste grátis: não tem recurso do LeverAds pra ganhar.
       ...(base.resourcesV ? { resourcesV: base.resourcesV } : {}),
     }, { by: "migration" }));
     created++;

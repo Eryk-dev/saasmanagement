@@ -1166,7 +1166,15 @@ alteração funcional nesta preparação.
   /public/proposals/:id/discount-unlock` confere o `editKey` e a senha
   (scrypt local) de qualquer usuário com a etiqueta `admin`, no máximo 5
   tentativas por proposta a cada 10 min, e grava `state.descontoLiberado`
-  fora do `deckC`. Validação: `test/proposal-deck-config.test.js` e
+  fora do `deckC`. **Plano só anual (27/11/2026):** plano sem preço semestral
+  (o Lever Price · Start) no que foi montado leva o período pro anual:
+  `deckPeriodo`/`deckSoAnual` (`shared/deck-offer.js`) valem em `calcOferta`,
+  no saneamento do `deckConfig` e nas duas telas zero (o "Semestral" fica
+  desligado com o aviso). O pacote do Price que a tela zero abre sozinha nunca
+  é o Start (`deckPricePadrao`). **Deck só de Price:** com a plataforma
+  desmarcada, `deckConfigState` grava `state.product = price_<pacote>` (o
+  pacote que veio no `deckC`), e o valor do card segue esse plano. Validação:
+  `test/proposal-deck-config.test.js` e
   `cd packages/web && node scripts/review/today-card.mjs` (API fictícia).
 
 - **Atalhos do lead (21/09/2026):** `components/lead-send-actions.jsx` reúne os
@@ -1359,6 +1367,17 @@ congelados: reprecificar é editar o plano, que sobe `priceVersion` e guarda o
 `priceLog`. Doc de `plans` sem `code` é o cadastro antigo e segue o CRUD
 genérico sem regra. Sem planos semeados, o bootstrap e a edição de template
 seguem pelo caminho antigo.
+
+**Lever Price · Start (27/11/2026).** `price_start` é o pacote de entrada do
+Lever Price: só anual (12× R$ 350), 1 conta conectada e teto de anúncios
+(`PRICE_START_LISTINGS` em `shared/plan-resources.js`, que só vale até o plano
+nascer). Nasce por `ensurePriceStartPlan` (boot, como o teste grátis: só cria
+se faltar, nunca regrava) e vai aos templates pela projeção. A régua não o
+sugere (`priceTier` pula `PRICE_TIERS_MANUAIS`); o closer escolhe na tela
+zero. O limite `accounts` passou a valer também em plano do LeverPrice
+(`planLimitsOf`), só como dado comercial: plano do Price sem a chave segue sem
+limite de contas e nada dele vira campo da org do LeverAds. Testes:
+`plan-catalog.test.js`, `lever-price-start.test.js`.
 
 Invariantes: (1) **só admin escreve plano v2, a configuração do catálogo e a
 tabela de preço pelo template** (403 no servidor; a key mestre passa);

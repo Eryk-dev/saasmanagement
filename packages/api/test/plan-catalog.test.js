@@ -13,8 +13,10 @@ import { dealCatalog } from "../src/proposals/proposal-catalog.js";
 import { mentoriaDealCatalog } from "../src/customers/mentoria.js";
 import {
   catalogToPlans, catalogToConfig, mentoriaToPlans, plansToCatalog, plansToMentoriaBlock,
-  dealCatalogFromPlans, ensurePlansCatalog, syncPlanCatalogProjection, nextPlan, sameJson, planIdOf,
+  dealCatalogFromPlans, ensurePlansCatalog, ensurePriceStartPlan, syncPlanCatalogProjection, nextPlan, sameJson, planIdOf,
 } from "../src/billing/plan-catalog.js";
+import { planSnapshotOf } from "../src/billing/plan-history.js";
+import { PLAN_LIMITS, PRICE_START_LISTINGS, planLimitsOf, limitsSummary, leveradsOrgFields } from "../src/shared/plan-resources.js";
 
 const { ensureProposalCatalog, migrateCatalogPricing, ensureMentoriaTemplate } = await import("../src/platform/migrations.js");
 const { registerRoutes } = await import("../src/routes.js");
@@ -405,4 +407,146 @@ test("editar plano não troca de produto: o servidor ignora product/access no PA
   assert.equal(res.statusCode, 200);
   assert.equal(res.json().product, "leverads");
   assert.deepEqual(res.json().access, { product: "leverads" });
+});
+
+// ── Lever Price · Start (27/11/2026) ────────────────────────────────────────
+// Pacote de entrada do Lever Price: só anual (12× R$ 350), 1 conta conectada e
+// teto de anúncios (PRICE_START_LISTINGS, que o dono ainda confirma).
+const START_ID = "plan_leverads_price_start";
+const milhar = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+
+test("Lever Price · Start: nasce uma vez, só anual, com 1 conta e o teto de anúncios da constante", async () => {
+  const repo = await seededRepo();
+  assert.equal(await repo.get("plans", START_ID), null, "a semente do catálogo não cria o Start");
+  assert.equal(await ensurePriceStartPlan(repo), 1);
+  assert.equal(await ensurePriceStartPlan(repo), 0, "segunda rodada não cria nada");
+
+  const p = await repo.get("plans", START_ID);
+  const essencial = await repo.get("plans", "plan_leverads_price_essencial");
+  assert.deepEqual(
+    { v: p.v, saas: p.saas, code: p.code, name: p.name, kind: p.kind, pricing: p.pricing, status: p.status, product: p.product, access: p.access, line: p.line, tier: p.tier, group: p.group },
+    { v: 2, saas: "leverads", code: "price_start", name: "Lever Price · Start", kind: "subscription", pricing: "table", status: "active", product: "leverprice", access: { product: "leverprice" }, line: "price", tier: "start", group: "Lever Price" },
+  );
+  assert.equal(p.order, 45);
+  assert.ok(p.order < essencial.order, "entra antes do Essencial");
+  assert.deepEqual(p.prices, { annual: { per: 350, total: 4200, installments: 12 } }, "sem preço semestral");
+  assert.deepEqual(p.limits, { listings: PRICE_START_LISTINGS, accounts: 1 });
+  assert.deepEqual(p.deliverables, {
+    motor: [`Precificação automática de até ${milhar(PRICE_START_LISTINGS)} anúncios`, "Regras de preço por margem e concorrência"],
+    plataforma: ["Acompanhamento de preço e margem no painel", "Alertas de anúncio fora da regra", "1 conta conectada"],
+  });
+  assert.equal(p.trial, undefined, "não é teste grátis");
+  // Versão de preço como a de qualquer plano que nasce.
+  assert.equal(p.priceVersion, 1);
+  assert.equal(p.priceLog.length, 1);
+  assert.equal(p.priceLog[0].by, "migration");
+  assert.deepEqual(p.priceLog[0].limits, p.limits);
+  assert.equal(p.price, 4200);
+  assert.equal(p.cycle, "annual");
+  // Os planos que já existiam não foram tocados.
+  assert.deepEqual(essencial.limits, { listings: 1000 });
+  assert.equal(essencial.priceVersion, 1);
+});
+
+test("Lever Price · Start: plano que o time editou ou arquivou não é regravado; sem Price semeado não nasce", async () => {
+  const repo = await seededRepo();
+  await ensurePriceStartPlan(repo);
+  const cur = await repo.get("plans", START_ID);
+  const edited = await repo.update("plans", START_ID, nextPlan(cur, {
+    name: "Lever Price · Start 100", status: "archived", order: 5,
+    prices: { annual: { per: 300, total: 3600 } }, limits: { listings: 100, accounts: 2 },
+    deliverables: { motor: ["Até 100 anúncios"], plataforma: [] },
+  }, { by: "chefe" }));
+  const rev = repo.writeRev();
+  assert.equal(await ensurePriceStartPlan(repo), 0);
+  assert.equal(repo.writeRev(), rev, "nenhuma escrita");
+  assert.deepEqual(await repo.get("plans", START_ID), edited);
+
+  // Produto sem o Lever Price no catálogo não ganha o Start.
+  const vazio = makeMemRepo();
+  await vazio.create("plans", nextPlan(null, { id: "plan_outro_ads_essencial", v: 2, saas: "outro", code: "ads_essencial", name: "Ads", kind: "subscription", pricing: "table", prices: { annual: { per: 100 } } }));
+  assert.equal(await ensurePriceStartPlan(vazio), 0);
+  assert.equal((await vazio.list("plans")).length, 1);
+});
+
+test("Lever Price · Start: chega aos dois templates e ao gate como os outros planos, sem semestral; a ida e volta pelo template não o altera", async (t) => {
+  const repo = await seededRepo();
+  await ensurePriceStartPlan(repo);
+  assert.equal(await syncPlanCatalogProjection(repo, "leverads"), 2, "os dois templates recebem o plano");
+  for (const id of ["pt_leverads", "pt_leverads_slides"]) {
+    const cat = await catalogOf(repo, id);
+    assert.deepEqual(cat.products.price_start, {
+      line: "price", tier: "start", name: "Lever Price · Start", contas: 1, limite: PRICE_START_LISTINGS,
+      inclui: {
+        motor: [`Precificação automática de até ${milhar(PRICE_START_LISTINGS)} anúncios`, "Regras de preço por margem e concorrência"],
+        plataforma: ["Acompanhamento de preço e margem no painel", "Alertas de anúncio fora da regra", "1 conta conectada"],
+      },
+      anu: { per: 350, total: 4200 },
+    }, id);
+    assert.equal("sem" in cat.products.price_start, false, "plano só anual não projeta semestral");
+    assert.equal("contas" in cat.products.price_essencial, false, "plano do Price sem limite de contas segue sem a chave");
+  }
+  assert.equal(await syncPlanCatalogProjection(repo, "leverads"), 0, "projeção estável");
+
+  // Gate de fechamento: só o anual, R$ 4.200.
+  const gate = dealCatalogFromPlans(await repo.list("plans"));
+  assert.deepEqual(gate.find((r) => r.id === "price_start"), {
+    id: "price_start", label: "Lever Price · Start", group: "Lever Price", prices: [{ plan: "anual", label: "Anual", value: 4200 }],
+  });
+  assert.ok(gate.findIndex((r) => r.id === "price_start") < gate.findIndex((r) => r.id === "price_essencial"), "antes do Essencial no select");
+
+  // Tabela editada pelo template (tela de Propostas): mexer em OUTRO plano não
+  // sobe a versão do Start nem apaga a conta dele.
+  const { app, admin } = await buildApp(repo);
+  t.after(() => app.close());
+  const calc = clone((await repo.get("proposal_templates", "pt_leverads_slides")).calc);
+  calc.catalog.products.ads_essencial.anu = { total: 6564, per: 547 };
+  assert.equal((await app.inject({ method: "PATCH", url: "/api/proposal_templates/pt_leverads_slides", headers: admin, payload: { calc } })).statusCode, 200);
+  const start = await repo.get("plans", START_ID);
+  assert.equal(start.priceVersion, 1);
+  assert.deepEqual(start.limits, { listings: PRICE_START_LISTINGS, accounts: 1 });
+  assert.equal(start.order, 45);
+  assert.deepEqual(start.prices, { annual: { per: 350, total: 4200, installments: 12 } });
+});
+
+test("limite de contas vale num plano do Lever Price sem mudar os planos que já existem nem o que vai pra org do LeverAds", async (t) => {
+  // O formulário de Planos mostra Contas no LeverPrice; no LeverAds a lista é a de sempre.
+  assert.deepEqual(planLimitsOf("leverprice").map((l) => l.key), ["accounts", "listings"]);
+  assert.deepEqual(planLimitsOf("leverads").map((l) => l.key), ["accounts", "copiesPerDay", "oemPerMonth", "oemPerYear"]);
+  assert.deepEqual(planLimitsOf("mentoria"), []);
+  assert.equal(PLAN_LIMITS.find((l) => l.key === "accounts").product, "leverads", "o campo da org segue sendo do LeverAds");
+
+  assert.equal(limitsSummary({ listings: PRICE_START_LISTINGS, accounts: 1 }), `1 conta · ${milhar(PRICE_START_LISTINGS)} anúncios`);
+  assert.equal(limitsSummary({ listings: 5000 }), "5.000 anúncios", "plano do Price sem a chave: nada sobre contas");
+  assert.equal(limitsSummary({ accounts: 7 }), "7 contas");
+
+  // Plano do Price com conta não pede assento nenhum na org do LeverAds.
+  assert.deepEqual(leveradsOrgFields({ product: "leverprice", limits: { listings: 1000, accounts: 1 } }), { leverprice_enabled: true });
+  assert.deepEqual(leveradsOrgFields({ product: "leverprice", limits: { listings: 5000 } }), { leverprice_enabled: true });
+  assert.deepEqual(leveradsOrgFields({ product: "leverads", limits: { accounts: 3 } }), { paid_seats: 3 });
+
+  // Pelo REST (tela Planos): cria e edita com o limite de contas.
+  const repo = await seededRepo();
+  await ensurePriceStartPlan(repo);
+  const { app, admin } = await buildApp(repo);
+  t.after(() => app.close());
+  const novo = await app.inject({ method: "POST", url: "/api/plans", headers: admin, payload: { saas: "leverads", code: "price_duo", name: "Lever Price · Duo", product: "leverprice", prices: { annual: { per: 500 } }, limits: { listings: 2000, accounts: 2 } } });
+  assert.equal(novo.statusCode, 201);
+  assert.deepEqual(novo.json().limits, { listings: 2000, accounts: 2 });
+  const edit = await app.inject({ method: "PATCH", url: `/api/plans/${START_ID}`, headers: admin, payload: { limits: { listings: PRICE_START_LISTINGS, accounts: 2 } } });
+  assert.equal(edit.statusCode, 200);
+  assert.deepEqual(edit.json().limits, { listings: PRICE_START_LISTINGS, accounts: 2 });
+  assert.equal(edit.json().priceVersion, 2, "limite é parte do preço: sobe a versão");
+  assert.equal((await catalogOf(repo, "pt_leverads_slides")).products.price_start.contas, 2, "e chega à apresentação");
+
+  // Retrato do plano na venda: congela os dois limites; no semestral não há preço de tabela.
+  const start = await repo.get("plans", START_ID);
+  const snap = planSnapshotOf(start, { closedPlan: "anual" });
+  assert.deepEqual(snap.limits, { listings: PRICE_START_LISTINGS, accounts: 2 });
+  assert.equal(snap.listPrice, 4200);
+  assert.equal(snap.cycle, "annual");
+  assert.equal(snap.accessProduct, "leverprice");
+  assert.equal(planSnapshotOf(start, { closedPlan: "semestral" }).listPrice, null);
+  start.limits.accounts = 9;
+  assert.equal(snap.limits.accounts, 2, "o retrato é cópia, não referência");
 });

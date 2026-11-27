@@ -143,6 +143,7 @@ export const DEAL_PRODUCTS = [
   { id: "oem_escala", label: "Ads Escala + OEM" },
   { id: "ads_essencial", label: "Ads Essencial" },
   { id: "ads_escala", label: "Ads Escala" },
+  { id: "price_start", label: "Lever Price · Start" },
   { id: "price_essencial", label: "Lever Price · Essencial" },
   { id: "price_escala", label: "Lever Price · Escala" },
   { id: "price_enterprise", label: "Lever Price · Enterprise" },

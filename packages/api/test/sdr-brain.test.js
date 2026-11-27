@@ -2164,7 +2164,7 @@ test("24/11 (decisão): a primeira resposta de preço leva a base de R$299 e a g
   assert.equal(await brainOf(repo2, fakes2).handleInbound({ message: { from: "5541999990000", text: "quanto custa?" } }), "responder");
   assert.match(fakes2.sent[0].text, /a partir de R\$299 mensais/);
   // A trava segue valendo pra qualquer outro número.
-  for (const t of ["a partir de R$ 199 mensais", "sai por R$ 497", "12x de 250", "plano Escala", "10% de desconto", "a partir de R$299 mensais ou R$2.990 no ano"]) assert.ok(leaksPrice(t), t);
+  for (const t of ["a partir de R$ 199 mensais", "sai por R$ 497", "12x de 250", "plano Escala", "plano Start", "10% de desconto", "a partir de R$299 mensais ou R$2.990 no ano"]) assert.ok(leaksPrice(t), t);
   for (const t of ["nossos planos começam a partir de R$299 mensais", "a partir de R$ 299 por mês", "a partir de R$299"]) assert.ok(!leaksPrice(t), t);
 });
 
